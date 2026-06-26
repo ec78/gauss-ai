@@ -44,6 +44,7 @@ The framework is designed to use multiple authoritative sources, including:
 
 * `agents/` — Agent definitions, behavior, capabilities, and constraints.
 * `experts/` — Domain-specific reasoning, best practices, knowledge notes, and common mistakes shared across agents.
+* `adr/` — Architecture Decision Records for significant framework decisions.
 * `prompts/` — Shared system, developer, and task prompts.
 * `configs/` — Knowledge source configuration and runtime settings.
 * `tools/` — Tool definitions and integrations.
