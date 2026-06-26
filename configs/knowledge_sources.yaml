@@ -1,0 +1,25 @@
+# Placeholder knowledge source configuration.
+# Replace these paths with real local sources when they are added to the repository.
+
+knowledge_sources:
+  - id: gauss_language_reference
+    name: GAUSS Language Reference
+    type: local_path
+    path: ./knowledge/gauss-language-reference/
+    status: placeholder
+    description: Placeholder for GAUSS language reference material.
+
+  - id: gauss_examples
+    name: GAUSS Examples
+    type: local_path
+    path: ./knowledge/gauss-examples/
+    status: placeholder
+    description: Placeholder for curated GAUSS example code.
+
+  - id: project_conventions
+    name: Project Conventions
+    type: local_path
+    path: ./knowledge/project-conventions/
+    status: placeholder
+    description: Placeholder for local coding, testing, and documentation conventions.
+
