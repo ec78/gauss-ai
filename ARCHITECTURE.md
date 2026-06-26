@@ -2,13 +2,14 @@
 
 ## 1. Overview
 
-This repository defines a framework for specialized GAUSS-focused AI agents. The architecture is organized around clear agent definitions, shared prompt assets, configurable knowledge sources, tool-assisted workflows, and repeatable evaluations.
+This repository defines a framework for specialized GAUSS-focused AI agents. The architecture is organized around clear agent definitions, reusable expertise modules, shared prompt assets, configurable knowledge sources, tool-assisted workflows, and repeatable evaluations.
 
 The framework is intended to support agents that are narrow enough to be reliable, grounded enough to avoid unsupported answers, equipped enough to work with real project context, and evaluated often enough to improve over time.
 
 ## 2. Architectural Goals
 
 - Build specialized agents for distinct GAUSS development and analysis tasks.
+- Share domain-specific reasoning and best practices across multiple agents.
 - Ground agent behavior in curated local knowledge sources and repository context.
 - Keep prompts, tools, workflows, and evaluations versioned alongside the agents they support.
 - Make agent behavior inspectable through explicit documentation and repeatable benchmarks.
@@ -19,6 +20,10 @@ The framework is intended to support agents that are narrow enough to be reliabl
 ### Agents
 
 Agent definitions live under `agents/`. Each agent should describe its purpose, responsibilities, boundaries, expected inputs, and expected outputs. Agents should be specialized by task area rather than treated as one broad assistant for every use case.
+
+### Expertise
+
+Expert modules live under `experts/`. Each module captures domain-specific reasoning patterns, best practices, knowledge notes, and common mistakes. Expertise modules are reusable across agents, allowing several specialized agents to draw on the same domain guidance without duplicating it.
 
 ### Shared Knowledge
 
@@ -42,9 +47,9 @@ Evaluation assets live under `evaluations/` and `benchmarks/`. They define repre
 
 ## 4. Agent Design Philosophy
 
-Agents should be specialized, knowledge-grounded, tool-assisted, and continuously evaluated.
+Agents should be specialized, expertise-aware, knowledge-grounded, tool-assisted, and continuously evaluated.
 
-Specialization keeps each agent's behavior focused and easier to test. Knowledge grounding reduces unsupported claims and improves consistency with GAUSS conventions. Tool assistance lets agents inspect and validate real context instead of relying only on prior knowledge. Continuous evaluation creates a feedback loop for improving prompts, sources, tools, and workflows.
+Specialization keeps each agent's behavior focused and easier to test. Expertise modules give agents reusable domain reasoning and best practices. Knowledge grounding reduces unsupported claims and improves consistency with GAUSS conventions. Tool assistance lets agents inspect and validate real context instead of relying only on prior knowledge. Continuous evaluation creates a feedback loop for improving prompts, expertise, sources, tools, and workflows.
 
 ## 5. Knowledge Flow
 
@@ -54,9 +59,9 @@ Expected flow:
 
 1. Curated knowledge is added to the repository or referenced by placeholder paths.
 2. `configs/knowledge_sources.yaml` records each source and its purpose.
-3. Workflows decide which sources are relevant for a task.
-4. Agents use those sources to produce grounded answers or edits.
-5. Evaluation results identify knowledge gaps that should be filled.
+3. Workflows decide which expertise modules and sources are relevant for a task.
+4. Agents use those modules and sources to produce grounded answers or edits.
+5. Evaluation results identify expertise and knowledge gaps that should be filled.
 
 ## 6. Tool Flow
 
@@ -94,6 +99,11 @@ Workflow Selection
    v
 Specialized Agent
    |
+   +--> Expertise
+   |       |
+   |       v
+   |   Domain Reasoning / Best Practices
+   |
    +--> Prompts
    |
    +--> Shared Knowledge
@@ -119,10 +129,10 @@ Prompt, Knowledge, Tool, and Workflow Improvements
 ## 9. Future Architecture Considerations
 
 - Add additional specialized agents for documentation, testing, package migration, code review, and model comparison.
+- Expand expert modules with validated domain reasoning, best practices, and common mistakes.
 - Define source quality rules for knowledge ingestion and refresh.
 - Add structured result records for benchmark runs.
 - Track prompt versions and evaluation scores together.
 - Introduce tool permission policies for higher-risk actions.
 - Add workflows for regression testing agent behavior after prompt or source changes.
 - Support agent composition where one workflow can delegate subtasks to several specialized agents.
-

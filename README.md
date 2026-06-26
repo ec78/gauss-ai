@@ -15,7 +15,7 @@ The goal of GAUSS AI is to build a framework that combines authoritative GAUSS k
 * **Accuracy over confidence.** When uncertain, retrieve authoritative information instead of guessing.
 * **Official sources first.** Prefer the official GAUSS documentation and vetted reference repositories.
 * **Specialization beats generalization.** Small, focused agents are easier to improve than one large, general-purpose assistant.
-* **Reusable architecture.** Knowledge, prompts, tools, and evaluations should be shared across agents whenever possible.
+* **Reusable architecture.** Expertise, knowledge, prompts, tools, and evaluations should be shared across agents whenever possible.
 * **Continuous evaluation.** Every improvement should be measurable using benchmark tasks and scoring criteria.
 
 ## Planned Agents
@@ -43,6 +43,7 @@ The framework is designed to use multiple authoritative sources, including:
 ## Repository Organization
 
 * `agents/` — Agent definitions, behavior, capabilities, and constraints.
+* `experts/` — Domain-specific reasoning, best practices, knowledge notes, and common mistakes shared across agents.
 * `prompts/` — Shared system, developer, and task prompts.
 * `configs/` — Knowledge source configuration and runtime settings.
 * `tools/` — Tool definitions and integrations.
@@ -50,6 +51,8 @@ The framework is designed to use multiple authoritative sources, including:
 * `evaluations/` — Benchmarks and scoring rubrics.
 * `benchmarks/` — Benchmark datasets and evaluation results.
 * `examples/` — Representative tasks and reference interactions.
+
+Expert modules encapsulate reusable domain expertise so multiple specialized agents can draw on consistent reasoning patterns and best practices without duplicating guidance.
 
 ## Roadmap
 
