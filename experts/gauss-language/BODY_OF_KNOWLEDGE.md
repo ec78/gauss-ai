@@ -1035,21 +1035,473 @@ Topics:
 - Release process
 - Code review
 
-### Domain 7 — Debugging
+## Domain 7 — Debugging
 
-Core knowledge for diagnosing and correcting GAUSS code.
+Debugging is the process of identifying, explaining, and correcting problems in GAUSS code.
 
-Topics:
+This domain helps GAUSS-focused agents diagnose errors systematically instead of guessing from symptoms. A good debugging agent should distinguish between syntax errors, runtime errors, data problems, dimension problems, package issues, and logical mistakes.
 
-- Syntax errors
-- Runtime errors
-- Logic errors
-- Dimension mismatches
-- Type mismatches
-- Missing value problems
-- Package and library loading errors
-- Performance debugging
-- Numerical debugging
+### 7.1 Core Mental Model
+
+Debugging GAUSS code requires separating several questions:
+
+1. Is the code valid GAUSS syntax?
+2. Are all functions available in base GAUSS or loaded packages?
+3. Are the data structures appropriate?
+4. Are matrix dimensions compatible?
+5. Are inputs defined in the expected scope?
+6. Are missing values affecting the result?
+7. Is the code logically correct for the intended statistical or numerical task?
+
+A GAUSS-focused agent should not jump immediately to rewriting code. It should first identify the likely failure type and then provide a targeted correction.
+
+Agent guidance:
+
+* Ask for the exact error message when it is not provided.
+* Ask for or infer the relevant code block, not the entire project.
+* Identify the likely class of error before proposing a fix.
+* Explain why the error occurs.
+* Provide the smallest useful correction first.
+* When useful, provide a cleaned-up version of the code after explaining the minimal fix.
+
+Common failure modes:
+
+* Treating every error as a syntax error.
+* Rewriting too much code instead of fixing the actual problem.
+* Ignoring data shape and type.
+* Ignoring missing values.
+* Assuming a function exists without checking whether it is base GAUSS or package-specific.
+
+### 7.2 Syntax Errors
+
+Syntax errors occur when GAUSS cannot parse the code.
+
+Common causes:
+
+* Missing semicolons
+* Missing or mismatched parentheses
+* Missing or mismatched brackets
+* Invalid procedure structure
+* Missing `endp`
+* Invalid control flow structure
+* Reserved keyword used as a variable name
+* Cross-language syntax from Python, R, MATLAB, or JavaScript
+
+Agent guidance:
+
+* Look for structural problems first.
+* Check procedure boundaries.
+* Check control flow boundaries.
+* Check whether the code contains syntax from another language.
+* Provide a corrected version with minimal changes.
+* Explain the syntax rule involved.
+
+Common failure modes:
+
+* Correcting the wrong line because the actual syntax error appears earlier.
+* Rewriting valid GAUSS into another invalid form.
+* Missing a reserved keyword issue.
+* Failing to notice copied Python, R, or MATLAB syntax.
+
+### 7.3 Runtime Errors
+
+Runtime errors occur when syntactically valid code fails during execution.
+
+Common causes:
+
+* Undefined variables
+* Undefined procedures
+* Missing package or library dependencies
+* Invalid file paths
+* Invalid input dimensions
+* Invalid indexing
+* Type mismatch
+* Missing data problems
+* Insufficient observations
+* Singular or ill-conditioned matrices
+
+Agent guidance:
+
+* Identify which object or function is failing.
+* Check whether required variables are defined.
+* Check whether required packages are loaded.
+* Check file paths and working directory assumptions.
+* Check input dimensions and types.
+* Explain the likely cause and provide a targeted fix.
+
+Common failure modes:
+
+* Assuming the runtime error is caused by the line where it appears, rather than an earlier setup issue.
+* Ignoring missing package setup.
+* Ignoring file path assumptions.
+* Suggesting a statistical fix when the problem is a programming setup issue.
+
+### 7.4 Dimension Mismatches
+
+Dimension mismatches are among the most common GAUSS debugging problems because GAUSS code often relies on matrix operations.
+
+Common causes:
+
+* Matrix multiplication with incompatible dimensions
+* Concatenation of objects with incompatible rows or columns
+* Row vector vs column vector confusion
+* Mismatched dependent and independent variable lengths
+* Incorrect lagging, differencing, or trimming
+* Missing values dropped from one variable but not another
+* Incorrect reshaping or indexing
+
+Agent guidance:
+
+* Ask or compute `rows` and `cols` for relevant matrices when possible.
+* Verify that dependent and independent variables have compatible numbers of observations.
+* Check whether lagging or differencing reduced sample size.
+* Check whether missing-value handling changed dimensions.
+* Explain dimensions explicitly in the fix.
+* Prefer simple dimension checks in reusable procedures.
+
+Common failure modes:
+
+* Assuming all vectors are interchangeable.
+* Ignoring row vs column orientation.
+* Dropping rows from one variable but not others.
+* Fixing the symptom with transposes instead of correcting the data structure.
+
+### 7.5 Type and Data Structure Errors
+
+Type and data structure errors occur when code uses the wrong operation for the object.
+
+Common causes:
+
+* Treating a DataFrame as a matrix
+* Treating an array as a matrix
+* Treating a string as a numeric value
+* Treating a categorical variable as a meaningful numeric code
+* Passing a structure where a matrix is expected
+* Using matrix dimension tools on arrays
+* Using DataFrame code on plain matrices
+
+Agent guidance:
+
+* Identify the input object type before proposing a fix.
+* Use matrix operations for numerical matrices.
+* Use DataFrame-aware workflows when labels, mixed types, categoricals, or dates matter.
+* Use array-appropriate dimension tools for arrays.
+* Preserve metadata when it matters.
+* Explain any conversion between data structures.
+
+Common failure modes:
+
+* Automatically converting everything to a matrix.
+* Losing variable names unnecessarily.
+* Treating categorical labels as numeric values.
+* Using `rows` and `cols` on arrays.
+* Assuming Python or R DataFrame methods exist in GAUSS.
+
+### 7.6 Procedure and Scope Errors
+
+Procedure and scope errors occur when reusable code relies on variables or behavior outside its intended context.
+
+Common causes:
+
+* Local variables not declared
+* Variables used inside a procedure but not passed as inputs
+* Hidden dependence on global state
+* Conflicting variable names
+* Procedure defined but not available in the current context
+* Public and helper procedures mixed together unclearly
+* Setup code placed inside or outside a procedure incorrectly
+
+Agent guidance:
+
+* Check whether each variable inside a procedure is an input, local variable, or intended global.
+* Prefer explicit inputs over hidden dependencies.
+* Declare local variables.
+* Keep example code separate from procedure definitions.
+* Check whether the procedure file is loaded or included.
+* Explain scope issues clearly.
+
+Common failure modes:
+
+* Fixing scope issues by adding more global state.
+* Ignoring missing local declarations.
+* Assuming variables from a prior interactive session are available.
+* Moving setup code into a procedure when it belongs in the example script.
+
+### 7.7 Package and Library Loading Errors
+
+Package and library errors occur when code depends on functionality that is unavailable in the current session.
+
+Common causes:
+
+* Package not installed
+* Package not loaded
+* Incorrect package name
+* Function belongs to a package but is treated as base GAUSS
+* Version mismatch
+* Local source file not included
+* Incorrect working directory
+* Missing dependency
+
+Agent guidance:
+
+* Distinguish base GAUSS functions from package-specific functions.
+* State package dependencies clearly.
+* Ask or infer whether the package is installed.
+* Check package examples or source when behavior matters.
+* Avoid inventing package setup steps.
+* Provide a base GAUSS alternative when reasonable.
+
+Common failure modes:
+
+* Assuming the user has a package installed.
+* Treating package functions as built-in functions.
+* Inventing package names or load commands.
+* Ignoring version compatibility.
+* Failing to mention required setup steps.
+
+### 7.8 File I/O and Path Errors
+
+File I/O errors occur when GAUSS cannot find, read, write, or parse a file as expected.
+
+Common causes:
+
+* Incorrect working directory
+* Incorrect file path
+* Platform-specific path separators
+* Missing file extension
+* File permissions
+* File locked by another application
+* Wrong delimiter or file format
+* Variable names or headers not read as expected
+* Date or categorical columns parsed unexpectedly
+
+Agent guidance:
+
+* Check the working directory and file path assumptions.
+* Use clear, explicit paths in examples when possible.
+* Explain platform-specific path concerns.
+* Verify file format and delimiter.
+* Check whether the data was imported as expected before modeling.
+* Show a quick inspection step after import.
+
+Common failure modes:
+
+* Assuming the file is in the current working directory.
+* Ignoring Windows vs Unix-style paths.
+* Proceeding directly to analysis without checking imported data.
+* Treating imported strings, dates, or categoricals incorrectly.
+
+### 7.9 Missing Value Problems
+
+Missing values can cause incorrect results, failed estimation, dimension changes, or unexpected output.
+
+Common causes:
+
+* Missing values in dependent or independent variables
+* Missing values introduced by lagging or differencing
+* Missing values ignored in one part of the workflow but not another
+* Missing values treated as zeros
+* Row deletion applied inconsistently
+* Insufficient observations after cleaning
+
+Agent guidance:
+
+* Ask whether missing values are present when results are unexpected.
+* Explain how missing values affect the computation.
+* Be explicit about whether missing values are dropped, flagged, imputed, or preserved.
+* Apply missing-value handling consistently across related variables.
+* Warn users when cleaning changes the sample size.
+
+Common failure modes:
+
+* Silently dropping observations.
+* Treating missing values as zeros.
+* Forgetting that transformations can introduce missing values.
+* Comparing model results without noting different estimation samples.
+
+### 7.10 Logical Errors
+
+Logical errors occur when code runs but produces the wrong result.
+
+Common causes:
+
+* Wrong formula or model specification
+* Incorrect ordering of observations
+* Incorrect time or panel identifier
+* Incorrect sorting before lagging or differencing
+* Wrong variable selected from a DataFrame
+* Incorrect condition in an `if` statement
+* Incorrect loop bounds
+* Incorrect interpretation of output
+* Wrong assumptions about matrix orientation
+
+Agent guidance:
+
+* Verify the user's intended outcome.
+* Check data ordering before time series or panel operations.
+* Check selected variables and transformations.
+* Check loop start and stop conditions.
+* Compare against a simple known example when possible.
+* Separate statistical logic from coding syntax.
+
+Common failure modes:
+
+* Declaring success because the code runs.
+* Ignoring sorting requirements.
+* Ignoring panel/time identifiers.
+* Failing to test against a simple case with known output.
+* Explaining the wrong statistical model.
+
+### 7.11 Numerical Debugging
+
+Numerical debugging is needed when code runs but results are unstable, implausible, or sensitive.
+
+Common causes:
+
+* Singular matrices
+* Ill-conditioned matrices
+* Collinearity
+* Scaling problems
+* Precision limitations
+* Optimization convergence issues
+* Poor starting values
+* Outliers
+* Near-zero denominators
+* Random seed or reproducibility problems
+
+Agent guidance:
+
+* Check conditioning and rank-related issues when matrix inversion fails.
+* Avoid assuming numerical failure means syntax failure.
+* Suggest diagnostics before changing the model.
+* Consider scaling or alternative formulations when appropriate.
+* Set or document random seeds in simulation examples.
+* Explain numerical issues in plain language when helping beginners.
+
+Common failure modes:
+
+* Recommending arbitrary code changes without diagnosing the numerical issue.
+* Ignoring collinearity or singularity.
+* Treating convergence problems as package bugs.
+* Failing to distinguish statistical problems from programming errors.
+
+### 7.12 Performance Debugging
+
+Performance debugging is needed when code runs but is too slow or memory-intensive.
+
+Common causes:
+
+* Repeated memory allocation inside loops
+* Unnecessary copying
+* Inefficient string processing
+* Inefficient DataFrame-to-matrix conversions
+* Recomputing values unnecessarily
+* Using overly complex code for simple matrix operations
+* Very large intermediate objects
+
+Agent guidance:
+
+* Identify the slow section before optimizing.
+* Prefer clarity until performance is actually a problem.
+* Preallocate when repeated growth is causing slowdowns.
+* Use vectorized or matrix operations when they naturally fit.
+* Avoid forced vectorization that harms readability or correctness.
+* Benchmark before and after major performance changes.
+
+Common failure modes:
+
+* Optimizing the wrong part of the code.
+* Assuming all loops are bad.
+* Creating unreadable vectorized code.
+* Ignoring memory use.
+* Improving speed while changing results.
+
+### 7.13 Debugging Workflow
+
+A GAUSS-focused agent should follow a structured debugging workflow.
+
+Recommended workflow:
+
+1. Identify the user's goal.
+2. Capture the exact error message or unexpected behavior.
+3. Identify the smallest relevant code block.
+4. Classify the issue:
+
+   * syntax
+   * runtime
+   * dimension
+   * type/data structure
+   * scope
+   * package/library
+   * file I/O
+   * missing values
+   * logical
+   * numerical
+   * performance
+5. Check data structures and dimensions.
+6. Check dependencies and execution context.
+7. Provide a minimal fix.
+8. Explain why the fix works.
+9. Suggest a small validation step.
+10. Offer a cleaner refactor only after the immediate issue is addressed.
+
+Agent guidance:
+
+* Prefer a minimal correction before a full rewrite.
+* Make assumptions explicit.
+* If information is missing, provide the most likely diagnosis and say what would confirm it.
+* Avoid overwhelming the user with unrelated improvements.
+
+### 7.14 Debugging Response Pattern
+
+When helping a user debug GAUSS code, the agent should usually respond with:
+
+1. Likely cause
+2. Why it happens
+3. Minimal fix
+4. Corrected code
+5. Optional improvement or validation check
+
+Example response shape:
+
+```text
+The likely issue is a dimension mismatch between `y` and `x`.
+
+This usually happens when one variable has been lagged or cleaned but the other has not, so they no longer have the same number of rows.
+
+Minimal fix:
+- Check `rows(y)` and `rows(x)`.
+- Apply the same row filtering or trimming to both objects.
+
+Corrected pattern:
+...
+```
+
+Agent guidance:
+
+* Keep the first answer focused.
+* Give the user something actionable immediately.
+* Save broader refactoring advice for after the bug is fixed.
+
+### 7.15 Debugging Checklist
+
+Before giving a debugging answer, the agent should check:
+
+* What is the user's intended goal?
+* What exact error or unexpected result occurred?
+* Is the code valid GAUSS syntax?
+* Are all functions real GAUSS functions or stated package functions?
+* Are required packages loaded?
+* Are required files available?
+* Are variables defined in the expected scope?
+* Are data structures appropriate?
+* Are dimensions compatible?
+* Are missing values present?
+* Are dates, categoricals, or panel identifiers involved?
+* Is the issue statistical, numerical, or purely syntactic?
+* What is the smallest useful fix?
+* Would a small validation check confirm the solution?
+
 
 ### Domain 8 — Performance Engineering
 
