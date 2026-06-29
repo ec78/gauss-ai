@@ -3290,22 +3290,406 @@ When the user does not provide performance requirements, the agent should use th
 | Performance-sensitive package code        | Benchmark and preserve correctness     |
 
 
-### Domain 9 — Package Ecosystem
+## Domain 9 — Package Ecosystem
 
-Core knowledge about GAUSS packages and libraries.
+The GAUSS package ecosystem organizes reusable functionality into installable, documented, testable, and versioned components.
 
-Topics:
+This domain helps GAUSS-focused agents distinguish between base GAUSS functionality, local source code, libraries, packages, examples, tests, and documentation. It also helps agents avoid inventing package behavior or assuming package-specific procedures are available in every GAUSS session.
 
-- Package manager
-- Package structure
-- Dependencies
-- Library files
-- Source files
-- Examples
-- Tests
-- Documentation
-- Versioning
-- Distribution
+### 9.1 Core Mental Model
+
+A GAUSS package is more than a collection of procedures. It is a reusable software unit that may include source code, public APIs, internal helpers, examples, documentation, tests, metadata, dependencies, and release history.
+
+A GAUSS-focused agent should understand package work as software engineering work, not merely code generation.
+
+Agent guidance:
+
+* Distinguish base GAUSS functionality from package-specific functionality.
+* State package dependencies clearly.
+* Check package source, examples, or documentation before using package-specific procedures.
+* Treat public package APIs as stable user-facing interfaces.
+* Treat internal helpers as implementation details unless the user specifically asks about them.
+* Consider tests, examples, documentation, and version compatibility when changing package code.
+
+Common failure modes:
+
+* Calling package procedures as if they were base GAUSS functions.
+* Inventing package names or setup steps.
+* Ignoring package dependencies.
+* Exposing internal helpers as public APIs.
+* Adding package functionality without tests or documentation.
+* Assuming the latest package version is installed.
+
+### 9.2 Base GAUSS vs Package Functionality
+
+Not every GAUSS function or procedure is available in every session.
+
+Important distinctions:
+
+* Base GAUSS functions are available without installing additional packages.
+* Application or package procedures may require installation, loading, or setup.
+* Local source files may require include paths, libraries, or project-specific setup.
+* Documentation examples may depend on packages, data files, or version-specific features.
+
+Agent guidance:
+
+* Identify whether a function is base GAUSS or package-specific.
+* Prefer base GAUSS for simple examples when possible.
+* Use package functionality when the package is central to the user’s task.
+* Clearly state when code requires a package.
+* Provide setup guidance only when it is verified or already known from approved sources.
+
+Common failure modes:
+
+* Treating package functions as built-in functions.
+* Omitting package installation or loading requirements.
+* Mixing base and package functionality without explanation.
+* Assuming package availability from the agent’s memory.
+* Giving setup instructions copied from another language ecosystem.
+
+### 9.3 Package Structure
+
+A maintainable GAUSS package should have a predictable structure.
+
+Package contents may include:
+
+* Source files
+* Public procedure definitions
+* Internal helper procedures
+* Library files
+* Examples
+* Tests
+* Documentation
+* Data files
+* Metadata
+* Changelog or release notes
+* README or overview material
+
+Agent guidance:
+
+* Keep source code separate from examples and tests.
+* Keep public APIs distinguishable from internal helpers.
+* Include examples that demonstrate real user workflows.
+* Include tests for important behavior.
+* Keep documentation synchronized with code.
+* Avoid recommending excessive structure for small experimental code.
+
+Common failure modes:
+
+* Putting all package logic into one large script.
+* Mixing examples directly into source files.
+* Omitting tests for public procedures.
+* Omitting documentation for public APIs.
+* Creating a complex package layout before the project needs it.
+
+### 9.4 Public Package APIs
+
+Public package APIs are the procedures users are expected to call directly.
+
+Public package APIs should be:
+
+* Stable
+* Clearly named
+* Documented
+* Tested
+* Consistent with related procedures
+* Designed around user workflows
+* Supported by examples
+
+Agent guidance:
+
+* Design public APIs from the user’s perspective.
+* Keep required arguments clear and minimal.
+* Use optional arguments or control structures when configuration grows.
+* Return useful outputs, often as structures when results have named components.
+* Preserve backward compatibility when practical.
+* Document behavior changes when compatibility is broken.
+
+Common failure modes:
+
+* Designing APIs around internal implementation details.
+* Exposing too many helper procedures.
+* Changing public call signatures unnecessarily.
+* Returning outputs that are hard to interpret.
+* Providing no examples for public procedures.
+
+### 9.5 Internal Helpers
+
+Internal helpers support package implementation but are not the main user-facing interface.
+
+Internal helpers may:
+
+* Reduce duplication
+* Encapsulate validation
+* Isolate transformations
+* Support public procedures
+* Handle package-specific implementation details
+
+Agent guidance:
+
+* Keep internal helpers focused and narrow.
+* Do not expose helpers publicly unless users need them.
+* Use consistent naming and organization.
+* Test helpers when they contain important logic.
+* Avoid documenting helpers as public APIs unless they are intended for users.
+
+Common failure modes:
+
+* Turning every helper into a public procedure.
+* Hiding important behavior in unclear helper code.
+* Creating many small helpers that obscure the main workflow.
+* Leaving helper behavior untested.
+
+### 9.6 Dependencies
+
+Packages may depend on base GAUSS functionality, other packages, data files, external files, or version-specific features.
+
+Agent guidance:
+
+* State package dependencies clearly.
+* Check whether dependencies are required or optional.
+* Mention version requirements when relevant.
+* Avoid assuming dependencies are installed.
+* Prefer graceful failure or clear error messages when dependencies are missing.
+* Keep examples explicit about setup.
+
+Common failure modes:
+
+* Omitting dependency information.
+* Assuming every user has the same local setup.
+* Calling dependency functions without checking availability.
+* Creating examples that fail in a clean session.
+* Ignoring version-specific behavior.
+
+### 9.7 Versioning
+
+Versioning communicates stability, compatibility, and change history.
+
+Important versioning concerns:
+
+* GAUSS version compatibility
+* Package version compatibility
+* Public API changes
+* Deprecations
+* Bug fixes
+* New features
+* Documentation updates
+* Example compatibility
+
+Agent guidance:
+
+* Ask or infer target GAUSS version when compatibility matters.
+* Avoid using newer features without warning if users may be on older versions.
+* Preserve public APIs when practical.
+* Document breaking changes.
+* Use changelog entries to summarize notable changes.
+* Distinguish experimental work from stable releases.
+
+Common failure modes:
+
+* Assuming all users are on the newest GAUSS version.
+* Breaking public APIs without noting it.
+* Updating code but not documentation.
+* Updating documentation but not examples.
+* Treating package versioning casually.
+
+### 9.8 Package Examples
+
+Package examples show users how to apply package functionality.
+
+Good examples should be:
+
+* Runnable
+* Focused
+* Realistic
+* Clear about setup
+* Clear about required data
+* Clear about expected output
+* Aligned with documented APIs
+
+Agent guidance:
+
+* Include package loading or setup steps when needed.
+* Use examples that match common user workflows.
+* Keep beginner examples simple.
+* Use more realistic examples for advanced workflows.
+* Avoid relying on hidden workspace state.
+* Keep examples separate from tests when possible.
+
+Common failure modes:
+
+* Providing examples that do not run.
+* Omitting required package setup.
+* Omitting required data setup.
+* Using overly complex examples for simple functionality.
+* Failing to update examples after API changes.
+
+### 9.9 Package Tests
+
+Package tests protect expected behavior and prevent regressions.
+
+Useful package tests include:
+
+* Basic successful calls
+* Known-result checks
+* Error handling
+* Optional argument behavior
+* Missing value behavior
+* Dimension mismatch behavior
+* Structure field presence
+* Package loading behavior
+* Regression tests for fixed bugs
+
+Agent guidance:
+
+* Suggest tests when adding or changing public package functionality.
+* Test returned values, not just printed output.
+* Use small known examples when possible.
+* Use tolerance-based comparisons for numerical results.
+* Add regression tests for bug fixes.
+* Keep tests easy to run and understand.
+
+Common failure modes:
+
+* Testing only whether code runs.
+* Ignoring error paths.
+* Omitting tests for optional arguments.
+* Ignoring missing values and dimension mismatches.
+* Relying only on visual inspection of output.
+
+### 9.10 Package Documentation
+
+Package documentation explains how users should install, load, call, and interpret package functionality.
+
+Documentation may include:
+
+* README
+* API reference
+* Sphinx `.rst` files
+* Tutorials
+* Examples
+* Changelog
+* Release notes
+* Migration notes
+
+Agent guidance:
+
+* Document public APIs thoroughly.
+* Include required inputs, optional inputs, outputs, assumptions, and examples.
+* Document structure fields when returning structures.
+* Mention package dependencies.
+* Keep documentation aligned with source code.
+* Include migration notes for breaking changes when needed.
+
+Common failure modes:
+
+* Omitting input dimensions.
+* Omitting output descriptions.
+* Omitting examples.
+* Letting documentation drift from source code.
+* Failing to explain package setup.
+
+### 9.11 Package Source Review
+
+When reviewing package source code, the agent should consider more than syntax.
+
+Review dimensions include:
+
+* Valid GAUSS syntax
+* Correct procedure structure
+* Public vs internal API boundaries
+* Input validation
+* Output design
+* Package dependencies
+* Documentation
+* Tests
+* Examples
+* Version compatibility
+* Backward compatibility
+* Maintainability
+
+Agent guidance:
+
+* Separate blocking correctness issues from maintainability suggestions.
+* Check that public APIs are documented and tested.
+* Check that examples still match current APIs.
+* Check whether new functionality needs changelog notes.
+* Avoid broad rewrites when focused changes are sufficient.
+
+Common failure modes:
+
+* Reviewing only the single edited procedure.
+* Ignoring examples and tests.
+* Missing dependency or version issues.
+* Recommending public API changes without considering users.
+* Failing to check documentation alignment.
+
+### 9.12 Distribution and Release
+
+Distribution makes package functionality available to users.
+
+Release considerations include:
+
+* Version number
+* Passing tests
+* Updated documentation
+* Updated examples
+* Updated changelog
+* Compatibility notes
+* Dependency notes
+* Installation or update instructions
+
+Agent guidance:
+
+* Before release, check code, tests, examples, and documentation together.
+* Document breaking changes clearly.
+* Keep release notes focused on user-facing changes.
+* Include migration guidance when behavior changes.
+* Avoid releasing undocumented public APIs.
+
+Common failure modes:
+
+* Releasing code without tests.
+* Releasing new APIs without examples.
+* Forgetting to update changelog or documentation.
+* Failing to mention breaking changes.
+* Publishing behavior that depends on a local setup.
+
+### 9.13 Package Ecosystem Retrieval Rules
+
+The agent should retrieve package source, examples, or documentation when:
+
+* The user asks about a package-specific procedure.
+* The agent is unsure whether a procedure is base GAUSS or package-specific.
+* Function syntax or return values matter.
+* The task involves package internals.
+* The task involves modifying package source.
+* The task involves writing package documentation.
+* The task involves debugging package loading or dependency issues.
+
+The agent may answer conceptually without retrieval when:
+
+* The user asks a high-level package design question.
+* The question is about general software engineering tradeoffs.
+* The exact package API is not needed.
+
+### 9.14 Package Ecosystem Checklist
+
+Before generating or reviewing package-related GAUSS code, the agent should check:
+
+* Is this base GAUSS or package-specific functionality?
+* Is the package installed or loaded?
+* Are dependencies stated?
+* Is the target GAUSS or package version relevant?
+* Is this a public API or internal helper?
+* Are examples needed?
+* Are tests needed?
+* Does documentation need to be updated?
+* Are output structures stable and documented?
+* Are backward compatibility concerns present?
+* Should a changelog entry be added?
+* Would the code run in a clean session?
+
 
 ### Domain 10 — Documentation and Examples
 
