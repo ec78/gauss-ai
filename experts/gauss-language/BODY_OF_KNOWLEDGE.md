@@ -4,28 +4,352 @@
 
 The GAUSS Language Expert is organized around the following domains.
 
-### Domain 1 — Language Fundamentals
+## Domain 1 — Language Fundamentals
 
-Core knowledge required to write valid GAUSS programs.
+Language fundamentals define the baseline knowledge required to write valid, readable, and idiomatic GAUSS code.
 
-Topics:
+This domain focuses on the core syntax, program structure, and language concepts that every GAUSS-focused agent must understand before writing, reviewing, translating, or debugging GAUSS code.
 
-- Language philosophy
-- Matrix-oriented programming
-- Source files
-- Interactive execution
-- Scripts and programs
-- Variables
-- Naming
-- Reserved keywords
-- Expressions
-- Operators
-- Control flow
-- Procedures
-- Scope
-- Compilation
-- Includes
-- Libraries
+### 1.1 Core Mental Model
+
+GAUSS is a matrix-oriented programming language designed for numerical, statistical, econometric, and scientific computing.
+
+A GAUSS-focused agent should understand GAUSS as its own language, not as a variant of Python, R, MATLAB, or pseudocode.
+
+Important principles:
+
+* GAUSS is matrix-oriented.
+* GAUSS code often works directly with matrices, vectors, scalars, strings, structures, arrays, DataFrames, and categorical variables.
+* GAUSS supports both interactive exploration and reusable program development.
+* GAUSS procedures use GAUSS syntax, not Python, R, MATLAB, or JavaScript syntax.
+* GAUSS code should be written to match the user's goal: learning, analysis, debugging, package development, or production use.
+* GAUSS agents should prefer valid, simple, readable code over clever but uncertain code.
+
+Common failure modes:
+
+* Treating GAUSS as MATLAB with slightly different syntax.
+* Treating GAUSS as Python with matrices.
+* Writing pseudocode that looks plausible but will not run.
+* Ignoring GAUSS data structures and procedure rules.
+* Inventing syntax from other languages.
+
+### 1.2 Language Philosophy
+
+GAUSS is especially strong for matrix operations, econometrics, statistics, optimization, simulation, and numerical programming.
+
+A GAUSS solution should usually be:
+
+* Explicit about inputs and outputs.
+* Clear about matrix dimensions.
+* Careful with missing values.
+* Appropriate for the data structure.
+* Readable enough for the intended user.
+* Consistent with GAUSS idioms.
+
+Agent guidance:
+
+* Prefer matrix operations when they naturally express the computation.
+* Do not force vectorization when a loop is clearer or necessary.
+* Use DataFrames when labels, mixed types, dates, or categoricals matter.
+* Use structures when named outputs make code easier to understand.
+* Use procedures for reusable logic.
+* Use scripts for simple demonstrations or one-off workflows.
+
+Common failure modes:
+
+* Assuming vectorization is always better.
+* Using a DataFrame when a matrix is more appropriate for numerical computation.
+* Using a matrix when labels and mixed types matter.
+* Wrapping simple beginner examples in overly complex abstractions.
+
+### 1.3 Source Files and Program Organization
+
+GAUSS code may appear in scripts, procedure files, examples, packages, documentation examples, or interactive sessions.
+
+Important concepts:
+
+* A script is useful for one-off analysis, demonstrations, and tutorials.
+* A procedure file is useful for reusable logic.
+* A package organizes reusable functionality, documentation, examples, and tests.
+* An example file should be runnable and focused.
+* Public-facing code should be clearer and more documented than private exploratory code.
+
+Agent guidance:
+
+* Match the code format to the task.
+* For quick examples, a script may be enough.
+* For reusable code, write a procedure.
+* For package functionality, consider public API design, tests, examples, and documentation.
+* Keep examples self-contained when possible.
+
+Common failure modes:
+
+* Writing package-style code for a simple beginner question.
+* Writing an unstructured script for code that should be reusable.
+* Omitting setup steps required for an example to run.
+* Mixing demonstration logic and reusable procedure logic without clear separation.
+
+### 1.4 Variables and Naming
+
+Variable names should make code easier to understand.
+
+Important concepts:
+
+* Names should reflect the role of the object.
+* Names should avoid GAUSS reserved keywords.
+* Names should avoid ambiguity.
+* Names should be consistent across related examples and procedures.
+* Short names are acceptable when conventional, such as `x`, `y`, `n`, `k`, or `i`.
+
+Agent guidance:
+
+* Use descriptive names for public procedures and important variables.
+* Avoid `start` and `end` as variable names.
+* Avoid overly generic names such as `data`, `result`, or `temp` when a more specific name is available.
+* Use names that indicate structure when helpful, such as `x_mat`, `df`, `ctl`, or `results`.
+* Do not import naming conventions from other languages if they reduce GAUSS clarity.
+
+Common failure modes:
+
+* Using reserved words as identifiers.
+* Using unclear variable names.
+* Using names that imply the wrong data structure.
+* Changing variable names inconsistently across code and explanation.
+
+### 1.5 Expressions and Assignment
+
+Expressions are the building blocks of GAUSS code.
+
+Important concepts:
+
+* Assignment should make transformations clear.
+* Matrix operations and element-by-element operations must be distinguished.
+* Intermediate variables can improve readability.
+* Complex expressions should be broken into steps when teaching or debugging.
+* Expression behavior depends on data type and dimensions.
+
+Agent guidance:
+
+* Be explicit about matrix dimensions when writing matrix expressions.
+* Use intermediate variables when they clarify the logic.
+* Avoid overly dense one-line expressions in beginner-facing code.
+* Check whether the intended operation is matrix algebra or element-wise computation.
+* Do not assume that syntax from another language is valid GAUSS syntax.
+
+Common failure modes:
+
+* Confusing matrix multiplication with element-by-element multiplication.
+* Ignoring row and column orientation.
+* Writing compact expressions that are difficult to debug.
+* Translating formulas from R, Python, or MATLAB without adapting syntax.
+
+### 1.6 Operators
+
+Operators must be used according to GAUSS syntax and semantics.
+
+Important concepts:
+
+* Operators may behave differently depending on whether objects are scalars, vectors, matrices, strings, or other data structures.
+* Matrix algebra requires dimension compatibility.
+* Logical expressions should be written clearly.
+* Comparisons involving missing values require care.
+
+Agent guidance:
+
+* Verify matrix dimensions before writing matrix operations.
+* Use clear logical expressions.
+* Avoid unnecessary cleverness in conditional logic.
+* Explain operator choices when they may not be obvious to the user.
+* When translating from another language, check whether the operator has the same meaning in GAUSS.
+
+Common failure modes:
+
+* Assuming operators behave exactly like Python, R, or MATLAB.
+* Writing dimensionally invalid matrix expressions.
+* Using logical expressions that are hard to read.
+* Ignoring missing values in comparisons.
+
+### 1.7 Control Flow
+
+Control flow determines how code branches or repeats.
+
+Important concepts:
+
+* Conditional logic should be simple and readable.
+* Loops are appropriate when logic is sequential, stateful, or clearer than a vectorized alternative.
+* Vectorization is useful, but not mandatory for every task.
+* Beginner examples may benefit from explicit loops.
+* Performance-sensitive code may require careful comparison between loops and vectorized alternatives.
+
+Agent guidance:
+
+* Use control flow when it improves clarity or is required by the algorithm.
+* Prefer simple conditional logic.
+* Avoid unnecessary nesting.
+* Use loops when each step depends on the previous step.
+* Do not claim loops are always bad.
+* Do not force vectorization when it makes the code obscure.
+
+Common failure modes:
+
+* Replacing clear loops with confusing vectorized code.
+* Using loops when a simple matrix operation would be clearer.
+* Creating deeply nested control flow.
+* Translating Python or MATLAB loop syntax directly into GAUSS.
+
+### 1.8 Procedures
+
+Procedures are the primary way to package reusable GAUSS logic.
+
+Important concepts:
+
+* GAUSS procedures should use valid `proc ... endp` structure.
+* Procedures should have clear inputs and outputs.
+* Local variables should be declared inside procedures.
+* Procedures should avoid unnecessary dependence on global state.
+* Reusable procedures should validate important assumptions.
+
+Agent guidance:
+
+* Use a procedure when the user needs reusable logic.
+* Include expected input shapes and output descriptions when helpful.
+* Keep procedures focused on one main responsibility.
+* Return useful values instead of only printing output.
+* Consider structures for multi-component outputs.
+* Include a small usage example when writing a reusable procedure.
+
+Common failure modes:
+
+* Writing Python-style `def` functions.
+* Forgetting `proc` and `endp`.
+* Failing to declare local variables.
+* Returning too many separate outputs.
+* Printing results but not returning reusable values.
+* Relying on hidden global variables.
+
+### 1.9 Scope and Local Variables
+
+Scope determines where variables are visible and how safely code can be reused.
+
+Important concepts:
+
+* Reusable procedures should avoid unintended dependence on external variables.
+* Local variables make procedure behavior easier to reason about.
+* Global state can make code harder to test and debug.
+* Examples may use top-level variables, but reusable procedures should be more disciplined.
+
+Agent guidance:
+
+* Declare local variables inside procedures.
+* Keep procedure inputs explicit.
+* Avoid relying on variables that are not passed into the procedure.
+* Use global state only when there is a clear reason.
+* When debugging, check whether a variable is defined in the expected scope.
+
+Common failure modes:
+
+* Using variables inside a procedure that were not passed in or declared.
+* Depending on workspace state from earlier examples.
+* Accidentally overwriting variables.
+* Making examples that only work because of hidden prior state.
+
+### 1.10 Includes, Libraries, and Packages
+
+GAUSS code may depend on built-in functionality, local source files, libraries, or packages.
+
+Important concepts:
+
+* Base GAUSS functionality should be distinguished from package-specific functionality.
+* Package dependencies should be stated clearly.
+* Example code should include required setup steps.
+* Version compatibility matters when using newer features or package-specific procedures.
+* Source files, libraries, and packages serve different roles in larger projects.
+
+Agent guidance:
+
+* State dependencies when using package-specific functions.
+* Prefer base GAUSS when possible for simple examples.
+* Use package-specific functionality when the package is part of the user's task.
+* Do not invent package names or assume packages are installed.
+* Retrieve official or approved sources when package behavior matters.
+
+Common failure modes:
+
+* Calling package procedures without setup instructions.
+* Confusing base GAUSS functions with package functions.
+* Inventing packages or libraries.
+* Ignoring version compatibility.
+* Assuming examples will run without required files or dependencies.
+
+### 1.11 Compilation and Execution Context
+
+GAUSS code may be written for interactive use, script execution, reusable procedure files, package development, or documentation examples.
+
+Important concepts:
+
+* Code that works interactively may need additional structure to be reusable.
+* Documentation examples should be self-contained when possible.
+* Package code should be written with maintainability and testing in mind.
+* Execution context affects setup, file paths, dependencies, and expected outputs.
+
+Agent guidance:
+
+* Ask or infer whether the user needs a quick example, a reusable procedure, or package-quality code.
+* Include setup steps when needed.
+* Avoid relying on hidden interactive state.
+* Make examples runnable from a clean session when possible.
+* Separate exploratory code from reusable code.
+
+Common failure modes:
+
+* Writing code that only works after unstated prior commands.
+* Omitting required data loading or package loading.
+* Assuming the current working directory.
+* Mixing exploratory and reusable code in confusing ways.
+
+### 1.12 Comments and Explanation
+
+Comments should clarify intent, assumptions, and non-obvious logic.
+
+Important concepts:
+
+* Comments are most useful when they explain why something is done.
+* Beginner examples may need more comments.
+* Production code should avoid noisy comments that restate obvious syntax.
+* Explanations should match the user's experience level.
+
+Agent guidance:
+
+* Use comments to mark major steps.
+* Comment assumptions about dimensions, missing values, or data structure.
+* Keep comments concise.
+* For teaching, explain key lines after the code.
+* For advanced users, focus explanations on tradeoffs and edge cases.
+
+Common failure modes:
+
+* Over-commenting obvious syntax.
+* Under-explaining important assumptions.
+* Writing comments that do not match the code.
+* Giving a dense block of code with no explanation for a beginner.
+
+### 1.13 Language Fundamentals Checklist
+
+Before generating GAUSS code, the agent should check:
+
+* Is this valid GAUSS syntax?
+* Is the code written for the right context: script, procedure, package, or example?
+* Are variable names clear and safe?
+* Are reserved keywords avoided?
+* Are data structures appropriate?
+* Are matrix dimensions considered?
+* Are procedures written with valid `proc ... endp` structure?
+* Are local variables handled properly?
+* Are dependencies stated?
+* Are setup steps included?
+* Does the code rely on hidden interactive state?
+* Is the explanation appropriate for the user's experience level?
+
 
 ## Domain 2 — Data Model
 
