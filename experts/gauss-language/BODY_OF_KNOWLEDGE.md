@@ -1409,21 +1409,343 @@ Before using or recommending a GAUSS function, the agent should check:
 * Does the code avoid Python, R, MATLAB, or pseudocode contamination?
 
 
-### Domain 5 — Numerical Computing
+## Domain 5 — Numerical Computing
 
-Core knowledge for reliable numerical and statistical programming.
+Numerical computing is the practice of implementing mathematical, statistical, econometric, and simulation-based algorithms in a way that is accurate, stable, reproducible, and appropriate for the data.
 
-Topics:
+This domain helps GAUSS-focused agents reason about matrix algebra, numerical precision, missing values, conditioning, simulation, and the difference between mathematically correct formulas and computationally reliable code.
 
-- Matrix algebra
-- Numerical precision
-- Numerical stability
-- Conditioning
-- Missing values in numerical operations
-- Performance tradeoffs
-- Large datasets
-- Simulation
-- Reproducibility
+### 5.1 Core Mental Model
+
+GAUSS is designed for numerical and matrix-oriented computing. Many GAUSS workflows involve translating mathematical expressions into executable matrix code.
+
+However, a formula that is correct on paper may still produce unreliable code if the implementation ignores dimensions, missing values, conditioning, precision, or data structure.
+
+Agent guidance:
+
+* Treat mathematical correctness and computational reliability as related but separate concerns.
+* Check dimensions before matrix operations.
+* Consider numerical stability before recommending matrix inversions or optimization routines.
+* Consider missing values before estimation or simulation.
+* Use reproducible examples when random numbers are involved.
+* Prefer clear, verified numerical code over compact but fragile expressions.
+
+Common failure modes:
+
+* Translating formulas directly into invalid or unstable code.
+* Ignoring singularity or ill-conditioning.
+* Treating missing values as zeros.
+* Ignoring row and column orientation.
+* Producing statistically reasonable logic with invalid GAUSS syntax.
+* Optimizing for compactness instead of reliability.
+
+### 5.2 Matrix Algebra
+
+Matrix algebra is central to GAUSS programming.
+
+Common tasks include:
+
+* Matrix multiplication
+* Transposition
+* Solving systems of equations
+* Least squares calculations
+* Covariance and correlation calculations
+* Decompositions
+* Eigenvalue problems
+* Simulation storage and transformation
+
+Agent guidance:
+
+* Use matrix operations when they naturally express the computation.
+* Verify dimension compatibility before matrix multiplication or concatenation.
+* Explain matrix dimensions in educational examples.
+* Prefer built-in numerical routines when available.
+* Avoid unnecessary manual implementations of standard operations.
+* Keep intermediate variables when they make the matrix logic easier to understand.
+
+Common failure modes:
+
+* Confusing matrix multiplication with element-by-element operations.
+* Ignoring row vector vs column vector orientation.
+* Creating dimension mismatches after lagging, differencing, or dropping missing values.
+* Translating formulas without checking object shapes.
+* Using loops for simple matrix operations when a clear matrix expression is available.
+
+### 5.3 Numerical Precision
+
+Numerical precision matters when calculations involve floating-point arithmetic, very large or very small numbers, subtraction of nearly equal values, or repeated transformations.
+
+Agent guidance:
+
+* Avoid implying exact equality for floating-point results unless appropriate.
+* Use tolerance-based comparisons for numerical tests when needed.
+* Be cautious with calculations that involve very small denominators.
+* Explain that tiny numerical differences can be normal.
+* Preserve enough precision in intermediate calculations.
+* Avoid unnecessary rounding before final output.
+
+Common failure modes:
+
+* Comparing floating-point results using exact equality.
+* Rounding intermediate results too early.
+* Treating small numerical differences as errors.
+* Ignoring scale differences across variables.
+* Failing to use tolerances in tests.
+
+### 5.4 Numerical Stability
+
+Numerical stability refers to whether an algorithm produces reliable results under realistic data conditions.
+
+Stability concerns arise with:
+
+* Matrix inversion
+* Nearly singular matrices
+* Collinearity
+* Optimization
+* Recursive calculations
+* Large or poorly scaled variables
+* Ill-conditioned systems
+* Repeated numerical transformations
+
+Agent guidance:
+
+* Avoid unnecessary matrix inversion when a more stable approach is available.
+* Consider rank, conditioning, and collinearity when matrix operations fail.
+* Distinguish syntax errors from numerical problems.
+* Suggest diagnostics before changing model structure.
+* Be careful when recommending custom implementations of numerical methods.
+* Prefer tested built-in routines when they fit the problem.
+
+Common failure modes:
+
+* Treating singular matrix errors as syntax problems.
+* Recommending arbitrary transformations without diagnosing the issue.
+* Using inverse-based formulas when a solve/decomposition approach would be more appropriate.
+* Ignoring scaling problems in optimization.
+* Treating convergence failure as a package bug.
+
+### 5.5 Conditioning and Singularity
+
+Conditioning describes how sensitive numerical results are to small changes in inputs. Singularity means a matrix cannot be inverted.
+
+Common causes include:
+
+* Perfect or near-perfect multicollinearity
+* Duplicate variables
+* Too few observations
+* Constant columns
+* Poorly scaled variables
+* Redundant constraints
+* Missing-value filtering that changes the sample
+* Insufficient variation in the data
+
+Agent guidance:
+
+* When matrix inversion or estimation fails, check for rank and collinearity issues.
+* Check the number of observations relative to the number of variables.
+* Check whether variables are constant or duplicated.
+* Consider whether missing-value handling reduced the usable sample.
+* Explain singularity in practical terms for beginners.
+* Avoid simply adding small constants or arbitrary fixes unless justified.
+
+Common failure modes:
+
+* Applying a superficial transpose or reshape to fix a singularity problem.
+* Ignoring data issues that create singular matrices.
+* Treating collinearity as a coding typo.
+* Suggesting a more complex model when the data do not support it.
+
+### 5.6 Missing Values in Numerical Workflows
+
+Missing values can affect matrix operations, descriptive statistics, estimation, forecasting, and simulations.
+
+Agent guidance:
+
+* Check for missing values before numerical computation.
+* State how missing values are handled.
+* Apply row filtering consistently across related variables.
+* Track sample size changes after dropping missing values.
+* Be careful when lagging or differencing introduces missing values.
+* Do not treat missing values as zeros unless that is explicitly intended and justified.
+
+Common failure modes:
+
+* Silently dropping observations.
+* Dropping rows from one variable but not another.
+* Treating missing values as zeros.
+* Ignoring missing values introduced by lags or differences.
+* Comparing model results estimated on different samples without noting it.
+
+### 5.7 Simulation
+
+Simulation is common in GAUSS for Monte Carlo experiments, bootstrapping, synthetic data generation, forecasting exercises, and teaching examples.
+
+Agent guidance:
+
+* Set or discuss random seeds when reproducibility matters.
+* Preallocate simulation output when the number of repetitions is known.
+* Store only the outputs needed for the analysis.
+* Use small simulation sizes in teaching examples.
+* Use larger simulation sizes only when the task requires it.
+* Clearly separate data-generating process, estimation, and summary steps.
+* Check dimensions of simulated output.
+
+Common failure modes:
+
+* Omitting random seed control in reproducible examples.
+* Growing result matrices repeatedly inside loops.
+* Storing every intermediate draw unnecessarily.
+* Mixing simulation logic and reporting logic in one unclear block.
+* Confusing distribution parameters.
+* Drawing conclusions from too few repetitions without caveat.
+
+### 5.8 Reproducibility
+
+Reproducibility means that results can be regenerated by another user or in a later session.
+
+Important elements include:
+
+* Random seed control
+* Explicit data loading
+* Clear dependencies
+* Stated GAUSS or package version assumptions
+* Stable input data
+* Documented transformations
+* Known expected outputs for examples or tests
+
+Agent guidance:
+
+* Include random seed setup when examples depend on random numbers.
+* Include data import or data generation steps.
+* State package dependencies.
+* Avoid hidden workspace state.
+* Keep examples runnable from a clean session when possible.
+* For tests, use small examples with known expected results.
+
+Common failure modes:
+
+* Relying on variables defined earlier but not shown.
+* Omitting package setup.
+* Omitting random seed control.
+* Assuming a local file path.
+* Changing data in undocumented ways.
+* Providing examples that cannot be run independently.
+
+### 5.9 Optimization and Convergence
+
+Numerical optimization requires careful attention to objective functions, starting values, scaling, constraints, and convergence.
+
+Agent guidance:
+
+* Verify the expected optimizer interface before generating code.
+* Make objective function inputs and outputs explicit.
+* Discuss starting values when they matter.
+* Consider scaling when variables differ greatly in magnitude.
+* Distinguish convergence problems from syntax problems.
+* Explain convergence diagnostics in practical terms.
+* Avoid inventing optimizer control options or call signatures.
+
+Common failure modes:
+
+* Writing an objective function that does not match the optimizer’s expected form.
+* Omitting starting values.
+* Treating non-convergence as a code syntax error.
+* Ignoring scaling problems.
+* Inventing control structures or option names.
+* Failing to check whether the optimum is meaningful.
+
+### 5.10 Forecasting and Time-Indexed Computation
+
+Forecasting and time-indexed numerical work require special care with ordering, lag structure, sample alignment, and horizon management.
+
+Agent guidance:
+
+* Verify sorting before lagging or differencing.
+* Track observations lost to lags, differences, or missing values.
+* Keep forecast horizons explicit.
+* Preserve date or time-index information when useful.
+* Align actuals, fitted values, residuals, and forecasts carefully.
+* Distinguish model logic from plotting or reporting logic.
+
+Common failure modes:
+
+* Lagging unsorted data.
+* Misaligning dependent and independent variables.
+* Ignoring missing values introduced by transformations.
+* Plotting forecasts against the wrong dates.
+* Mixing in-sample fitted values and out-of-sample forecasts without labeling them.
+
+### 5.11 Panel and Grouped Computation
+
+Panel and grouped workflows require attention to group identifiers, time identifiers, sorting, balancing, and within-group transformations.
+
+Agent guidance:
+
+* Identify group and time variables explicitly.
+* Sort data appropriately before within-group operations.
+* Distinguish cross-sectional identifiers from time identifiers.
+* Check whether panel data are balanced or consecutive when it matters.
+* Apply lags, differences, and filters within groups rather than across group boundaries.
+* Preserve identifiers when converting between DataFrames and matrices.
+
+Common failure modes:
+
+* Lagging across group boundaries.
+* Sorting only by time instead of group and time.
+* Dropping identifiers too early.
+* Assuming balanced panels.
+* Treating panel data as an ordinary time series.
+
+### 5.12 Numerical Testing
+
+Numerical tests should verify both correctness and robustness.
+
+Useful numerical tests include:
+
+* Known-result calculations
+* Dimension checks
+* Tolerance-based comparisons
+* Edge cases
+* Missing-value behavior
+* Singular or near-singular cases
+* Reproducibility checks for random workflows
+* Comparison against a simple manual calculation
+
+Agent guidance:
+
+* Use small known examples when possible.
+* Use tolerance-based comparisons for floating-point results.
+* Test dimensions and returned object structure.
+* Test failure cases for reusable procedures.
+* Separate numerical validity from formatting or printed output.
+* Do not rely only on visual inspection.
+
+Common failure modes:
+
+* Testing only whether code runs.
+* Comparing floating-point values exactly when a tolerance is needed.
+* Ignoring edge cases.
+* Ignoring missing values.
+* Testing printed output instead of returned values.
+
+### 5.13 Numerical Computing Checklist
+
+Before generating or reviewing numerical GAUSS code, the agent should check:
+
+* Are the data structures appropriate?
+* Are matrix dimensions compatible?
+* Are row and column orientations correct?
+* Are missing values handled intentionally?
+* Are numerical routines verified GAUSS functions?
+* Is matrix inversion necessary, or is a more stable approach available?
+* Are conditioning or singularity issues possible?
+* Are random numbers reproducible when needed?
+* Are simulations preallocated when appropriate?
+* Are time series or panel operations properly sorted and aligned?
+* Are results tested against a small known case?
+* Are numerical comparisons tolerance-based when appropriate?
+* Is the code clear enough to debug and maintain?
+
 
 ## Domain 6 — Software Engineering
 
