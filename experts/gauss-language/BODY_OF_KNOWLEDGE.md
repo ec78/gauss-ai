@@ -5538,6 +5538,121 @@ When the user does not provide enough context, the agent should use these defaul
 | Reusable code request         | Procedure plus usage example                         |
 | One-off task                  | Script or focused snippet                            |
 
+## Using This Body of Knowledge
+
+The GAUSS Language Body of Knowledge is not intended to be read as a linear manual. It is a reasoning map for GAUSS-focused agents.
+
+Agents should use it to:
+
+- Identify the relevant knowledge domain for a task.
+- Select the right expert reasoning pattern.
+- Avoid common GAUSS-specific mistakes.
+- Decide when retrieval from official sources is required.
+- Choose an appropriate implementation strategy.
+- Match explanations to the user's experience level.
+- Review generated code before presenting it.
+
+### Task-to-Domain Routing
+
+| User Task | Primary Domains |
+|---|---|
+| Write new GAUSS code | Domains 1, 2, 3, 12, 13 |
+| Debug GAUSS code | Domains 7, 11, 2, 3 |
+| Translate from Python/R/MATLAB | Domains 11, 1, 2, 12 |
+| Write reusable procedure | Domains 3, 13, 6 |
+| Review package code | Domains 6, 9, 13, 7 |
+| Improve performance | Domains 8, 5, 2 |
+| Explain a GAUSS concept | Domains 14, 1, 2 |
+| Write documentation | Domains 10, 3, 13 |
+| Work with numerical algorithms | Domains 5, 8, 4 |
+| Work with packages | Domains 9, 6, 10 |
+| Choose data structure | Domains 2, 12 |
+| Avoid hallucinated syntax | Domains 11, 4 |
+
+### Retrieval Triggers
+
+Agents should retrieve from official or approved knowledge sources when:
+
+- Exact function syntax matters.
+- Argument names or return values matter.
+- Version-specific behavior matters.
+- A function might be package-specific.
+- The agent is unsure whether a function exists.
+- The user asks for documentation-quality accuracy.
+- The generated code uses a failure-prone area such as strings, arrays, DataFrames, packages, or optimization.
+- The task involves modifying package source code or public APIs.
+
+### Validation Triggers
+
+Agents should validate generated GAUSS code especially carefully when it includes:
+
+- Procedure definitions
+- Optional arguments or control structures
+- Matrix multiplication or concatenation
+- DataFrame-to-matrix conversion
+- Array dimensions
+- String functions
+- Package-specific procedures
+- Missing value handling
+- Time series or panel transformations
+- Numerical optimization
+- Public API design
+
+### Preferred Response Pattern
+
+When generating GAUSS code, agents should usually follow this pattern:
+
+1. State the approach.
+2. Provide valid GAUSS code.
+3. Explain important assumptions.
+4. Explain key lines or design choices.
+5. Include a small usage example or validation step when helpful.
+6. Mention package or version dependencies when relevant.
+
+### Preferred Review Pattern
+
+When reviewing GAUSS code, agents should usually follow this pattern:
+
+1. Identify blocking correctness issues.
+2. Identify likely GAUSS syntax or function problems.
+3. Check data structure and dimension assumptions.
+4. Check package dependencies.
+5. Suggest targeted fixes.
+6. Mention maintainability, documentation, or tests only after correctness issues.
+
+### Preferred Debugging Pattern
+
+When debugging GAUSS code, agents should usually follow this pattern:
+
+1. Identify the likely failure category.
+2. Explain why the issue occurs.
+3. Provide the smallest useful fix.
+4. Provide corrected code.
+5. Suggest one validation check.
+6. Offer a cleaner refactor only if it helps.
+
+### Preferred Teaching Pattern
+
+When teaching GAUSS concepts, agents should usually follow this pattern:
+
+1. Explain the concept in plain language.
+2. Show a small runnable example.
+3. Explain the example.
+4. Mention one common mistake.
+5. Suggest one next step.
+
+### Maintenance Notes
+
+This Body of Knowledge should be updated when:
+
+- A recurring AI failure mode is discovered.
+- A new GAUSS feature changes best practices.
+- A package introduces a common workflow.
+- User support questions reveal a repeated misunderstanding.
+- Evaluations show a recurring agent weakness.
+- Documentation or examples reveal a better pattern.
+
+The Body of Knowledge should capture expert judgment, not duplicate official documentation.
 
 ## Expertise Levels
 
