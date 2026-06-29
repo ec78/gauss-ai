@@ -361,22 +361,234 @@ Topics:
 - Beginner-friendly explanations
 - Advanced reference material
 
-### Domain 11 — AI Failure Modes
+## Domain 11 — AI Failure Modes
 
-Common ways AI assistants generate incorrect GAUSS code.
+AI assistants often generate incorrect GAUSS code because they rely on patterns from Python, R, MATLAB, JavaScript, or general pseudocode. The GAUSS Language Expert should help agents identify and avoid these failure modes before producing code.
 
-Topics:
+This domain is not just a list of mistakes. It is a validation layer that every GAUSS-focused coding agent should consult when writing, reviewing, translating, or debugging GAUSS code.
 
-- Cross-language contamination
-- Hallucinated functions
-- Python syntax in GAUSS
-- R syntax in GAUSS
-- MATLAB syntax in GAUSS
-- Incorrect string functions
-- Incorrect assumptions about arrays
-- Matrix/DataFrame confusion
-- Invented packages
-- Incorrect documentation references
+### 11.1 Core Mental Model
+
+Most GAUSS AI failures come from one of four sources:
+
+1. The model invents a function name that sounds plausible.
+2. The model imports syntax from another language.
+3. The model misunderstands GAUSS data structures.
+4. The model writes statistically reasonable logic using invalid GAUSS syntax.
+
+A GAUSS-focused agent should treat generated code as suspicious until it has checked that the syntax, functions, data structures, and workflow are valid GAUSS.
+
+### 11.2 Cross-Language Contamination
+
+Cross-language contamination happens when an agent generates code that looks like Python, R, MATLAB, or JavaScript instead of GAUSS.
+
+Common examples:
+
+* Python-style methods such as `x.append()`, `df.drop()`, or `str.find()`.
+* Python-style indexing or slicing.
+* R-style formula syntax when the target GAUSS procedure does not support it.
+* R-style data frame manipulation.
+* MATLAB-style functions or indexing assumptions that are not valid in GAUSS.
+* JavaScript-style object or callback syntax.
+* Pseudocode written as if it were executable GAUSS.
+
+Agent guidance:
+
+* Do not assume a function exists in GAUSS because it exists in another language.
+* Do not translate code mechanically line-by-line.
+* Translate the intent of the code into idiomatic GAUSS.
+* Verify function names and syntax against official or approved GAUSS sources.
+* When translating from another language, explicitly identify language-specific constructs that need to be adapted.
+
+### 11.3 Invented or Incorrect Function Names
+
+AI assistants often invent GAUSS functions by analogy to other languages or by guessing from English descriptions.
+
+Common examples:
+
+* Inventing string functions.
+* Inventing DataFrame methods.
+* Inventing package manager functions.
+* Inventing plotting functions.
+* Inventing convenience wrappers that do not exist.
+* Using function names from R, Python, MATLAB, or Stata.
+
+Agent guidance:
+
+* Do not invent GAUSS function names.
+* Retrieve function names from official documentation, approved examples, or source code.
+* If a function name is uncertain, state the uncertainty and provide a safe alternative.
+* Prefer simple valid GAUSS code over elegant but unverified code.
+
+### 11.4 String Handling Mistakes
+
+String handling is a common source of AI-generated GAUSS errors.
+
+Known rules:
+
+* Use `strlen` for string length.
+* Use `strindx` for string search.
+* Remember that `strindx` returns `0` when the substring is not found.
+* Do not use Python-style string methods.
+* Do not assume R, MATLAB, or JavaScript string functions exist in GAUSS.
+
+Common failure modes:
+
+* Using `length` for string length.
+* Inventing `substr`, `strpos`, or `findstr`.
+* Treating strings as arrays of characters without verifying the correct GAUSS approach.
+* Forgetting to handle the `0` return value from `strindx`.
+* Writing file path logic without considering escaping, separators, or platform differences.
+
+Agent checklist for string code:
+
+* Is the function name valid GAUSS?
+* Is the return value handled correctly?
+* Does the code distinguish between "not found" and a valid position?
+* Are file paths and labels handled safely?
+* Is the code simpler if built-in GAUSS string utilities are used?
+
+### 11.5 Matrix, Array, and DataFrame Confusion
+
+GAUSS is matrix-oriented, but not every GAUSS data structure behaves like a matrix.
+
+Common failure modes:
+
+* Treating arrays as if `rows` and `cols` apply to them.
+* Treating DataFrames exactly like matrices.
+* Ignoring variable names and metadata in DataFrames.
+* Assuming vectors have no orientation.
+* Confusing element-by-element operations with matrix operations.
+* Assuming Python NumPy-style indexing.
+* Flattening arrays unnecessarily.
+* Using matrix-only code for mixed-type tabular data.
+
+Agent guidance:
+
+* Identify the input data structure before writing code.
+* Use matrices for numerical computation.
+* Use DataFrames when variable names, mixed types, dates, or categoricals matter.
+* Use structures for organized outputs and configuration.
+* Use arrays for higher-dimensional data.
+* Check dimensions before matrix operations.
+* Do not assume matrix dimension functions work on arrays.
+
+### 11.6 Procedure and Scope Mistakes
+
+GAUSS procedures require valid procedure structure, local variable handling, and return behavior.
+
+Common failure modes:
+
+* Writing Python-style functions.
+* Forgetting `proc` and `endp`.
+* Using invalid return syntax.
+* Failing to declare local variables.
+* Accidentally relying on global state.
+* Reusing reserved words as variable names.
+* Using `start` or `end` as ordinary variable names.
+* Mixing script-style code and reusable procedure code without clear boundaries.
+
+Agent guidance:
+
+* Use `proc ... endp` for procedures.
+* Declare local variables inside procedures.
+* Avoid reserved keywords and ambiguous names.
+* Keep procedure inputs and outputs clear.
+* Prefer reusable procedure design when the user asks for code they can adapt.
+* Prefer scripts only for simple demonstrations or one-off examples.
+
+### 11.7 Package and Library Mistakes
+
+AI assistants may misunderstand how GAUSS packages, libraries, and source files are organized.
+
+Common failure modes:
+
+* Assuming a package is loaded when it is not.
+* Inventing package names.
+* Confusing source files, library files, and package manager behavior.
+* Writing examples that depend on unavailable packages without saying so.
+* Ignoring version compatibility.
+* Calling procedures from packages without including required setup instructions.
+
+Agent guidance:
+
+* Clearly state package dependencies.
+* Prefer base GAUSS when possible unless the user asks for package-specific code.
+* When using package functionality, include the required setup or import steps.
+* Distinguish between code that is part of GAUSS and code that comes from a package.
+* Check package examples or source code before using package-specific functions.
+
+### 11.8 Output and Printing Mistakes
+
+GAUSS output should be clear, valid, and appropriate for the user's task.
+
+Common failure modes:
+
+* Using print syntax from another language.
+* Producing unreadable matrix output.
+* Failing to label results.
+* Returning output in a format that is hard to use downstream.
+* Confusing displayed output with returned values.
+
+Agent guidance:
+
+* Separate computation from presentation when appropriate.
+* Label important outputs.
+* Return reusable results from procedures.
+* Use structures for model results or multi-component outputs.
+* Keep beginner examples readable.
+
+### 11.9 Statistical Code with Invalid GAUSS Syntax
+
+A response can be statistically correct but still unusable if the GAUSS code is invalid.
+
+Common failure modes:
+
+* Correct econometric formula, invalid GAUSS implementation.
+* Valid model idea, nonexistent GAUSS function.
+* Correct matrix equation, wrong matrix dimensions.
+* Appropriate statistical workflow, missing data handling ignored.
+* Translation from R or Python that preserves statistical meaning but not GAUSS syntax.
+
+Agent guidance:
+
+* Validate the GAUSS implementation separately from the statistical logic.
+* Check dimensions, data types, and missing values.
+* Prefer explicit steps in educational examples.
+* Use official examples when available.
+* Do not hide uncertainty behind confident code.
+
+### 11.10 Debugging Checklist for AI-Generated GAUSS Code
+
+Before presenting GAUSS code, an agent should check:
+
+* Are all functions valid GAUSS functions or clearly package-specific?
+* Is the syntax GAUSS syntax rather than Python, R, MATLAB, or pseudocode?
+* Are procedure definitions valid?
+* Are local variables handled appropriately?
+* Are reserved keywords avoided?
+* Are data structures used correctly?
+* Are matrix dimensions compatible?
+* Are strings handled with valid GAUSS string functions?
+* Are arrays handled with array-appropriate tools?
+* Are DataFrames used appropriately when labels or mixed types matter?
+* Are package dependencies stated?
+* Are missing values considered?
+* Is the output usable by the user?
+* Would the code run as written, assuming the stated inputs and dependencies?
+
+### 11.11 Recovery Strategy
+
+When an agent detects a possible failure mode, it should recover by:
+
+1. Identifying the questionable syntax, function, or assumption.
+2. Checking the appropriate knowledge source.
+3. Replacing the invalid pattern with valid GAUSS.
+4. Explaining the correction briefly.
+5. Adding a small test or usage example when helpful.
+
+The agent should prefer a simpler verified solution over a sophisticated unverified one.
+
 
 ### Domain 12 — Decision Frameworks
 
