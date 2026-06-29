@@ -1,26 +1,249 @@
 # Benchmark Prompts
 
-Use this file to collect prompts that evaluate the GAUSS AI agents against representative tasks.
+This file evaluates the GAUSS Code Assistant against representative GAUSS programming tasks and known AI failure modes, including invalid syntax, cross-language contamination, hallucinated APIs, data-shape mistakes, and mismatched explanations.
 
-## Categories
+## Code Generation
 
-### Code Generation
+### Prompt: Matrix summary procedure
 
-- Placeholder: Write a GAUSS procedure from a short specification.
+Write a GAUSS procedure `summarizeCols(x)` that returns a matrix with each column's mean, standard deviation, minimum, and maximum.
 
-### Debugging
+Expected behavior:
+- Uses valid GAUSS procedure syntax and matrix operations.
+- Avoids Python, R, or MATLAB idioms such as `def`, `data.frame`, or `end`.
+- Does not invent unsupported GAUSS helper functions.
 
-- Placeholder: Diagnose an error in a GAUSS code snippet.
+### Prompt: String parser
 
-### Explanation
+Write a GAUSS procedure that takes a string like `"alpha=0.10"` and returns the text before and after the first equals sign.
 
-- Placeholder: Explain the purpose and behavior of an existing GAUSS function.
+Expected behavior:
+- Uses GAUSS string functions, including `strlen` and `strindx`.
+- Handles the case where `strindx` returns `0` when `"="` is not found.
+- Avoids assuming string indexing behavior from Python or MATLAB.
 
-### Refactoring
+### Prompt: DataFrame cleaning script
 
-- Placeholder: Improve a GAUSS procedure while preserving behavior.
+Draft a short GAUSS script that loads a dataset, drops rows with missing values in selected variables, and prints basic summaries.
 
-### Documentation
+Expected behavior:
+- Distinguishes script-level code from reusable procedures.
+- Handles missing values using GAUSS-appropriate operations.
+- Does not hallucinate DataFrame methods from pandas, R, or MATLAB tables.
 
-- Placeholder: Draft usage documentation for a GAUSS utility.
+## Debugging
 
+### Prompt: Array dimension error
+
+Debug this GAUSS snippet:
+
+```gauss
+a = arrayinit(3|4|2, 0);
+n = rows(a);
+print n;
+```
+
+Expected behavior:
+- Explains why `rows` is inappropriate for arrays.
+- Recommends GAUSS array dimension inspection rather than matrix-only functions.
+- Avoids converting the issue into a Python NumPy explanation.
+
+### Prompt: String search bug
+
+Explain why this condition fails when the pattern is absent:
+
+```gauss
+idx = strindx(name, "_");
+if idx < 0;
+    print "not found";
+endif;
+```
+
+Expected behavior:
+- States that `strindx` returns `0` when not found.
+- Corrects the conditional logic.
+- Mentions `strlen` only when useful, without forcing it into the answer.
+
+### Prompt: Scope and package dependency
+
+A user reports `Undefined symbol qardl` after copying a procedure call from package documentation. Diagnose likely causes.
+
+Expected behavior:
+- Checks whether the package is installed, loaded, and on the GAUSS path.
+- Distinguishes public package APIs from internal helper procedures.
+- Considers naming, scope, and procedure availability before rewriting code.
+
+## Code Explanation
+
+### Prompt: Beginner matrix explanation
+
+Explain this GAUSS code to a beginner:
+
+```gauss
+x = rndn(100, 3);
+mu = meanc(x);
+xc = x - mu';
+vcv = xc'xc / (rows(x) - 1);
+```
+
+Expected behavior:
+- Explains matrix dimensions and transposes plainly.
+- Uses GAUSS terminology without drifting into Python or R.
+- Adapts tone and detail for a beginner.
+
+### Prompt: Advanced structure explanation
+
+Explain how a GAUSS control structure is used to pass options into a procedure, assuming the reader is an advanced GAUSS user.
+
+Expected behavior:
+- Describes structures as typed containers for configuration.
+- Distinguishes structures from matrices, arrays, and DataFrames.
+- Uses concise expert-level language without overexplaining basics.
+
+## Code Translation
+
+### Prompt: MATLAB to GAUSS
+
+Translate this MATLAB-style logic into GAUSS:
+
+```matlab
+for i = 1:length(names)
+    if contains(names{i}, "_")
+        disp(names{i})
+    end
+end
+```
+
+Expected behavior:
+- Avoids MATLAB cell-array syntax and `contains`.
+- Uses GAUSS string-array handling and `strindx` correctly.
+- Handles `strindx` returning `0` when no match exists.
+
+### Prompt: Python to GAUSS
+
+Translate this Python idea into GAUSS: compute column means for a numeric matrix, replace missing values with column means, and return the cleaned matrix.
+
+Expected behavior:
+- Avoids Python list comprehensions, `None`, `np.nan`, and pandas methods.
+- Handles GAUSS missing values and matrix dimensions correctly.
+- Produces GAUSS-shaped algorithm guidance or snippets only.
+
+## Code Review
+
+### Prompt: Review public API design
+
+Review a proposed GAUSS package entry point that exposes `fitModel(y, x, ctl)` and several helper procedures named with leading underscores.
+
+Expected behavior:
+- Distinguishes public APIs from internal helper procedures.
+- Checks argument validation, structure defaults, and package dependency clarity.
+- Focuses on GAUSS maintainability rather than generic style advice.
+
+### Prompt: Review matrix and array usage
+
+Review code that mixes matrices and arrays and calls `rows()` and `cols()` on every object.
+
+Expected behavior:
+- Flags improper use of matrix dimension functions on arrays.
+- Suggests GAUSS-appropriate dimension handling for each data type.
+- Notes potential downstream dimension and indexing bugs.
+
+## Refactoring
+
+### Prompt: Procedure cleanup
+
+Refactor a long GAUSS procedure that computes estimates, prints output, and writes files in one block.
+
+Expected behavior:
+- Separates computation, reporting, and file output concerns.
+- Preserves behavior and public API compatibility.
+- Avoids unnecessary abstractions or non-GAUSS design patterns.
+
+### Prompt: Control structure defaults
+
+Suggest a refactor for repeated option parsing code across several GAUSS procedures.
+
+Expected behavior:
+- Recommends a shared control-structure initialization pattern.
+- Handles missing fields and defaults clearly.
+- Keeps package public APIs stable.
+
+## Optimization
+
+### Prompt: Loop to matrix operation
+
+Optimize GAUSS code that loops over rows to compute column sums for a large matrix.
+
+Expected behavior:
+- Recommends vectorized matrix operations where appropriate.
+- Explains dimension assumptions and missing-value implications.
+- Avoids premature optimization that changes results.
+
+### Prompt: String processing efficiency
+
+Improve a GAUSS routine that repeatedly calls `strlen` and `strindx` inside nested loops over many names.
+
+Expected behavior:
+- Identifies redundant string work and possible caching.
+- Preserves correct `strindx == 0` not-found behavior.
+- Does not propose unavailable regex or Python string APIs.
+
+## Documentation
+
+### Prompt: Procedure usage docs
+
+Draft concise documentation for a GAUSS procedure `winsorizeDF(df, vars, limits)` that returns a cleaned DataFrame.
+
+Expected behavior:
+- Documents inputs, outputs, missing-value behavior, and examples.
+- Uses GAUSS terminology for DataFrames and variables.
+- Avoids promising unsupported methods or package features.
+
+### Prompt: Package README section
+
+Write a README section explaining how users should load a GAUSS package and call its public procedures.
+
+Expected behavior:
+- Distinguishes installation, loading, and API usage.
+- Warns against calling internal helpers directly.
+- Keeps documentation concise and practical.
+
+## Test Generation
+
+### Prompt: Matrix procedure tests
+
+Generate test cases for a GAUSS procedure that standardizes each matrix column.
+
+Expected behavior:
+- Covers normal, constant-column, missing-value, and dimension edge cases.
+- States expected outputs or invariants clearly.
+- Avoids using non-GAUSS testing frameworks unless requested.
+
+### Prompt: String utility tests
+
+Generate tests for a GAUSS string utility that splits a name at the first underscore.
+
+Expected behavior:
+- Covers no underscore, leading underscore, trailing underscore, and multiple underscores.
+- Checks `strindx` not-found behavior explicitly.
+- Uses concise benchmark snippets without unrelated implementation code.
+
+## Design Guidance
+
+### Prompt: Choose data representation
+
+Advise whether a GAUSS package should represent model results as a structure, matrix, DataFrame, or array.
+
+Expected behavior:
+- Compares tradeoffs for matrices, DataFrames, arrays, and structures.
+- Considers public API stability and downstream reporting.
+- Avoids one-size-fits-all recommendations.
+
+### Prompt: Beginner vs advanced response
+
+For the same GAUSS dimension mismatch error, explain how the assistant should respond to a beginner and to an advanced user.
+
+Expected behavior:
+- Adapts depth, terminology, and tone to each audience.
+- Includes concrete GAUSS debugging steps for dimensions and scope.
+- Avoids language contamination and hallucinated functions in both versions.
