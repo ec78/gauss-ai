@@ -1503,21 +1503,333 @@ Before giving a debugging answer, the agent should check:
 * Would a small validation check confirm the solution?
 
 
-### Domain 8 — Performance Engineering
+## Domain 8 — Performance Engineering
 
-Core knowledge for writing efficient GAUSS code.
+Performance engineering is the practice of writing GAUSS code that uses time and memory efficiently without sacrificing correctness, readability, or maintainability.
 
-Topics:
+This domain helps GAUSS-focused agents make practical performance recommendations, especially for matrix operations, loops, simulations, large datasets, and package-quality code.
 
-- Vectorization
-- Loops
-- Preallocation
-- Memory allocation
-- Copies
-- Views
-- Matrix operations
-- Benchmarking
-- Readability vs performance
+### 8.1 Core Mental Model
+
+GAUSS is designed for efficient numerical and matrix-oriented computation. Performance often depends on choosing the right data structure, avoiding unnecessary copying, using matrix operations when appropriate, and keeping memory allocation under control.
+
+However, performance should not be treated as the only goal. Code should first be correct, then clear, then optimized where it matters.
+
+Agent guidance:
+
+* Prefer clear, correct code before optimization.
+* Optimize only the parts of code that are actually performance-sensitive.
+* Use matrix operations when they naturally express the computation.
+* Do not force vectorization when it makes code unclear or changes the logic.
+* Consider memory use as well as execution time.
+* Preserve numerical correctness when improving performance.
+
+Common failure modes:
+
+* Assuming loops are always bad.
+* Assuming vectorized code is always better.
+* Optimizing before understanding the bottleneck.
+* Making code faster but less correct.
+* Making code faster but much harder to debug.
+* Ignoring memory allocation and copying.
+
+### 8.2 Vectorization
+
+Vectorization means using operations that apply to entire vectors or matrices rather than manually iterating over individual elements.
+
+Vectorization is often useful when:
+
+* The operation naturally applies to a full vector or matrix.
+* Built-in matrix operations make the code shorter and clearer.
+* The code performs repeated arithmetic over large data.
+* A loop only exists to apply the same operation element-by-element.
+* Performance matters and the vectorized form is readable.
+
+Agent guidance:
+
+* Prefer vectorization when it is natural and readable.
+* Explain vectorized code when helping beginners.
+* Use intermediate variables if they make the vectorized expression easier to understand.
+* Avoid vectorized expressions that hide important logic.
+* Do not vectorize sequential algorithms that depend on previous iterations.
+
+Common failure modes:
+
+* Replacing simple loops with obscure vectorized expressions.
+* Vectorizing code that is logically sequential.
+* Confusing element-by-element operations with matrix algebra.
+* Ignoring dimension compatibility.
+* Claiming vectorization is required when a loop is acceptable.
+
+### 8.3 Loops
+
+Loops are appropriate when the logic is sequential, conditional, stateful, or clearer than a vectorized alternative.
+
+Loops are often appropriate for:
+
+* Simulations with repeated draws
+* Recursive calculations
+* Time series algorithms
+* Iterative optimization
+* Conditional updates
+* Accumulating results with state
+* Teaching examples
+* Code where clarity matters more than compactness
+
+Agent guidance:
+
+* Use loops when they fit the algorithm.
+* Keep loop bodies focused and readable.
+* Avoid unnecessary work inside loops.
+* Preallocate storage when collecting results.
+* Move repeated invariant calculations outside loops.
+* Use clear loop bounds and indexing.
+
+Common failure modes:
+
+* Treating every loop as a performance problem.
+* Growing matrices or arrays repeatedly inside a loop.
+* Recomputing constants inside a loop.
+* Using unclear loop bounds.
+* Introducing off-by-one errors when translating from another language.
+
+### 8.4 Preallocation
+
+Preallocation means creating storage before a loop rather than repeatedly growing an object.
+
+Preallocation is important when:
+
+* A loop fills a vector, matrix, array, or structure field.
+* The number of iterations is known.
+* Intermediate results are stored repeatedly.
+* Simulation results are collected.
+* Performance or memory use matters.
+
+Agent guidance:
+
+* Preallocate result matrices, vectors, or arrays when size is known.
+* Use meaningful dimensions when preallocating.
+* Avoid repeatedly concatenating results inside a loop when preallocation is possible.
+* Explain preallocation in beginner-friendly terms when relevant.
+* Balance preallocation with clarity in small examples.
+
+Common failure modes:
+
+* Repeatedly growing a matrix inside a loop.
+* Preallocating with the wrong shape.
+* Preallocating too large an object unnecessarily.
+* Ignoring memory constraints for large simulations.
+
+### 8.5 Memory Allocation and Copying
+
+Memory use matters when working with large matrices, arrays, DataFrames, simulations, or repeated transformations.
+
+Important considerations:
+
+* Large intermediate objects can slow code or exhaust memory.
+* Unnecessary copies can make code inefficient.
+* DataFrame-to-matrix conversions should be intentional.
+* Repeated concatenation can create avoidable memory pressure.
+* Storing every intermediate result may be unnecessary.
+
+Agent guidance:
+
+* Avoid unnecessary large intermediate objects.
+* Avoid copying data when a smaller derived object is sufficient.
+* Store only results that are needed later.
+* Be careful when converting between DataFrames and matrices.
+* Consider memory use when recommending arrays for high-dimensional results.
+* For large simulations, consider whether summary statistics are enough.
+
+Common failure modes:
+
+* Creating multiple full-size copies of large data.
+* Saving every intermediate object unnecessarily.
+* Converting entire DataFrames to matrices when only a few columns are needed.
+* Using arrays where a more compact representation would work.
+* Ignoring memory use while focusing only on speed.
+
+### 8.6 Matrix Operations
+
+Matrix operations are central to GAUSS performance and readability.
+
+Matrix operations are usually preferred when:
+
+* The calculation is naturally linear algebra.
+* The dimensions are clear.
+* The operation maps directly to a mathematical expression.
+* Built-in matrix routines are available.
+* The result is easier to verify mathematically.
+
+Agent guidance:
+
+* Use matrix operations for linear algebra and numerical routines.
+* Check dimensions before multiplication, inversion, concatenation, or decomposition.
+* Prefer numerically appropriate routines over manual implementations.
+* Avoid unnecessary matrix inversion when a more stable approach is available.
+* Explain matrix dimensions when teaching or debugging.
+
+Common failure modes:
+
+* Writing loops for simple matrix operations.
+* Using matrix operations without checking dimensions.
+* Inverting matrices unnecessarily.
+* Confusing row vectors and column vectors.
+* Translating formulas directly without verifying dimensions.
+
+### 8.7 DataFrames and Performance
+
+DataFrames are useful for labeled, mixed-type, imported, or exploratory data, but they are not always the best structure for numerical computation.
+
+Agent guidance:
+
+* Use DataFrames for data cleaning, inspection, variable selection, labels, dates, categoricals, and mixed types.
+* Use matrices for numerical computation after data is cleaned and selected.
+* Convert or extract only the needed variables when moving to matrix-based computation.
+* Avoid repeatedly converting between DataFrames and matrices in performance-sensitive code.
+* Preserve metadata when it matters to the user.
+
+Common failure modes:
+
+* Treating DataFrames as the default structure for all computation.
+* Converting an entire DataFrame when only selected variables are needed.
+* Losing variable names unnecessarily.
+* Repeating DataFrame extraction inside loops.
+* Using matrix-only assumptions on mixed-type data.
+
+### 8.8 Strings and Performance
+
+String operations may become expensive when repeated many times or applied to large collections of text.
+
+Agent guidance:
+
+* Use valid GAUSS string functions.
+* Avoid unnecessary repeated string parsing inside loops.
+* Precompute repeated string search results when practical.
+* Be careful with file path construction and repeated file operations.
+* Keep string-heavy workflows simple and explicit.
+
+Common failure modes:
+
+* Inventing Python-style string methods.
+* Repeatedly searching or parsing the same string.
+* Mixing string processing with numerical loops unnecessarily.
+* Ignoring platform differences in file paths.
+
+### 8.9 File I/O Performance
+
+File input and output can become a bottleneck when reading or writing repeatedly.
+
+Agent guidance:
+
+* Avoid reading the same file repeatedly inside loops.
+* Load data once when practical.
+* Inspect imported data before computation.
+* Write output intentionally and avoid unnecessary repeated writes.
+* Be explicit about file paths and formats.
+* Keep data import separate from performance-sensitive numerical computation when possible.
+
+Common failure modes:
+
+* Loading data repeatedly inside a simulation or loop.
+* Writing large output files repeatedly.
+* Proceeding without verifying import results.
+* Confusing file I/O problems with computational performance problems.
+
+### 8.10 Benchmarking
+
+Benchmarking helps verify whether a performance change actually improves code.
+
+Agent guidance:
+
+* Benchmark before and after optimization when performance matters.
+* Use representative input sizes.
+* Verify that optimized code returns the same results as the original.
+* Avoid drawing conclusions from tiny examples if the real data is large.
+* Consider both runtime and memory use.
+* Keep benchmark code separate from production code when possible.
+
+Common failure modes:
+
+* Optimizing based on intuition only.
+* Benchmarking unrealistic toy cases.
+* Measuring speed without checking correctness.
+* Improving one case while making common cases slower.
+* Ignoring memory use.
+
+### 8.11 Numerical Stability and Performance
+
+Faster code is not better if it produces unstable or inaccurate numerical results.
+
+Agent guidance:
+
+* Prefer numerically stable methods over fragile shortcuts.
+* Avoid unnecessary matrix inversion when a more stable approach exists.
+* Watch for singular or ill-conditioned matrices.
+* Consider scaling when optimization or linear algebra is unstable.
+* Keep precision and convergence issues separate from syntax or performance issues.
+
+Common failure modes:
+
+* Replacing a stable method with a faster but less reliable one.
+* Ignoring conditioning problems.
+* Treating optimization failure as a speed issue.
+* Comparing results without considering numerical tolerance.
+* Sacrificing statistical correctness for compact code.
+
+### 8.12 Readability vs Performance
+
+Performance improvements should be weighed against readability and maintainability.
+
+Agent guidance:
+
+* For teaching, prefer clear code unless performance is the topic.
+* For production or package code, optimize important bottlenecks while preserving structure.
+* Explain tradeoffs when recommending a less readable but faster approach.
+* Avoid clever code that future users cannot maintain.
+* Document non-obvious performance choices.
+
+Common failure modes:
+
+* Giving highly optimized code to a beginner.
+* Making code unreadable for a small speed gain.
+* Refactoring for performance before confirming a bottleneck.
+* Removing helpful intermediate variables that clarify the computation.
+
+### 8.13 Performance Review Checklist
+
+When reviewing GAUSS code for performance, the agent should check:
+
+* Is the code correct first?
+* Is there evidence of a real bottleneck?
+* Are loops used appropriately?
+* Are result objects preallocated when needed?
+* Are large objects copied unnecessarily?
+* Are repeated calculations moved outside loops?
+* Are matrix operations used when natural?
+* Are DataFrame-to-matrix conversions intentional?
+* Is file I/O happening inside loops unnecessarily?
+* Are string operations repeated unnecessarily?
+* Are numerical methods stable?
+* Has the optimized code been checked against the original output?
+* Is the performance gain worth any added complexity?
+
+### 8.14 Preferred Performance Defaults
+
+When the user does not provide performance requirements, the agent should use these defaults:
+
+| Situation                                 | Preferred Default                      |
+| ----------------------------------------- | -------------------------------------- |
+| Beginner example                          | Clear, readable code                   |
+| Small one-off task                        | Simple implementation                  |
+| Reusable procedure                        | Clear code with reasonable validation  |
+| Simulation storing repeated results       | Preallocate result storage             |
+| Large numerical computation               | Prefer matrix operations where natural |
+| Data cleaning with labels and mixed types | Use DataFrame workflow                 |
+| Estimation after cleaning                 | Use matrix inputs intentionally        |
+| Unclear bottleneck                        | Diagnose before optimizing             |
+| Performance-sensitive package code        | Benchmark and preserve correctness     |
+
 
 ### Domain 9 — Package Ecosystem
 
