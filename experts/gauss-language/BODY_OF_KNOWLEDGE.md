@@ -1007,22 +1007,395 @@ When the user does not provide enough detail, the agent should use conservative 
 | Uncertain function syntax | Retrieve documentation |
 | Uncertain package behavior | Retrieve package source or examples |
 
-### Domain 13 — Best Practices
+## Domain 13 — Best Practices
 
-Preferred patterns for GAUSS programming.
+Best practices capture the coding habits, design preferences, and maintenance standards that help GAUSS code remain readable, reliable, reusable, and teachable.
 
-Topics:
+This domain should guide agents when writing new GAUSS code, reviewing user code, translating from other languages, or suggesting improvements.
 
-- Naming conventions
-- Readable code
-- Reusable procedures
-- Input validation
-- Clear error messages
-- Consistent outputs
-- Testing philosophy
-- Documentation standards
-- Backward compatibility
-- Package maintainability
+### 13.1 Core Mental Model
+
+Good GAUSS code should be:
+
+- Correct
+- Readable
+- Explicit
+- Reusable when appropriate
+- Easy to test
+- Easy to debug
+- Consistent with GAUSS idioms
+- Appropriate for the user's experience level
+- Clear about assumptions, inputs, and outputs
+
+A GAUSS-focused agent should prefer code that a user can understand, modify, and trust.
+
+### 13.2 Naming Conventions
+
+Names should make the purpose of variables, procedures, and structures clear.
+
+Preferred practices:
+
+- Use descriptive names for public procedures.
+- Use short names only when they are conventional or local.
+- Avoid names that conflict with GAUSS keywords.
+- Avoid ambiguous names such as `data`, `temp`, or `result` when more specific names would be clearer.
+- Use consistent naming patterns across related procedures.
+- Use names that reflect the data structure when helpful, such as `y`, `x`, `x_mat`, `df`, `results`, or `ctl`.
+
+Agent guidance:
+
+- Prioritize clarity over cleverness.
+- Avoid using `start` and `end` as variable names.
+- Avoid names borrowed from another language's conventions if they make the GAUSS code less clear.
+- Use procedure names that describe actions or returned results.
+
+Common failure modes:
+
+- Using reserved words as identifiers.
+- Creating overly generic variable names.
+- Using inconsistent names across examples.
+- Using Python, R, or MATLAB naming assumptions without adapting them to GAUSS.
+
+### 13.3 Readable Code
+
+Readable code is easier to teach, debug, review, and maintain.
+
+Preferred practices:
+
+- Keep examples short when teaching.
+- Separate logical steps with comments or whitespace.
+- Avoid deeply nested logic when a simpler structure is possible.
+- Use intermediate variables when they clarify intent.
+- Prefer explicit data preparation steps before estimation or analysis.
+- Keep computation and presentation separate when appropriate.
+
+Agent guidance:
+
+- For beginners, prioritize readability over compactness.
+- For advanced users, still avoid unnecessary cleverness.
+- When code is dense, explain the key lines.
+- Do not over-comment obvious syntax, but do comment assumptions and non-obvious decisions.
+
+Common failure modes:
+
+- Producing overly compact code that is hard to modify.
+- Hiding important data transformations.
+- Combining data cleaning, estimation, and printing in one unclear block.
+- Writing code that looks elegant but is difficult to debug.
+
+### 13.4 Reusable Procedures
+
+Reusable procedures should have clear inputs, outputs, and assumptions.
+
+Preferred practices:
+
+- Use `proc ... endp` for reusable logic.
+- Declare local variables inside procedures.
+- Validate important inputs.
+- Return useful outputs rather than only printing results.
+- Keep procedures focused on one main responsibility.
+- Use helper procedures to reduce duplication when appropriate.
+- Document expected input shapes and types.
+
+Agent guidance:
+
+- If code will be reused, write a procedure.
+- If code is only a demonstration, a script may be better.
+- When writing a procedure, include a small usage example.
+- For multi-component results, consider returning a structure.
+
+Common failure modes:
+
+- Writing a procedure that depends on hidden global variables.
+- Printing output but not returning values.
+- Returning too many separate outputs.
+- Failing to document expected input dimensions.
+- Making one procedure responsible for too many tasks.
+
+### 13.5 Input Validation
+
+Input validation prevents confusing errors and makes code safer to reuse.
+
+Preferred practices:
+
+- Check dimensions before matrix operations.
+- Check that required inputs are present.
+- Check that inputs are the expected type or structure when possible.
+- Validate optional inputs and defaults.
+- Handle missing values intentionally.
+- Provide clear error messages when assumptions are violated.
+
+Agent guidance:
+
+- Include validation for reusable or production-oriented code.
+- Keep validation lighter in short teaching examples unless the validation itself is relevant.
+- Explain what assumptions are being checked.
+- Do not silently coerce data in ways that could surprise the user.
+
+Common failure modes:
+
+- Assuming matrix dimensions are compatible.
+- Ignoring missing values.
+- Letting low-level errors occur when a clearer input check would help.
+- Overcomplicating beginner examples with too much validation.
+
+### 13.6 Clear Error Messages
+
+Error messages should help the user understand and fix the problem.
+
+Preferred practices:
+
+- State what went wrong.
+- State what was expected.
+- Include relevant dimensions, names, or input conditions when helpful.
+- Avoid vague messages such as "invalid input" when a more specific message is possible.
+- Keep messages concise.
+
+Agent guidance:
+
+- For reusable procedures, prefer informative error messages.
+- For debugging help, explain the likely source of the error.
+- When the exact cause is uncertain, identify the most likely causes and how to check them.
+
+Common failure modes:
+
+- Returning cryptic errors.
+- Hiding the real cause of the problem.
+- Failing to distinguish between syntax errors, dimension errors, and data problems.
+
+### 13.7 Output Design
+
+Outputs should be useful for both humans and downstream code.
+
+Preferred practices:
+
+- Return values that users can reuse.
+- Use structures for named multi-component outputs.
+- Label printed output clearly.
+- Separate computation from display when appropriate.
+- Preserve variable names or metadata when useful.
+- Keep output formats consistent across related procedures.
+
+Agent guidance:
+
+- For analysis scripts, printed output may be appropriate.
+- For reusable procedures, returned output is usually more important.
+- For model results, consider a structure with named fields.
+- When teaching, show both the returned object and how to inspect it.
+
+Common failure modes:
+
+- Printing results without returning them.
+- Returning unlabeled matrices that are hard to interpret.
+- Changing output structure across similar examples.
+- Losing useful metadata unnecessarily.
+
+### 13.8 Documentation Standards
+
+Documentation should help users understand purpose, inputs, outputs, assumptions, and examples.
+
+Preferred practices:
+
+- Start with what the code does and when to use it.
+- Document inputs and expected dimensions.
+- Document outputs and their interpretation.
+- Include a simple runnable example.
+- Mention package dependencies.
+- Mention important assumptions.
+- Keep examples realistic but not overly complex.
+
+Agent guidance:
+
+- For public procedures, include formal documentation.
+- For examples, include enough explanation for the target audience.
+- For advanced procedures, document edge cases and limitations.
+- Avoid documentation that only restates the procedure name.
+
+Common failure modes:
+
+- Missing input shape information.
+- Missing example usage.
+- Failing to explain returned structures.
+- Writing documentation that is too abstract for users to apply.
+
+### 13.9 Testing Philosophy
+
+Tests should protect correctness, prevent regressions, and clarify expected behavior.
+
+Preferred practices:
+
+- Test normal cases.
+- Test edge cases.
+- Test dimension mismatches when relevant.
+- Test missing value behavior when relevant.
+- Test optional arguments and defaults.
+- Test error paths for reusable procedures.
+- Use small examples with known expected results.
+
+Agent guidance:
+
+- When generating reusable code, suggest at least one basic test.
+- For numerical code, include tolerance-based checks when appropriate.
+- For package code, separate examples from tests.
+- Use tests to document expected behavior.
+
+Common failure modes:
+
+- Only testing the happy path.
+- Testing output visually instead of programmatically.
+- Ignoring edge cases around empty inputs, missing values, or dimensions.
+- Failing to test optional argument behavior.
+
+### 13.10 Backward Compatibility
+
+Backward compatibility matters when code is used by others or distributed in packages.
+
+Preferred practices:
+
+- Avoid breaking public APIs without a clear reason.
+- Preserve existing argument names when practical.
+- Add optional functionality without changing default behavior when possible.
+- Document behavior changes.
+- Consider version-specific GAUSS features before using them.
+- Avoid relying on features unavailable to the target user base.
+
+Agent guidance:
+
+- Ask or infer the target GAUSS version when version compatibility matters.
+- Prefer broadly supported syntax unless the user requests newer functionality.
+- Clearly mark code that depends on a newer GAUSS version or package version.
+
+Common failure modes:
+
+- Changing procedure signatures unnecessarily.
+- Using newer features without warning.
+- Breaking examples or tests when refactoring.
+- Assuming all users are on the latest GAUSS version.
+
+### 13.11 Package Maintainability
+
+Package code should be organized for long-term use, not just immediate execution.
+
+Preferred practices:
+
+- Keep public APIs stable and documented.
+- Keep internal helpers focused.
+- Organize examples separately from core source code.
+- Include tests for important behavior.
+- Document dependencies.
+- Avoid unnecessary global state.
+- Keep naming consistent across the package.
+- Maintain a clear release process.
+
+Agent guidance:
+
+- For package-related tasks, think beyond the single procedure.
+- Consider documentation, tests, examples, and API consistency.
+- Avoid exposing internal helpers as public APIs unless necessary.
+- Prefer incremental changes that are easy to review.
+
+Common failure modes:
+
+- Treating package code like a one-off script.
+- Mixing examples and source logic.
+- Creating public functions without documentation.
+- Adding functionality without tests.
+
+### 13.12 Beginner-Friendly Code
+
+Beginner-friendly code should be simple, explicit, and easy to modify.
+
+Preferred practices:
+
+- Use concrete data examples.
+- Show each step clearly.
+- Avoid unnecessary abstraction.
+- Explain key syntax.
+- Keep procedure design simple.
+- Prefer readable variable names.
+- Show expected output when helpful.
+
+Agent guidance:
+
+- Do not optimize prematurely for beginners.
+- Avoid dense one-liners.
+- Explain why the data structure was chosen.
+- Make assumptions visible.
+
+Common failure modes:
+
+- Giving advanced package-style code to a beginner.
+- Overusing abstraction.
+- Skipping setup steps.
+- Assuming knowledge of matrix dimensions, DataFrames, or procedures.
+
+### 13.13 Advanced Code
+
+Advanced code should emphasize design tradeoffs, correctness, performance, and maintainability.
+
+Preferred practices:
+
+- Discuss API design.
+- Consider performance and memory.
+- Include validation and tests.
+- Separate public and internal logic.
+- Document assumptions and edge cases.
+- Prefer robust design over clever code.
+
+Agent guidance:
+
+- Match the user's level and goal.
+- If the user is building production or package code, include design considerations.
+- Explain tradeoffs when there are multiple valid approaches.
+- Include tests or review criteria.
+
+Common failure modes:
+
+- Providing simple tutorial code when the user needs package-ready code.
+- Ignoring performance implications.
+- Failing to discuss API stability.
+- Omitting validation for reusable code.
+
+### 13.14 Code Review Guidance
+
+A GAUSS code review should check correctness, clarity, maintainability, and fit for purpose.
+
+Review checklist:
+
+- Does the code use valid GAUSS syntax?
+- Are all functions valid GAUSS functions or stated package dependencies?
+- Are data structures appropriate?
+- Are dimensions handled correctly?
+- Are missing values handled intentionally?
+- Are procedure inputs and outputs clear?
+- Are local variables declared?
+- Are reserved words avoided?
+- Is output reusable and clearly labeled?
+- Are examples or tests included when needed?
+- Is the code understandable for the intended audience?
+
+Agent guidance:
+
+- Prioritize correctness first.
+- Separate blocking issues from style suggestions.
+- Explain why a change matters.
+- Suggest concrete fixes.
+- Avoid overwhelming the user with too many minor comments at once.
+
+### 13.15 Best Practice Checklist
+
+Before producing GAUSS code, the agent should check:
+
+- Is the chosen data structure appropriate?
+- Is the code valid GAUSS rather than borrowed syntax?
+- Are functions verified or clearly package-specific?
+- Are inputs and outputs clear?
+- Are dimensions and missing values considered?
+- Is the code readable for the target audience?
+- Is a script or procedure more appropriate?
+- Should the output be a structure?
+- Are package dependencies stated?
+- Would a small example or test make the answer better?
 
 ### Domain 14 — Teaching and Support
 
