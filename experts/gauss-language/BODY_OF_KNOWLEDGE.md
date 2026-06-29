@@ -3691,21 +3691,434 @@ Before generating or reviewing package-related GAUSS code, the agent should chec
 * Would the code run in a clean session?
 
 
-### Domain 10 — Documentation and Examples
+## Domain 10 — Documentation and Examples
 
-Core knowledge for explaining GAUSS code clearly.
+Documentation and examples help users understand what GAUSS code does, how to use it, what assumptions it makes, and how to adapt it safely.
 
-Topics:
+This domain helps GAUSS-focused agents produce documentation and examples that are accurate, runnable, clear, audience-appropriate, and aligned with GAUSS conventions.
 
-- API documentation
-- Sphinx documentation
-- `.rst` files
-- Inline comments
-- Examples
-- Tutorials
-- Blog-style explanations
-- Beginner-friendly explanations
-- Advanced reference material
+### 10.1 Core Mental Model
+
+Good documentation answers four questions:
+
+1. What does this do?
+2. When should I use it?
+3. How do I use it correctly?
+4. What should I expect as output?
+
+Good examples answer a related question:
+
+> What does this look like in practice?
+
+A GAUSS-focused agent should not treat documentation as filler text. Documentation is part of the user interface for GAUSS code.
+
+Agent guidance:
+
+* Write documentation for the intended audience.
+* Include runnable examples when possible.
+* State inputs, outputs, assumptions, and dependencies.
+* Keep examples focused.
+* Avoid examples that require hidden setup.
+* Keep documentation synchronized with actual code behavior.
+* Distinguish tutorial explanations from formal API reference.
+
+Common failure modes:
+
+* Writing documentation that only restates the procedure name.
+* Omitting input dimensions.
+* Omitting output descriptions.
+* Providing examples that do not run.
+* Failing to mention package dependencies.
+* Letting documentation drift from code behavior.
+
+### 10.2 Documentation Types
+
+GAUSS documentation may serve different purposes.
+
+Common documentation types include:
+
+* API reference documentation
+* Sphinx `.rst` files
+* README files
+* Package documentation
+* Inline comments
+* Tutorial walkthroughs
+* Blog posts
+* Example files
+* Changelogs
+* Release notes
+* Migration notes
+* Troubleshooting guides
+
+Agent guidance:
+
+* Match the documentation format to the user's goal.
+* Use API reference for complete procedure behavior.
+* Use tutorials for learning workflows.
+* Use examples for practical application.
+* Use changelogs and release notes for versioned changes.
+* Use troubleshooting guides for recurring user problems.
+
+Common failure modes:
+
+* Using a tutorial style when formal reference is needed.
+* Using terse reference style when the user needs teaching.
+* Mixing release notes, examples, and API docs into one unclear document.
+* Omitting migration guidance for breaking changes.
+
+### 10.3 API Documentation
+
+API documentation should describe public procedures clearly and completely.
+
+API documentation should usually include:
+
+* Purpose
+* Syntax or call pattern
+* Required inputs
+* Optional inputs and defaults
+* Keyword arguments or control structures
+* Expected input types and dimensions
+* Outputs
+* Structure fields when structures are returned
+* Assumptions
+* Error conditions
+* Package dependencies
+* Example usage
+* Related procedures when relevant
+
+Agent guidance:
+
+* Document public APIs more fully than internal helpers.
+* Include input shape information when matrix dimensions matter.
+* Document returned objects carefully.
+* Include a minimal runnable example.
+* Keep argument names and behavior aligned with the implementation.
+* Mention version-specific behavior when relevant.
+
+Common failure modes:
+
+* Missing expected input dimensions.
+* Missing optional argument defaults.
+* Missing structure field descriptions.
+* Documenting behavior that the code does not implement.
+* Forgetting to update documentation after API changes.
+
+### 10.4 Sphinx and `.rst` Documentation
+
+Sphinx `.rst` documentation is useful for formal reference documentation and package documentation.
+
+Agent guidance:
+
+* Keep headings clear and hierarchical.
+* Use consistent formatting for syntax, parameters, returns, examples, and notes.
+* Make examples runnable when possible.
+* Avoid overly long examples in formal reference pages.
+* Cross-reference related procedures when useful.
+* Keep `.rst` syntax valid.
+* Preserve code block formatting.
+
+Common failure modes:
+
+* Producing invalid `.rst` syntax.
+* Mixing Markdown syntax into `.rst` pages.
+* Missing required reference sections.
+* Using examples that are too long or too dependent on local files.
+* Failing to document returned structures.
+
+### 10.5 Inline Comments
+
+Inline comments should clarify intent, assumptions, and non-obvious logic.
+
+Good comments explain:
+
+* Why a step is needed
+* What assumption is being made
+* Why a data structure was chosen
+* Why dimensions are being changed
+* Why missing values are handled a certain way
+* Why a numerical or performance choice was made
+
+Agent guidance:
+
+* Use comments to mark major logical steps.
+* Avoid comments that merely restate obvious syntax.
+* Add more comments in beginner examples.
+* Use fewer but more meaningful comments in advanced code.
+* Keep comments synchronized with code.
+
+Common failure modes:
+
+* Over-commenting obvious lines.
+* Under-commenting important assumptions.
+* Leaving outdated comments after code changes.
+* Writing comments that describe what the code used to do.
+
+### 10.6 Examples
+
+Examples should show users how to apply code correctly.
+
+Good examples should be:
+
+* Runnable
+* Focused
+* Minimal but meaningful
+* Clear about setup
+* Clear about inputs
+* Clear about expected output
+* Appropriate for the user’s level
+* Easy to modify
+
+Agent guidance:
+
+* Use simple examples for beginners.
+* Use realistic examples for applied workflows.
+* Include data generation or data loading steps.
+* Include package setup when required.
+* Show expected output or interpretation when helpful.
+* Keep examples separate from reusable procedure definitions when appropriate.
+* Avoid hidden dependencies on prior workspace state.
+
+Common failure modes:
+
+* Providing examples that cannot run as written.
+* Omitting setup steps.
+* Using overly complex examples for simple concepts.
+* Using toy examples that do not clarify the real workflow.
+* Mixing example code with package source code.
+
+### 10.7 Tutorials
+
+Tutorials teach a workflow step by step.
+
+Good tutorials should:
+
+* Start with the user's goal
+* Introduce concepts progressively
+* Use small, concrete examples
+* Explain key decisions
+* Show intermediate outputs when useful
+* End with a working result
+* Mention next steps or extensions
+
+Agent guidance:
+
+* Optimize tutorials for learning, not just completeness.
+* Avoid overwhelming users with too many options at once.
+* Explain why each major step matters.
+* Use progressive disclosure: start simple, then add complexity.
+* Connect code to the statistical or analytical purpose when relevant.
+
+Common failure modes:
+
+* Starting with advanced abstractions too early.
+* Skipping setup or data inspection.
+* Providing code without explaining the workflow.
+* Mixing several concepts in one example.
+* Assuming the reader already understands GAUSS data structures.
+
+### 10.8 Blog-Style Explanations
+
+Blog-style explanations are useful for applied examples, feature introductions, and educational content.
+
+Good blog examples should:
+
+* Have a clear narrative
+* Start from a practical problem
+* Use approachable language
+* Include runnable GAUSS code
+* Explain outputs
+* Connect code to user value
+* Avoid unnecessary jargon
+* Link to official documentation when useful
+
+Agent guidance:
+
+* Write blog examples with a teaching mindset.
+* Keep code blocks focused.
+* Explain the intuition before technical details when appropriate.
+* Include enough context for mixed-experience readers.
+* Avoid claiming more than the example demonstrates.
+* Prefer practical examples over abstract demonstrations.
+
+Common failure modes:
+
+* Writing like a reference manual instead of a tutorial.
+* Including too much code at once.
+* Omitting interpretation of results.
+* Using unsupported claims or vague benefits.
+* Forgetting to link concepts back to GAUSS functionality.
+
+### 10.9 Beginner-Friendly Explanations
+
+Beginner-friendly explanations should reduce cognitive load.
+
+Preferred practices:
+
+* Explain one concept at a time.
+* Use concrete examples.
+* Avoid unnecessary abstraction.
+* Define terminology.
+* Show intermediate steps.
+* Explain common mistakes.
+* Use plain language.
+* Connect syntax to purpose.
+
+Agent guidance:
+
+* Assume the user may be learning both GAUSS and the statistical workflow.
+* Explain data structures explicitly.
+* Avoid dense one-liners.
+* Prefer scripts or small examples before package-style abstractions.
+* Show how to inspect results.
+
+Common failure modes:
+
+* Giving expert-level code without explanation.
+* Assuming the user understands matrices, DataFrames, or procedures.
+* Using too many new concepts at once.
+* Explaining syntax but not purpose.
+
+### 10.10 Advanced Reference Material
+
+Advanced reference material should be concise, complete, and precise.
+
+Preferred practices:
+
+* Focus on exact behavior.
+* Document edge cases.
+* Mention performance implications.
+* Mention version compatibility.
+* Clarify assumptions.
+* Provide compact examples.
+* Discuss tradeoffs where relevant.
+
+Agent guidance:
+
+* Do not overexplain basic syntax for expert users.
+* Include design and edge-case considerations.
+* Make return values and structures precise.
+* Include relevant warnings or limitations.
+* Keep examples realistic but not verbose.
+
+Common failure modes:
+
+* Being too vague for advanced users.
+* Omitting edge cases.
+* Omitting performance or compatibility implications.
+* Providing beginner explanations when expert reference is needed.
+
+### 10.11 Documentation for Returned Structures
+
+When a procedure returns a structure, the documentation should describe the fields clearly.
+
+Structure documentation should include:
+
+* Structure name or role
+* Field names
+* Field types
+* Field dimensions when relevant
+* Meaning of each field
+* Whether fields are always present
+* How users should access fields
+* Example inspection or usage
+
+Agent guidance:
+
+* Document structure fields for public APIs.
+* Keep field names stable across related procedures.
+* Use consistent naming patterns.
+* Explain how structure outputs support downstream use.
+* Include a short example accessing important fields.
+
+Common failure modes:
+
+* Returning structures without field documentation.
+* Using unclear field names.
+* Changing field names without noting it.
+* Documenting only printed output while ignoring returned fields.
+
+### 10.12 Documentation for DataFrames and Data Workflows
+
+DataFrame workflows require documentation that preserves the user's understanding of variables, labels, dates, categoricals, and transformations.
+
+Documentation should explain:
+
+* Required columns
+* Variable names
+* Date or time identifiers
+* Group identifiers
+* Categorical variables
+* Missing value handling
+* Sorting requirements
+* Transformations
+* Conversion to matrices when needed
+
+Agent guidance:
+
+* State expected DataFrame structure.
+* Preserve variable names in examples.
+* Explain when data are converted to matrices.
+* Document sorting requirements for panel or time series operations.
+* Explain how missing values affect the workflow.
+
+Common failure modes:
+
+* Treating DataFrames as unlabeled matrices.
+* Omitting required column names.
+* Ignoring dates or categorical variables.
+* Failing to explain matrix extraction before estimation.
+* Losing metadata without explanation.
+
+### 10.13 Documentation Review Checklist
+
+When reviewing GAUSS documentation, the agent should check:
+
+* Does it explain the purpose clearly?
+* Does it identify the intended audience?
+* Does it document inputs?
+* Does it document input dimensions?
+* Does it document optional arguments and defaults?
+* Does it document outputs?
+* Does it document returned structure fields?
+* Does it state dependencies?
+* Does it include a runnable example?
+* Does the example match the documented API?
+* Does it mention important assumptions?
+* Does it handle version-specific behavior if relevant?
+* Is the format appropriate: README, `.rst`, tutorial, blog, or inline comments?
+* Is the documentation synchronized with the code?
+
+### 10.14 Example Review Checklist
+
+When reviewing GAUSS examples, the agent should check:
+
+* Can the example run as written?
+* Are setup steps included?
+* Is required data available or generated?
+* Are package dependencies stated?
+* Is the example focused?
+* Is the example appropriate for the audience?
+* Are intermediate steps explained when useful?
+* Are outputs labeled or interpreted?
+* Does the example rely on hidden workspace state?
+* Does it demonstrate the intended concept?
+* Is it too simple, too complex, or just right for the purpose?
+
+### 10.15 Preferred Documentation Defaults
+
+When the user does not specify a documentation style, the agent should use these defaults:
+
+| Situation                | Preferred Default                                        |
+| ------------------------ | -------------------------------------------------------- |
+| Public procedure         | API-style documentation with example                     |
+| Beginner question        | Short explanation plus runnable example                  |
+| Package feature          | Reference docs, example, and dependency notes            |
+| Blog/tutorial            | Narrative explanation with step-by-step code             |
+| Code review              | Focused comments tied to correctness and maintainability |
+| Returned structure       | Field-by-field description                               |
+| DataFrame workflow       | Required columns and transformation notes                |
+| Version-specific feature | State version assumptions                                |
+
 
 ## Domain 11 — AI Failure Modes
 
