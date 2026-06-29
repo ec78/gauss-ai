@@ -983,24 +983,431 @@ Before generating or reviewing a GAUSS procedure, the agent should check:
 * Are package dependencies stated?
 
 
-### Domain 4 — Standard Library Awareness
+## Domain 4 — Standard Library Awareness
 
-Core knowledge about GAUSS built-in functionality and when to retrieve official documentation.
+Standard Library Awareness is the ability to recognize the major categories of built-in GAUSS functionality, choose appropriate built-in tools when available, and retrieve official documentation when exact syntax, arguments, return values, or version behavior matter.
 
-Topics:
+This domain does not attempt to reproduce the GAUSS function reference. Instead, it defines how a GAUSS-focused agent should reason about built-in functionality.
 
-- Linear algebra
-- Statistics
-- Optimization
-- Time series
-- Machine learning
-- Strings
-- File I/O
-- Graphics
-- Dates
-- Random numbers
-- Data management
-- Utilities
+### 4.1 Core Mental Model
+
+A GAUSS-focused agent should prefer verified GAUSS functionality over invented code.
+
+GAUSS includes extensive built-in functionality for matrix operations, statistics, optimization, strings, file I/O, graphics, random numbers, data management, and related numerical workflows. However, an agent should not guess function names or syntax from memory when precision matters.
+
+Agent guidance:
+
+* Prefer built-in GAUSS functionality when it is available and appropriate.
+* Retrieve official documentation when function syntax, arguments, return values, or version-specific behavior matters.
+* Distinguish base GAUSS functionality from package-specific functionality.
+* Avoid inventing convenience functions.
+* Prefer simple verified code over elegant unverified code.
+* When uncertain, state the uncertainty and retrieve or recommend checking the authoritative source.
+
+Common failure modes:
+
+* Inventing a function because the name sounds plausible.
+* Using Python, R, or MATLAB function names.
+* Treating package-specific functions as built-in functions.
+* Using the right function name with incorrect arguments.
+* Ignoring version-specific behavior.
+
+### 4.2 Linear Algebra
+
+Linear algebra is a core strength of GAUSS.
+
+Relevant task types include:
+
+* Matrix multiplication
+* Matrix decomposition
+* Solving systems of equations
+* Inversion or alternatives to inversion
+* Eigenvalues and eigenvectors
+* Rank and conditioning
+* Least squares calculations
+* Simulation and numerical algorithms
+
+Agent guidance:
+
+* Use built-in linear algebra routines when available.
+* Check matrix dimensions before recommending operations.
+* Avoid unnecessary matrix inversion when a more stable approach is appropriate.
+* Explain row and column orientation when it matters.
+* For numerical stability questions, consider conditioning and rank.
+
+Common failure modes:
+
+* Writing dimensionally invalid matrix expressions.
+* Using matrix inversion unnecessarily.
+* Translating linear algebra code mechanically from another language.
+* Ignoring singular or ill-conditioned matrices.
+* Confusing element-by-element operations with matrix operations.
+
+### 4.3 Statistics
+
+GAUSS includes functionality for statistical analysis, probability distributions, descriptive statistics, estimation, and related workflows.
+
+Relevant task types include:
+
+* Descriptive statistics
+* Probability distributions
+* Hypothesis testing
+* Regression and model estimation
+* Covariance and correlation
+* Simulation
+* Random sampling
+* Diagnostics
+
+Agent guidance:
+
+* Prefer built-in statistical procedures when they match the task.
+* Retrieve documentation for procedure syntax and returned outputs.
+* Check whether the function is part of base GAUSS or an application/package.
+* Explain statistical assumptions separately from GAUSS syntax.
+* Use small examples with known dimensions when teaching.
+
+Common failure modes:
+
+* Using statistically reasonable but invalid GAUSS code.
+* Inventing modeling functions.
+* Ignoring missing values before estimation.
+* Using a procedure without understanding its expected input structure.
+* Confusing returned results, printed output, and stored output.
+
+### 4.4 Optimization
+
+Optimization workflows often require careful setup, starting values, objective functions, constraints, and convergence interpretation.
+
+Relevant task types include:
+
+* Unconstrained optimization
+* Constrained optimization
+* Maximum likelihood estimation
+* Nonlinear least squares
+* Custom objective functions
+* Starting value selection
+* Convergence diagnostics
+
+Agent guidance:
+
+* Retrieve documentation for optimizer-specific syntax and control structures.
+* Be explicit about objective function inputs and outputs.
+* Distinguish optimization failure from syntax failure.
+* Discuss starting values, scaling, and convergence when relevant.
+* Keep simple examples small and runnable.
+
+Common failure modes:
+
+* Inventing optimizer call patterns.
+* Omitting required control structures or setup.
+* Treating convergence problems as syntax errors.
+* Ignoring scaling or starting values.
+* Providing an objective function that does not match the optimizer’s expected interface.
+
+### 4.5 Time Series
+
+Time series workflows require attention to ordering, lags, differencing, dates, and sample alignment.
+
+Relevant task types include:
+
+* Lagging
+* Differencing
+* Forecasting
+* ARIMA and related models
+* VAR models
+* Unit root testing
+* Date handling
+* Sample alignment
+
+Agent guidance:
+
+* Verify that data are sorted correctly before lagging or differencing.
+* Track sample size changes after transformations.
+* Preserve or explain time indexes.
+* Retrieve documentation for time series procedures and model objects.
+* Distinguish time series logic from GAUSS implementation details.
+
+Common failure modes:
+
+* Lagging unsorted data.
+* Misaligning dependent and independent variables.
+* Ignoring missing values introduced by lags.
+* Treating dates as plain strings.
+* Using syntax from R, Python, or MATLAB time series libraries.
+
+### 4.6 Machine Learning
+
+Machine learning functionality may come from base GAUSS, applications, packages, or user-defined code.
+
+Relevant task types include:
+
+* Classification
+* Regression
+* Model evaluation
+* Cross-validation
+* Data preprocessing
+* Feature engineering
+* Prediction workflows
+* Model comparison
+
+Agent guidance:
+
+* Verify whether requested functionality exists in base GAUSS, an application, or a package.
+* State dependencies clearly.
+* Keep data preprocessing explicit.
+* Avoid importing Python scikit-learn syntax into GAUSS.
+* Explain modeling workflow separately from implementation syntax.
+
+Common failure modes:
+
+* Inventing scikit-learn-style APIs.
+* Assuming Python object-oriented method syntax.
+* Omitting package dependencies.
+* Ignoring train/test split or validation logic.
+* Treating DataFrames and matrices interchangeably without conversion.
+
+### 4.7 Strings
+
+String functions are a common source of AI-generated mistakes.
+
+Relevant task types include:
+
+* String length
+* String search
+* Parsing labels
+* File path construction
+* Variable name handling
+* Text cleanup
+* User-facing messages
+
+Known rules:
+
+* Use `strlen` for string length.
+* Use `strindx` for string search.
+* Remember that `strindx` returns `0` when the substring is not found.
+
+Agent guidance:
+
+* Verify string function names before use.
+* Do not use Python-style string methods.
+* Do not invent R, MATLAB, or JavaScript string functions.
+* Handle “not found” cases explicitly when using string search.
+* Keep string parsing simple and testable.
+
+Common failure modes:
+
+* Using `length` for string length.
+* Inventing `substr`, `strpos`, or similar names.
+* Forgetting that `strindx` returns `0` when not found.
+* Treating strings as arrays of characters without verifying the GAUSS approach.
+
+### 4.8 File I/O
+
+File I/O includes reading, writing, importing, exporting, and inspecting data.
+
+Relevant task types include:
+
+* Loading datasets
+* Importing CSV or Excel files
+* Saving output
+* Reading text files
+* Writing reports or intermediate results
+* Handling paths
+* Verifying imported data
+
+Agent guidance:
+
+* Include setup steps when examples depend on external files.
+* Check the imported data before modeling.
+* Be explicit about file paths and working directory assumptions.
+* Consider platform-specific path differences.
+* Preserve variable names and metadata when useful.
+* Retrieve documentation when exact import/export syntax matters.
+
+Common failure modes:
+
+* Assuming the file is in the current working directory.
+* Omitting required setup or import steps.
+* Ignoring headers, delimiters, dates, or categorical columns.
+* Proceeding directly to analysis without checking imported data.
+* Confusing file I/O errors with modeling errors.
+
+### 4.9 Graphics
+
+Graphics functionality supports visualization, diagnostics, reporting, and teaching.
+
+Relevant task types include:
+
+* Scatter plots
+* Line plots
+* Histograms
+* Diagnostic plots
+* Forecast plots
+* Model comparison plots
+* Publication or blog figures
+
+Agent guidance:
+
+* Retrieve documentation for plotting syntax and options.
+* Keep beginner plots simple.
+* Include labels, titles, and legends when helpful.
+* Separate data preparation from plotting.
+* Avoid inventing plotting APIs based on Python, R, or MATLAB.
+* Match plot complexity to the user’s purpose.
+
+Common failure modes:
+
+* Inventing plotting functions or options.
+* Using ggplot-style syntax in GAUSS.
+* Omitting setup needed for graph output.
+* Plotting misaligned data.
+* Creating visually complex plots when a simple diagnostic plot is better.
+
+### 4.10 Dates and Times
+
+Date and time handling appears in time series, panel data, imported datasets, reporting, and filtering.
+
+Relevant task types include:
+
+* Parsing dates
+* Sorting by date
+* Filtering date ranges
+* Lagging or differencing time-indexed data
+* Forecast horizons
+* Time series plots
+* Panel data time identifiers
+
+Agent guidance:
+
+* Verify date representation before operating on dates.
+* Preserve date information during import and transformation.
+* Sort by date before time-dependent operations.
+* Distinguish date strings from date values.
+* Retrieve documentation for exact date functions and formats when needed.
+
+Common failure modes:
+
+* Sorting date strings incorrectly.
+* Treating dates as ordinary numeric values without checking representation.
+* Losing date metadata during matrix conversion.
+* Confusing time identifiers with group identifiers in panel data.
+
+### 4.11 Random Numbers and Simulation
+
+Random number generation and simulation require reproducibility, distribution choices, and careful storage of results.
+
+Relevant task types include:
+
+* Monte Carlo simulation
+* Bootstrap workflows
+* Random sampling
+* Synthetic data generation
+* Stochastic optimization
+* Reproducible examples
+
+Agent guidance:
+
+* Set or discuss random seeds when reproducibility matters.
+* Use appropriate distribution functions.
+* Preallocate simulation results when size is known.
+* Store only outputs needed for analysis.
+* Use small simulations for teaching and larger simulations only when needed.
+* Retrieve documentation for exact random number function syntax.
+
+Common failure modes:
+
+* Omitting seed control in reproducible examples.
+* Generating random data with invalid function names.
+* Storing excessive intermediate results.
+* Failing to preallocate simulation output.
+* Confusing distribution parameters.
+
+### 4.12 Data Management
+
+Data management includes cleaning, transforming, sorting, selecting, merging, reshaping, and preparing data for analysis.
+
+Relevant task types include:
+
+* Import inspection
+* Variable selection
+* Missing value handling
+* Sorting
+* Filtering
+* Creating transformed variables
+* Handling categorical variables
+* Handling DataFrames
+* Preparing model matrices
+
+Agent guidance:
+
+* Use DataFrames when labels, mixed types, dates, or categories matter.
+* Use matrices when numerical computation is the goal.
+* Make conversions between DataFrames and matrices explicit.
+* Preserve metadata when useful.
+* Handle missing values intentionally.
+* Check dimensions after transformations.
+
+Common failure modes:
+
+* Treating DataFrames exactly like matrices.
+* Dropping metadata unnecessarily.
+* Ignoring missing values.
+* Creating model inputs with mismatched rows.
+* Performing time or panel transformations without sorting.
+
+### 4.13 Utilities
+
+Utility functions support common tasks such as dimensions, sorting, indexing, formatting, and inspection.
+
+Agent guidance:
+
+* Use utility functions when they make code clearer and safer.
+* Verify function names before use.
+* Check that dimension tools are appropriate for the data structure.
+* Avoid using matrix-only utilities on arrays or DataFrames without verification.
+* Prefer simple inspection steps when debugging.
+
+Common failure modes:
+
+* Assuming `rows` and `cols` work on arrays.
+* Inventing utility functions.
+* Using utilities from other languages.
+* Skipping inspection steps before debugging or modeling.
+
+### 4.14 Retrieval Rules for Standard Library Questions
+
+The agent should retrieve official or approved sources when:
+
+* Exact function syntax matters.
+* Argument names or optional arguments matter.
+* Return values or output structures matter.
+* Version-specific behavior matters.
+* The agent is unsure whether a function exists.
+* The function may belong to a package rather than base GAUSS.
+* The user asks for documentation-quality accuracy.
+* A hallucinated function would likely mislead the user.
+
+The agent may answer without retrieval when:
+
+* The concept is stable and general.
+* The user asks for high-level explanation.
+* The exact function call is not needed.
+* The answer is clearly framed as conceptual.
+
+### 4.15 Standard Library Checklist
+
+Before using or recommending a GAUSS function, the agent should check:
+
+* Is this a real GAUSS function?
+* Is it base GAUSS or package-specific?
+* Is the syntax verified?
+* Are required inputs and dimensions clear?
+* Are returned outputs understood?
+* Are version assumptions relevant?
+* Is there a simpler built-in approach?
+* Is a custom implementation actually necessary?
+* Does the code avoid Python, R, MATLAB, or pseudocode contamination?
+
 
 ### Domain 5 — Numerical Computing
 
