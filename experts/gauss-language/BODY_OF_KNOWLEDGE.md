@@ -27,25 +27,203 @@ Topics:
 - Includes
 - Libraries
 
-### Domain 2 — Data Model
+## Domain 2 — Data Model
 
-Core knowledge about how GAUSS represents and manipulates data.
+The GAUSS Data Model is central to writing correct and idiomatic GAUSS code. GAUSS is matrix-oriented, but modern GAUSS code may also use strings, arrays, structures, DataFrames, categorical variables, and dates. A GAUSS-focused agent must understand when each data structure is appropriate and how they interact.
 
-Topics:
+### 2.1 Core Mental Model
 
-- Scalars
-- Vectors
-- Matrices
-- Strings
-- Arrays
-- Structures
-- DataFrames
-- Categorical variables
-- Dates and times
-- Missing values
-- Type behavior
-- Indexing
-- Shape and dimensions
+GAUSS should be understood first as a matrix-oriented language.
+
+Matrices are the default structure for numerical work. Many statistical, econometric, optimization, and linear algebra routines expect matrix inputs and return matrix outputs.
+
+However, not all data should be treated as a matrix. Modern GAUSS workflows often use DataFrames for labeled, mixed-type, or imported data, structures for organized outputs and configuration, arrays for higher-dimensional data, and strings or categoricals for non-numeric information.
+
+A GAUSS agent should not automatically force every problem into a matrix. It should choose the data structure based on the task.
+
+### 2.2 Scalars, Vectors, and Matrices
+
+Scalars, vectors, and matrices form the core numerical data model in GAUSS.
+
+A scalar is a single value. A vector is a one-dimensional collection of values, usually represented as either a column vector or row vector. A matrix is a two-dimensional rectangular collection of values.
+
+Important agent guidance:
+
+- Use matrices for numerical computation.
+- Pay close attention to row and column orientation.
+- Check dimensions before matrix multiplication or concatenation.
+- Avoid assuming that a vector’s orientation is unimportant.
+- Prefer built-in matrix operations when they make the code clearer.
+- Do not use Python, R, or MATLAB syntax unless it is valid GAUSS syntax.
+
+Common failure modes:
+
+- Confusing element-by-element operations with matrix operations.
+- Ignoring dimension compatibility.
+- Treating a row vector and column vector as interchangeable.
+- Writing code that assumes a one-dimensional array model like Python or R.
+
+### 2.3 Strings
+
+Strings are used for text, variable names, labels, file paths, and user-facing messages.
+
+Important agent guidance:
+
+- Use `strlen` for string length.
+- Use `strindx` for string search.
+- Remember that `strindx` returns `0` when the substring is not found.
+- Do not invent string functions based on Python, R, or MATLAB.
+- Be careful when generating file paths or parsing text.
+
+Common failure modes:
+
+- Using `length` for string length.
+- Inventing `substr`, `strpos`, or Python-style string methods.
+- Forgetting that string search failures return `0`.
+- Treating strings like arrays of characters in languages where that is common.
+
+### 2.4 Arrays
+
+Arrays are used for higher-dimensional data.
+
+Important agent guidance:
+
+- Do not assume `rows` and `cols` work on arrays.
+- Use array-appropriate dimension tools.
+- Be explicit about array shape and ordering.
+- Avoid treating arrays as if they were ordinary matrices.
+
+Common failure modes:
+
+- Using matrix dimension functions on arrays.
+- Assuming array indexing works like Python NumPy.
+- Flattening arrays unnecessarily.
+- Choosing an array when a structure or matrix would be clearer.
+
+### 2.5 Structures
+
+Structures are used to group related values under named fields.
+
+They are especially useful for model results, configuration objects, procedure outputs, and organized return values.
+
+Important agent guidance:
+
+- Use structures when outputs need named components.
+- Prefer structures over long lists of loosely related return values.
+- Use structures to make APIs easier to understand.
+- Be consistent with field names across related procedures.
+
+Common failure modes:
+
+- Returning too many separate outputs instead of a structured result.
+- Using a structure when a simple matrix would be clearer.
+- Inconsistent field naming across procedures.
+- Treating GAUSS structures like Python dictionaries without checking syntax.
+
+### 2.6 DataFrames
+
+DataFrames are used for labeled, column-oriented data and are especially useful for imported datasets, mixed data types, categorical variables, and workflows where variable names matter.
+
+Important agent guidance:
+
+- Use DataFrames when working with imported data, named variables, or mixed data types.
+- Use matrices when the task is primarily numerical computation.
+- Convert or extract data intentionally when moving between DataFrame workflows and matrix-based procedures.
+- Preserve variable names and metadata when useful to the user.
+- Be careful with categorical and date columns.
+
+Common failure modes:
+
+- Treating a DataFrame exactly like a matrix.
+- Losing variable names unnecessarily.
+- Ignoring categorical variable behavior.
+- Generating matrix-only code for a DataFrame task.
+- Generating DataFrame code when a simple matrix is more appropriate.
+
+### 2.7 Categorical Variables
+
+Categorical variables represent discrete groups or labels.
+
+Important agent guidance:
+
+- Treat categorical variables differently from plain numeric variables.
+- Be careful when converting categories to numeric codes.
+- Preserve labels when they are meaningful.
+- Use appropriate categorical tools rather than assuming manual string or numeric handling.
+
+Common failure modes:
+
+- Treating categories as ordinary strings without considering categorical behavior.
+- Treating category codes as meaningful numeric values.
+- Losing labels during conversion.
+- Creating dummy variables without checking the intended modeling workflow.
+
+### 2.8 Dates and Times
+
+Dates and times often appear in time series, panel data, imported datasets, and reporting workflows.
+
+Important agent guidance:
+
+- Verify the date representation before performing date operations.
+- Preserve date information when importing or transforming datasets.
+- Be careful when sorting, merging, lagging, or differencing time-indexed data.
+- For panel data, distinguish between group identifiers and time identifiers.
+
+Common failure modes:
+
+- Treating dates as plain strings.
+- Sorting date strings incorrectly.
+- Losing time index information in transformations.
+- Confusing cross-sectional IDs with time variables.
+
+### 2.9 Missing Values
+
+Missing values are central to real-world statistical and econometric work.
+
+Important agent guidance:
+
+- Check how missing values affect numerical operations.
+- Do not silently ignore missing values unless appropriate.
+- Be explicit about whether rows with missing values should be dropped, imputed, flagged, or preserved.
+- Explain missing-value handling decisions to the user.
+
+Common failure modes:
+
+- Failing to account for missing values before estimation.
+- Accidentally propagating missing values through calculations.
+- Dropping observations without telling the user.
+- Treating missing values as zeros.
+
+### 2.10 Data Structure Decision Rules
+
+Use these rules when choosing a GAUSS data structure:
+
+| Task | Prefer |
+|---|---|
+| Numerical linear algebra | Matrix |
+| Regression inputs after cleaning | Matrix |
+| Imported dataset with variable names | DataFrame |
+| Mixed-type tabular data | DataFrame |
+| Model results with named components | Structure |
+| Configuration options | Structure |
+| Higher-dimensional numerical data | Array |
+| Text labels or file paths | String |
+| Group labels | Categorical variable |
+| Time-indexed data | DataFrame or matrix with explicit date handling |
+
+### 2.11 Agent Checklist
+
+Before generating GAUSS code involving data, the agent should ask:
+
+- What data structure is the user starting with?
+- Are variable names important?
+- Are there mixed data types?
+- Are there categorical variables?
+- Are there dates or panel/time identifiers?
+- Is the goal data cleaning, numerical computation, modeling, or reporting?
+- Should the output preserve labels or metadata?
+- Are dimensions compatible?
+- Are missing values present?
 
 ### Domain 3 — Procedures and APIs
 
