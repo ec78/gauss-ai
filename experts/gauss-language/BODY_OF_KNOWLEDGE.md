@@ -590,21 +590,422 @@ When an agent detects a possible failure mode, it should recover by:
 The agent should prefer a simpler verified solution over a sophisticated unverified one.
 
 
-### Domain 12 — Decision Frameworks
+## Domain 12 — Decision Frameworks
 
-Judgment rules for choosing among valid GAUSS approaches.
+Decision frameworks capture the judgment patterns an experienced GAUSS developer uses when choosing among valid approaches.
 
-Topics:
+This domain is especially important for AI agents because many coding tasks do not have a single correct answer. A GAUSS-focused agent should not merely generate syntactically valid code. It should choose an approach that fits the user's goal, data structure, experience level, and likely next steps.
 
-- Matrix vs DataFrame
-- Array vs structure
-- Script vs procedure
-- Procedure vs package
-- Public API vs helper function
-- Vectorization vs loop
-- Built-in function vs custom implementation
-- Example vs formal documentation
-- Beginner explanation vs expert explanation
+### 12.1 Core Mental Model
+
+A good GAUSS solution should be:
+
+- Correct
+- Readable
+- Idiomatic
+- Appropriate for the user's data structure
+- Appropriate for the user's experience level
+- Easy to adapt
+- Easy to debug
+- No more complex than necessary
+
+When multiple approaches are valid, the agent should explain the tradeoff briefly rather than pretending there is only one answer.
+
+### 12.2 Matrix vs DataFrame
+
+Use a matrix when the task is primarily numerical computation.
+
+Prefer a matrix for:
+
+- Linear algebra
+- Estimation after data cleaning
+- Simulation
+- Optimization
+- Numerical transformations
+- Procedures that expect numeric arrays of values
+- Performance-sensitive computation
+
+Use a DataFrame when labels, mixed types, or data management matter.
+
+Prefer a DataFrame for:
+
+- Imported datasets
+- Named variables
+- Mixed numeric and string columns
+- Categorical variables
+- Date variables
+- Data cleaning
+- Exploratory data analysis
+- Workflows where preserving variable names matters
+
+Agent decision rule:
+
+- If the user is cleaning, inspecting, importing, or selecting named variables, start with a DataFrame.
+- If the user is estimating, optimizing, simulating, or doing matrix algebra, use matrices or extract matrix inputs intentionally.
+- If both are needed, show the transition clearly.
+
+Common mistake:
+
+- Treating a DataFrame as if it were just a matrix with column names.
+
+### 12.3 Array vs Matrix
+
+Use a matrix for two-dimensional numerical data.
+
+Use an array for higher-dimensional data.
+
+Prefer a matrix for:
+
+- Ordinary tabular numeric data
+- Regression design matrices
+- Time series vectors
+- Linear algebra
+- Most econometric model inputs
+
+Prefer an array for:
+
+- Multi-dimensional simulation results
+- Collections of matrices with a shared shape
+- Higher-dimensional numerical objects
+- Repeated draws, panels, horizons, or scenarios that do not fit naturally into rows and columns
+
+Agent decision rule:
+
+- Do not use arrays just because the problem involves multiple objects.
+- Use arrays when the dimensionality itself matters.
+- Use structures when the objects are heterogeneous or named.
+- Use matrices when the object is fundamentally rectangular and numeric.
+
+Common mistake:
+
+- Using arrays where a structure or matrix would be simpler and clearer.
+
+### 12.4 Structure vs Multiple Return Values
+
+Use a structure when output has named components that belong together.
+
+Prefer a structure for:
+
+- Model results
+- Configuration settings
+- Diagnostics
+- Multiple related outputs
+- Public-facing procedure results
+- Outputs that users will inspect repeatedly
+
+Prefer multiple return values only when:
+
+- There are very few outputs
+- The outputs are obvious and conventional
+- The procedure is small or internal
+- A structure would add unnecessary complexity
+
+Agent decision rule:
+
+- If a procedure returns more than two or three related outputs, consider a structure.
+- If the output will be used by other procedures, prefer a structure with stable field names.
+- If the output is instructional and simple, multiple returns may be acceptable.
+
+Common mistake:
+
+- Returning a long list of loosely named outputs that are hard to remember and easy to misuse.
+
+### 12.5 Script vs Procedure
+
+Use a script for a one-off workflow, demonstration, or tutorial.
+
+Use a procedure for reusable logic.
+
+Prefer a script for:
+
+- Simple examples
+- Blog demonstrations
+- Step-by-step tutorials
+- Reproducing an analysis
+- Showing users how commands fit together
+
+Prefer a procedure for:
+
+- Repeated tasks
+- Package functionality
+- Shared utilities
+- Testable logic
+- Code that accepts inputs and returns outputs
+- Anything likely to be reused
+
+Agent decision rule:
+
+- If the user asks "how do I do this once?", a script may be best.
+- If the user asks "write a function/procedure", create a procedure.
+- If the task may be reused, offer a procedure version.
+- For teaching, it can be helpful to show a script first and then refactor into a procedure.
+
+Common mistake:
+
+- Wrapping everything in a procedure too early, making examples harder for beginners to follow.
+
+### 12.6 Procedure vs Package
+
+Use a standalone procedure for local or project-specific reuse.
+
+Use a package when functionality needs to be organized, documented, tested, distributed, or shared.
+
+Prefer a standalone procedure for:
+
+- Small utilities
+- Project-specific helpers
+- Examples
+- Experimental code
+- One-file workflows
+
+Prefer a package for:
+
+- Reusable libraries
+- Public APIs
+- Multiple related procedures
+- Documented functionality
+- Code that needs examples, tests, and versioning
+- Functionality shared across users or projects
+
+Agent decision rule:
+
+- Do not recommend a package structure for a small one-off helper.
+- Do recommend package structure when the user is building a reusable tool or library.
+- When package structure is recommended, separate public API design from internal helper implementation.
+
+Common mistake:
+
+- Treating every reusable procedure as if it needs to become a package.
+
+### 12.7 Public API vs Helper Procedure
+
+A public API is what users are expected to call directly.
+
+A helper procedure supports implementation but is not the primary user-facing interface.
+
+Public procedures should be:
+
+- Stable
+- Clearly named
+- Documented
+- Validated
+- Consistent with related APIs
+- Supported by examples and tests
+
+Helper procedures may be:
+
+- Narrower
+- More implementation-specific
+- Less user-friendly
+- Subject to change
+- Hidden or clearly marked as internal
+
+Agent decision rule:
+
+- If users are expected to call it, design it carefully.
+- If it exists only to reduce duplication internally, keep it focused and avoid over-documenting it as public functionality.
+- Avoid exposing implementation details unnecessarily.
+
+Common mistake:
+
+- Creating too many public procedures and making the API harder to learn.
+
+### 12.8 Vectorization vs Loop
+
+Vectorization is often preferred in GAUSS, but readability and correctness matter.
+
+Prefer vectorization when:
+
+- The operation naturally applies to full vectors or matrices
+- Built-in matrix operations make the code shorter and clearer
+- Performance matters
+- The vectorized version is easy to understand
+
+Prefer a loop when:
+
+- The logic is sequential
+- Each iteration depends on previous results
+- The vectorized version would be obscure
+- The code is instructional
+- Debugging clarity matters
+- The data structure does not fit a clean vectorized operation
+
+Agent decision rule:
+
+- Prefer clear vectorized code when it is natural.
+- Do not force vectorization if it makes the code harder to understand.
+- For beginners, clarity often matters more than compactness.
+- For performance-sensitive code, consider both readability and benchmarking.
+
+Common mistake:
+
+- Assuming loops are always bad or that vectorization is always better.
+
+### 12.9 Built-in Function vs Custom Implementation
+
+Prefer built-in GAUSS functionality when it is available, appropriate, and clear.
+
+Use a custom implementation when:
+
+- No built-in function exists
+- The user needs to learn the underlying method
+- The workflow requires customization
+- The built-in behavior does not match the user's needs
+- The code is part of a package where a specialized implementation is justified
+
+Agent decision rule:
+
+- Search official or approved sources before assuming a function does not exist.
+- Prefer built-ins for production code when they fit the task.
+- Use custom implementations for teaching, customization, or unsupported workflows.
+- Do not invent a built-in function to avoid writing code.
+
+Common mistake:
+
+- Creating a custom implementation when a reliable built-in function already exists.
+
+### 12.10 Example vs Formal Documentation
+
+Examples and formal documentation serve different purposes.
+
+Use examples when the user needs to understand how to apply something.
+
+Use formal documentation when the user needs complete reference behavior.
+
+Prefer examples for:
+
+- Beginners
+- Tutorials
+- Blog posts
+- Common workflows
+- Demonstrating inputs and outputs
+- Showing the "happy path"
+
+Prefer formal documentation for:
+
+- API definitions
+- Argument descriptions
+- Return values
+- Edge cases
+- Version-specific behavior
+- Package reference material
+
+Agent decision rule:
+
+- If the user is learning, start with an example.
+- If the user is implementing or debugging, include reference details.
+- If writing documentation, include both formal reference and runnable examples when possible.
+
+Common mistake:
+
+- Giving only abstract reference material when the user needs a concrete example.
+
+### 12.11 Beginner Explanation vs Expert Explanation
+
+The agent should adapt explanations to the user's experience level.
+
+For beginners:
+
+- Use concrete examples
+- Explain terminology
+- Avoid unnecessary abstraction
+- Prefer readable code
+- Show intermediate outputs when helpful
+- Explain why each step matters
+
+For advanced users:
+
+- Be concise
+- Emphasize tradeoffs
+- Mention edge cases
+- Discuss performance or design implications
+- Avoid overexplaining basic syntax
+
+Agent decision rule:
+
+- If the user appears new to GAUSS, optimize for clarity.
+- If the user is building packages, documentation, or advanced econometric tools, include design considerations.
+- When uncertain, provide a clear answer with optional deeper notes.
+
+Common mistake:
+
+- Giving expert-level code to a beginner without explaining the underlying structure.
+
+### 12.12 Retrieval Decision Rules
+
+A GAUSS-focused agent should know when to retrieve knowledge instead of relying on memory.
+
+Retrieve official documentation when:
+
+- Function syntax matters
+- Argument names matter
+- Return values matter
+- Version-specific behavior matters
+- The agent is unsure whether a function exists
+
+Retrieve LLM reference material when:
+
+- Avoiding common AI mistakes
+- Checking language idioms
+- Validating known failure-prone patterns
+- Reviewing generated code for hallucinations
+
+Retrieve blog examples when:
+
+- The user needs an applied workflow
+- A tutorial-style example would help
+- The task resembles a published example
+- The user is learning a concept
+
+Retrieve package source when:
+
+- The user asks about package internals
+- A function belongs to a package
+- Official documentation is insufficient
+- Implementation behavior matters
+
+Agent decision rule:
+
+- Retrieval is required when the cost of being wrong is high.
+- Retrieval is preferred when syntax or function availability is uncertain.
+- Retrieval is optional when the task is conceptual or the answer is stable and simple.
+
+Common mistake:
+
+- Answering confidently from memory when the correct answer depends on exact GAUSS syntax.
+
+### 12.13 Decision Checklist
+
+Before choosing an implementation approach, the agent should ask:
+
+- What is the user's goal?
+- Is this a one-off task or reusable code?
+- What data structure is the user starting with?
+- Are variable names, labels, dates, or categories important?
+- Is the user learning, debugging, optimizing, or building production code?
+- Is there a reliable built-in function?
+- Does this require package-specific functionality?
+- Should the output be returned, printed, saved, or documented?
+- Does the solution need to be beginner-friendly?
+- Are there version-specific concerns?
+- Should official documentation or source code be retrieved?
+
+### 12.14 Preferred Default Choices
+
+When the user does not provide enough detail, the agent should use conservative defaults:
+
+| Situation | Preferred Default |
+|---|---|
+| Simple demonstration | Script |
+| Reusable logic | Procedure |
+| Numerical computation | Matrix |
+| Imported mixed-type data | DataFrame |
+| Multiple named outputs | Structure |
+| Higher-dimensional numeric data | Array |
+| Teaching task | Clear example first |
+| Production task | Validated procedure with input checks |
+| Uncertain function syntax | Retrieve documentation |
+| Uncertain package behavior | Retrieve package source or examples |
 
 ### Domain 13 — Best Practices
 
