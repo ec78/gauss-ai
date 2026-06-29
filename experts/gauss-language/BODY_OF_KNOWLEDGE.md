@@ -549,24 +549,439 @@ Before generating GAUSS code involving data, the agent should ask:
 - Are dimensions compatible?
 - Are missing values present?
 
-### Domain 3 — Procedures and APIs
+## Domain 3 — Procedures and APIs
 
-Core knowledge for writing reusable GAUSS procedures and public-facing APIs.
+Procedures and APIs define how reusable GAUSS logic is packaged, called, documented, tested, and maintained.
 
-Topics:
+This domain helps GAUSS-focused agents move beyond one-off scripts and generate reusable code that is clear, stable, testable, and appropriate for the user's level and goal.
 
-- Procedure definitions
-- Inputs
-- Outputs
-- Local variables
-- Optional arguments
-- Keyword arguments
-- Return values
-- Error handling
-- Input validation
-- API consistency
-- Helper procedures
-- Public vs internal procedures
+### 3.1 Core Mental Model
+
+A GAUSS procedure should package one clear unit of reusable logic.
+
+A good procedure has:
+
+* A clear purpose
+* Explicit inputs
+* Predictable outputs
+* Local variables
+* Minimal hidden state
+* Appropriate input validation
+* Useful error messages
+* A small example showing how to call it
+
+A GAUSS-focused agent should not write every answer as a procedure. It should choose a procedure when the user needs reusable logic, package code, tests, or a clean API.
+
+Agent guidance:
+
+* Use scripts for simple demonstrations or one-off workflows.
+* Use procedures for reusable logic.
+* Use packages when functionality needs organization, documentation, tests, examples, and distribution.
+* Keep procedures focused on one main responsibility.
+* Prefer clarity over cleverness.
+* Document expected input shapes and output behavior.
+
+Common failure modes:
+
+* Writing a procedure when a simple script would be clearer.
+* Writing a script when reusable logic is needed.
+* Creating a procedure with too many responsibilities.
+* Relying on hidden global state.
+* Returning results that are hard to reuse.
+
+### 3.2 Procedure Structure
+
+GAUSS procedures should use valid GAUSS procedure syntax.
+
+Core expectations:
+
+* Use `proc ... endp` for reusable procedures.
+* Declare local variables inside the procedure.
+* Return outputs explicitly.
+* Keep setup code outside the procedure unless it is part of the procedure's responsibility.
+* Keep examples separate from procedure definitions when possible.
+
+Agent guidance:
+
+* Do not write Python-style `def` functions.
+* Do not write R-style function definitions.
+* Do not write MATLAB-style function files unless the syntax is valid GAUSS.
+* Use GAUSS procedure syntax consistently.
+* Include a usage example after the procedure when helpful.
+
+Common failure modes:
+
+* Forgetting `proc` or `endp`.
+* Using invalid return syntax.
+* Mixing example code inside reusable procedure definitions.
+* Failing to declare local variables.
+* Writing pseudocode instead of executable GAUSS.
+
+### 3.3 Inputs
+
+Procedure inputs should be explicit, understandable, and appropriate for the task.
+
+Important considerations:
+
+* Required inputs should be clearly named.
+* Input order should be intuitive.
+* Inputs should match expected GAUSS data structures.
+* Matrix dimensions should be documented when important.
+* Optional inputs should have clear defaults.
+* Package-specific objects or structures should be identified.
+
+Agent guidance:
+
+* Name inputs based on their role, not just their type.
+* For econometric procedures, common names like `y`, `x`, `p`, `lags`, or `ctl` may be appropriate.
+* For DataFrame workflows, distinguish between the dataset and variable names.
+* For reusable procedures, state expected input dimensions.
+* Avoid requiring unnecessary inputs.
+* Do not hide important inputs in global variables.
+
+Common failure modes:
+
+* Using vague input names.
+* Assuming the input is a matrix when the user has a DataFrame.
+* Ignoring row and column orientation.
+* Failing to document required dimensions.
+* Designing inputs that are difficult to remember or call correctly.
+
+### 3.4 Outputs
+
+Procedure outputs should be predictable and useful.
+
+Important considerations:
+
+* Return values should be reusable by downstream code.
+* Printed output should not be the only output for reusable procedures.
+* Multi-component outputs should be organized clearly.
+* Output names and structure should be stable for public APIs.
+* Outputs should preserve useful labels or metadata when appropriate.
+
+Agent guidance:
+
+* Return a matrix, scalar, string, structure, array, or DataFrame based on the task.
+* Use structures for model results, diagnostics, configuration, or related outputs.
+* Use clear field names in structures.
+* If printing results, also consider returning the underlying values.
+* Document what is returned.
+
+Common failure modes:
+
+* Printing results without returning them.
+* Returning too many separate outputs.
+* Returning an unlabeled matrix that is hard to interpret.
+* Changing output shape unexpectedly.
+* Losing useful metadata unnecessarily.
+
+### 3.5 Local Variables and Scope
+
+Procedures should be self-contained and avoid accidental dependence on outside state.
+
+Important considerations:
+
+* Local variables make procedure behavior easier to reason about.
+* Inputs should be passed explicitly.
+* Global state should be avoided unless there is a clear design reason.
+* Temporary variables should not leak outside the procedure.
+* Examples should not depend on hidden workspace state.
+
+Agent guidance:
+
+* Declare local variables inside procedures.
+* Avoid using variables inside a procedure unless they are inputs or local variables.
+* Keep procedure examples runnable from a clean session when possible.
+* When debugging, check whether variables are defined in the expected scope.
+
+Common failure modes:
+
+* Failing to declare local variables.
+* Using variables from the surrounding script without passing them in.
+* Overwriting important variables.
+* Writing examples that only work because of earlier hidden commands.
+
+### 3.6 Optional Arguments and Defaults
+
+Optional arguments make procedures flexible, but they should not make APIs confusing.
+
+Important considerations:
+
+* Defaults should be sensible and documented.
+* Optional arguments should not change core behavior unexpectedly.
+* Optional arguments should be validated.
+* Too many optional arguments can make a procedure hard to use.
+* Control structures can be useful when many settings are needed.
+
+Agent guidance:
+
+* Use optional arguments when they reduce burden on the user.
+* Prefer simple defaults for beginner-facing examples.
+* For many options, consider a control structure rather than a long argument list.
+* Document defaults clearly.
+* Avoid optional arguments that create ambiguous behavior.
+
+Common failure modes:
+
+* Adding too many optional arguments.
+* Failing to document defaults.
+* Using optional arguments to hide important assumptions.
+* Changing behavior in surprising ways.
+* Making examples hard to read because the call signature is too complex.
+
+### 3.7 Keyword Arguments and Control Structures
+
+Keyword arguments and control structures can improve readability when a procedure has multiple options.
+
+Important considerations:
+
+* Keyword arguments can make calls more self-documenting.
+* Control structures are useful for grouped configuration.
+* Defaults should be clear.
+* Public APIs should be consistent across related procedures.
+* Advanced configuration should not overwhelm basic users.
+
+Agent guidance:
+
+* Use keyword arguments when they improve call clarity.
+* Use control structures when several related settings need to travel together.
+* For beginner examples, keep configuration minimal.
+* For package APIs, prefer consistent option names across procedures.
+* Explain configuration choices briefly.
+
+Common failure modes:
+
+* Using long positional argument lists that are easy to misuse.
+* Creating inconsistent option names across related procedures.
+* Requiring a complex control structure for a simple task.
+* Failing to show a minimal working example.
+
+### 3.8 Input Validation
+
+Reusable procedures should validate important assumptions before computation.
+
+Validation may include:
+
+* Required inputs are present.
+* Matrix dimensions are compatible.
+* Vectors have expected orientation.
+* Inputs contain enough observations.
+* Missing values are handled intentionally.
+* Options are in an allowed range.
+* DataFrames contain required variables.
+* Package-specific structures contain required fields.
+
+Agent guidance:
+
+* Include validation when writing production or reusable code.
+* Keep validation lighter in short teaching examples unless relevant.
+* Provide clear error messages.
+* Check dimensions before matrix multiplication, concatenation, or estimation.
+* Do not silently drop or coerce data unless the behavior is stated.
+
+Common failure modes:
+
+* Letting dimension errors happen deep inside computation.
+* Ignoring missing values.
+* Assuming required DataFrame variables exist.
+* Accepting invalid options without warning.
+* Adding so much validation that a beginner example becomes hard to follow.
+
+### 3.9 Error Handling
+
+Error handling should help users understand and fix problems.
+
+Good error handling should:
+
+* Explain what went wrong.
+* Explain what was expected.
+* Mention relevant dimensions, variable names, or option values when helpful.
+* Fail early when assumptions are violated.
+* Avoid hiding real errors.
+
+Agent guidance:
+
+* For reusable procedures, prefer clear and specific error messages.
+* For debugging answers, identify the likely source and suggest a concrete fix.
+* When the exact cause is uncertain, provide a short checklist.
+* Do not replace all errors with vague messages.
+
+Common failure modes:
+
+* Using generic messages like "invalid input."
+* Failing late after several derived calculations.
+* Masking the original problem.
+* Treating all errors as syntax errors.
+
+### 3.10 Public APIs
+
+A public API is code that users are expected to call directly.
+
+Public APIs should be:
+
+* Stable
+* Clearly named
+* Documented
+* Tested
+* Consistent
+* Backward-compatible when practical
+* Designed around user needs rather than implementation details
+
+Agent guidance:
+
+* Treat public procedures more carefully than internal helpers.
+* Use clear names and predictable outputs.
+* Document required inputs, optional inputs, outputs, assumptions, and examples.
+* Avoid exposing unnecessary implementation details.
+* Consider how the API will evolve over time.
+
+Common failure modes:
+
+* Exposing too many small helper procedures.
+* Changing public procedure signatures without a clear reason.
+* Designing the API around internal implementation rather than user workflow.
+* Providing no examples for public-facing functionality.
+
+### 3.11 Internal Helper Procedures
+
+Helper procedures support implementation but are not the main user-facing interface.
+
+Good helper procedures should be:
+
+* Focused
+* Narrow
+* Easy to test
+* Named consistently
+* Hidden or clearly marked as internal when appropriate
+* Allowed to change more freely than public APIs
+
+Agent guidance:
+
+* Use helper procedures to reduce duplication or isolate complex logic.
+* Do not expose helpers as public APIs unless users need them.
+* Keep helper inputs close to the implementation need.
+* Avoid over-documenting internal helpers as if they were public functions.
+* Still keep helper code readable and testable.
+
+Common failure modes:
+
+* Making every helper public.
+* Using helpers to hide unclear design.
+* Creating too many tiny helpers that make code harder to follow.
+* Leaving helper behavior untested.
+
+### 3.12 Structures as API Outputs
+
+Structures are often the best return type when a procedure produces multiple related results.
+
+Use structures for:
+
+* Model estimates
+* Standard errors
+* Diagnostics
+* Settings
+* Intermediate objects needed later
+* Tables or named outputs
+* Results that users will inspect repeatedly
+
+Agent guidance:
+
+* Use clear and stable field names.
+* Keep related outputs grouped.
+* Document structure fields.
+* Use structures to make downstream code easier to read.
+* Avoid returning a long sequence of loosely related outputs.
+
+Common failure modes:
+
+* Returning many separate objects instead of a structure.
+* Using inconsistent field names across related procedures.
+* Creating structures with unclear or undocumented fields.
+* Using a structure when a single matrix or scalar would be simpler.
+
+### 3.13 API Documentation Expectations
+
+Reusable procedures should be documented according to their audience and use.
+
+Documentation should usually include:
+
+* Purpose
+* Syntax or call pattern
+* Required inputs
+* Optional inputs and defaults
+* Outputs
+* Assumptions
+* Package dependencies
+* Example usage
+* Notes about edge cases when relevant
+
+Agent guidance:
+
+* For public procedures, include formal documentation.
+* For examples, include a minimal working call.
+* For advanced APIs, document limitations and edge cases.
+* Keep documentation aligned with actual behavior.
+* Avoid documentation that only restates the procedure name.
+
+Common failure modes:
+
+* Missing input dimensions.
+* Missing return descriptions.
+* Missing examples.
+* Outdated documentation after API changes.
+* Failing to document package dependencies.
+
+### 3.14 API Testing Expectations
+
+Reusable APIs should have tests that protect expected behavior.
+
+Useful tests include:
+
+* Basic successful call
+* Known-result example
+* Dimension mismatch handling
+* Missing value behavior
+* Optional argument behavior
+* Invalid option behavior
+* Structure field presence
+* Backward compatibility checks when relevant
+
+Agent guidance:
+
+* Suggest tests when generating reusable procedures.
+* Use small data with known expected outputs when possible.
+* Test both returned values and error behavior.
+* For numerical procedures, use tolerance-based comparisons when appropriate.
+* Keep examples and tests separate when possible.
+
+Common failure modes:
+
+* Only testing that the code runs.
+* Ignoring error paths.
+* Testing printed output instead of returned values.
+* Failing to test optional arguments.
+* Omitting regression tests for bug fixes.
+
+### 3.15 Procedure and API Checklist
+
+Before generating or reviewing a GAUSS procedure, the agent should check:
+
+* Does this task need a procedure, or would a script be clearer?
+* Does the procedure have one clear responsibility?
+* Are inputs explicit and clearly named?
+* Are expected input dimensions documented?
+* Are local variables declared?
+* Does the procedure avoid hidden global state?
+* Are optional arguments and defaults clear?
+* Is input validation appropriate for the use case?
+* Are errors clear and actionable?
+* Are outputs reusable?
+* Should the output be a structure?
+* Is the API public or internal?
+* Are examples included?
+* Are tests suggested or provided when appropriate?
+* Are package dependencies stated?
+
 
 ### Domain 4 — Standard Library Awareness
 
