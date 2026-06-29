@@ -1018,22 +1018,433 @@ Topics:
 - Simulation
 - Reproducibility
 
-### Domain 6 — Software Engineering
+## Domain 6 — Software Engineering
 
-Core knowledge for building maintainable GAUSS projects.
+Software engineering is the practice of organizing GAUSS code so it is maintainable, testable, documented, reusable, and safe to evolve over time.
 
-Topics:
+This domain helps GAUSS-focused agents move beyond writing code that merely runs. It teaches agents to reason about project structure, public APIs, package architecture, documentation, tests, release processes, and long-term maintainability.
 
-- Project organization
-- Package architecture
-- Public APIs
-- Internal APIs
-- Tests
-- Examples
-- Documentation
-- Version compatibility
-- Release process
-- Code review
+### 6.1 Core Mental Model
+
+GAUSS code exists in different contexts:
+
+* One-off analysis scripts
+* Teaching examples
+* Blog examples
+* Reusable procedures
+* Package source code
+* Public APIs
+* Tests
+* Documentation examples
+* Production workflows
+
+Each context has different expectations.
+
+A short tutorial script can prioritize clarity and simplicity. A package procedure should prioritize API stability, input validation, documentation, tests, and backward compatibility.
+
+Agent guidance:
+
+* Match engineering rigor to the context.
+* Do not over-engineer simple examples.
+* Do not under-engineer package-quality code.
+* Separate exploratory analysis from reusable logic.
+* Treat public APIs more carefully than private helpers.
+* Consider tests and documentation when creating reusable code.
+
+Common failure modes:
+
+* Treating package code like a one-off script.
+* Turning every small example into an overbuilt framework.
+* Ignoring tests and documentation for reusable code.
+* Mixing exploratory code, public APIs, and examples in one unclear file.
+
+### 6.2 Project Organization
+
+A well-organized GAUSS project should make it easy to find source code, examples, tests, documentation, and supporting data.
+
+Preferred practices:
+
+* Keep reusable source code separate from examples.
+* Keep tests separate from examples.
+* Keep documentation close enough to source code to stay current.
+* Use predictable folder names.
+* Include a clear README when the project is intended for others.
+* Avoid hidden dependencies on a local working directory.
+
+Agent guidance:
+
+* For simple user examples, keep the project structure minimal.
+* For reusable tools, suggest a clear project layout.
+* For packages, distinguish source, examples, tests, and docs.
+* Avoid recommending unnecessary structure for a small task.
+* When file paths matter, make assumptions explicit.
+
+Common failure modes:
+
+* Placing all code in one large script.
+* Mixing test data with production data without explanation.
+* Assuming files exist in the current working directory.
+* Creating a complex directory structure before the project needs it.
+
+### 6.3 Package Architecture
+
+Package architecture should support reuse, documentation, testing, versioning, and distribution.
+
+A package should usually distinguish:
+
+* Public procedures
+* Internal helper procedures
+* Examples
+* Tests
+* Documentation
+* Package metadata
+* Dependencies
+* Release notes or changelog
+
+Agent guidance:
+
+* Recommend package structure when functionality will be reused or shared.
+* Keep public APIs stable and documented.
+* Keep internal helpers focused and implementation-oriented.
+* Include examples that demonstrate realistic usage.
+* Include tests for important behavior.
+* Document package dependencies and version assumptions.
+
+Common failure modes:
+
+* Exposing too many helper procedures as public APIs.
+* Creating public procedures without examples.
+* Adding features without tests.
+* Ignoring package metadata or dependency requirements.
+* Treating package organization as an afterthought.
+
+### 6.4 Public APIs
+
+Public APIs are the procedures users are expected to call directly.
+
+Public APIs should be:
+
+* Clearly named
+* Stable
+* Documented
+* Tested
+* Predictable
+* Consistent with related APIs
+* Designed around user workflows
+
+Agent guidance:
+
+* Design APIs from the user's perspective.
+* Keep call signatures understandable.
+* Avoid long positional argument lists when options are better grouped.
+* Use structures or control objects for complex configuration.
+* Preserve backward compatibility when practical.
+* Include examples for public-facing procedures.
+
+Common failure modes:
+
+* Designing APIs around internal implementation details.
+* Requiring users to remember too many positional arguments.
+* Changing public signatures unnecessarily.
+* Returning outputs that are difficult to interpret.
+* Failing to document assumptions and defaults.
+
+### 6.5 Internal APIs and Helper Procedures
+
+Internal helper procedures support implementation but are not the main user-facing interface.
+
+Good helper procedures should be:
+
+* Focused
+* Narrow
+* Easy to test
+* Easy to replace
+* Named consistently
+* Clearly internal when appropriate
+
+Agent guidance:
+
+* Use helper procedures to reduce duplication.
+* Avoid exposing helpers unnecessarily.
+* Keep helper interfaces close to their implementation purpose.
+* Do not document helpers as if they are public APIs unless users need them.
+* Keep helpers testable when they contain important logic.
+
+Common failure modes:
+
+* Making every helper public.
+* Creating many tiny helpers that obscure the main flow.
+* Hiding important behavior in undocumented helpers.
+* Letting helper procedures become inconsistent across a package.
+
+### 6.6 Testing Strategy
+
+Testing protects correctness and helps future developers change code safely.
+
+Useful test categories include:
+
+* Basic successful calls
+* Known-result examples
+* Edge cases
+* Dimension mismatch behavior
+* Missing value behavior
+* Optional argument behavior
+* Invalid input behavior
+* Structure field checks
+* Package loading checks
+* Regression tests for fixed bugs
+
+Agent guidance:
+
+* Suggest tests when writing reusable or package code.
+* Use small inputs with known expected results when possible.
+* Test returned values, not just printed output.
+* Test error paths for reusable APIs.
+* For numerical code, use tolerance-based comparisons when appropriate.
+* Keep tests focused and easy to run.
+
+Common failure modes:
+
+* Only testing that code runs.
+* Testing examples but not edge cases.
+* Ignoring missing values and dimension errors.
+* Failing to test optional arguments.
+* Treating visual inspection as the only validation.
+
+### 6.7 Examples
+
+Examples show users how to apply functionality.
+
+Good examples should be:
+
+* Runnable
+* Focused
+* Realistic enough to be useful
+* Small enough to understand
+* Clear about setup
+* Clear about expected output
+* Matched to the audience
+
+Agent guidance:
+
+* For beginners, keep examples simple and explicit.
+* For advanced users, include realistic workflows and edge cases when useful.
+* Avoid examples that depend on hidden state.
+* Include data loading or setup steps when needed.
+* Explain why each step matters when teaching.
+* Keep examples separate from tests when possible.
+
+Common failure modes:
+
+* Providing examples that cannot run as written.
+* Omitting package or data setup.
+* Using overly complex examples for simple concepts.
+* Using toy examples that fail to demonstrate the real workflow.
+* Mixing example code directly into reusable procedure files.
+
+### 6.8 Documentation
+
+Documentation should explain purpose, usage, inputs, outputs, assumptions, and examples.
+
+Documentation may include:
+
+* README files
+* API reference documentation
+* Sphinx `.rst` files
+* Inline comments
+* Example walkthroughs
+* Blog-style tutorials
+* Changelogs
+* Release notes
+
+Agent guidance:
+
+* Document public APIs more fully than internal helpers.
+* Include input dimensions and expected data structures.
+* Include output descriptions and structure fields.
+* Include package dependencies.
+* Include a runnable example.
+* Keep documentation synchronized with code behavior.
+* Adapt the level of explanation to the audience.
+
+Common failure modes:
+
+* Documenting what the function is called instead of what it does.
+* Omitting input shapes.
+* Omitting return descriptions.
+* Letting documentation drift from implementation.
+* Providing no example for public functionality.
+
+### 6.9 Code Review
+
+Code review should improve correctness, clarity, maintainability, and fit for purpose.
+
+A GAUSS code review should check:
+
+* Valid GAUSS syntax
+* Valid function names and package dependencies
+* Appropriate data structures
+* Matrix dimensions
+* Missing value handling
+* Local variable declarations
+* Scope and hidden state
+* Public API design
+* Output design
+* Tests
+* Documentation
+* Examples
+* Backward compatibility
+* Readability for the intended audience
+
+Agent guidance:
+
+* Separate blocking correctness issues from style suggestions.
+* Explain why a change matters.
+* Suggest concrete fixes.
+* Avoid overwhelming the user with too many minor comments.
+* Prioritize code that will break, mislead users, or be hard to maintain.
+
+Common failure modes:
+
+* Focusing only on style.
+* Missing invalid syntax or hallucinated functions.
+* Ignoring tests and documentation.
+* Suggesting broad rewrites when a focused fix is enough.
+* Failing to consider the user's actual goal.
+
+### 6.10 Version Compatibility
+
+Version compatibility matters when code is distributed, documented, or used by customers on different GAUSS versions.
+
+Important considerations:
+
+* Target GAUSS version
+* Package version
+* Availability of newer language features
+* Backward-compatible defaults
+* Deprecations
+* Documentation version
+* Example reproducibility
+
+Agent guidance:
+
+* Ask or infer the target GAUSS version when compatibility matters.
+* Prefer broadly supported approaches unless newer functionality is requested.
+* Clearly state when code depends on a newer GAUSS version or package version.
+* Avoid breaking public APIs without a clear reason.
+* Document behavior changes.
+
+Common failure modes:
+
+* Assuming every user has the latest GAUSS version.
+* Using newer syntax without warning.
+* Breaking public APIs during refactoring.
+* Mixing documentation from different versions.
+* Ignoring package version dependencies.
+
+### 6.11 Release Process
+
+A release process helps ensure that package or framework changes are intentional, tested, documented, and communicated.
+
+Release considerations may include:
+
+* Version number
+* Changelog entry
+* Updated documentation
+* Updated examples
+* Passing tests
+* Package metadata
+* Backward compatibility notes
+* Migration notes when needed
+
+Agent guidance:
+
+* For package changes, consider documentation and tests before release.
+* Record notable changes in a changelog.
+* Use versioning consistently.
+* Separate experimental changes from stable releases.
+* Communicate breaking changes clearly.
+
+Common failure modes:
+
+* Releasing code without updated documentation.
+* Adding features without examples.
+* Fixing bugs without regression tests.
+* Failing to note breaking changes.
+* Treating version numbers casually.
+
+### 6.12 Maintainability
+
+Maintainability means future developers can understand, modify, test, and extend the code safely.
+
+Preferred practices:
+
+* Keep procedures focused.
+* Avoid unnecessary global state.
+* Use clear names.
+* Use consistent patterns.
+* Avoid duplication when it creates maintenance risk.
+* Keep public APIs stable.
+* Include tests for important behavior.
+* Keep documentation close to actual behavior.
+* Prefer straightforward code over clever code.
+
+Agent guidance:
+
+* When refactoring, preserve behavior unless the user asks for behavior changes.
+* Improve clarity without changing public APIs unnecessarily.
+* Explain tradeoffs when suggesting larger structural changes.
+* Suggest incremental improvements when code is fragile.
+* Consider the likely future maintainer.
+
+Common failure modes:
+
+* Over-abstracting simple code.
+* Under-structuring reusable code.
+* Creating hidden dependencies.
+* Making large rewrites without tests.
+* Optimizing for elegance instead of maintainability.
+
+### 6.13 Engineering Judgment
+
+Good software engineering requires matching the solution to the situation.
+
+A one-off script, a teaching example, a blog post, a package procedure, and a production workflow should not all be written the same way.
+
+Agent guidance:
+
+* Ask: who will use this code?
+* Ask: will this code be reused?
+* Ask: does this need tests?
+* Ask: does this need documentation?
+* Ask: does this need to remain backward-compatible?
+* Ask: is this public API or internal implementation?
+* Choose the simplest design that satisfies the real need.
+
+Common failure modes:
+
+* Applying package-level rigor to every small example.
+* Giving tutorial-style code for production needs.
+* Ignoring the long-term cost of public APIs.
+* Treating maintainability as separate from correctness.
+
+### 6.14 Software Engineering Checklist
+
+Before generating or reviewing GAUSS code for reuse, the agent should check:
+
+* Is this a script, procedure, package feature, example, or test?
+* Is the code organized appropriately for that context?
+* Are public APIs clearly separated from helpers?
+* Are procedure inputs and outputs clear?
+* Are dependencies stated?
+* Are examples runnable?
+* Are tests suggested or included when appropriate?
+* Are documentation expectations clear?
+* Are version compatibility concerns present?
+* Are error messages helpful?
+* Is the code maintainable by someone else?
+* Is the solution over-engineered or under-engineered for the task?
+
 
 ## Domain 7 — Debugging
 
