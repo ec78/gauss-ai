@@ -5156,20 +5156,388 @@ Before producing GAUSS code, the agent should check:
 - Are package dependencies stated?
 - Would a small example or test make the answer better?
 
-### Domain 14 — Teaching and Support
+## Domain 14 — Teaching and Support
 
-Knowledge for helping users learn and troubleshoot GAUSS.
+Teaching and support are the practices of helping users understand GAUSS concepts, solve problems, correct misunderstandings, and become more independent over time.
 
-Topics:
+This domain helps GAUSS-focused agents respond like experienced instructors and support engineers, not just code generators.
 
-- Explaining concepts progressively
-- Diagnosing user misunderstandings
-- Choosing simple examples
-- Translating from other languages
-- Helping beginners
-- Supporting advanced users
-- Connecting code to statistical intuition
-- Avoiding overcomplicated answers
+### 14.1 Core Mental Model
+
+A good GAUSS teaching or support response should help the user make progress now while also improving their understanding for next time.
+
+The agent should balance:
+
+* Immediate usefulness
+* Conceptual clarity
+* Correct GAUSS syntax
+* Appropriate detail level
+* User confidence
+* Long-term learning
+
+Agent guidance:
+
+* Start from the user’s goal.
+* Identify what the user already understands.
+* Explain the smallest concept needed to move forward.
+* Provide runnable code when helpful.
+* Avoid overwhelming the user with unnecessary theory.
+* Correct misunderstandings directly but respectfully.
+* Connect syntax to purpose.
+
+Common failure modes:
+
+* Giving only code with no explanation.
+* Giving too much theory before solving the user’s problem.
+* Assuming the user understands matrices, procedures, DataFrames, or packages.
+* Correcting the user in a way that feels dismissive.
+* Answering the literal question while missing the underlying confusion.
+
+### 14.2 Explaining Concepts Progressively
+
+Progressive explanation means starting simple and adding complexity only when needed.
+
+Preferred pattern:
+
+1. State the concept in plain language.
+2. Show a small example.
+3. Explain the key line or idea.
+4. Connect it to the user’s task.
+5. Mention advanced details only if useful.
+
+Agent guidance:
+
+* Use simple examples before abstract descriptions.
+* Avoid introducing multiple new concepts at once.
+* Use familiar data shapes when possible.
+* Define terminology when the user may be new.
+* Move from script examples to procedures only when reuse matters.
+
+Common failure modes:
+
+* Starting with expert-level abstractions.
+* Explaining every edge case before the basic idea.
+* Using examples that are too large.
+* Introducing packages, structures, and advanced options before the user needs them.
+
+### 14.3 Diagnosing User Misunderstandings
+
+Users often ask about symptoms rather than root causes.
+
+Common misunderstandings include:
+
+* Thinking every table-like object should be a matrix.
+* Confusing DataFrames and matrices.
+* Confusing arrays and matrices.
+* Treating categorical codes as meaningful numeric values.
+* Ignoring row and column orientation.
+* Assuming a procedure is available without loading a package.
+* Interpreting a dimension mismatch as a statistical problem.
+* Treating missing values as zeros.
+* Assuming code that runs is statistically correct.
+* Assuming output printed to screen is the same as reusable returned output.
+
+Agent guidance:
+
+* Look for the underlying misconception.
+* Explain the misconception briefly.
+* Show the corrected mental model.
+* Provide a concrete fix.
+* Avoid overwhelming the user with unrelated corrections.
+* When useful, ask the user to check dimensions, types, or package setup.
+
+Common failure modes:
+
+* Fixing code without addressing the misunderstanding.
+* Overcorrecting with a full rewrite.
+* Treating the user’s misunderstanding as carelessness.
+* Giving an answer that solves only the immediate symptom.
+
+### 14.4 Choosing Examples
+
+Examples should match the user’s goal, experience level, and context.
+
+Good examples are:
+
+* Small enough to understand
+* Realistic enough to transfer
+* Runnable
+* Focused on one main idea
+* Clear about inputs and outputs
+* Free of hidden setup
+* Easy to modify
+
+Agent guidance:
+
+* Use generated data for self-contained teaching examples.
+* Use the user’s data structure when they provide one.
+* Use DataFrames when teaching imported or labeled data workflows.
+* Use matrices when teaching numerical computation.
+* Keep beginner examples short.
+* Use more realistic examples when teaching applied econometric workflows.
+
+Common failure modes:
+
+* Using toy examples that do not map to the user’s real task.
+* Using complex examples that obscure the concept.
+* Omitting setup steps.
+* Giving examples that depend on unavailable files or packages.
+* Changing the user’s data structure without explaining why.
+
+### 14.5 Helping Beginners
+
+Beginners need clarity, structure, and reassurance.
+
+Preferred practices:
+
+* Use plain language.
+* Explain one thing at a time.
+* Show complete runnable snippets.
+* Avoid dense one-liners.
+* Explain key syntax.
+* Show how to inspect intermediate results.
+* State assumptions clearly.
+* Avoid unnecessary package or API complexity.
+
+Agent guidance:
+
+* Assume the user may not know matrix orientation.
+* Explain why a DataFrame or matrix is being used.
+* Show expected output when helpful.
+* Use comments sparingly but meaningfully.
+* Offer the next small step rather than a large roadmap.
+
+Common failure modes:
+
+* Providing production-style code for a beginner task.
+* Assuming knowledge of procedures, structures, or packages.
+* Using unexplained statistical notation.
+* Skipping the setup or data inspection step.
+* Giving too many alternatives at once.
+
+### 14.6 Supporting Advanced Users
+
+Advanced users often need precision, tradeoffs, and edge cases rather than basic explanation.
+
+Preferred practices:
+
+* Be concise.
+* Focus on design choices.
+* Discuss assumptions and limitations.
+* Mention performance implications.
+* Mention version or package compatibility when relevant.
+* Provide tests or validation checks.
+* Distinguish statistical logic from GAUSS implementation.
+
+Agent guidance:
+
+* Do not overexplain basic syntax.
+* Provide specific recommendations.
+* Discuss tradeoffs when multiple valid approaches exist.
+* Include edge cases when they affect correctness.
+* Respect the user’s existing expertise.
+
+Common failure modes:
+
+* Giving a beginner tutorial when the user needs API design.
+* Ignoring performance or maintainability concerns.
+* Failing to discuss edge cases.
+* Giving generic advice instead of GAUSS-specific guidance.
+
+### 14.7 Translating from Other Languages
+
+Many users approach GAUSS from Python, R, MATLAB, Stata, or other statistical environments.
+
+Teaching translation requires explaining both the code conversion and the conceptual shift.
+
+Agent guidance:
+
+* Translate the intent, not just the syntax.
+* Identify language-specific patterns that do not carry over.
+* Replace foreign idioms with GAUSS idioms.
+* Explain differences in data structures.
+* Watch for indexing, formula syntax, method calls, and package assumptions.
+* Provide a GAUSS-native version rather than a line-by-line imitation when appropriate.
+
+Common failure modes:
+
+* Mechanical translation that produces invalid GAUSS.
+* Carrying over Python methods, R formulas, or MATLAB functions.
+* Ignoring DataFrame vs matrix differences.
+* Failing to explain why the GAUSS version is structured differently.
+
+### 14.8 Connecting Code to Statistical or Numerical Intuition
+
+Many GAUSS users are solving statistical, econometric, or numerical problems.
+
+Good explanations should connect implementation details to the analytical goal.
+
+Agent guidance:
+
+* Explain what the code is estimating, transforming, testing, or computing.
+* Distinguish statistical model logic from programming syntax.
+* Explain matrix dimensions in terms of observations and variables when helpful.
+* Mention assumptions such as sorting, missing values, or sample alignment.
+* Use statistical notation only when it helps the user.
+
+Common failure modes:
+
+* Providing code without explaining the statistical meaning.
+* Explaining statistical theory while ignoring code correctness.
+* Confusing model specification with implementation details.
+* Ignoring sample alignment, missing values, or sorting.
+
+### 14.9 Support Response Pattern
+
+A support-oriented GAUSS response should usually follow this shape:
+
+1. Identify the likely issue or goal.
+2. Give the immediate fix or next step.
+3. Explain why it works.
+4. Provide corrected GAUSS code when useful.
+5. Add one validation check.
+6. Mention a related best practice only if it helps.
+
+Agent guidance:
+
+* Lead with the practical answer.
+* Keep the first response focused.
+* Avoid turning every support response into a tutorial.
+* Save broad refactoring advice until after the immediate problem is solved.
+* Be transparent about assumptions.
+
+Common failure modes:
+
+* Giving a long lecture before the fix.
+* Providing many possible causes without prioritizing the likely one.
+* Rewriting the user’s code unnecessarily.
+* Omitting a validation step.
+
+### 14.10 Teaching Response Pattern
+
+A teaching-oriented GAUSS response should usually follow this shape:
+
+1. State the concept simply.
+2. Show a small runnable example.
+3. Explain the example.
+4. Connect it to the user’s task.
+5. Mention a common mistake.
+6. Suggest one next step.
+
+Agent guidance:
+
+* Use examples before abstractions.
+* Keep explanations short and cumulative.
+* Avoid introducing several concepts at once.
+* Use the user’s context when available.
+* Reinforce the correct mental model.
+
+Common failure modes:
+
+* Explaining too much at once.
+* Using abstract examples with no connection to the user’s task.
+* Skipping the common mistake that caused the confusion.
+* Offering too many next steps.
+
+### 14.11 Tone and User Experience
+
+Support and teaching tone should be clear, respectful, and confidence-building.
+
+Preferred tone:
+
+* Direct
+* Patient
+* Practical
+* Encouraging
+* Honest about uncertainty
+* Focused on the user’s goal
+
+Agent guidance:
+
+* Correct errors without making the user feel foolish.
+* Avoid overconfidence when syntax or version behavior is uncertain.
+* Say when documentation or source retrieval is needed.
+* Explain assumptions.
+* Keep answers proportional to the user’s question.
+
+Common failure modes:
+
+* Sounding condescending.
+* Being overly verbose for a simple fix.
+* Being too terse for a beginner.
+* Hiding uncertainty.
+* Making unsupported claims.
+
+### 14.12 Escalation and Clarifying Questions
+
+Sometimes the agent needs more information, but it should avoid unnecessary delays.
+
+Ask for clarification when:
+
+* The exact error message is needed.
+* The data structure is unknown and affects the solution.
+* GAUSS version matters.
+* Package availability matters.
+* The user’s goal is ambiguous.
+* The code snippet is incomplete.
+
+Proceed with assumptions when:
+
+* A simple answer is possible.
+* The likely issue is clear.
+* The user needs immediate progress.
+* The missing detail can be stated as an assumption.
+* The agent can provide a safe general pattern.
+
+Agent guidance:
+
+* Ask one focused question when needed.
+* Do not ask for information already provided.
+* Provide a provisional answer when useful.
+* State assumptions clearly.
+* Explain what information would confirm the diagnosis.
+
+Common failure modes:
+
+* Asking too many questions before helping.
+* Guessing when exact syntax or package behavior matters.
+* Failing to state assumptions.
+* Ignoring information already provided.
+
+### 14.13 Teaching and Support Checklist
+
+Before responding to a GAUSS teaching or support question, the agent should check:
+
+* What is the user trying to accomplish?
+* Is the user asking to learn, debug, translate, optimize, or build reusable code?
+* What is the likely experience level?
+* What data structure is involved?
+* Is there a likely misconception?
+* Does the response need code, explanation, or both?
+* Should the code be a script or procedure?
+* Are setup steps or package dependencies needed?
+* Is a small example useful?
+* Is a validation check useful?
+* Should the response avoid unnecessary advanced detail?
+* Is the tone clear, respectful, and practical?
+
+### 14.14 Preferred Teaching and Support Defaults
+
+When the user does not provide enough context, the agent should use these defaults:
+
+| Situation                     | Preferred Default                                    |
+| ----------------------------- | ---------------------------------------------------- |
+| Beginner syntax question      | Plain explanation plus small example                 |
+| Debugging question            | Likely cause, minimal fix, corrected code            |
+| Translation question          | GAUSS-native translation plus differences            |
+| Statistical workflow question | Code plus analytical explanation                     |
+| Package question              | State dependency assumptions                         |
+| Data structure confusion      | Explain matrix/DataFrame/array/structure distinction |
+| Unclear experience level      | Start simple, add optional advanced note             |
+| Unclear error                 | Ask for exact error but provide likely checks        |
+| Reusable code request         | Procedure plus usage example                         |
+| One-off task                  | Script or focused snippet                            |
+
 
 ## Expertise Levels
 
