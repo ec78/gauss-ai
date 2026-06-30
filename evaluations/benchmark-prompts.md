@@ -2,9 +2,11 @@
 
 This file evaluates the GAUSS Code Assistant against representative GAUSS programming tasks and known AI failure modes, including invalid syntax, cross-language contamination, hallucinated APIs, data-shape mistakes, and mismatched explanations.
 
+Manual evaluation run files should reference the stable Prompt IDs assigned in this file.
+
 ## Code Generation
 
-### Prompt: Matrix summary procedure
+### Prompt 1.1: Matrix summary procedure
 
 Write a GAUSS procedure `summarizeCols(x)` that returns a matrix with each column's mean, standard deviation, minimum, and maximum.
 
@@ -13,7 +15,7 @@ Expected behavior:
 - Avoids Python, R, or MATLAB idioms such as `def`, `data.frame`, or `end`.
 - Does not invent unsupported GAUSS helper functions.
 
-### Prompt: String parser
+### Prompt 1.2: String parser
 
 Write a GAUSS procedure that takes a string like `"alpha=0.10"` and returns the text before and after the first equals sign.
 
@@ -22,7 +24,7 @@ Expected behavior:
 - Handles the case where `strindx` returns `0` when `"="` is not found.
 - Avoids assuming string indexing behavior from Python or MATLAB.
 
-### Prompt: DataFrame cleaning script
+### Prompt 1.3: DataFrame cleaning script
 
 Draft a short GAUSS script that loads a dataset, drops rows with missing values in selected variables, and prints basic summaries.
 
@@ -33,7 +35,7 @@ Expected behavior:
 
 ## Debugging
 
-### Prompt: Array dimension error
+### Prompt 2.1: Array dimension error
 
 Debug this GAUSS snippet:
 
@@ -48,7 +50,7 @@ Expected behavior:
 - Recommends GAUSS array dimension inspection rather than matrix-only functions.
 - Avoids converting the issue into a Python NumPy explanation.
 
-### Prompt: String search bug
+### Prompt 2.2: String search bug
 
 Explain why this condition fails when the pattern is absent:
 
@@ -64,7 +66,7 @@ Expected behavior:
 - Corrects the conditional logic.
 - Mentions `strlen` only when useful, without forcing it into the answer.
 
-### Prompt: Scope and package dependency
+### Prompt 2.3: Scope and package dependency
 
 A user reports `Undefined symbol qardl` after copying a procedure call from package documentation. Diagnose likely causes.
 
@@ -75,7 +77,7 @@ Expected behavior:
 
 ## Code Explanation
 
-### Prompt: Beginner matrix explanation
+### Prompt 3.1: Beginner matrix explanation
 
 Explain this GAUSS code to a beginner:
 
@@ -91,7 +93,7 @@ Expected behavior:
 - Uses GAUSS terminology without drifting into Python or R.
 - Adapts tone and detail for a beginner.
 
-### Prompt: Advanced structure explanation
+### Prompt 3.2: Advanced structure explanation
 
 Explain how a GAUSS control structure is used to pass options into a procedure, assuming the reader is an advanced GAUSS user.
 
@@ -102,7 +104,7 @@ Expected behavior:
 
 ## Code Translation
 
-### Prompt: MATLAB to GAUSS
+### Prompt 4.1: MATLAB to GAUSS
 
 Translate this MATLAB-style logic into GAUSS:
 
@@ -119,7 +121,7 @@ Expected behavior:
 - Uses GAUSS string-array handling and `strindx` correctly.
 - Handles `strindx` returning `0` when no match exists.
 
-### Prompt: Python to GAUSS
+### Prompt 4.2: Python to GAUSS
 
 Translate this Python idea into GAUSS: compute column means for a numeric matrix, replace missing values with column means, and return the cleaned matrix.
 
@@ -128,7 +130,7 @@ Expected behavior:
 - Handles GAUSS missing values and matrix dimensions correctly.
 - Produces GAUSS-shaped algorithm guidance or snippets only.
 
-### Prompt: R to GAUSS regression setup
+### Prompt 4.3: R to GAUSS regression setup
 
 Translate this R-style workflow into GAUSS:
 
@@ -148,7 +150,7 @@ Expected behavior:
 
 ## Code Review
 
-### Prompt: Review public API design
+### Prompt 5.1: Review public API design
 
 Review a proposed GAUSS package entry point that exposes `fitModel(y, x, ctl)` and several helper procedures named with leading underscores.
 
@@ -157,7 +159,7 @@ Expected behavior:
 - Checks argument validation, structure defaults, and package dependency clarity.
 - Focuses on GAUSS maintainability rather than generic style advice.
 
-### Prompt: Review matrix and array usage
+### Prompt 5.2: Review matrix and array usage
 
 Review code that mixes matrices and arrays and calls `rows()` and `cols()` on every object.
 
@@ -168,7 +170,7 @@ Expected behavior:
 
 ## Refactoring
 
-### Prompt: Procedure cleanup
+### Prompt 6.1: Procedure cleanup
 
 Refactor a long GAUSS procedure that computes estimates, prints output, and writes files in one block.
 
@@ -177,7 +179,7 @@ Expected behavior:
 - Preserves behavior and public API compatibility.
 - Avoids unnecessary abstractions or non-GAUSS design patterns.
 
-### Prompt: Control structure defaults
+### Prompt 6.2: Control structure defaults
 
 Suggest a refactor for repeated option parsing code across several GAUSS procedures.
 
@@ -188,7 +190,7 @@ Expected behavior:
 
 ## Optimization
 
-### Prompt: Loop to matrix operation
+### Prompt 7.1: Loop to matrix operation
 
 Optimize GAUSS code that loops over rows to compute column sums for a large matrix.
 
@@ -197,7 +199,7 @@ Expected behavior:
 - Explains dimension assumptions and missing-value implications.
 - Avoids premature optimization that changes results.
 
-### Prompt: String processing efficiency
+### Prompt 7.2: String processing efficiency
 
 Improve a GAUSS routine that repeatedly calls `strlen` and `strindx` inside nested loops over many names.
 
@@ -208,7 +210,7 @@ Expected behavior:
 
 ## Documentation
 
-### Prompt: Procedure usage docs
+### Prompt 8.1: Procedure usage docs
 
 Draft concise documentation for a GAUSS procedure `winsorizeDF(df, vars, limits)` that returns a cleaned DataFrame.
 
@@ -217,7 +219,7 @@ Expected behavior:
 - Uses GAUSS terminology for DataFrames and variables.
 - Avoids promising unsupported methods or package features.
 
-### Prompt: Package README section
+### Prompt 8.2: Package README section
 
 Write a README section explaining how users should load a GAUSS package and call its public procedures.
 
@@ -228,7 +230,7 @@ Expected behavior:
 
 ## Test Generation
 
-### Prompt: Matrix procedure tests
+### Prompt 9.1: Matrix procedure tests
 
 Generate test cases for a GAUSS procedure that standardizes each matrix column.
 
@@ -237,7 +239,7 @@ Expected behavior:
 - States expected outputs or invariants clearly.
 - Avoids using non-GAUSS testing frameworks unless requested.
 
-### Prompt: String utility tests
+### Prompt 9.2: String utility tests
 
 Generate tests for a GAUSS string utility that splits a name at the first underscore.
 
@@ -248,7 +250,7 @@ Expected behavior:
 
 ## Design Guidance
 
-### Prompt: Choose data representation
+### Prompt 10.1: Choose data representation
 
 Advise whether a GAUSS package should represent model results as a structure, matrix, DataFrame, or array.
 
@@ -257,7 +259,7 @@ Expected behavior:
 - Considers public API stability and downstream reporting.
 - Avoids one-size-fits-all recommendations.
 
-### Prompt: Beginner vs advanced response
+### Prompt 10.2: Beginner vs advanced response
 
 For the same GAUSS dimension mismatch error, explain how the assistant should respond to a beginner and to an advanced user.
 
