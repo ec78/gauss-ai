@@ -1,0 +1,75 @@
+# GAUSS AI knowledge source configuration.
+# This file is safe to commit and should contain source metadata only.
+# Do not store personal machine-specific paths here.
+#Real local paths should be stored in:
+#configs/knowledge_sources.local.yaml
+
+knowledge_sources:
+  - id: official_gauss_docs
+    name: Official GAUSS Documentation
+    category: documentation
+    authority: official
+    priority: 1
+    type: local_path
+    path: "C:/Users/eclow/Documents/GitHub/docs"
+    status: active
+    supported_versions:
+      - GAUSS 26
+      - GAUSS 25
+    retrieval_mode: search
+    description: Official GAUSS documentation. Highest authority for syntax, function signatures, arguments, return values, and version-specific behavior.
+
+  - id: aptech_gauss_llm_reference
+    name: aptech/gauss-llm-reference
+    category: llm_reference
+    authority: official
+    priority: 2
+    type: local_path
+    path: "C:/Users/eclow/Documents/GitHub/gauss-llm-reference"
+    status: active
+    supported_versions:
+      - GAUSS 26
+      - GAUSS 25
+    retrieval_mode: search
+    description: Approved GAUSS LLM reference material for AI-safe syntax, idioms, and common hallucination prevention.
+
+  - id: ec78_gauss_programming_llm
+    name: ec78/gauss-programming-llm
+    category: llm_reference
+    authority: community
+    priority: 3
+    type: local_path
+    path: "C:/Users/eclow/Documents/GitHub/gauss-programming-llm"
+    status: active
+    supported_versions:
+      - GAUSS 26
+      - GAUSS 25
+    retrieval_mode: search
+    description: Supplemental GAUSS programming reference material and examples for AI coding support.
+
+  - id: aptech_gauss_blog
+    name: aptech/gauss_blog
+    category: examples
+    authority: official
+    priority: 4
+    type: local_path
+    path: https://www.aptech.com/blog/
+    status: active
+    supported_versions:
+      - GAUSS 26
+      - GAUSS 25
+    retrieval_mode: search
+    description: Official GAUSS blog source repository containing applied examples, tutorials, data, and code.
+
+  - id: gauss_language_expert
+    name: GAUSS Language Expert
+    category: expert_module
+    authority: internal
+    priority: 5
+    type: repo_path
+    path: ./experts/gauss-language
+    status: active
+    supported_versions:
+      - framework
+    retrieval_mode: local_context
+    description: Internal expert module containing the GAUSS Language Body of Knowledge, best practices, common mistakes, and reasoning guidance.
