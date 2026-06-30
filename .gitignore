@@ -1,0 +1,27 @@
+# Local machine-specific knowledge source paths
+configs/knowledge_sources.local.yaml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor folders
+.vscode/
+.idea/
+
+# Python artifacts, for future tooling
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+
+# Build/cache/output folders
+.cache/
+dist/
+build/
