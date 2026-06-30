@@ -11,6 +11,8 @@ This rubric is used to score responses to `evaluations/benchmark-prompts.md` for
 - 1 = Poor
 - 0 = Failing / unsafe / unusable
 
+For dimensions that do not apply to a benchmark prompt, mark the score as N/A and exclude that dimension from the overall average.
+
 ## Core Scoring Dimensions
 
 ### 1. GAUSS Syntax Correctness
