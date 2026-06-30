@@ -11,7 +11,7 @@ This rubric is used to score responses to `evaluations/benchmark-prompts.md` for
 - 1 = Poor
 - 0 = Failing / unsafe / unusable
 
-For dimensions that do not apply to a benchmark prompt, mark the score as N/A and exclude that dimension from the overall average.
+Some dimensions may be marked `N/A` when they do not apply to a benchmark prompt. `N/A` dimensions should be excluded from the overall average. Evaluators should briefly explain why a dimension was marked `N/A` when it is not obvious.
 
 ## Core Scoring Dimensions
 
@@ -96,7 +96,7 @@ For dimensions that do not apply to a benchmark prompt, mark the score as N/A an
 
 ## Overall Score
 
-The overall score is the average of applicable dimension scores. Automatic failure conditions override the average and should result in a failing decision unless the issue is explicitly scoped as a harmless example or caveated uncertainty.
+The overall score is the average of applicable dimension scores only. Dimensions marked `N/A` are excluded from the calculation. Automatic failure conditions still override the average and should result in a failing decision unless the issue is explicitly scoped as a harmless example or caveated uncertainty.
 
 ## Review Notes Template
 
@@ -106,18 +106,19 @@ Response:
 
 Scores:
 
-- GAUSS Syntax Correctness:
-- Function and Package Validity:
-- Data Structure Reasoning:
-- Dimension and Numerical Awareness:
-- Task Mode Fit:
-- Explanation Quality:
-- Assumptions and Dependencies:
-- Maintainability and Best Practices:
-- Testing or Validation:
-- Hallucination Avoidance:
+- GAUSS Syntax Correctness: 0-4 or N/A
+- Function and Package Validity: 0-4 or N/A
+- Data Structure Reasoning: 0-4 or N/A
+- Dimension and Numerical Awareness: 0-4 or N/A
+- Task Mode Fit: 0-4 or N/A
+- Explanation Quality: 0-4 or N/A
+- Assumptions and Dependencies: 0-4 or N/A
+- Maintainability and Best Practices: 0-4 or N/A
+- Testing or Validation: 0-4 or N/A
+- Hallucination Avoidance: 0-4 or N/A
 
 Overall Score:
+N/A Notes:
 Blocking Issues:
 Suggested Improvements:
 Decision: Pass / Needs Revision / Fail
