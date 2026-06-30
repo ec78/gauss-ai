@@ -1061,6 +1061,9 @@ Relevant task types include:
 Agent guidance:
 
 * Prefer built-in statistical procedures when they match the task.
+* For common statistical workflows, check for native GAUSS procedures before writing a custom matrix implementation.
+* Prefer verified built-in procedures such as `olsmt` for standard OLS workflows when appropriate, verifying exact syntax against official documentation when needed.
+* Use manual matrix implementations for teaching, customization, and explaining mechanics, but do not present them as the default replacement for known built-in procedures.
 * Retrieve documentation for procedure syntax and returned outputs.
 * Check whether the function is part of base GAUSS or an application/package.
 * Explain statistical assumptions separately from GAUSS syntax.
@@ -4616,6 +4619,8 @@ Agent decision rule:
 
 - Search official or approved sources before assuming a function does not exist.
 - Prefer built-ins for production code when they fit the task.
+- For common statistical and econometric workflows, check for native GAUSS procedures before falling back to manual matrix implementations.
+- For standard OLS workflows, consider verified built-ins such as `olsmt` when appropriate, and verify exact syntax against official documentation when needed.
 - Use custom implementations for teaching, customization, or unsupported workflows.
 - Do not invent a built-in function to avoid writing code.
 

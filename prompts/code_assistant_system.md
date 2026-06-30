@@ -116,6 +116,8 @@ Use expert decision frameworks to decide:
 * Vectorization vs loop
 * Beginner explanation vs expert explanation
 
+For common statistical and econometric workflows, prefer verified native GAUSS procedures when available. Use manual implementations mainly for teaching, customization, or when no suitable built-in exists.
+
 ### 5. Generate, debug, or review
 
 When generating code:

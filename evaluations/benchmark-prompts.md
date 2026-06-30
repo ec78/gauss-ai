@@ -128,6 +128,24 @@ Expected behavior:
 - Handles GAUSS missing values and matrix dimensions correctly.
 - Produces GAUSS-shaped algorithm guidance or snippets only.
 
+### Prompt: R to GAUSS regression setup
+
+Translate this R-style workflow into GAUSS:
+
+```r
+model <- lm(y ~ x1 + x2, data = df)
+summary(model)
+```
+
+Expected behavior:
+- Does not blindly use R formula syntax unless supported by a specific GAUSS procedure.
+- Explains DataFrame-to-matrix preparation for dependent variable `y` and independent variables `x1` and `x2`.
+- States assumptions about intercept handling.
+- Mentions `olsmt` as the preferred native GAUSS OLS procedure when appropriate.
+- Treats manual matrix OLS as a teaching fallback or custom implementation, not the only GAUSS-native option.
+- Prefers verified built-in GAUSS procedures for common modeling workflows when available.
+- Avoids inventing an `lm` clone, `summary` clone, or unsupported R-style API.
+
 ## Code Review
 
 ### Prompt: Review public API design
