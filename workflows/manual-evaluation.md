@@ -41,6 +41,24 @@ Run a manual evaluation:
 - Document uncertainty instead of forcing a false precision.
 - Note whether the failure belongs in prompt instructions, expert knowledge, knowledge retrieval, tool behavior, or benchmark design.
 
+## Benchmark Traceability
+
+Every manual evaluation run should reference:
+
+- Stable Prompt ID from `evaluations/benchmark-prompts.md`.
+- Prompt category.
+- Benchmark name.
+- Agent version or repository state.
+- Evaluation run filename.
+- Any follow-up action created from the run.
+
+When benchmark expectations are changed because of an evaluation finding, the evaluator should:
+
+1. Update the benchmark prompt.
+2. Update expert guidance if the issue reflects reusable GAUSS knowledge.
+3. Update the system prompt only if the behavior should affect runtime behavior broadly.
+4. Note the change in the evaluation run file or runs index.
+
 ## 6. Result Recording Template
 
 ## Evaluation Result
