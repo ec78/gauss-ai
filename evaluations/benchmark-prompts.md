@@ -144,7 +144,9 @@ Expected behavior:
 - Explains DataFrame-to-matrix preparation for dependent variable `y` and independent variables `x1` and `x2`.
 - States assumptions about intercept handling.
 - Mentions `olsmt` as the preferred native GAUSS OLS procedure when appropriate.
-- Treats manual matrix OLS as a teaching fallback or custom implementation, not the only GAUSS-native option.
+- Provides an `olsmt`-based example as the primary GAUSS-native translation when recommending `olsmt`.
+- If exact `olsmt` syntax is uncertain, explicitly says that syntax should be verified rather than substituting only manual OLS.
+- Treats manual matrix OLS as a secondary teaching fallback or custom implementation, not the main code example.
 - Prefers verified built-in GAUSS procedures for common modeling workflows when available.
 - Avoids inventing an `lm` clone, `summary` clone, or unsupported R-style API.
 
