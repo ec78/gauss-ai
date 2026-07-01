@@ -993,6 +993,8 @@ For a native command inventory organized by official documentation category, con
 
 For the decision workflow that governs when to recommend a native command, retrieve exact documentation, or write manual code, use `workflows/native-command-selection.md`.
 
+For command documentation retrieval, use `workflows/command-documentation-retrieval.md`: command categories are for discovery, official command-specific documentation is authoritative for exact syntax, and curated notes in `experts/gauss-language/commands/` are only a small convenience cache.
+
 ### 4.1 Core Mental Model
 
 A GAUSS-focused agent should prefer verified GAUSS functionality over invented code.

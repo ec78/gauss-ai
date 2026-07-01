@@ -6,6 +6,8 @@ This workflow defines how the GAUSS Code Assistant should decide whether to reco
 
 `experts/gauss-language/COMMAND_CATEGORIES.md` is a discovery tool. It helps identify likely native GAUSS commands by official documentation category, but it does not replace command-specific documentation. Category membership is not proof of exact syntax, arguments, return values, examples, or version behavior.
 
+Use `workflows/command-documentation-retrieval.md` for the hybrid documentation strategy: command categories for discovery, official command docs for exact syntax, and curated command notes only as a small convenience cache.
+
 ## 2. Decision Process
 
 1. Classify the user task.
@@ -21,7 +23,7 @@ This workflow defines how the GAUSS Code Assistant should decide whether to reco
    For common statistical, data management, string, matrix, optimization, and file I/O tasks, first consider verified native GAUSS functionality.
 
 5. Retrieve command-specific documentation before giving exact syntax.
-   Exact syntax, arguments, return values, examples, package requirements, and version behavior should come from command-specific documentation or verified repository context.
+   Exact syntax, arguments, return values, examples, package requirements, and version behavior should come from official command-specific documentation. Short curated notes may help orient the response, but official docs remain authoritative.
 
 6. Use manual implementations only when appropriate.
    Manual code is appropriate when the user asks for mechanics, no suitable native command exists, customization is needed, teaching requires the underlying computation, or exact native syntax cannot be verified and the response must remain high level.
@@ -60,6 +62,8 @@ When syntax is known from verified documentation or repository context, provide 
 ## 6. Integration Points
 
 - `experts/gauss-language/COMMAND_CATEGORIES.md` provides the category-based command inventory.
+- `workflows/command-documentation-retrieval.md` defines the hybrid strategy for official documentation retrieval and curated command notes.
+- `experts/gauss-language/commands/` may contain short curated notes for selected high-value commands.
 - `experts/gauss-language/BODY_OF_KNOWLEDGE.md` defines standard library awareness and built-in versus custom implementation guidance.
 - `prompts/code_assistant_system.md` should instruct the Code Assistant to use this workflow when choosing between native commands and manual code.
 - `evaluations/benchmark-prompts.md` should test whether the assistant considers native GAUSS procedures before manual implementations.
