@@ -15,6 +15,8 @@ This file records notable changes to the GAUSS AI framework.
 - Improved benchmark expectations for native GAUSS statistical procedures.
 - Refined R-to-GAUSS regression translation expectations around `olsmt`.
 - Added public API design review evaluation coverage.
+- Expanded manual benchmark coverage across Code Generation, Code Explanation, Refactoring, Optimization, Documentation, Test Generation, and Design Guidance.
+- Added Test Generation and Design Guidance manual evaluation coverage.
 
 ## [0.1.0] - 2026-06-26
 
