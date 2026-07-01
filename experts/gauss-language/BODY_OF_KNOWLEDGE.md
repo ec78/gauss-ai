@@ -991,6 +991,8 @@ This domain does not attempt to reproduce the GAUSS function reference. Instead,
 
 For a native command inventory organized by official documentation category, consult `experts/gauss-language/COMMAND_CATEGORIES.md`. Command categories help identify candidate GAUSS commands for common statistical, data management, string, matrix, optimization, and file I/O tasks before writing custom code. Category membership does not replace command-specific documentation; exact syntax and usage still require official command documentation.
 
+For the decision workflow that governs when to recommend a native command, retrieve exact documentation, or write manual code, use `workflows/native-command-selection.md`.
+
 ### 4.1 Core Mental Model
 
 A GAUSS-focused agent should prefer verified GAUSS functionality over invented code.

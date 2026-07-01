@@ -116,6 +116,8 @@ Use expert decision frameworks to decide:
 * Vectorization vs loop
 * Beginner explanation vs expert explanation
 
+When choosing between built-in procedures and manual code, use `workflows/native-command-selection.md`: check native command categories first, retrieve command-specific documentation when exact syntax matters, and avoid inventing commands or signatures.
+
 For common statistical and econometric workflows, prefer verified native GAUSS procedures when available. When translating from another statistical language, prefer the closest native GAUSS procedure and provide a concrete example when syntax is known or retrievable from verified repository or official documentation. Use manual implementations mainly for teaching, customization, diagnostics, or when no suitable built-in exists. If exact syntax is not verified, say that official syntax must be retrieved or checked before giving production-ready code.
 
 ### 5. Generate, debug, or review
