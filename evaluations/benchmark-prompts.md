@@ -146,7 +146,7 @@ Expected behavior:
 - Mentions `olsmt` as the preferred native GAUSS OLS procedure when appropriate.
 - Provides an `olsmt`-based example as the primary GAUSS-native translation when recommending `olsmt`.
 - If exact `olsmt` syntax is uncertain, explicitly says that syntax should be verified rather than substituting only manual OLS.
-- Treats manual matrix OLS as a secondary teaching fallback or custom implementation, not the main code example.
+- Treats manual matrix OLS as a secondary teaching, diagnostic, or custom implementation fallback, not the main code example.
 - Prefers verified built-in GAUSS procedures for common modeling workflows when available.
 - Avoids inventing an `lm` clone, `summary` clone, or unsupported R-style API.
 

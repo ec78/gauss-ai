@@ -1061,12 +1061,12 @@ Relevant task types include:
 Agent guidance:
 
 * Prefer built-in statistical procedures when they match the task.
-* For common statistical workflows, check for native GAUSS procedures before writing a custom matrix implementation.
+* For common statistical or econometric workflows, check for native GAUSS procedures before writing a custom matrix implementation.
 * Prefer verified built-in procedures such as `olsmt` for standard OLS workflows when appropriate, verifying exact syntax against official documentation when needed.
-* When recommending a native GAUSS procedure, provide a concrete example using that procedure when the syntax is known.
+* When recommending a native GAUSS procedure, provide a concrete example using that procedure when the syntax is known or retrievable from verified repository or official documentation.
 * If exact procedure syntax is uncertain, state that retrieval or documentation verification is required before giving production-ready code.
 * For common statistical translations, make the closest native GAUSS procedure the primary example when possible.
-* Use manual matrix implementations for teaching, customization, and explaining mechanics, but do not present them as the default replacement for known built-in procedures.
+* Use manual matrix implementations for teaching, customization, diagnostics, and explaining mechanics, but do not present them as the default replacement for known built-in procedures.
 * Retrieve documentation for procedure syntax and returned outputs.
 * Check whether the function is part of base GAUSS or an application/package.
 * Explain statistical assumptions separately from GAUSS syntax.
@@ -4624,9 +4624,9 @@ Agent decision rule:
 - Prefer built-ins for production code when they fit the task.
 - For common statistical and econometric workflows, check for native GAUSS procedures before falling back to manual matrix implementations.
 - For standard OLS workflows, consider verified built-ins such as `olsmt` when appropriate, and verify exact syntax against official documentation when needed.
-- When a native procedure is recommended, provide a concrete example if the syntax is known.
+- When a native procedure is recommended, provide a concrete example if the syntax is known or retrievable from verified repository or official documentation.
 - If exact syntax is uncertain, say retrieval or documentation verification is required.
-- Use custom implementations for teaching, customization, or unsupported workflows.
+- Use custom implementations for teaching, customization, diagnostics, or unsupported workflows.
 - Do not replace a recommended built-in procedure with only a manual implementation unless the user asks for the underlying mechanics.
 - Do not invent a built-in function to avoid writing code.
 

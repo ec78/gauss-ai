@@ -8,6 +8,13 @@ This file records notable changes to the GAUSS AI framework.
 - Initial Code Assistant agent.
 - Knowledge source integration.
 - Evaluation benchmarks.
+- Added stable benchmark prompt IDs.
+- Added and updated manual evaluation runs for Code Assistant benchmarks.
+- Added guidance for `N/A` scoring dimensions.
+- Added benchmark traceability and coverage tracking.
+- Improved benchmark expectations for native GAUSS statistical procedures.
+- Refined R-to-GAUSS regression translation expectations around `olsmt`.
+- Added public API design review evaluation coverage.
 
 ## [0.1.0] - 2026-06-26
 
@@ -19,4 +26,3 @@ This file records notable changes to the GAUSS AI framework.
 - Added experts layer and initial expert module structure.
 - Added ADR structure for architectural decisions.
 - Tagged first framework baseline release.
-
