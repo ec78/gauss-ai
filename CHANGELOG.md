@@ -9,14 +9,19 @@ This file records notable changes to the GAUSS AI framework.
 - Knowledge source integration.
 - Evaluation benchmarks.
 - Added stable benchmark prompt IDs.
-- Added and updated manual evaluation runs for Code Assistant benchmarks.
-- Added guidance for `N/A` scoring dimensions.
-- Added benchmark traceability and coverage tracking.
+- Added manual evaluation workflow and scoring rubric updates, including `N/A` scoring dimension handling.
+- Added completed Code Assistant manual evaluation runs.
+- Added evaluation run index and benchmark coverage tracking.
+- Added benchmark traceability guidance.
+- Added native GAUSS command category knowledge.
+- Added native command selection workflow.
+- Added hybrid command documentation retrieval workflow.
 - Improved benchmark expectations for native GAUSS statistical procedures.
 - Refined R-to-GAUSS regression translation expectations around `olsmt`.
 - Added public API design review evaluation coverage.
 - Expanded manual benchmark coverage across Code Generation, Code Explanation, Refactoring, Optimization, Documentation, Test Generation, and Design Guidance.
 - Added Test Generation and Design Guidance manual evaluation coverage.
+- Added release readiness checklist, known limitations, and roadmap notes for `v0.2.0`.
 
 ## [0.1.0] - 2026-06-26
 
