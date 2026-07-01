@@ -989,6 +989,8 @@ Standard Library Awareness is the ability to recognize the major categories of b
 
 This domain does not attempt to reproduce the GAUSS function reference. Instead, it defines how a GAUSS-focused agent should reason about built-in functionality.
 
+For a native command inventory organized by official documentation category, consult `experts/gauss-language/COMMAND_CATEGORIES.md`. Command categories help identify candidate GAUSS commands for common statistical, data management, string, matrix, optimization, and file I/O tasks before writing custom code. Category membership does not replace command-specific documentation; exact syntax and usage still require official command documentation.
+
 ### 4.1 Core Mental Model
 
 A GAUSS-focused agent should prefer verified GAUSS functionality over invented code.
@@ -998,6 +1000,7 @@ GAUSS includes extensive built-in functionality for matrix operations, statistic
 Agent guidance:
 
 * Prefer built-in GAUSS functionality when it is available and appropriate.
+* Use `COMMAND_CATEGORIES.md` to identify likely native commands before implementing common functionality manually.
 * Retrieve official documentation when function syntax, arguments, return values, or version-specific behavior matters.
 * Distinguish base GAUSS functionality from package-specific functionality.
 * Avoid inventing convenience functions.

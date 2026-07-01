@@ -19,6 +19,20 @@ knowledge_sources:
     retrieval_mode: search
     description: Official GAUSS documentation. Highest authority for syntax, function signatures, arguments, return values, and version-specific behavior.
 
+  - id: official_gauss_command_categories
+    name: Official GAUSS Command Categories
+    category: official_documentation
+    authority: official
+    priority: high
+    type: local_docs_or_rst
+    path: /REPLACE/WITH/LOCAL/PATH/gauss-docs/docs/cc
+    status: active
+    supported_versions:
+      - GAUSS 26
+      - GAUSS 25
+    retrieval_mode: category_index
+    description: Official GAUSS command category documentation indexing native GAUSS commands by task area. Use this source to identify candidate built-in commands before consulting command-specific documentation for exact syntax and behavior.
+
   - id: aptech_gauss_llm_reference
     name: aptech/gauss-llm-reference
     category: llm_reference

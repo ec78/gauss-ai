@@ -45,3 +45,5 @@ Source priority should guide retrieval order when multiple sources are relevant.
 ## 7. Future Tooling
 
 Future tooling may validate source files, resolve environment placeholders, check local path availability, rank sources by priority, and choose between local and remote retrieval. Until that tooling exists, this document defines policy only and should not be interpreted as executable behavior.
+
+Command category files from the official GAUSS documentation may be used to build a native command inventory for retrieval. These categories should help identify candidate GAUSS commands, but exact syntax, arguments, return values, and version behavior should still be retrieved from command-specific documentation.
