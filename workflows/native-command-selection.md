@@ -24,6 +24,7 @@ Use `workflows/command-documentation-retrieval.md` for the hybrid documentation 
 
 5. Retrieve command-specific documentation before giving exact syntax.
    Exact syntax, arguments, return values, examples, package requirements, and version behavior should come from official command-specific documentation. Short curated notes may help orient the response, but official docs remain authoritative.
+   After identifying a native command candidate, use `workflows/command-documentation-retrieval.md` to verify syntax, defaults, options, and return behavior before giving production guidance.
 
 6. Use manual implementations only when appropriate.
    Manual code is appropriate when the user asks for mechanics, no suitable native command exists, customization is needed, teaching requires the underlying computation, or exact native syntax cannot be verified and the response must remain high level.

@@ -29,6 +29,9 @@ Some early runs predate stable Prompt ID assignment. Where a run does not match 
 | 9.2 | Test Generation | String utility tests | Not Run | N/A | N/A | None. |
 | 10.1 | Design Guidance | Choose data representation | Passed | [2026-07-01-code-assistant-manual-run-015.md](runs/2026-07-01-code-assistant-manual-run-015.md) | 3.9 | Recommends structures as primary model-result objects while distinguishing matrices, DataFrames, and arrays by role. |
 | 10.2 | Design Guidance | Beginner vs advanced response | Not Run | N/A | N/A | None. |
+| 11.1 | Retrieval | Look up `olsmt` syntax and intercept behavior | Not Run | N/A | N/A | None. |
+| 11.2 | Retrieval | Look up `strindx` not-found behavior | Not Run | N/A | N/A | None. |
+| 11.3 | Retrieval | Look up category-only command candidate | Not Run | N/A | N/A | None. |
 
 ## Completed Runs Not Directly Covered By Current Stable Prompts
 

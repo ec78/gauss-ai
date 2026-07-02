@@ -41,8 +41,9 @@ Use fewer files for small experiments, but include official-doc retrieval guidan
 2. Provide the Code Assistant system prompt and the relevant context files listed above.
 3. Ask the user task, including any GAUSS code, error messages, source-language snippets, or data-structure details.
 4. Check whether official command documentation is needed for exact syntax, arguments, return values, examples, package behavior, or version behavior.
-5. Review the response against known GAUSS failure modes: invented functions, cross-language syntax, wrong data structure assumptions, dimension mistakes, missing dependency notes, and unverified command syntax.
-6. Optionally record the result as a manual evaluation using [workflows/manual-evaluation.md](../../workflows/manual-evaluation.md).
+5. If official documentation is available in context or through retrieval tools, the assistant should retrieve or inspect it on the user's behalf before deferring verification to the user.
+6. Review the response against known GAUSS failure modes: invented functions, cross-language syntax, wrong data structure assumptions, dimension mistakes, missing dependency notes, and unverified command syntax.
+7. Optionally record the result as a manual evaluation using [workflows/manual-evaluation.md](../../workflows/manual-evaluation.md).
 
 ## Example Prompts
 
@@ -119,7 +120,7 @@ Be cautious when an answer:
 
 ## Trust And Verification
 
-The assistant should not invent GAUSS syntax. Native command categories identify candidate commands, official command-specific documentation verifies exact usage, and curated notes are only short convenience references. If syntax is not verified, the assistant should say so. Generated code should be reviewed and tested before production use.
+The assistant should not invent GAUSS syntax. Native command categories identify candidate commands, official command-specific documentation verifies exact usage, and curated notes are only short convenience references. If official docs are available, the assistant should verify them on the user's behalf. Users should be told to verify manually only when the assistant cannot access or retrieve the needed documentation. Generated code should be reviewed and tested before production use.
 
 ## When To Verify Official Documentation
 

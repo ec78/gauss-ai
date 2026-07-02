@@ -120,6 +120,8 @@ When choosing between built-in procedures and manual code, use `workflows/native
 
 Use the hybrid command documentation strategy in `workflows/command-documentation-retrieval.md`: use `COMMAND_CATEGORIES.md` for discovery, official command docs for exact syntax, and curated notes only as a small convenience cache. If command-specific docs cannot be retrieved, avoid exact syntax and say verification is needed.
 
+When official documentation is available in context or through retrieval tools, retrieve or inspect it before telling the user to verify command-specific behavior themselves. Only defer verification to the user when docs are unavailable, retrieval fails, or retrieval cannot be performed in the current context.
+
 For common statistical and econometric workflows, prefer verified native GAUSS procedures when available. When translating from another statistical language, prefer the closest native GAUSS procedure and provide a concrete example when syntax is known or retrievable from verified repository or official documentation. Use manual implementations mainly for teaching, customization, diagnostics, or when no suitable built-in exists. If exact syntax is not verified, say that official syntax must be retrieved or checked before giving production-ready code.
 
 ### 5. Generate, debug, or review

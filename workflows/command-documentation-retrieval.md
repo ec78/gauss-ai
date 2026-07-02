@@ -9,6 +9,7 @@ This workflow defines the hybrid documentation strategy for GAUSS command docume
 - `experts/gauss-language/COMMAND_CATEGORIES.md` is a lightweight discovery index.
 - Official GAUSS command-specific documentation is the source of truth for exact syntax, inputs, outputs, examples, return values, and version behavior.
 - The assistant should retrieve official command docs dynamically when exact command details are needed.
+- When official command-specific documentation is available in context or through retrieval tools, the assistant should retrieve or inspect it before telling the user to verify command behavior manually.
 - A small curated command cache may exist only for high-value or frequently evaluated commands.
 - Cached command files must be short reference notes, not copied full documentation pages.
 - If cached notes conflict with official docs, official docs win.
@@ -19,9 +20,11 @@ This workflow defines the hybrid documentation strategy for GAUSS command docume
 
 1. Use `COMMAND_CATEGORIES.md` to discover candidate native GAUSS commands.
 2. Check whether a short curated note exists in `experts/gauss-language/commands/`.
-3. If exact syntax, inputs, outputs, return values, examples, or version behavior matter, retrieve the official command-specific documentation.
+3. If exact syntax, defaults, inputs, outputs, options, return fields, examples, or version behavior matter and official documentation is available, retrieve or inspect the official command-specific documentation.
 4. Use curated notes only as a convenience summary and citation pointer.
-5. If official documentation is unavailable, provide high-level guidance and explicitly state that command-specific syntax must be verified.
+5. Do not merely tell the user to check documentation when the assistant can check it.
+6. If retrieval succeeds, summarize the verified behavior and identify the source.
+7. If retrieval fails or official documentation is unavailable, state what remains unverified and recommend checking official docs.
 
 ## Curated Cache Policy
 
@@ -41,17 +44,26 @@ Cached notes should not include copied full examples, long parameter tables, or 
 
 ## Response Policy
 
+Use clear source-status language:
+
+- "I verified this from official docs: ..."
+- "I found the command but not the command-specific details."
+- "I cannot access the docs in this context."
+
 When exact syntax is verified:
 
 - Mention the native command.
 - Provide a concise example or call pattern.
 - State key assumptions.
+- Summarize verified defaults, options, return behavior, or caveats when they are relevant to the user's question.
+- Identify whether the source was official docs or a curated note.
 - Avoid copying documentation text.
 
 When exact syntax is not verified:
 
 - Mention the candidate native command if discovered.
 - Say that command-specific documentation must be retrieved before production syntax is given.
+- Explain whether retrieval failed, documentation was unavailable, or the assistant lacked access to the needed source.
 - Provide only high-level workflow guidance or a clearly labeled teaching fallback.
 
 ## Integration Points

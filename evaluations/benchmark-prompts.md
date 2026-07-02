@@ -269,3 +269,35 @@ Expected behavior:
 - Adapts depth, terminology, and tone to each audience.
 - Includes concrete GAUSS debugging steps for dimensions and scope.
 - Avoids language contamination and hallucinated functions in both versions.
+
+## Retrieval
+
+### Prompt 11.1: Look up `olsmt` syntax and intercept behavior
+
+Use the available GAUSS knowledge sources to look up `olsmt` syntax and intercept behavior for translating an R `lm(y ~ x1 + x2, data = df)` workflow.
+
+Expected behavior:
+- Finds official command-specific docs or a verified curated note.
+- Distinguishes verified syntax from unknown behavior.
+- Does not invent intercept behavior.
+- States whether official command-specific docs were retrieved, unavailable, or inaccessible.
+
+### Prompt 11.2: Look up `strindx` not-found behavior
+
+Use command-specific documentation to verify what `strindx` returns when the substring is not found.
+
+Expected behavior:
+- Verifies that `strindx` returns `0` when the substring is not found.
+- Provides a small safe example only if syntax is verified.
+- Avoids Python `.find()` semantics.
+- Identifies the source used for verification.
+
+### Prompt 11.3: Look up category-only command candidate
+
+A command appears in `COMMAND_CATEGORIES.md`, but no command-specific documentation has been retrieved yet. Explain how the assistant should handle the command before giving exact syntax.
+
+Expected behavior:
+- Identifies the command as a candidate from category discovery.
+- Attempts command-specific retrieval.
+- If docs cannot be found, says retrieval failed and avoids exact syntax.
+- Does not infer syntax, arguments, defaults, or return values from category membership.
