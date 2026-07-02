@@ -1,6 +1,6 @@
 # Roadmap
 
-## v0.2.0: Knowledge and Evaluation Foundation
+## v0.2.0: Knowledge and Evaluation Foundation (Completed)
 
 - Stable benchmark prompt IDs.
 - Manual evaluation workflow and scoring rubric.
@@ -10,9 +10,10 @@
 
 ## v0.3.0: Code Assistant Preview
 
-- Package the Code Assistant behavior into a clearer preview-ready agent configuration.
-- Improve user-facing examples and quickstart guidance.
-- Expand high-value expert guidance based on manual evaluation findings.
+- Make the Code Assistant understandable and usable for manual preview users.
+- Add quickstart, examples, limitations, and safe-use guidance.
+- Strengthen retrieval guidance for official command documentation.
+- Broaden benchmark coverage across high-value task modes.
 
 ## v0.4.0: Retrieval Prototype
 

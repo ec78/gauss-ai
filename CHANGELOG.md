@@ -22,6 +22,10 @@ This file records notable changes to the GAUSS AI framework.
 - Expanded manual benchmark coverage across Code Generation, Code Explanation, Refactoring, Optimization, Documentation, Test Generation, and Design Guidance.
 - Added Test Generation and Design Guidance manual evaluation coverage.
 - Added release readiness checklist, known limitations, and roadmap notes for `v0.2.0`.
+- Added Code Assistant quickstart documentation.
+- Added Code Assistant example use cases.
+- Added `v0.3.0` Code Assistant Preview planning document.
+- Improved Code Assistant README documentation.
 
 ## [0.1.0] - 2026-06-26
 
