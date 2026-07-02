@@ -4,6 +4,56 @@
 
 Rather than creating a single, monolithic chatbot, this project defines a collection of focused agents that share a common knowledge base, evaluation framework, and development standards.
 
+## Current Status
+
+The project is currently working toward `v0.3.0` - Code Assistant Preview. This milestone focuses on making the GAUSS Code Assistant understandable, usable, and evaluable by people who were not part of the design process.
+
+The `v0.2.0` milestone established the knowledge and evaluation foundation: expert guidance, benchmark prompts, scoring rubrics, manual evaluation records, native command category discovery, and command documentation retrieval workflows.
+
+## Try The GAUSS Code Assistant
+
+Start with the Code Assistant materials:
+
+* [Code Assistant README](agents/code-assistant/README.md)
+* [Code Assistant Quickstart](agents/code-assistant/QUICKSTART.md)
+* [Code Assistant examples](examples/code-assistant/README.md)
+
+The assistant can be tried manually by providing the Code Assistant prompt, agent specification, task mode guidance, and relevant expert or workflow context files. The quickstart explains which files to include for common tasks such as debugging GAUSS code, translating from Python/R/MATLAB, reviewing package APIs, explaining matrix code, and generating tests.
+
+## How GAUSS AI Reduces Hallucinations
+
+GAUSS AI is designed to reduce plausible but invalid code by combining source hierarchy, expert guidance, and benchmark evaluation:
+
+* Official GAUSS documentation is the highest authority for syntax, arguments, return values, examples, and version behavior.
+* Command categories help discover candidate native GAUSS commands and procedures.
+* Command-specific documentation is required before giving exact production-ready syntax.
+* Curated command notes are short convenience references, not a replacement for official documentation.
+* Benchmark evaluations test known AI failure modes, including cross-language syntax contamination and hallucinated functions.
+* Generated code should still be reviewed, verified, and tested before production use.
+
+## Evaluation
+
+Evaluation materials are organized into reusable benchmark prompts and completed evaluation records:
+
+* [Benchmark prompts](evaluations/benchmark-prompts.md) define the reusable test suite.
+* [Scoring rubric](evaluations/scoring.md) defines how responses are evaluated.
+* [Benchmark coverage](evaluations/benchmark-coverage.md) tracks which prompts have been evaluated.
+* [Evaluation run index](evaluations/runs/INDEX.md) summarizes completed manual runs.
+
+Benchmark prompts describe what should be tested. Evaluation runs record how a specific assistant response performed at a point in time.
+
+## Limitations
+
+See [known limitations](KNOWN_LIMITATIONS.md) for the current constraint list.
+
+At this stage:
+
+* The framework does not yet execute GAUSS code.
+* Retrieval guidance exists, but retrieval automation is still developing.
+* Benchmark coverage is growing but not exhaustive.
+* Exact command syntax should be verified against official GAUSS documentation when it has not already been verified.
+* The Code Assistant Preview is not a claim of production readiness.
+
 ## Vision
 
 Large language models have become remarkably capable programming assistants, but they often struggle with domain-specific languages like GAUSS. Generic coding assistants frequently hallucinate syntax, recommend nonexistent functions, or ignore established programming conventions.
