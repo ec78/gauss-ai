@@ -1,0 +1,49 @@
+{
+  "best_match": {
+    "confidence": 1.0,
+    "examples": "// Find the index of \"age\" in 'rep78'\n    idx = strindx(rep78, \"age\");\n\n    // Print the first 5 observations of 'idx'\n    head(idx);\n\n// Create file name with full path\n    fname = getGAUSSHome(\"examples/auto2.dta\");\n\n    // Load 'rep78' and 'make` variable\n    rep78 = loadd(fname, \"rep78 + make\");\n\n    // Find the index of \"age\" in 'rep78'\n    // and \"AMC\" in 'make'\n    idx = strindx(rep78, \"age\"$~\"AMC\");\n\n    // Print the first 5 observations of 'idx'\n    head(idx);\n\n// Find the first instance of the\n    // letter 'a' starting from the\n    // 5th character of the string\n    strindx(state, \"a\", 5);\n\n// String to search in\n   haystack = \"nameagepaysex\";\n\n   // String to search for\n   needle = \"pay\";\n\n   // Find starting index of 'needle'\n   idx = strindx(haystack, needle, 1);",
+    "file_path": "strindx.rst",
+    "heading": "strindx",
+    "inputs_section": ":param haystack: The data to be searched.\n:type haystack: String array, or dataframe of type category or string\n:param needles: The substring to be searched for in *haystack*. Must be ExE conformable with *haystack* input.\n:type needles: String array or string\n:param start: Optional argument, the starting point of the element-by-element search in *haystack* for an occurrence of *needle*.\n:type start: Scalar",
+    "match_reason": [
+      "exact_file_name",
+      "exact_heading",
+      "command_call_text",
+      "command_reference_text"
+    ],
+    "notes": null,
+    "outputs_section": ":return idx: Contains the index of the first occurrence of *needle*, within *haystack*,\n:rtype idx: Matrix",
+    "source_type": "official_local_rst",
+    "syntax_blocks": [
+      ".. function:: idx = strindx(haystack, needle [, start])"
+    ],
+    "unresolved_questions": []
+  },
+  "command_name": "strindx",
+  "confidence": 1.0,
+  "docs_root": "<local official GAUSS docs root>",
+  "matches": [
+    {
+      "confidence": 1.0,
+      "examples": "// Find the index of \"age\" in 'rep78'\n    idx = strindx(rep78, \"age\");\n\n    // Print the first 5 observations of 'idx'\n    head(idx);\n\n// Create file name with full path\n    fname = getGAUSSHome(\"examples/auto2.dta\");\n\n    // Load 'rep78' and 'make` variable\n    rep78 = loadd(fname, \"rep78 + make\");\n\n    // Find the index of \"age\" in 'rep78'\n    // and \"AMC\" in 'make'\n    idx = strindx(rep78, \"age\"$~\"AMC\");\n\n    // Print the first 5 observations of 'idx'\n    head(idx);\n\n// Find the first instance of the\n    // letter 'a' starting from the\n    // 5th character of the string\n    strindx(state, \"a\", 5);\n\n// String to search in\n   haystack = \"nameagepaysex\";\n\n   // String to search for\n   needle = \"pay\";\n\n   // Find starting index of 'needle'\n   idx = strindx(haystack, needle, 1);",
+      "file_path": "strindx.rst",
+      "heading": "strindx",
+      "inputs_section": ":param haystack: The data to be searched.\n:type haystack: String array, or dataframe of type category or string\n:param needles: The substring to be searched for in *haystack*. Must be ExE conformable with *haystack* input.\n:type needles: String array or string\n:param start: Optional argument, the starting point of the element-by-element search in *haystack* for an occurrence of *needle*.\n:type start: Scalar",
+      "match_reason": [
+        "exact_file_name",
+        "exact_heading",
+        "command_call_text",
+        "command_reference_text"
+      ],
+      "notes": null,
+      "outputs_section": ":return idx: Contains the index of the first occurrence of *needle*, within *haystack*,\n:rtype idx: Matrix",
+      "source_type": "official_local_rst",
+      "syntax_blocks": [
+        ".. function:: idx = strindx(haystack, needle [, start])"
+      ],
+      "unresolved_questions": []
+    }
+  ],
+  "status": "found",
+  "unresolved_questions": []
+}

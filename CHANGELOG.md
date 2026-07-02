@@ -32,6 +32,8 @@ This file records notable changes to the GAUSS AI framework.
 - Started `v0.4.0` retrieval prototype planning.
 - Added command documentation lookup tool design and implementation plan.
 - Added retrieval-focused benchmark prompts.
+- Added initial local command documentation lookup prototype.
+- Added retrieval examples directory.
 
 ## [0.1.0] - 2026-06-26
 

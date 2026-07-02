@@ -1,0 +1,57 @@
+{
+  "best_match": {
+    "confidence": 1.0,
+    "examples": "out = olsmt(data, depvar, indvars[, ctl])\n\n// Set y matrix\n    y = { 2,\n          3,\n          1,\n          7,\n          5 };\n\n    //  Set x matrix\n    x = { 1 3 2,\n          2 3 1,\n          7 1 7,\n          5 3 1,\n          3 5 5 };\n\n    // Perform least squares regression and print report to the screen\n    // The empty string, \"\" indicates that no dataset is used\n    call olsmt(\"\", y, x);\n\n// Create string with the name and full file path of the dataset\n    dataset = getGAUSSHome(\"examples/detroit.dta\");\n\n    // Create formula string specifying dependent and independent variables\n    formula  = \"homicide ~ unemployment + hourly_earn\";\n\n    // Perform estimation\n    call olsmt(dataset, formula);\n\n// Load data\n    fname = getGAUSSHome(\"examples/auto2.dta\");\n    auto2 = loadd(fname);\n\n    // Include the `rep78` categorical variable\n    call olsmt(auto2, \"price ~ mpg + rep78\");",
+    "file_path": "olsmt.rst",
+    "heading": "olsmt",
+    "inputs_section": ":param data: name of dataset, dataframe in memory, or an empty string.\n:type data: string or dataframe\n:param formula: formula string of the model.\n:type formula: string\n:param depvar: If *data* contains a string, then *depvar* can be a:\n:param indvars: If *data* contains a string:\n:type indvars: Kx1 vector or NxK matrix\n:param ctl: Optional input. instance of an :class:`olsmtControl` structure containing the following members:",
+    "match_reason": [
+      "exact_file_name",
+      "exact_heading",
+      "command_call_text",
+      "command_reference_text"
+    ],
+    "notes": "Remarks\n-------\n\n- For poorly conditioned data the default setting for *ctl.olsalg*, using\n  the Cholesky update, may produce only four or five digits of accuracy\n  for the parameter estimates and standard error. For greater accuracy,\n  use either the qr or singular value decomposition algorithm by\n  setting *ctl.olsalg* to ``qr`` or ``svd``. If you are unsure of the condition of\n  your data, set *ctl.olsalg* to ``qr``.\n- No output file is modified, opened, or closed by this procedure. If\n  you want output to be placed in a file, you need to open an output\n  file before calling :func:`olsmt`.\n- The supported dataset types are CSV, XLS, XLSX, HDF5, FMT, DAT\n- For HDF5 file, the dataset must include `file schema` and both file name and\n  dataset name must be provided, e.g.\n\n  ::\n\n      olsmt(\"h5://C:/gauss/examples/testdata.h5/mydata\", formula)",
+    "outputs_section": null,
+    "source_type": "official_local_rst",
+    "syntax_blocks": [
+      ".. function:: out = olsmt(data, formula[, ctl])",
+      "out = olsmt(data, depvar, indvars[, ctl])"
+    ],
+    "unresolved_questions": [
+      "outputs/returns section not found"
+    ]
+  },
+  "command_name": "olsmt",
+  "confidence": 1.0,
+  "docs_root": "<local official GAUSS docs root>",
+  "matches": [
+    {
+      "confidence": 1.0,
+      "examples": "out = olsmt(data, depvar, indvars[, ctl])\n\n// Set y matrix\n    y = { 2,\n          3,\n          1,\n          7,\n          5 };\n\n    //  Set x matrix\n    x = { 1 3 2,\n          2 3 1,\n          7 1 7,\n          5 3 1,\n          3 5 5 };\n\n    // Perform least squares regression and print report to the screen\n    // The empty string, \"\" indicates that no dataset is used\n    call olsmt(\"\", y, x);\n\n// Create string with the name and full file path of the dataset\n    dataset = getGAUSSHome(\"examples/detroit.dta\");\n\n    // Create formula string specifying dependent and independent variables\n    formula  = \"homicide ~ unemployment + hourly_earn\";\n\n    // Perform estimation\n    call olsmt(dataset, formula);\n\n// Load data\n    fname = getGAUSSHome(\"examples/auto2.dta\");\n    auto2 = loadd(fname);\n\n    // Include the `rep78` categorical variable\n    call olsmt(auto2, \"price ~ mpg + rep78\");",
+      "file_path": "olsmt.rst",
+      "heading": "olsmt",
+      "inputs_section": ":param data: name of dataset, dataframe in memory, or an empty string.\n:type data: string or dataframe\n:param formula: formula string of the model.\n:type formula: string\n:param depvar: If *data* contains a string, then *depvar* can be a:\n:param indvars: If *data* contains a string:\n:type indvars: Kx1 vector or NxK matrix\n:param ctl: Optional input. instance of an :class:`olsmtControl` structure containing the following members:",
+      "match_reason": [
+        "exact_file_name",
+        "exact_heading",
+        "command_call_text",
+        "command_reference_text"
+      ],
+      "notes": "Remarks\n-------\n\n- For poorly conditioned data the default setting for *ctl.olsalg*, using\n  the Cholesky update, may produce only four or five digits of accuracy\n  for the parameter estimates and standard error. For greater accuracy,\n  use either the qr or singular value decomposition algorithm by\n  setting *ctl.olsalg* to ``qr`` or ``svd``. If you are unsure of the condition of\n  your data, set *ctl.olsalg* to ``qr``.\n- No output file is modified, opened, or closed by this procedure. If\n  you want output to be placed in a file, you need to open an output\n  file before calling :func:`olsmt`.\n- The supported dataset types are CSV, XLS, XLSX, HDF5, FMT, DAT\n- For HDF5 file, the dataset must include `file schema` and both file name and\n  dataset name must be provided, e.g.\n\n  ::\n\n      olsmt(\"h5://C:/gauss/examples/testdata.h5/mydata\", formula)",
+      "outputs_section": null,
+      "source_type": "official_local_rst",
+      "syntax_blocks": [
+        ".. function:: out = olsmt(data, formula[, ctl])",
+        "out = olsmt(data, depvar, indvars[, ctl])"
+      ],
+      "unresolved_questions": [
+        "outputs/returns section not found"
+      ]
+    }
+  ],
+  "status": "found",
+  "unresolved_questions": [
+    "outputs/returns section not found"
+  ]
+}

@@ -6,6 +6,9 @@ Define a lightweight tool design for locating and extracting official GAUSS comm
 
 This design supports retrieval prototypes only. Official GAUSS documentation remains the source of truth, and this repository should not become a mirror of full command pages.
 
+First prototype:
+The initial local script exists at `scripts/command_doc_lookup.py`.
+
 ## Inputs
 
 - `command_name`: GAUSS command or procedure name to look up.
