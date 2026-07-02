@@ -15,6 +15,7 @@ The initial local script exists at `scripts/command_doc_lookup.py`.
 - `docs_root`: local root directory for official GAUSS documentation.
 - `category_hint`: optional category name or category file hint from command discovery.
 - `max_results`: optional maximum number of candidate matches to return.
+- `keywords`: optional terms to search within the best-matched command documentation page.
 
 ## Outputs
 
@@ -25,6 +26,8 @@ The initial local script exists at `scripts/command_doc_lookup.py`.
 - Documented inputs if found.
 - Documented outputs if found.
 - Examples if found.
+- Keyword-focused snippets if requested.
+- Control, formula, return, related-link, and raw-heading evidence if found.
 - Unresolved questions.
 - Confidence level.
 
@@ -47,8 +50,13 @@ The expected source is a local checkout or installation of official GAUSS docume
 - Inputs, arguments, or parameters.
 - Return values, output structures, or output fields.
 - Defaults, options, control structures, and version notes.
+- Formula, intercept, constant, missing-value, dataset, and DataFrame behavior when present.
+- Related commands or cross references.
 - Short examples or references to examples.
 - Source path and any available version marker.
+- Keyword snippets around requested terms.
+
+Keyword snippets are evidence only. They should not be treated as interpreted behavior unless the response explicitly explains what the official text verifies.
 
 ## Failure Behavior
 
@@ -56,6 +64,7 @@ The expected source is a local checkout or installation of official GAUSS docume
 - If multiple docs files match, report ambiguity and include candidates.
 - If syntax is absent from the matched page, report that syntax was not found.
 - If inputs, outputs, defaults, or examples are absent, list them as unresolved.
+- If requested keyword hits are absent, report that no hits were found.
 - Never fill missing fields from memory or category membership.
 
 ## Safety Rules

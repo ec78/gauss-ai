@@ -1,10 +1,194 @@
 {
   "best_match": {
     "confidence": 1.0,
+    "controls_section": ":param ctl: Optional input. instance of an :class:`olsmtControl` structure containing the following members:\n.. list-table::\n* - ctl.altnam\n- string array, default ``\"\"``.\nThis can be a :math:`(K+1) \\times 1` or :math:`(K+2) \\times 1` string array of alternate variable names for the output.\nIf *ctl.con* is 1, and *ctl.altnam* has :math:`(K+2)` elements, then the first element will control the name displayed for the constant term. The name of the dependent variable is the last element.\n* - ctl.con\n- scalar, default 1.\nA constant term will always be used in constructing the moment matrix *m*.\n* - ctl.cov\n- string, set covariance type. Default = \"iid\".\n* - ctl.clusterID\n- Matrix, vector of categorical group variable used for computing cluster robust standard errors.\n* - ctl.clusterVar\n- String, name of cluster group variable. Only valid if dataset and formula is specifie\n...[truncated]",
     "examples": "out = olsmt(data, depvar, indvars[, ctl])\n\n// Set y matrix\n    y = { 2,\n          3,\n          1,\n          7,\n          5 };\n\n    //  Set x matrix\n    x = { 1 3 2,\n          2 3 1,\n          7 1 7,\n          5 3 1,\n          3 5 5 };\n\n    // Perform least squares regression and print report to the screen\n    // The empty string, \"\" indicates that no dataset is used\n    call olsmt(\"\", y, x);\n\n// Create string with the name and full file path of the dataset\n    dataset = getGAUSSHome(\"examples/detroit.dta\");\n\n    // Create formula string specifying dependent and independent variables\n    formula  = \"homicide ~ unemployment + hourly_earn\";\n\n    // Perform estimation\n    call olsmt(dataset, formula);\n\n// Load data\n    fname = getGAUSSHome(\"examples/auto2.dta\");\n    auto2 = loadd(fname);\n\n    // Include the `rep78` categorical variable\n    call olsmt(auto2, \"price ~ mpg + rep78\");",
+    "extraction_warnings": [
+      "no keyword hits for: returns"
+    ],
     "file_path": "olsmt.rst",
+    "formula_section": ":param formula: formula string of the model.\nE.g ``\"y ~ X1 + X2\"``, ``y`` is the name of dependent variable, ``X1`` and ``X2`` are names of independent variables;\nE.g ``\"y ~ .\"``, ``.`` means including all variables except dependent variable ``y``;\nE.g ``\"y ~ -1 + X1 + X2\"``, ``-1`` means no intercept model.\n:type formula: string\n\nE.g ``\"y ~ .\"``, ``.`` means including all variables except dependent variable ``y``;\n\n        E.g ``\"y ~ -1 + X1 + X2\"``, ``-1`` means no intercept model.\n\n    :type formula: string\n\nThis can be a :math:`(K+1) \\times 1` or :math:`(K+2) \\times 1` string array of alternate variable names for the output.\n                If *ctl.con* is 1, and *ctl.altnam* has :math:`(K+2)` elements, then the first element will control the name displayed for the constant term. The name of the dependent variable is the last element.\n\n            * - ctl.con\n\n- scalar, default 1.\n\n                :1: a constant term will be added, :math:`D = K+1`.\n                :0: no constant term will be added, :math:`D = K`.\n\n:1: a constant term will be added, :math:`D = K+1`.\n                :0: no constant term will be added, :math:`D = K`.\n\n                A constant term will always be used in constructing the moment matrix *m*.",
     "heading": "olsmt",
-    "inputs_section": ":param data: name of dataset, dataframe in memory, or an empty string.\n:type data: string or dataframe\n:param formula: formula string of the model.\n:type formula: string\n:param depvar: If *data* contains a string, then *depvar* can be a:\n:param indvars: If *data* contains a string:\n:type indvars: Kx1 vector or NxK matrix\n:param ctl: Optional input. instance of an :class:`olsmtControl` structure containing the following members:",
+    "inputs_section": ":param data: name of dataset, dataframe in memory, or an empty string.\nIf *data* is an empty string,``\"\"``, the procedure assumes that the actual data has been passed in the next two arguments.\n:type data: string or dataframe\n\n:param formula: formula string of the model.\nE.g ``\"y ~ X1 + X2\"``, ``y`` is the name of dependent variable, ``X1`` and ``X2`` are names of independent variables;\nE.g ``\"y ~ .\"``, ``.`` means including all variables except dependent variable ``y``;\nE.g ``\"y ~ -1 + X1 + X2\"``, ``-1`` means no intercept model.\n:type formula: string\n\n:param depvar: If *data* contains a string, then *depvar* can be a:\n=========== ==============\ntype         value\n=========== ==============\nstring      name of dependent variable\nscalar      index of dependent variable. If scalar 0, the last column of the dataset will be used.\n=========== ==============\nIf *data* is an empty string, name of dataframe, or 0:\n=========== ==============\ntype         value\n=========== ==============\nNx1 vector  the dependent variable.\n=========== ==============\n\n:param indvars: If *data* contains a string:\n===================== ==============\ntype                   value\n===================== ==============\nKx1 character vector  names of independent variables\nKx1 numeric vector    indices of independent variables. These can be any size subset of the variables in the data\nand can be in any order. If a scalar 0 is passed, all columns of the data will be used except\nfor the one used for the dependent variable.\n===================== ==============\nIf *data* is an empty string, dataframe, or 0:\n=========== ==============\ntype         value\n=========== ==============\nNxK matrix  the independent variables\n=========== ==============\n:type indvars: Kx1 vector or NxK matrix\n\n:para\n...[truncated]",
+    "keyword_hits": {
+      "ctl": [
+        {
+          "line": 12,
+          "snippet": "Format\n----------------\n.. function:: out = olsmt(data, formula[, ctl])\n              out = olsmt(data, depvar, indvars[, ctl])"
+        },
+        {
+          "line": 13,
+          "snippet": "----------------\n.. function:: out = olsmt(data, formula[, ctl])\n              out = olsmt(data, depvar, indvars[, ctl])\n\n    :param data: name of dataset, dataframe in memory, or an empty string."
+        },
+        {
+          "line": 66,
+          "snippet": ":type indvars: Kx1 vector or NxK matrix\n\n    :param ctl: Optional input. instance of an :class:`olsmtControl` structure containing the following members:\n\n        .. list-table::"
+        },
+        {
+          "line": 71,
+          "snippet": ":widths: auto\n\n            * - ctl.altnam\n              - string array, default ``\"\"``."
+        },
+        {
+          "line": 75,
+          "snippet": "This can be a :math:`(K+1) \\times 1` or :math:`(K+2) \\times 1` string array of alternate variable names for the output.\n                If *ctl.con* is 1, and *ctl.altnam* has :math:`(K+2)` elements, then the first element will control the name displayed for the constant term. The name of the dependent variable is the last element.\n\n            * - ctl.con"
+        },
+        {
+          "line": 77,
+          "snippet": "If *ctl.con* is 1, and *ctl.altnam* has :math:`(K+2)` elements, then the first element will control the name displayed for the constant term. The name of the dependent variable is the last element.\n\n            * - ctl.con\n              - scalar, default 1."
+        },
+        {
+          "line": 85,
+          "snippet": "A constant term will always be used in constructing the moment matrix *m*.\n\n            * - ctl.cov\n              - string, set covariance type. Default = \"iid\"."
+        },
+        {
+          "line": 93,
+          "snippet": ":``\"hac\"``: HAC robust sandwich estimator.\n\n            * - ctl.clusterID\n              - Matrix, vector of categorical group variable used for computing cluster robust standard errors.\n            * - ctl.clusterVar"
+        }
+      ],
+      "formula": [
+        {
+          "line": 12,
+          "snippet": "Format\n----------------\n.. function:: out = olsmt(data, formula[, ctl])\n              out = olsmt(data, depvar, indvars[, ctl])"
+        },
+        {
+          "line": 19,
+          "snippet": ":type data: string or dataframe\n\n    :param formula: formula string of the model.\n        E.g ``\"y ~ X1 + X2\"``, ``y`` is the name of dependent variable, ``X1`` and ``X2`` are names of independent variables;"
+        },
+        {
+          "line": 26,
+          "snippet": "E.g ``\"y ~ -1 + X1 + X2\"``, ``-1`` means no intercept model.\n\n    :type formula: string\n\n    :param depvar: If *data* contains a string, then *depvar* can be a:"
+        },
+        {
+          "line": 96,
+          "snippet": "- Matrix, vector of categorical group variable used for computing cluster robust standard errors.\n            * - ctl.clusterVar\n              - String, name of cluster group variable. Only valid if dataset and formula is specified.\n            * - ctl.miss\n              - scalar, default 0."
+        },
+        {
+          "line": 151,
+          "snippet": "- Nx1 Vector, if defined, specifies weights to be used in the weighted least squares. If not defined, ordinary least squares will be computed.\n            * - ctl.weightsVar\n              - String, name of the variable used for weighting. Only valid if dataset and formula is specified. Will override any weights in *ctl.weights*.\n    :type ctl: struct"
+        },
+        {
+          "line": 265,
+          "snippet": "====================================================================================\n\nBasic usage with a dataset and a formula string\n++++++++++++++++++++++++++++++++++++++++++++++++"
+        },
+        {
+          "line": 273,
+          "snippet": "dataset = getGAUSSHome(\"examples/detroit.dta\");\n\n    // Create formula string specifying dependent and independent variables\n    formula  = \"homicide ~ unemployment + hourly_earn\";"
+        },
+        {
+          "line": 274,
+          "snippet": "// Create formula string specifying dependent and independent variables\n    formula  = \"homicide ~ unemployment + hourly_earn\";\n\n    // Perform estimation"
+        }
+      ],
+      "intercept": [
+        {
+          "line": 24,
+          "snippet": "E.g ``\"y ~ .\"``, ``.`` means including all variables except dependent variable ``y``;\n\n        E.g ``\"y ~ -1 + X1 + X2\"``, ``-1`` means no intercept model.\n\n    :type formula: string"
+        }
+      ],
+      "missing": [
+        {
+          "line": 100,
+          "snippet": "- scalar, default 0.\n\n                :0: there are no missing values (fastest).\n                :1: listwise deletion, drop any cases in which missings occur.\n                :2: pairwise deletion, this is equivalent to setting missings to 0 when calculating *m*. The number of cases computed is equal to the total number of cases in the dataset."
+        },
+        {
+          "line": 101,
+          "snippet": ":0: there are no missing values (fastest).\n                :1: listwise deletion, drop any cases in which missings occur.\n                :2: pairwise deletion, this is equivalent to setting missings to 0 when calculating *m*. The number of cases computed is equal to the total number of cases in the dataset."
+        },
+        {
+          "line": 102,
+          "snippet": ":0: there are no missing values (fastest).\n                :1: listwise deletion, drop any cases in which missings occur.\n                :2: pairwise deletion, this is equivalent to setting missings to 0 when calculating *m*. The number of cases computed is equal to the total number of cases in the dataset.\n\n            * - ctl.row"
+        },
+        {
+          "line": 186,
+          "snippet": "\"31\", \"system underdetermined\"\n                        \"32\", \"same number of columns as rows\"\n                        \"33\", \"too many missings\"\n                        \"34\", \"file not found\"\n                        \"35\", \"no variance in an independent variable\""
+        },
+        {
+          "line": 190,
+          "snippet": "\"35\", \"no variance in an independent variable\"\n\n                The system can become underdetermined if you use listwise deletion and have missing values. In that case, it is possible to skip so many cases that there are fewer usable rows than columns in the dataset.\n\n            * - out.stb"
+        },
+        {
+          "line": 249,
+          "snippet": "====================================================================================\n    Valid cases:                        5          Dependent variable:                 Y\n    Missing cases:                      0          Deletion method:                 None\n    Total SS:                        23.2          Degrees of freedom:                 1\n    R-squared:                      0.982          Rbar-squared:                   0.928"
+        },
+        {
+          "line": 287,
+          "snippet": "=====================================================================================\n    Valid cases:                       13           Dependent variable:          homicide\n    Missing cases:                      0           Deletion method:                 None\n    Total SS:                    3.22e+03           Degrees of freedom:                10\n    R-squared:                      0.834           Rbar-squared:                   0.801"
+        },
+        {
+          "line": 321,
+          "snippet": "=========================================================================================\n    Valid cases:                         69           Dependent variable:               price\n    Missing cases:                        5           Deletion method:               Listwise\n    Total SS:                      5.77e+08           Degrees of freedom:                  63\n    R-squared:                        0.258           Rbar-squared:                     0.199"
+        }
+      ],
+      "olsmtControl": [
+        {
+          "line": 66,
+          "snippet": ":type indvars: Kx1 vector or NxK matrix\n\n    :param ctl: Optional input. instance of an :class:`olsmtControl` structure containing the following members:\n\n        .. list-table::"
+        },
+        {
+          "line": 406,
+          "snippet": "new;\n\n    // Declare 'ols_ctl' to be an olsmtControl structure\n    // and fill with default settings\n    struct olsmtControl ols_ctl;"
+        },
+        {
+          "line": 408,
+          "snippet": "// Declare 'ols_ctl' to be an olsmtControl structure\n    // and fill with default settings\n    struct olsmtControl ols_ctl;\n    ols_ctl = olsmtControlCreate();"
+        },
+        {
+          "line": 409,
+          "snippet": "// and fill with default settings\n    struct olsmtControl ols_ctl;\n    ols_ctl = olsmtControlCreate();\n\n    // Set the 'res' member of the olsmtControl structure"
+        },
+        {
+          "line": 411,
+          "snippet": "ols_ctl = olsmtControlCreate();\n\n    // Set the 'res' member of the olsmtControl structure\n    // so that 'olsmt' will compute residuals and the Durbin-Watson statistic\n    ols_ctl.res = 1;"
+        },
+        {
+          "line": 515,
+          "snippet": "// Set up olsControl structure\n  struct olsmtControl ctl;\n  ctl = olsmtControlCreate();\n  ctl.weights = weights;"
+        },
+        {
+          "line": 516,
+          "snippet": "// Set up olsControl structure\n  struct olsmtControl ctl;\n  ctl = olsmtControlCreate();\n  ctl.weights = weights;"
+        },
+        {
+          "line": 567,
+          "snippet": "olsmt.src\n\n.. seealso:: Functions :func:`glm`, :func:`gmmFitIV`, :func:`olsmtControlCreate`, :func:`olsqrmt`, `Formula string`, :func:`clusterSE`, :func:`robustSE`"
+        }
+      ],
+      "output": [
+        {
+          "line": 74,
+          "snippet": "- string array, default ``\"\"``.\n\n                This can be a :math:`(K+1) \\times 1` or :math:`(K+2) \\times 1` string array of alternate variable names for the output.\n                If *ctl.con* is 1, and *ctl.altnam* has :math:`(K+2)` elements, then the first element will control the name displayed for the constant term. The name of the dependent variable is the last element."
+        },
+        {
+          "line": 116,
+          "snippet": "If 0, internally created variable names are not padded to the same length (e.g. ``X1, X2,..., X10``). If 1, they are padded with zeros to the same length (e.g., ``X01, X02,..., X10``).\n            * - ctl.output\n              - scalar, default 1."
+        },
+        {
+          "line": 280,
+          "snippet": "In this example, the dataset ``detroit.dta`` is used to compute a\nregression. The dependent variable is *homicide*. The independent variables are: *unemployment* and *hourly_earn*. The output is:\n\n::"
+        },
+        {
+          "line": 314,
+          "snippet": "call olsmt(auto2, \"price ~ mpg + rep78\");\n\nIn this example, the dependent variable *price* is regressed on *mpg* and *rep78*. The categorical variable *rep78* will automatically be included in the OLS regression as a dummy variable with the base case excluded from the regression. The coefficients for the categories, *Fair, Average, Good, Excellent* are included in the printed output table. The *Poor* category is excluded from the regression, as it is the base case.\n\n::"
+        },
+        {
+          "line": 399,
+          "snippet": "====================================================================================\n\nUse a dataset, a list of variable names plus a control and output structure.\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+        },
+        {
+          "line": 476,
+          "snippet": "call olsmt(dataset, depvar, indepvar);\n\nThe above code will produce the following output:\n\n::"
+        },
+        {
+          "line": 521,
+          "snippet": "call olsmt(\"\", progeny, parent, ctl);\n\nThe above code will produce the following output:\n\n::"
+        },
+        {
+          "line": 551,
+          "snippet": "setting *ctl.olsalg* to ``qr`` or ``svd``. If you are unsure of the condition of\n  your data, set *ctl.olsalg* to ``qr``.\n- No output file is modified, opened, or closed by this procedure. If\n  you want output to be placed in a file, you need to open an output\n  file before calling :func:`olsmt`."
+        }
+      ],
+      "returns": []
+    },
     "match_reason": [
       "exact_file_name",
       "exact_heading",
@@ -12,26 +196,469 @@
       "command_reference_text"
     ],
     "notes": "Remarks\n-------\n\n- For poorly conditioned data the default setting for *ctl.olsalg*, using\n  the Cholesky update, may produce only four or five digits of accuracy\n  for the parameter estimates and standard error. For greater accuracy,\n  use either the qr or singular value decomposition algorithm by\n  setting *ctl.olsalg* to ``qr`` or ``svd``. If you are unsure of the condition of\n  your data, set *ctl.olsalg* to ``qr``.\n- No output file is modified, opened, or closed by this procedure. If\n  you want output to be placed in a file, you need to open an output\n  file before calling :func:`olsmt`.\n- The supported dataset types are CSV, XLS, XLSX, HDF5, FMT, DAT\n- For HDF5 file, the dataset must include `file schema` and both file name and\n  dataset name must be provided, e.g.\n\n  ::\n\n      olsmt(\"h5://C:/gauss/examples/testdata.h5/mydata\", formula)",
-    "outputs_section": null,
+    "outputs_section": ":return out: instance of :class:`olsmtOut` struct containing the following members:\n.. list-table::\n* - out.vnam\n- :math:`(K+2) \\times 1` or :math:`(K+1) \\times 1` character vector, the variable names used in the regression. If a constant term is used, this vector will be :math:`(K+2) \\times 1`, and the first name will be ``CONSTANT``. The last name will be the name of the dependent variable.\n* - out.m\n- MxM matrix, where :math:`M = K+2`, the moment matrix constructed by calculating ``X'X`` where *X* is a matrix containing all useable observations and having columns in the order:\n.. csv-table::\n\"1.0\", \"indvars\", \"depvar\"\n\"(constant)\", \"(independent variables)\", \"(dependent variable)\"\nA constant term is always used in computing *m*.\n* - out.b\n- Dx1 vector, the least squares estimates of parameters.\nError handling is controlled by the low order bit of the `trap` flag.\n.\n...[truncated]",
+    "raw_section_headings": [
+      "olsmt",
+      "Purpose",
+      "Format",
+      "Examples",
+      "Basic usage with matrices",
+      "Ordinary Least Squares",
+      "F(3,1):                          18.2          Probability of F:                0.17",
+      "Variable        Estimate       Error     t-value        >|t|       Bound       Bound",
+      "X3              -0.75342     0.15111     -4.9859     0.12601     -1.0496    -0.45725",
+      "Basic usage with a dataset and a formula string",
+      "Ordinary Least Squares",
+      "F(2,10):                         25.2           Probability of F:            0.000125",
+      "Variable         Estimate       Error     t-value        >|t|       Bound       Bound",
+      "hourly_earn        15.487      2.2427      6.9057  4.1653e-05      11.092      19.883",
+      "Basic usage with a dataframe and categorical variable",
+      "Ordinary Least Squares",
+      "F(5,63):                           4.39           Probability of F:               0.00172",
+      "Variable             Estimate       Error     t-value        >|t|       Bound       Bound",
+      "rep78: Excellent         3132        2041      1.5345     0.12991     -868.47      7132.4",
+      "Estimate a linear model for each subset of a categorical variable",
+      "foreign: Domestic",
+      "F(2,49):                         22.9          Probability of F:            9.58e-08",
+      "Variable        Estimate       Error     t-value        >|t|       Bound       Bound",
+      "weight             4.415     0.94839      4.6553  2.4949e-05      2.5562      6.2739",
+      "foreign: Foreign",
+      "F(2,19):                         34.8          Probability of F:            4.45e-07",
+      "Variable        Estimate       Error     t-value        >|t|       Bound       Bound",
+      "weight            5.1558     0.88069      5.8543  1.2249e-05      3.4297       6.882",
+      "Use a dataset, a list of variable names plus a control and output structure.",
+      "Ordinary Least Squares",
+      "Durbin-Watson:                   1.95",
+      "Variable        Estimate       Error     t-value        >|t|       Bound       Bound",
+      "Age               1.6779      1.6943      0.9903     0.32263     -1.6429      4.9987",
+      "Use a dataset and variable indices",
+      "Ordinary Least Squares",
+      "F(3,396):                    2.11e+04          Probability of F:                   0",
+      "Variable        Estimate       Error     t-value        >|t|       Bound       Bound",
+      "Age             0.019892    0.036174      0.5499      0.5827   -0.051009    0.090792",
+      "Basic usage with weights",
+      "Ordinary Least Squares",
+      "F(1,5):                          28.8          Probability of F:              0.0018",
+      "Variable        Estimate       Error     t-value        >|t|       Bound       Bound",
+      "X1                0.2048    0.038155      5.3676   0.0030205     0.13002     0.27958",
+      "Remarks",
+      "Source"
+    ],
+    "related_links": [
+      "olsmt",
+      "glm",
+      "gmmFitIV",
+      "olsmtControlCreate",
+      "olsqrmt",
+      "clusterSE",
+      "robustSE",
+      "olsmtControl",
+      "olsmtOut",
+      "\"\"",
+      "\"y ~ X1 + X2\"",
+      ",",
+      "y",
+      "is the name of dependent variable,",
+      "X1",
+      "and",
+      "X2",
+      "\"y ~ .\"",
+      ".",
+      "means including all variables except dependent variable",
+      "\"y ~ -1 + X1 + X2\"",
+      "-1",
+      "(K+1) \\times 1",
+      "(K+2) \\times 1",
+      "(K+2)",
+      "D = K+1",
+      "D = K",
+      "\"iid\"",
+      "\"robust\"",
+      "\"cluster\""
+    ],
+    "returns_section": ":return out: instance of :class:`olsmtOut` struct containing the following members:\n.. list-table::\n* - out.vnam\n- :math:`(K+2) \\times 1` or :math:`(K+1) \\times 1` character vector, the variable names used in the regression. If a constant term is used, this vector will be :math:`(K+2) \\times 1`, and the first name will be ``CONSTANT``. The last name will be the name of the dependent variable.\n* - out.m\n- MxM matrix, where :math:`M = K+2`, the moment matrix constructed by calculating ``X'X`` where *X* is a matrix containing all useable observations and having columns in the order:\n.. csv-table::\n\"1.0\", \"indvars\", \"depvar\"\n\"(constant)\", \"(independent variables)\", \"(dependent variable)\"\nA constant term is always used in computing *m*.\n* - out.b\n- Dx1 vector, the least squares estimates of parameters.\nError handling is controlled by the low order bit of the `trap` flag.\n.\n...[truncated]",
     "source_type": "official_local_rst",
     "syntax_blocks": [
       ".. function:: out = olsmt(data, formula[, ctl])",
-      "out = olsmt(data, depvar, indvars[, ctl])"
+      "out = olsmt(data, depvar, indvars[, ctl])",
+      "This can be a :math:`(K+1) \\times 1` or :math:`(K+2) \\times 1` string array of alternate variable names for the output.",
+      "\"(constant)\", \"(independent variables)\", \"(dependent variable)\""
     ],
-    "unresolved_questions": [
-      "outputs/returns section not found"
-    ]
+    "unresolved_questions": []
   },
   "command_name": "olsmt",
   "confidence": 1.0,
   "docs_root": "<local official GAUSS docs root>",
+  "keyword_hits": {
+    "ctl": [
+      {
+        "line": 12,
+        "snippet": "Format\n----------------\n.. function:: out = olsmt(data, formula[, ctl])\n              out = olsmt(data, depvar, indvars[, ctl])"
+      },
+      {
+        "line": 13,
+        "snippet": "----------------\n.. function:: out = olsmt(data, formula[, ctl])\n              out = olsmt(data, depvar, indvars[, ctl])\n\n    :param data: name of dataset, dataframe in memory, or an empty string."
+      },
+      {
+        "line": 66,
+        "snippet": ":type indvars: Kx1 vector or NxK matrix\n\n    :param ctl: Optional input. instance of an :class:`olsmtControl` structure containing the following members:\n\n        .. list-table::"
+      },
+      {
+        "line": 71,
+        "snippet": ":widths: auto\n\n            * - ctl.altnam\n              - string array, default ``\"\"``."
+      },
+      {
+        "line": 75,
+        "snippet": "This can be a :math:`(K+1) \\times 1` or :math:`(K+2) \\times 1` string array of alternate variable names for the output.\n                If *ctl.con* is 1, and *ctl.altnam* has :math:`(K+2)` elements, then the first element will control the name displayed for the constant term. The name of the dependent variable is the last element.\n\n            * - ctl.con"
+      },
+      {
+        "line": 77,
+        "snippet": "If *ctl.con* is 1, and *ctl.altnam* has :math:`(K+2)` elements, then the first element will control the name displayed for the constant term. The name of the dependent variable is the last element.\n\n            * - ctl.con\n              - scalar, default 1."
+      },
+      {
+        "line": 85,
+        "snippet": "A constant term will always be used in constructing the moment matrix *m*.\n\n            * - ctl.cov\n              - string, set covariance type. Default = \"iid\"."
+      },
+      {
+        "line": 93,
+        "snippet": ":``\"hac\"``: HAC robust sandwich estimator.\n\n            * - ctl.clusterID\n              - Matrix, vector of categorical group variable used for computing cluster robust standard errors.\n            * - ctl.clusterVar"
+      }
+    ],
+    "formula": [
+      {
+        "line": 12,
+        "snippet": "Format\n----------------\n.. function:: out = olsmt(data, formula[, ctl])\n              out = olsmt(data, depvar, indvars[, ctl])"
+      },
+      {
+        "line": 19,
+        "snippet": ":type data: string or dataframe\n\n    :param formula: formula string of the model.\n        E.g ``\"y ~ X1 + X2\"``, ``y`` is the name of dependent variable, ``X1`` and ``X2`` are names of independent variables;"
+      },
+      {
+        "line": 26,
+        "snippet": "E.g ``\"y ~ -1 + X1 + X2\"``, ``-1`` means no intercept model.\n\n    :type formula: string\n\n    :param depvar: If *data* contains a string, then *depvar* can be a:"
+      },
+      {
+        "line": 96,
+        "snippet": "- Matrix, vector of categorical group variable used for computing cluster robust standard errors.\n            * - ctl.clusterVar\n              - String, name of cluster group variable. Only valid if dataset and formula is specified.\n            * - ctl.miss\n              - scalar, default 0."
+      },
+      {
+        "line": 151,
+        "snippet": "- Nx1 Vector, if defined, specifies weights to be used in the weighted least squares. If not defined, ordinary least squares will be computed.\n            * - ctl.weightsVar\n              - String, name of the variable used for weighting. Only valid if dataset and formula is specified. Will override any weights in *ctl.weights*.\n    :type ctl: struct"
+      },
+      {
+        "line": 265,
+        "snippet": "====================================================================================\n\nBasic usage with a dataset and a formula string\n++++++++++++++++++++++++++++++++++++++++++++++++"
+      },
+      {
+        "line": 273,
+        "snippet": "dataset = getGAUSSHome(\"examples/detroit.dta\");\n\n    // Create formula string specifying dependent and independent variables\n    formula  = \"homicide ~ unemployment + hourly_earn\";"
+      },
+      {
+        "line": 274,
+        "snippet": "// Create formula string specifying dependent and independent variables\n    formula  = \"homicide ~ unemployment + hourly_earn\";\n\n    // Perform estimation"
+      }
+    ],
+    "intercept": [
+      {
+        "line": 24,
+        "snippet": "E.g ``\"y ~ .\"``, ``.`` means including all variables except dependent variable ``y``;\n\n        E.g ``\"y ~ -1 + X1 + X2\"``, ``-1`` means no intercept model.\n\n    :type formula: string"
+      }
+    ],
+    "missing": [
+      {
+        "line": 100,
+        "snippet": "- scalar, default 0.\n\n                :0: there are no missing values (fastest).\n                :1: listwise deletion, drop any cases in which missings occur.\n                :2: pairwise deletion, this is equivalent to setting missings to 0 when calculating *m*. The number of cases computed is equal to the total number of cases in the dataset."
+      },
+      {
+        "line": 101,
+        "snippet": ":0: there are no missing values (fastest).\n                :1: listwise deletion, drop any cases in which missings occur.\n                :2: pairwise deletion, this is equivalent to setting missings to 0 when calculating *m*. The number of cases computed is equal to the total number of cases in the dataset."
+      },
+      {
+        "line": 102,
+        "snippet": ":0: there are no missing values (fastest).\n                :1: listwise deletion, drop any cases in which missings occur.\n                :2: pairwise deletion, this is equivalent to setting missings to 0 when calculating *m*. The number of cases computed is equal to the total number of cases in the dataset.\n\n            * - ctl.row"
+      },
+      {
+        "line": 186,
+        "snippet": "\"31\", \"system underdetermined\"\n                        \"32\", \"same number of columns as rows\"\n                        \"33\", \"too many missings\"\n                        \"34\", \"file not found\"\n                        \"35\", \"no variance in an independent variable\""
+      },
+      {
+        "line": 190,
+        "snippet": "\"35\", \"no variance in an independent variable\"\n\n                The system can become underdetermined if you use listwise deletion and have missing values. In that case, it is possible to skip so many cases that there are fewer usable rows than columns in the dataset.\n\n            * - out.stb"
+      },
+      {
+        "line": 249,
+        "snippet": "====================================================================================\n    Valid cases:                        5          Dependent variable:                 Y\n    Missing cases:                      0          Deletion method:                 None\n    Total SS:                        23.2          Degrees of freedom:                 1\n    R-squared:                      0.982          Rbar-squared:                   0.928"
+      },
+      {
+        "line": 287,
+        "snippet": "=====================================================================================\n    Valid cases:                       13           Dependent variable:          homicide\n    Missing cases:                      0           Deletion method:                 None\n    Total SS:                    3.22e+03           Degrees of freedom:                10\n    R-squared:                      0.834           Rbar-squared:                   0.801"
+      },
+      {
+        "line": 321,
+        "snippet": "=========================================================================================\n    Valid cases:                         69           Dependent variable:               price\n    Missing cases:                        5           Deletion method:               Listwise\n    Total SS:                      5.77e+08           Degrees of freedom:                  63\n    R-squared:                        0.258           Rbar-squared:                     0.199"
+      }
+    ],
+    "olsmtControl": [
+      {
+        "line": 66,
+        "snippet": ":type indvars: Kx1 vector or NxK matrix\n\n    :param ctl: Optional input. instance of an :class:`olsmtControl` structure containing the following members:\n\n        .. list-table::"
+      },
+      {
+        "line": 406,
+        "snippet": "new;\n\n    // Declare 'ols_ctl' to be an olsmtControl structure\n    // and fill with default settings\n    struct olsmtControl ols_ctl;"
+      },
+      {
+        "line": 408,
+        "snippet": "// Declare 'ols_ctl' to be an olsmtControl structure\n    // and fill with default settings\n    struct olsmtControl ols_ctl;\n    ols_ctl = olsmtControlCreate();"
+      },
+      {
+        "line": 409,
+        "snippet": "// and fill with default settings\n    struct olsmtControl ols_ctl;\n    ols_ctl = olsmtControlCreate();\n\n    // Set the 'res' member of the olsmtControl structure"
+      },
+      {
+        "line": 411,
+        "snippet": "ols_ctl = olsmtControlCreate();\n\n    // Set the 'res' member of the olsmtControl structure\n    // so that 'olsmt' will compute residuals and the Durbin-Watson statistic\n    ols_ctl.res = 1;"
+      },
+      {
+        "line": 515,
+        "snippet": "// Set up olsControl structure\n  struct olsmtControl ctl;\n  ctl = olsmtControlCreate();\n  ctl.weights = weights;"
+      },
+      {
+        "line": 516,
+        "snippet": "// Set up olsControl structure\n  struct olsmtControl ctl;\n  ctl = olsmtControlCreate();\n  ctl.weights = weights;"
+      },
+      {
+        "line": 567,
+        "snippet": "olsmt.src\n\n.. seealso:: Functions :func:`glm`, :func:`gmmFitIV`, :func:`olsmtControlCreate`, :func:`olsqrmt`, `Formula string`, :func:`clusterSE`, :func:`robustSE`"
+      }
+    ],
+    "output": [
+      {
+        "line": 74,
+        "snippet": "- string array, default ``\"\"``.\n\n                This can be a :math:`(K+1) \\times 1` or :math:`(K+2) \\times 1` string array of alternate variable names for the output.\n                If *ctl.con* is 1, and *ctl.altnam* has :math:`(K+2)` elements, then the first element will control the name displayed for the constant term. The name of the dependent variable is the last element."
+      },
+      {
+        "line": 116,
+        "snippet": "If 0, internally created variable names are not padded to the same length (e.g. ``X1, X2,..., X10``). If 1, they are padded with zeros to the same length (e.g., ``X01, X02,..., X10``).\n            * - ctl.output\n              - scalar, default 1."
+      },
+      {
+        "line": 280,
+        "snippet": "In this example, the dataset ``detroit.dta`` is used to compute a\nregression. The dependent variable is *homicide*. The independent variables are: *unemployment* and *hourly_earn*. The output is:\n\n::"
+      },
+      {
+        "line": 314,
+        "snippet": "call olsmt(auto2, \"price ~ mpg + rep78\");\n\nIn this example, the dependent variable *price* is regressed on *mpg* and *rep78*. The categorical variable *rep78* will automatically be included in the OLS regression as a dummy variable with the base case excluded from the regression. The coefficients for the categories, *Fair, Average, Good, Excellent* are included in the printed output table. The *Poor* category is excluded from the regression, as it is the base case.\n\n::"
+      },
+      {
+        "line": 399,
+        "snippet": "====================================================================================\n\nUse a dataset, a list of variable names plus a control and output structure.\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+      },
+      {
+        "line": 476,
+        "snippet": "call olsmt(dataset, depvar, indepvar);\n\nThe above code will produce the following output:\n\n::"
+      },
+      {
+        "line": 521,
+        "snippet": "call olsmt(\"\", progeny, parent, ctl);\n\nThe above code will produce the following output:\n\n::"
+      },
+      {
+        "line": 551,
+        "snippet": "setting *ctl.olsalg* to ``qr`` or ``svd``. If you are unsure of the condition of\n  your data, set *ctl.olsalg* to ``qr``.\n- No output file is modified, opened, or closed by this procedure. If\n  you want output to be placed in a file, you need to open an output\n  file before calling :func:`olsmt`."
+      }
+    ],
+    "returns": []
+  },
   "matches": [
     {
       "confidence": 1.0,
+      "controls_section": ":param ctl: Optional input. instance of an :class:`olsmtControl` structure containing the following members:\n.. list-table::\n* - ctl.altnam\n- string array, default ``\"\"``.\nThis can be a :math:`(K+1) \\times 1` or :math:`(K+2) \\times 1` string array of alternate variable names for the output.\nIf *ctl.con* is 1, and *ctl.altnam* has :math:`(K+2)` elements, then the first element will control the name displayed for the constant term. The name of the dependent variable is the last element.\n* - ctl.con\n- scalar, default 1.\nA constant term will always be used in constructing the moment matrix *m*.\n* - ctl.cov\n- string, set covariance type. Default = \"iid\".\n* - ctl.clusterID\n- Matrix, vector of categorical group variable used for computing cluster robust standard errors.\n* - ctl.clusterVar\n- String, name of cluster group variable. Only valid if dataset and formula is specifie\n...[truncated]",
       "examples": "out = olsmt(data, depvar, indvars[, ctl])\n\n// Set y matrix\n    y = { 2,\n          3,\n          1,\n          7,\n          5 };\n\n    //  Set x matrix\n    x = { 1 3 2,\n          2 3 1,\n          7 1 7,\n          5 3 1,\n          3 5 5 };\n\n    // Perform least squares regression and print report to the screen\n    // The empty string, \"\" indicates that no dataset is used\n    call olsmt(\"\", y, x);\n\n// Create string with the name and full file path of the dataset\n    dataset = getGAUSSHome(\"examples/detroit.dta\");\n\n    // Create formula string specifying dependent and independent variables\n    formula  = \"homicide ~ unemployment + hourly_earn\";\n\n    // Perform estimation\n    call olsmt(dataset, formula);\n\n// Load data\n    fname = getGAUSSHome(\"examples/auto2.dta\");\n    auto2 = loadd(fname);\n\n    // Include the `rep78` categorical variable\n    call olsmt(auto2, \"price ~ mpg + rep78\");",
+      "extraction_warnings": [
+        "no keyword hits for: returns"
+      ],
       "file_path": "olsmt.rst",
+      "formula_section": ":param formula: formula string of the model.\nE.g ``\"y ~ X1 + X2\"``, ``y`` is the name of dependent variable, ``X1`` and ``X2`` are names of independent variables;\nE.g ``\"y ~ .\"``, ``.`` means including all variables except dependent variable ``y``;\nE.g ``\"y ~ -1 + X1 + X2\"``, ``-1`` means no intercept model.\n:type formula: string\n\nE.g ``\"y ~ .\"``, ``.`` means including all variables except dependent variable ``y``;\n\n        E.g ``\"y ~ -1 + X1 + X2\"``, ``-1`` means no intercept model.\n\n    :type formula: string\n\nThis can be a :math:`(K+1) \\times 1` or :math:`(K+2) \\times 1` string array of alternate variable names for the output.\n                If *ctl.con* is 1, and *ctl.altnam* has :math:`(K+2)` elements, then the first element will control the name displayed for the constant term. The name of the dependent variable is the last element.\n\n            * - ctl.con\n\n- scalar, default 1.\n\n                :1: a constant term will be added, :math:`D = K+1`.\n                :0: no constant term will be added, :math:`D = K`.\n\n:1: a constant term will be added, :math:`D = K+1`.\n                :0: no constant term will be added, :math:`D = K`.\n\n                A constant term will always be used in constructing the moment matrix *m*.",
       "heading": "olsmt",
-      "inputs_section": ":param data: name of dataset, dataframe in memory, or an empty string.\n:type data: string or dataframe\n:param formula: formula string of the model.\n:type formula: string\n:param depvar: If *data* contains a string, then *depvar* can be a:\n:param indvars: If *data* contains a string:\n:type indvars: Kx1 vector or NxK matrix\n:param ctl: Optional input. instance of an :class:`olsmtControl` structure containing the following members:",
+      "inputs_section": ":param data: name of dataset, dataframe in memory, or an empty string.\nIf *data* is an empty string,``\"\"``, the procedure assumes that the actual data has been passed in the next two arguments.\n:type data: string or dataframe\n\n:param formula: formula string of the model.\nE.g ``\"y ~ X1 + X2\"``, ``y`` is the name of dependent variable, ``X1`` and ``X2`` are names of independent variables;\nE.g ``\"y ~ .\"``, ``.`` means including all variables except dependent variable ``y``;\nE.g ``\"y ~ -1 + X1 + X2\"``, ``-1`` means no intercept model.\n:type formula: string\n\n:param depvar: If *data* contains a string, then *depvar* can be a:\n=========== ==============\ntype         value\n=========== ==============\nstring      name of dependent variable\nscalar      index of dependent variable. If scalar 0, the last column of the dataset will be used.\n=========== ==============\nIf *data* is an empty string, name of dataframe, or 0:\n=========== ==============\ntype         value\n=========== ==============\nNx1 vector  the dependent variable.\n=========== ==============\n\n:param indvars: If *data* contains a string:\n===================== ==============\ntype                   value\n===================== ==============\nKx1 character vector  names of independent variables\nKx1 numeric vector    indices of independent variables. These can be any size subset of the variables in the data\nand can be in any order. If a scalar 0 is passed, all columns of the data will be used except\nfor the one used for the dependent variable.\n===================== ==============\nIf *data* is an empty string, dataframe, or 0:\n=========== ==============\ntype         value\n=========== ==============\nNxK matrix  the independent variables\n=========== ==============\n:type indvars: Kx1 vector or NxK matrix\n\n:para\n...[truncated]",
+      "keyword_hits": {
+        "ctl": [
+          {
+            "line": 12,
+            "snippet": "Format\n----------------\n.. function:: out = olsmt(data, formula[, ctl])\n              out = olsmt(data, depvar, indvars[, ctl])"
+          },
+          {
+            "line": 13,
+            "snippet": "----------------\n.. function:: out = olsmt(data, formula[, ctl])\n              out = olsmt(data, depvar, indvars[, ctl])\n\n    :param data: name of dataset, dataframe in memory, or an empty string."
+          },
+          {
+            "line": 66,
+            "snippet": ":type indvars: Kx1 vector or NxK matrix\n\n    :param ctl: Optional input. instance of an :class:`olsmtControl` structure containing the following members:\n\n        .. list-table::"
+          },
+          {
+            "line": 71,
+            "snippet": ":widths: auto\n\n            * - ctl.altnam\n              - string array, default ``\"\"``."
+          },
+          {
+            "line": 75,
+            "snippet": "This can be a :math:`(K+1) \\times 1` or :math:`(K+2) \\times 1` string array of alternate variable names for the output.\n                If *ctl.con* is 1, and *ctl.altnam* has :math:`(K+2)` elements, then the first element will control the name displayed for the constant term. The name of the dependent variable is the last element.\n\n            * - ctl.con"
+          },
+          {
+            "line": 77,
+            "snippet": "If *ctl.con* is 1, and *ctl.altnam* has :math:`(K+2)` elements, then the first element will control the name displayed for the constant term. The name of the dependent variable is the last element.\n\n            * - ctl.con\n              - scalar, default 1."
+          },
+          {
+            "line": 85,
+            "snippet": "A constant term will always be used in constructing the moment matrix *m*.\n\n            * - ctl.cov\n              - string, set covariance type. Default = \"iid\"."
+          },
+          {
+            "line": 93,
+            "snippet": ":``\"hac\"``: HAC robust sandwich estimator.\n\n            * - ctl.clusterID\n              - Matrix, vector of categorical group variable used for computing cluster robust standard errors.\n            * - ctl.clusterVar"
+          }
+        ],
+        "formula": [
+          {
+            "line": 12,
+            "snippet": "Format\n----------------\n.. function:: out = olsmt(data, formula[, ctl])\n              out = olsmt(data, depvar, indvars[, ctl])"
+          },
+          {
+            "line": 19,
+            "snippet": ":type data: string or dataframe\n\n    :param formula: formula string of the model.\n        E.g ``\"y ~ X1 + X2\"``, ``y`` is the name of dependent variable, ``X1`` and ``X2`` are names of independent variables;"
+          },
+          {
+            "line": 26,
+            "snippet": "E.g ``\"y ~ -1 + X1 + X2\"``, ``-1`` means no intercept model.\n\n    :type formula: string\n\n    :param depvar: If *data* contains a string, then *depvar* can be a:"
+          },
+          {
+            "line": 96,
+            "snippet": "- Matrix, vector of categorical group variable used for computing cluster robust standard errors.\n            * - ctl.clusterVar\n              - String, name of cluster group variable. Only valid if dataset and formula is specified.\n            * - ctl.miss\n              - scalar, default 0."
+          },
+          {
+            "line": 151,
+            "snippet": "- Nx1 Vector, if defined, specifies weights to be used in the weighted least squares. If not defined, ordinary least squares will be computed.\n            * - ctl.weightsVar\n              - String, name of the variable used for weighting. Only valid if dataset and formula is specified. Will override any weights in *ctl.weights*.\n    :type ctl: struct"
+          },
+          {
+            "line": 265,
+            "snippet": "====================================================================================\n\nBasic usage with a dataset and a formula string\n++++++++++++++++++++++++++++++++++++++++++++++++"
+          },
+          {
+            "line": 273,
+            "snippet": "dataset = getGAUSSHome(\"examples/detroit.dta\");\n\n    // Create formula string specifying dependent and independent variables\n    formula  = \"homicide ~ unemployment + hourly_earn\";"
+          },
+          {
+            "line": 274,
+            "snippet": "// Create formula string specifying dependent and independent variables\n    formula  = \"homicide ~ unemployment + hourly_earn\";\n\n    // Perform estimation"
+          }
+        ],
+        "intercept": [
+          {
+            "line": 24,
+            "snippet": "E.g ``\"y ~ .\"``, ``.`` means including all variables except dependent variable ``y``;\n\n        E.g ``\"y ~ -1 + X1 + X2\"``, ``-1`` means no intercept model.\n\n    :type formula: string"
+          }
+        ],
+        "missing": [
+          {
+            "line": 100,
+            "snippet": "- scalar, default 0.\n\n                :0: there are no missing values (fastest).\n                :1: listwise deletion, drop any cases in which missings occur.\n                :2: pairwise deletion, this is equivalent to setting missings to 0 when calculating *m*. The number of cases computed is equal to the total number of cases in the dataset."
+          },
+          {
+            "line": 101,
+            "snippet": ":0: there are no missing values (fastest).\n                :1: listwise deletion, drop any cases in which missings occur.\n                :2: pairwise deletion, this is equivalent to setting missings to 0 when calculating *m*. The number of cases computed is equal to the total number of cases in the dataset."
+          },
+          {
+            "line": 102,
+            "snippet": ":0: there are no missing values (fastest).\n                :1: listwise deletion, drop any cases in which missings occur.\n                :2: pairwise deletion, this is equivalent to setting missings to 0 when calculating *m*. The number of cases computed is equal to the total number of cases in the dataset.\n\n            * - ctl.row"
+          },
+          {
+            "line": 186,
+            "snippet": "\"31\", \"system underdetermined\"\n                        \"32\", \"same number of columns as rows\"\n                        \"33\", \"too many missings\"\n                        \"34\", \"file not found\"\n                        \"35\", \"no variance in an independent variable\""
+          },
+          {
+            "line": 190,
+            "snippet": "\"35\", \"no variance in an independent variable\"\n\n                The system can become underdetermined if you use listwise deletion and have missing values. In that case, it is possible to skip so many cases that there are fewer usable rows than columns in the dataset.\n\n            * - out.stb"
+          },
+          {
+            "line": 249,
+            "snippet": "====================================================================================\n    Valid cases:                        5          Dependent variable:                 Y\n    Missing cases:                      0          Deletion method:                 None\n    Total SS:                        23.2          Degrees of freedom:                 1\n    R-squared:                      0.982          Rbar-squared:                   0.928"
+          },
+          {
+            "line": 287,
+            "snippet": "=====================================================================================\n    Valid cases:                       13           Dependent variable:          homicide\n    Missing cases:                      0           Deletion method:                 None\n    Total SS:                    3.22e+03           Degrees of freedom:                10\n    R-squared:                      0.834           Rbar-squared:                   0.801"
+          },
+          {
+            "line": 321,
+            "snippet": "=========================================================================================\n    Valid cases:                         69           Dependent variable:               price\n    Missing cases:                        5           Deletion method:               Listwise\n    Total SS:                      5.77e+08           Degrees of freedom:                  63\n    R-squared:                        0.258           Rbar-squared:                     0.199"
+          }
+        ],
+        "olsmtControl": [
+          {
+            "line": 66,
+            "snippet": ":type indvars: Kx1 vector or NxK matrix\n\n    :param ctl: Optional input. instance of an :class:`olsmtControl` structure containing the following members:\n\n        .. list-table::"
+          },
+          {
+            "line": 406,
+            "snippet": "new;\n\n    // Declare 'ols_ctl' to be an olsmtControl structure\n    // and fill with default settings\n    struct olsmtControl ols_ctl;"
+          },
+          {
+            "line": 408,
+            "snippet": "// Declare 'ols_ctl' to be an olsmtControl structure\n    // and fill with default settings\n    struct olsmtControl ols_ctl;\n    ols_ctl = olsmtControlCreate();"
+          },
+          {
+            "line": 409,
+            "snippet": "// and fill with default settings\n    struct olsmtControl ols_ctl;\n    ols_ctl = olsmtControlCreate();\n\n    // Set the 'res' member of the olsmtControl structure"
+          },
+          {
+            "line": 411,
+            "snippet": "ols_ctl = olsmtControlCreate();\n\n    // Set the 'res' member of the olsmtControl structure\n    // so that 'olsmt' will compute residuals and the Durbin-Watson statistic\n    ols_ctl.res = 1;"
+          },
+          {
+            "line": 515,
+            "snippet": "// Set up olsControl structure\n  struct olsmtControl ctl;\n  ctl = olsmtControlCreate();\n  ctl.weights = weights;"
+          },
+          {
+            "line": 516,
+            "snippet": "// Set up olsControl structure\n  struct olsmtControl ctl;\n  ctl = olsmtControlCreate();\n  ctl.weights = weights;"
+          },
+          {
+            "line": 567,
+            "snippet": "olsmt.src\n\n.. seealso:: Functions :func:`glm`, :func:`gmmFitIV`, :func:`olsmtControlCreate`, :func:`olsqrmt`, `Formula string`, :func:`clusterSE`, :func:`robustSE`"
+          }
+        ],
+        "output": [
+          {
+            "line": 74,
+            "snippet": "- string array, default ``\"\"``.\n\n                This can be a :math:`(K+1) \\times 1` or :math:`(K+2) \\times 1` string array of alternate variable names for the output.\n                If *ctl.con* is 1, and *ctl.altnam* has :math:`(K+2)` elements, then the first element will control the name displayed for the constant term. The name of the dependent variable is the last element."
+          },
+          {
+            "line": 116,
+            "snippet": "If 0, internally created variable names are not padded to the same length (e.g. ``X1, X2,..., X10``). If 1, they are padded with zeros to the same length (e.g., ``X01, X02,..., X10``).\n            * - ctl.output\n              - scalar, default 1."
+          },
+          {
+            "line": 280,
+            "snippet": "In this example, the dataset ``detroit.dta`` is used to compute a\nregression. The dependent variable is *homicide*. The independent variables are: *unemployment* and *hourly_earn*. The output is:\n\n::"
+          },
+          {
+            "line": 314,
+            "snippet": "call olsmt(auto2, \"price ~ mpg + rep78\");\n\nIn this example, the dependent variable *price* is regressed on *mpg* and *rep78*. The categorical variable *rep78* will automatically be included in the OLS regression as a dummy variable with the base case excluded from the regression. The coefficients for the categories, *Fair, Average, Good, Excellent* are included in the printed output table. The *Poor* category is excluded from the regression, as it is the base case.\n\n::"
+          },
+          {
+            "line": 399,
+            "snippet": "====================================================================================\n\nUse a dataset, a list of variable names plus a control and output structure.\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+          },
+          {
+            "line": 476,
+            "snippet": "call olsmt(dataset, depvar, indepvar);\n\nThe above code will produce the following output:\n\n::"
+          },
+          {
+            "line": 521,
+            "snippet": "call olsmt(\"\", progeny, parent, ctl);\n\nThe above code will produce the following output:\n\n::"
+          },
+          {
+            "line": 551,
+            "snippet": "setting *ctl.olsalg* to ``qr`` or ``svd``. If you are unsure of the condition of\n  your data, set *ctl.olsalg* to ``qr``.\n- No output file is modified, opened, or closed by this procedure. If\n  you want output to be placed in a file, you need to open an output\n  file before calling :func:`olsmt`."
+          }
+        ],
+        "returns": []
+      },
       "match_reason": [
         "exact_file_name",
         "exact_heading",
@@ -39,19 +666,97 @@
         "command_reference_text"
       ],
       "notes": "Remarks\n-------\n\n- For poorly conditioned data the default setting for *ctl.olsalg*, using\n  the Cholesky update, may produce only four or five digits of accuracy\n  for the parameter estimates and standard error. For greater accuracy,\n  use either the qr or singular value decomposition algorithm by\n  setting *ctl.olsalg* to ``qr`` or ``svd``. If you are unsure of the condition of\n  your data, set *ctl.olsalg* to ``qr``.\n- No output file is modified, opened, or closed by this procedure. If\n  you want output to be placed in a file, you need to open an output\n  file before calling :func:`olsmt`.\n- The supported dataset types are CSV, XLS, XLSX, HDF5, FMT, DAT\n- For HDF5 file, the dataset must include `file schema` and both file name and\n  dataset name must be provided, e.g.\n\n  ::\n\n      olsmt(\"h5://C:/gauss/examples/testdata.h5/mydata\", formula)",
-      "outputs_section": null,
+      "outputs_section": ":return out: instance of :class:`olsmtOut` struct containing the following members:\n.. list-table::\n* - out.vnam\n- :math:`(K+2) \\times 1` or :math:`(K+1) \\times 1` character vector, the variable names used in the regression. If a constant term is used, this vector will be :math:`(K+2) \\times 1`, and the first name will be ``CONSTANT``. The last name will be the name of the dependent variable.\n* - out.m\n- MxM matrix, where :math:`M = K+2`, the moment matrix constructed by calculating ``X'X`` where *X* is a matrix containing all useable observations and having columns in the order:\n.. csv-table::\n\"1.0\", \"indvars\", \"depvar\"\n\"(constant)\", \"(independent variables)\", \"(dependent variable)\"\nA constant term is always used in computing *m*.\n* - out.b\n- Dx1 vector, the least squares estimates of parameters.\nError handling is controlled by the low order bit of the `trap` flag.\n.\n...[truncated]",
+      "raw_section_headings": [
+        "olsmt",
+        "Purpose",
+        "Format",
+        "Examples",
+        "Basic usage with matrices",
+        "Ordinary Least Squares",
+        "F(3,1):                          18.2          Probability of F:                0.17",
+        "Variable        Estimate       Error     t-value        >|t|       Bound       Bound",
+        "X3              -0.75342     0.15111     -4.9859     0.12601     -1.0496    -0.45725",
+        "Basic usage with a dataset and a formula string",
+        "Ordinary Least Squares",
+        "F(2,10):                         25.2           Probability of F:            0.000125",
+        "Variable         Estimate       Error     t-value        >|t|       Bound       Bound",
+        "hourly_earn        15.487      2.2427      6.9057  4.1653e-05      11.092      19.883",
+        "Basic usage with a dataframe and categorical variable",
+        "Ordinary Least Squares",
+        "F(5,63):                           4.39           Probability of F:               0.00172",
+        "Variable             Estimate       Error     t-value        >|t|       Bound       Bound",
+        "rep78: Excellent         3132        2041      1.5345     0.12991     -868.47      7132.4",
+        "Estimate a linear model for each subset of a categorical variable",
+        "foreign: Domestic",
+        "F(2,49):                         22.9          Probability of F:            9.58e-08",
+        "Variable        Estimate       Error     t-value        >|t|       Bound       Bound",
+        "weight             4.415     0.94839      4.6553  2.4949e-05      2.5562      6.2739",
+        "foreign: Foreign",
+        "F(2,19):                         34.8          Probability of F:            4.45e-07",
+        "Variable        Estimate       Error     t-value        >|t|       Bound       Bound",
+        "weight            5.1558     0.88069      5.8543  1.2249e-05      3.4297       6.882",
+        "Use a dataset, a list of variable names plus a control and output structure.",
+        "Ordinary Least Squares",
+        "Durbin-Watson:                   1.95",
+        "Variable        Estimate       Error     t-value        >|t|       Bound       Bound",
+        "Age               1.6779      1.6943      0.9903     0.32263     -1.6429      4.9987",
+        "Use a dataset and variable indices",
+        "Ordinary Least Squares",
+        "F(3,396):                    2.11e+04          Probability of F:                   0",
+        "Variable        Estimate       Error     t-value        >|t|       Bound       Bound",
+        "Age             0.019892    0.036174      0.5499      0.5827   -0.051009    0.090792",
+        "Basic usage with weights",
+        "Ordinary Least Squares",
+        "F(1,5):                          28.8          Probability of F:              0.0018",
+        "Variable        Estimate       Error     t-value        >|t|       Bound       Bound",
+        "X1                0.2048    0.038155      5.3676   0.0030205     0.13002     0.27958",
+        "Remarks",
+        "Source"
+      ],
+      "related_links": [
+        "olsmt",
+        "glm",
+        "gmmFitIV",
+        "olsmtControlCreate",
+        "olsqrmt",
+        "clusterSE",
+        "robustSE",
+        "olsmtControl",
+        "olsmtOut",
+        "\"\"",
+        "\"y ~ X1 + X2\"",
+        ",",
+        "y",
+        "is the name of dependent variable,",
+        "X1",
+        "and",
+        "X2",
+        "\"y ~ .\"",
+        ".",
+        "means including all variables except dependent variable",
+        "\"y ~ -1 + X1 + X2\"",
+        "-1",
+        "(K+1) \\times 1",
+        "(K+2) \\times 1",
+        "(K+2)",
+        "D = K+1",
+        "D = K",
+        "\"iid\"",
+        "\"robust\"",
+        "\"cluster\""
+      ],
+      "returns_section": ":return out: instance of :class:`olsmtOut` struct containing the following members:\n.. list-table::\n* - out.vnam\n- :math:`(K+2) \\times 1` or :math:`(K+1) \\times 1` character vector, the variable names used in the regression. If a constant term is used, this vector will be :math:`(K+2) \\times 1`, and the first name will be ``CONSTANT``. The last name will be the name of the dependent variable.\n* - out.m\n- MxM matrix, where :math:`M = K+2`, the moment matrix constructed by calculating ``X'X`` where *X* is a matrix containing all useable observations and having columns in the order:\n.. csv-table::\n\"1.0\", \"indvars\", \"depvar\"\n\"(constant)\", \"(independent variables)\", \"(dependent variable)\"\nA constant term is always used in computing *m*.\n* - out.b\n- Dx1 vector, the least squares estimates of parameters.\nError handling is controlled by the low order bit of the `trap` flag.\n.\n...[truncated]",
       "source_type": "official_local_rst",
       "syntax_blocks": [
         ".. function:: out = olsmt(data, formula[, ctl])",
-        "out = olsmt(data, depvar, indvars[, ctl])"
+        "out = olsmt(data, depvar, indvars[, ctl])",
+        "This can be a :math:`(K+1) \\times 1` or :math:`(K+2) \\times 1` string array of alternate variable names for the output.",
+        "\"(constant)\", \"(independent variables)\", \"(dependent variable)\""
       ],
-      "unresolved_questions": [
-        "outputs/returns section not found"
-      ]
+      "unresolved_questions": []
     }
   ],
   "status": "found",
-  "unresolved_questions": [
-    "outputs/returns section not found"
-  ]
+  "unresolved_questions": []
 }

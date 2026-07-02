@@ -16,6 +16,7 @@ Planning only: this document does not implement the script.
 - `--docs-root`: required local official documentation root.
 - `--category-hint`: optional category or relative category file.
 - `--max-results`: optional maximum candidate count.
+- `--keywords`: optional list of terms to search within the best-matched command page.
 - `--format`: optional output format such as text or JSON.
 
 ## Expected Outputs
@@ -26,6 +27,8 @@ Planning only: this document does not implement the script.
 - Source type.
 - Extracted syntax blocks if found.
 - Extracted input, output, option, and example sections if found.
+- Keyword-focused snippets around requested terms.
+- Raw section headings, related links, and extraction warnings.
 - Unresolved questions.
 - Retrieval failure or ambiguity messages.
 
@@ -52,8 +55,9 @@ Planning only: this document does not implement the script.
 
 ## Extracting Syntax Blocks and Examples
 
-- Look for sections named with terms such as syntax, format, parameters, inputs, outputs, returns, examples, remarks, or notes.
+- Look for sections named with terms such as syntax, format, parameters, inputs, outputs, returns, examples, remarks, notes, controls, formula, and related commands.
 - Extract short literal blocks or directive blocks near those sections.
+- When keywords are supplied, extract short surrounding snippets without inferring meaning beyond the snippet.
 - Preserve source order and section names.
 - Keep examples short and avoid copying large documentation sections.
 

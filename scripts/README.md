@@ -17,6 +17,14 @@ For shareable example output, redact the local docs root:
 python scripts/command_doc_lookup.py olsmt --docs-root "C:/Users/eclow/Documents/GitHub/docs/docs" --redact-docs-root
 ```
 
+To retrieve keyword-focused evidence from the matched command page:
+
+```text
+python scripts/command_doc_lookup.py olsmt --docs-root "C:/Users/eclow/Documents/GitHub/docs/docs" --keywords intercept formula missing ctl olsmtControl output returns
+```
+
+Keyword snippets are evidence from the matched documentation page. They are not interpretation, and the script should not infer behavior that is not present in the snippets.
+
 ## Output Fields
 
 - `command_name`: command requested by the user.
@@ -26,6 +34,7 @@ python scripts/command_doc_lookup.py olsmt --docs-root "C:/Users/eclow/Documents
 - `matches`: candidate documentation matches.
 - `best_match`: highest-confidence match when available.
 - `unresolved_questions`: details that were not found or could not be resolved.
+- `keyword_hits`: snippets around requested keyword matches.
 
 Each match may include:
 
@@ -36,8 +45,15 @@ Each match may include:
 - `syntax_blocks`
 - `inputs_section`
 - `outputs_section`
+- `returns_section`
+- `controls_section`
+- `formula_section`
 - `examples`
 - `notes`
+- `related_links`
+- `raw_section_headings`
+- `keyword_hits`
+- `extraction_warnings`
 - `confidence`
 
 ## Limitations

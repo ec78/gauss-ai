@@ -36,10 +36,13 @@ SECTION_TITLES = {
     ),
     "examples": ("example", "examples"),
     "notes": ("note", "notes", "remark", "remarks", "description", "details"),
+    "controls_section": ("control", "controls", "control structure", "control structures"),
+    "formula_section": ("formula", "formula string", "formulas"),
 }
 
 HEADING_CHARS = set("=-~^`:#*+")
 MAX_SNIPPET_CHARS = 1400
+MAX_KEYWORD_HITS = 8
 
 
 def normalize(text: str) -> str:
@@ -101,6 +104,61 @@ def extract_named_sections(lines: list[str]) -> dict[str, str | None]:
     return extracted
 
 
+def raw_section_headings(lines: list[str]) -> list[str]:
+    return [heading["title"] for heading in iter_headings(lines)]
+
+
+def extract_related_links(lines: list[str]) -> list[str]:
+    text = "\n".join(lines)
+    patterns = [
+        r":func:`([^`]+)`",
+        r":class:`([^`]+)`",
+        r":doc:`([^`]+)`",
+        r"`([^`\n]+)`",
+    ]
+    links: list[str] = []
+    for pattern in patterns:
+        for match in re.findall(pattern, text):
+            cleaned = match.strip()
+            if cleaned and cleaned not in links:
+                links.append(cleaned)
+    return links[:30]
+
+
+def keyword_hits(lines: list[str], keywords: list[str], context: int = 2) -> dict[str, list[dict[str, Any]]]:
+    hits: dict[str, list[dict[str, Any]]] = {}
+    for keyword in keywords:
+        keyword = keyword.strip()
+        if not keyword:
+            continue
+        pattern = re.compile(re.escape(keyword), re.IGNORECASE)
+        keyword_results: list[dict[str, Any]] = []
+        for idx, line in enumerate(lines):
+            if not pattern.search(line):
+                continue
+            start = max(0, idx - context)
+            end = min(len(lines), idx + context + 1)
+            snippet = compact_snippet("\n".join(lines[start:end]), 900)
+            keyword_results.append({"line": idx + 1, "snippet": snippet})
+            if len(keyword_results) >= MAX_KEYWORD_HITS:
+                break
+        hits[keyword] = keyword_results
+    return hits
+
+
+def snippets_for_terms(lines: list[str], terms: list[str], context: int = 2) -> str | None:
+    snippets: list[str] = []
+    all_hits = keyword_hits(lines, terms, context)
+    for term_hits in all_hits.values():
+        for hit in term_hits[:3]:
+            snippet = hit["snippet"]
+            if snippet not in snippets:
+                snippets.append(snippet)
+    if not snippets:
+        return None
+    return compact_snippet("\n\n".join(snippets), 1800)
+
+
 def extract_literal_blocks_near_command(lines: list[str], command_name: str) -> list[str]:
     command_re = re.compile(rf"\b{re.escape(command_name)}\s*\(", re.IGNORECASE)
     blocks: list[str] = []
@@ -145,39 +203,86 @@ def extract_literal_blocks_near_command(lines: list[str], command_name: str) -> 
 
 def extract_function_directive_details(lines: list[str]) -> dict[str, list[str]]:
     syntax: list[str] = []
-    params: list[str] = []
-    returns: list[str] = []
+    param_blocks: list[str] = []
+    return_blocks: list[str] = []
 
     in_function = False
+    current_kind: str | None = None
+    current_block: list[str] = []
+
+    def flush_block() -> None:
+        nonlocal current_kind, current_block
+        if not current_kind or not current_block:
+            current_kind = None
+            current_block = []
+            return
+        block = compact_snippet("\n".join(current_block), 900)
+        if current_kind == "param":
+            param_blocks.append(block)
+        elif current_kind == "return":
+            return_blocks.append(block)
+        current_kind = None
+        current_block = []
+
     for line in lines:
         stripped = line.strip()
         if stripped.startswith(".. function::"):
+            flush_block()
             in_function = True
             syntax.append(stripped)
             continue
 
         if in_function:
             if stripped and not line.startswith((" ", "\t")) and not stripped.startswith(":"):
+                flush_block()
                 in_function = False
                 continue
-            if stripped.startswith(":param") or stripped.startswith(":type"):
-                params.append(stripped)
+            if stripped.startswith(":param"):
+                flush_block()
+                current_kind = "param"
+                current_block = [stripped]
                 continue
-            if stripped.startswith(":return") or stripped.startswith(":rtype"):
-                returns.append(stripped)
+            if stripped.startswith(":type"):
+                if current_kind == "param":
+                    current_block.append(stripped)
+                else:
+                    param_blocks.append(stripped)
                 continue
-            if stripped.startswith(".. ") and not stripped.startswith(".. function::"):
+            if stripped.startswith(":return"):
+                flush_block()
+                current_kind = "return"
+                current_block = [stripped]
+                continue
+            if stripped.startswith(":rtype"):
+                if current_kind == "return":
+                    current_block.append(stripped)
+                else:
+                    return_blocks.append(stripped)
+                continue
+            if stripped.startswith(".. ") and not stripped.startswith(".. function::") and not line.startswith((" ", "\t")):
+                flush_block()
                 in_function = False
                 continue
             if line.startswith((" ", "\t")) and stripped and not stripped.startswith(":"):
+                if current_kind:
+                    current_block.append(stripped)
                 if "(" in stripped and ")" in stripped and not stripped.startswith(("E.g", "If ", "=", "-")):
                     syntax.append(stripped)
+    flush_block()
 
     return {
         "syntax": [item for idx, item in enumerate(syntax) if item not in syntax[:idx]],
-        "params": params,
-        "returns": returns,
+        "params": param_blocks,
+        "returns": return_blocks,
     }
+
+
+def find_param_block(param_blocks: list[str], name: str) -> str | None:
+    prefix = f":param {name}:"
+    for block in param_blocks:
+        if block.startswith(prefix):
+            return block
+    return None
 
 
 def score_file(path: Path, lines: list[str], command_name: str) -> tuple[int, list[str]]:
@@ -223,7 +328,14 @@ def score_file(path: Path, lines: list[str], command_name: str) -> tuple[int, li
     return score, reasons
 
 
-def extract_match(path: Path, docs_root: Path, command_name: str, score: int, reasons: list[str]) -> dict[str, Any]:
+def extract_match(
+    path: Path,
+    docs_root: Path,
+    command_name: str,
+    score: int,
+    reasons: list[str],
+    keywords: list[str] | None = None,
+) -> dict[str, Any]:
     text = path.read_text(encoding="utf-8", errors="replace")
     lines = text.splitlines()
     sections = extract_named_sections(lines)
@@ -237,22 +349,43 @@ def extract_match(path: Path, docs_root: Path, command_name: str, score: int, re
     syntax_blocks = [block for idx, block in enumerate(syntax_blocks) if block and block not in syntax_blocks[:idx]]
 
     inputs_section = sections.get("inputs_section")
-    outputs_section = sections.get("outputs_section")
+    returns_section = sections.get("outputs_section")
     if not inputs_section and directive["params"]:
-        inputs_section = compact_snippet("\n".join(directive["params"]))
-    if not outputs_section and directive["returns"]:
-        outputs_section = compact_snippet("\n".join(directive["returns"]))
+        inputs_section = compact_snippet("\n\n".join(directive["params"]), 1800)
+    if not returns_section and directive["returns"]:
+        returns_section = compact_snippet("\n\n".join(directive["returns"]), 1800)
+    controls_section = (
+        sections.get("controls_section")
+        or find_param_block(directive["params"], "ctl")
+        or snippets_for_terms(lines, ["control", "controls", "ctl", f"{command_name}Control"], 2)
+    )
+    formula_bits = [
+        item
+        for item in [
+            sections.get("formula_section"),
+            find_param_block(directive["params"], "formula"),
+            snippets_for_terms(lines, ["intercept", "constant"], 2),
+        ]
+        if item
+    ]
+    formula_section = compact_snippet("\n\n".join(formula_bits), 1800) if formula_bits else None
     example_blocks = [block for block in literal_blocks if not block.strip().startswith(".. function::")]
+    keyword_result = keyword_hits(lines, keywords or [], 2)
+    extraction_warnings: list[str] = []
 
     unresolved = []
     if not syntax_blocks:
         unresolved.append("verified syntax not found")
     if not inputs_section:
         unresolved.append("inputs/parameters section not found")
-    if not outputs_section:
+    if not returns_section:
         unresolved.append("outputs/returns section not found")
     if not sections.get("examples"):
         unresolved.append("examples section not found")
+    if keywords:
+        missing_keywords = [keyword for keyword, hits in keyword_result.items() if not hits]
+        if missing_keywords:
+            extraction_warnings.append("no keyword hits for: " + ", ".join(missing_keywords))
 
     rel_path = path.resolve()
     try:
@@ -267,15 +400,22 @@ def extract_match(path: Path, docs_root: Path, command_name: str, score: int, re
         "heading": first_heading(lines),
         "syntax_blocks": syntax_blocks,
         "inputs_section": inputs_section,
-        "outputs_section": outputs_section,
+        "outputs_section": returns_section,
+        "returns_section": returns_section,
+        "controls_section": controls_section,
+        "formula_section": formula_section,
         "examples": compact_snippet("\n\n".join(example_blocks)) if example_blocks else sections.get("examples"),
         "notes": sections.get("notes"),
+        "related_links": extract_related_links(lines),
+        "raw_section_headings": raw_section_headings(lines),
+        "keyword_hits": keyword_result,
+        "extraction_warnings": extraction_warnings,
         "confidence": min(score / 200, 1.0),
         "unresolved_questions": unresolved,
     }
 
 
-def lookup(command_name: str, docs_root: Path, max_results: int) -> dict[str, Any]:
+def lookup(command_name: str, docs_root: Path, max_results: int, keywords: list[str] | None = None) -> dict[str, Any]:
     result: dict[str, Any] = {
         "command_name": command_name,
         "docs_root": str(docs_root),
@@ -283,6 +423,7 @@ def lookup(command_name: str, docs_root: Path, max_results: int) -> dict[str, An
         "best_match": None,
         "status": "not_found",
         "confidence": 0.0,
+        "keyword_hits": {},
         "unresolved_questions": [],
     }
 
@@ -314,7 +455,10 @@ def lookup(command_name: str, docs_root: Path, max_results: int) -> dict[str, An
 
     candidates.sort(key=lambda item: (-item[0], str(item[1]).lower()))
     selected = candidates[:max_results]
-    matches = [extract_match(path, docs_root, command_name, score, reasons) for score, path, reasons in selected]
+    matches = [
+        extract_match(path, docs_root, command_name, score, reasons, keywords)
+        for score, path, reasons in selected
+    ]
     result["matches"] = matches
 
     if not matches:
@@ -326,6 +470,7 @@ def lookup(command_name: str, docs_root: Path, max_results: int) -> dict[str, An
     best_match = matches[0]
     result["best_match"] = best_match
     result["confidence"] = best_match["confidence"]
+    result["keyword_hits"] = best_match.get("keyword_hits", {})
     result["unresolved_questions"] = best_match["unresolved_questions"]
 
     if len(selected) > 1 and best_score - second_score < 25:
@@ -346,6 +491,12 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--docs-root", required=True, help="Local root of official GAUSS documentation.")
     parser.add_argument("--max-results", type=int, default=5, help="Maximum number of matches to return.")
     parser.add_argument(
+        "--keywords",
+        nargs="*",
+        default=[],
+        help="Optional keywords to search within the best-matched command doc.",
+    )
+    parser.add_argument(
         "--redact-docs-root",
         action="store_true",
         help="Replace docs_root in JSON output with a placeholder for shareable examples.",
@@ -353,7 +504,7 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
 
     max_results = max(1, args.max_results)
-    data = lookup(args.command_name, Path(args.docs_root), max_results)
+    data = lookup(args.command_name, Path(args.docs_root), max_results, args.keywords)
     if args.redact_docs_root:
         data["docs_root"] = "<local official GAUSS docs root>"
     print(json.dumps(data, indent=2, sort_keys=True))
