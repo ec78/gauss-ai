@@ -19,6 +19,7 @@ This index summarizes completed manual evaluation runs for GAUSS AI agents. Use 
 | [2026-07-01-code-assistant-manual-run-013.md](2026-07-01-code-assistant-manual-run-013.md) | 2026-07-01 | 8.1 | Documentation | Procedure usage docs | 3.9 | Pass | Drafted practical GAUSS-facing docs for `winsorizeDF`, including inputs, output, assumptions, missing values, and example call. | Continue broader manual evaluations with Test Generation and Design Guidance prompts. |
 | [2026-07-01-code-assistant-manual-run-014.md](2026-07-01-code-assistant-manual-run-014.md) | 2026-07-01 | 9.1 | Test Generation | Matrix procedure tests | 4.0 | Pass | Covered normal, constant-column, missing-value, single-row, and dimension edge cases with clear GAUSS-shaped invariants. | Continue broader manual evaluations with Design Guidance coverage. |
 | [2026-07-01-code-assistant-manual-run-015.md](2026-07-01-code-assistant-manual-run-015.md) | 2026-07-01 | 10.1 | Design Guidance | Choose data representation | 3.9 | Pass | Recommended structures as primary model-result objects while distinguishing matrices, DataFrames, and arrays by role. | Update evaluation indexes and coverage trackers. |
+| [2026-07-02-code-assistant-retrieval-run-001.md](2026-07-02-code-assistant-retrieval-run-001.md) | 2026-07-02 | 11.1 | Retrieval | Look up `olsmt` syntax and intercept behavior | 3.8 | Pass | Used command categories for discovery and official local `olsmt` lookup evidence to verify syntax and answer the intercept question directly, instead of deferring to the user. | Add a concrete validation step, such as comparing `out.b` against R's `coef(model)`. |
 
 ## Patterns Observed So Far
 
@@ -27,3 +28,4 @@ This index summarizes completed manual evaluation runs for GAUSS AI agents. Use 
 - Improved handling of native GAUSS statistical procedures such as `olsmt`, including the hybrid documentation strategy.
 - Strong public API review behavior.
 - Strong broader coverage across code generation, explanation, refactoring, optimization, documentation, test generation, and design guidance.
+- First retrieval-focused evaluation shows the assistant using retrieved lookup evidence directly rather than telling the user to check documentation themselves.
