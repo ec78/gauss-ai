@@ -20,6 +20,7 @@ This index summarizes completed manual evaluation runs for GAUSS AI agents. Use 
 | [2026-07-01-code-assistant-manual-run-014.md](2026-07-01-code-assistant-manual-run-014.md) | 2026-07-01 | 9.1 | Test Generation | Matrix procedure tests | 4.0 | Pass | Covered normal, constant-column, missing-value, single-row, and dimension edge cases with clear GAUSS-shaped invariants. | Continue broader manual evaluations with Design Guidance coverage. |
 | [2026-07-01-code-assistant-manual-run-015.md](2026-07-01-code-assistant-manual-run-015.md) | 2026-07-01 | 10.1 | Design Guidance | Choose data representation | 3.9 | Pass | Recommended structures as primary model-result objects while distinguishing matrices, DataFrames, and arrays by role. | Update evaluation indexes and coverage trackers. |
 | [2026-07-02-code-assistant-retrieval-run-001.md](2026-07-02-code-assistant-retrieval-run-001.md) | 2026-07-02 | 11.1 | Retrieval | Look up `olsmt` syntax and intercept behavior | 3.8 | Pass | Used command categories for discovery and official local `olsmt` lookup evidence to verify syntax and answer the intercept question directly, instead of deferring to the user. | Add a concrete validation step, such as comparing `out.b` against R's `coef(model)`. |
+| [2026-07-02-code-assistant-retrieval-run-002.md](2026-07-02-code-assistant-retrieval-run-002.md) | 2026-07-02 | 11.2 | Retrieval | Look up `strindx` not-found behavior | 3.75 | Pass | Verified from official `strindx` lookup evidence that `strindx` returns `0` when not found, contrasted this with Python `.find()` returning `-1`, and used a GAUSS-safe `idx == 0` example. | Add a second example showing the found branch; consider a short curated `strindx` note; run Prompt 11.3 next. |
 
 ## Patterns Observed So Far
 
@@ -29,3 +30,4 @@ This index summarizes completed manual evaluation runs for GAUSS AI agents. Use 
 - Strong public API review behavior.
 - Strong broader coverage across code generation, explanation, refactoring, optimization, documentation, test generation, and design guidance.
 - First retrieval-focused evaluation shows the assistant using retrieved lookup evidence directly rather than telling the user to check documentation themselves.
+- Second retrieval-focused evaluation confirms consistent `strindx == 0` not-found handling grounded in retrieved lookup evidence.

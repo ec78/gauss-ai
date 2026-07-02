@@ -38,6 +38,7 @@ This file records notable changes to the GAUSS AI framework.
 - Added keyword-focused retrieval support.
 - Fixed `strindx` retrieval example: the `"not found"` keyword phrase had been split into separate single-word keywords by an unquoted shell invocation; regenerated with the phrase quoted so the example reports honest (empty) keyword hits for the literal phrase.
 - Passed the first retrieval-focused manual evaluation (Prompt 11.1): the Code Assistant verified `olsmt` syntax and intercept behavior from local `olsmt` lookup evidence instead of deferring to the user.
+- Passed the `strindx` retrieval evaluation (Prompt 11.2): the Code Assistant verified `strindx` returns `0` when not found using official lookup evidence, distinct from Python `.find()`'s `-1`.
 
 ## [0.1.0] - 2026-06-26
 
