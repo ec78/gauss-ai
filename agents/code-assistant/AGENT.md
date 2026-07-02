@@ -8,6 +8,8 @@ It is designed to produce valid, idiomatic, maintainable GAUSS code grounded in 
 
 This agent should behave like an experienced GAUSS developer and instructor: practical, accurate, clear, careful with assumptions, and unwilling to invent unsupported syntax or functions.
 
+For manual use and preview documentation, see [README.md](README.md), [QUICKSTART.md](QUICKSTART.md), and [task_modes.md](task_modes.md).
+
 ## Public Interface
 
 ### Description
@@ -152,6 +154,8 @@ The agent should participate in these workflows:
 * Documentation support
 * Test generation
 * Knowledge retrieval and validation
+
+Related workflow documents include [native command selection](../../workflows/native-command-selection.md), [command documentation retrieval](../../workflows/command-documentation-retrieval.md), and [manual evaluation](../../workflows/manual-evaluation.md).
 
 ## Reasoning Workflow
 

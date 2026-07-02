@@ -28,8 +28,8 @@ Risk or failure mode:
 
 Reference:
 
-- Benchmark content related to Prompt 2.2.
-- Evaluation run `evaluations/runs/2026-06-30-code-assistant-manual-run-001.md`.
+- Benchmark content related to Prompt 2.2 in [benchmark prompts](../../evaluations/benchmark-prompts.md).
+- Evaluation run [2026-06-30-code-assistant-manual-run-001.md](../../evaluations/runs/2026-06-30-code-assistant-manual-run-001.md).
 
 ## 2. Fix Dimension Mismatch
 
@@ -52,7 +52,7 @@ Risk or failure mode:
 
 Reference:
 
-- Evaluation run `evaluations/runs/2026-06-30-code-assistant-manual-run-002.md`.
+- Evaluation run [2026-06-30-code-assistant-manual-run-002.md](../../evaluations/runs/2026-06-30-code-assistant-manual-run-002.md).
 
 ## 3. Translate R OLS Workflow
 
@@ -80,8 +80,8 @@ Risk or failure mode:
 
 Reference:
 
-- Benchmark Prompt 4.3.
-- Evaluation runs `2026-07-01-code-assistant-manual-run-007.md` and `2026-07-01-code-assistant-manual-run-008.md`.
+- Benchmark Prompt 4.3 in [benchmark prompts](../../evaluations/benchmark-prompts.md).
+- Evaluation runs [2026-07-01-code-assistant-manual-run-007.md](../../evaluations/runs/2026-07-01-code-assistant-manual-run-007.md) and [2026-07-01-code-assistant-manual-run-008.md](../../evaluations/runs/2026-07-01-code-assistant-manual-run-008.md).
 
 ## 4. Review Public Package API
 
@@ -104,8 +104,8 @@ Risk or failure mode:
 
 Reference:
 
-- Benchmark Prompt 5.1.
-- Evaluation run `evaluations/runs/2026-06-30-code-assistant-manual-run-006.md`.
+- Benchmark Prompt 5.1 in [benchmark prompts](../../evaluations/benchmark-prompts.md).
+- Evaluation run [2026-06-30-code-assistant-manual-run-006.md](../../evaluations/runs/2026-06-30-code-assistant-manual-run-006.md).
 
 ## 5. Generate Matrix Standardization Tests
 
@@ -129,5 +129,5 @@ Risk or failure mode:
 
 Reference:
 
-- Benchmark Prompt 9.1.
-- Evaluation run `evaluations/runs/2026-07-01-code-assistant-manual-run-014.md`.
+- Benchmark Prompt 9.1 in [benchmark prompts](../../evaluations/benchmark-prompts.md).
+- Evaluation run [2026-07-01-code-assistant-manual-run-014.md](../../evaluations/runs/2026-07-01-code-assistant-manual-run-014.md).

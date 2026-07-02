@@ -7,6 +7,7 @@ The GAUSS Code Assistant is the framework's specialized agent for helping users 
 - [AGENT.md](AGENT.md) defines the agent role, responsibilities, and operating principles.
 - [task_modes.md](task_modes.md) defines supported task modes and response patterns.
 - [QUICKSTART.md](QUICKSTART.md) explains how to try the assistant manually.
+- [Code Assistant examples](../../examples/code-assistant/README.md) provide representative manual trials.
 
 ## Supported Task Modes
 
@@ -26,12 +27,12 @@ The GAUSS Code Assistant is the framework's specialized agent for helping users 
 The assistant should use:
 
 - Official GAUSS documentation for exact syntax and behavior.
-- `experts/gauss-language/BODY_OF_KNOWLEDGE.md` for GAUSS reasoning patterns and failure modes.
-- `experts/gauss-language/COMMAND_CATEGORIES.md` for native command discovery.
-- `experts/gauss-language/commands/` for short curated notes when available.
-- `evaluations/benchmark-prompts.md` and `evaluations/benchmark-coverage.md` for tested behaviors.
+- [GAUSS Language Body of Knowledge](../../experts/gauss-language/BODY_OF_KNOWLEDGE.md) for GAUSS reasoning patterns and failure modes.
+- [Command categories](../../experts/gauss-language/COMMAND_CATEGORIES.md) for native command discovery.
+- [Curated command notes](../../experts/gauss-language/commands/README.md) for short verified notes when available.
+- [Benchmark prompts](../../evaluations/benchmark-prompts.md) and [benchmark coverage](../../evaluations/benchmark-coverage.md) for tested behaviors.
 
-Command categories are for discovery. Official command-specific documentation remains the source of truth.
+Command categories are for discovery. Official command-specific documentation remains the source of truth for exact syntax, inputs, outputs, examples, and return behavior.
 
 ## Relationship To The GAUSS Language Expert
 
@@ -43,12 +44,16 @@ The expert module is reusable knowledge. The Code Assistant prompt is runtime be
 
 Manual evaluations are tracked in:
 
-- `evaluations/benchmark-prompts.md`
-- `evaluations/scoring.md`
-- `evaluations/runs/INDEX.md`
-- `evaluations/benchmark-coverage.md`
+- [benchmark prompts](../../evaluations/benchmark-prompts.md)
+- [scoring rubric](../../evaluations/scoring.md)
+- [evaluation run index](../../evaluations/runs/INDEX.md)
+- [benchmark coverage tracker](../../evaluations/benchmark-coverage.md)
 
 These files show what has been tested and where coverage is still incomplete.
+
+## Trust And Verification
+
+The assistant should not invent GAUSS syntax, commands, packages, or APIs. Native command categories identify candidate commands, but command-specific documentation verifies exact usage. If exact syntax is not verified, the assistant should say so and avoid presenting the code as production-ready. Generated code should be reviewed, tested, and checked against official GAUSS documentation before production use.
 
 ## Safety And Accuracy Principles
 
@@ -64,16 +69,18 @@ These files show what has been tested and where coverage is still incomplete.
 - The framework does not yet execute GAUSS code.
 - Retrieval workflows are documented but not fully automated.
 - Benchmark coverage is meaningful but not exhaustive.
-- Public quickstart and preview materials are still being expanded for `v0.3.0`.
+- Preview materials are still being refined for `v0.3.0`.
+
+See [known limitations](../../KNOWN_LIMITATIONS.md) for current constraints before broader use.
 
 ## Related Workflows
 
-- `workflows/code-assistant-response.md`
-- `workflows/native-command-selection.md`
-- `workflows/command-documentation-retrieval.md`
-- `workflows/manual-evaluation.md`
-- `workflows/knowledge-loading.md`
+- [Code Assistant response workflow](../../workflows/code-assistant-response.md)
+- [Native command selection](../../workflows/native-command-selection.md)
+- [Command documentation retrieval](../../workflows/command-documentation-retrieval.md)
+- [Manual evaluation](../../workflows/manual-evaluation.md)
+- [Knowledge loading](../../workflows/knowledge-loading.md)
 
 ## Roadmap
 
-`v0.3.0` focuses on making the Code Assistant understandable and usable by people who were not part of the design process. Later milestones focus on retrieval prototypes, expanded benchmarks, and automated evaluation support.
+`v0.3.0` focuses on making the Code Assistant understandable and usable by people who were not part of the design process. Later milestones focus on retrieval prototypes, expanded benchmarks, and automated evaluation support. See the project [roadmap](../../ROADMAP.md) and the [v0.3.0 preview plan](../../planning/v0.3.0-code-assistant-preview.md).

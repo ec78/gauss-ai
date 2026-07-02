@@ -12,6 +12,8 @@ Writing new code, debugging broken code, translating from another language, revi
 
 This document defines those patterns.
 
+For the agent contract and manual preview instructions, see [AGENT.md](AGENT.md), [README.md](README.md), and [QUICKSTART.md](QUICKSTART.md).
+
 ## Mode Selection
 
 For each user request, the agent should first identify the primary task mode.

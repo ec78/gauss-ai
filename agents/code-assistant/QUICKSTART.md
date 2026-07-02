@@ -20,29 +20,29 @@ It is not a replacement for official GAUSS documentation. Exact command syntax, 
 
 When trying the assistant manually, provide the relevant files as context:
 
-- `prompts/system_prompt.md`
-- `prompts/code_assistant_system.md`
-- `agents/code-assistant/AGENT.md`
-- `agents/code-assistant/task_modes.md`
-- `experts/gauss-language/BODY_OF_KNOWLEDGE.md`
-- `experts/gauss-language/COMMAND_CATEGORIES.md`
-- `workflows/native-command-selection.md`
-- `workflows/command-documentation-retrieval.md`
-- `workflows/code-assistant-response.md`
-- `evaluations/benchmark-prompts.md`
-- `evaluations/scoring.md`
-- `evaluations/benchmark-coverage.md`
+- [prompts/system_prompt.md](../../prompts/system_prompt.md)
+- [prompts/code_assistant_system.md](../../prompts/code_assistant_system.md)
+- [agents/code-assistant/AGENT.md](AGENT.md)
+- [agents/code-assistant/task_modes.md](task_modes.md)
+- [experts/gauss-language/BODY_OF_KNOWLEDGE.md](../../experts/gauss-language/BODY_OF_KNOWLEDGE.md)
+- [experts/gauss-language/COMMAND_CATEGORIES.md](../../experts/gauss-language/COMMAND_CATEGORIES.md)
+- [workflows/native-command-selection.md](../../workflows/native-command-selection.md)
+- [workflows/command-documentation-retrieval.md](../../workflows/command-documentation-retrieval.md)
+- [workflows/code-assistant-response.md](../../workflows/code-assistant-response.md)
+- [evaluations/benchmark-prompts.md](../../evaluations/benchmark-prompts.md)
+- [evaluations/scoring.md](../../evaluations/scoring.md)
+- [evaluations/benchmark-coverage.md](../../evaluations/benchmark-coverage.md)
 
 Use fewer files for small experiments, but include official-doc retrieval guidance whenever exact command syntax matters.
 
-## Example Manual Workflow
+## Manual Trial Workflow
 
-1. Choose the user task: debugging, translation, review, explanation, refactoring, optimization, documentation, test generation, or design guidance.
-2. Supply the Code Assistant prompt files and the GAUSS Language Expert guidance.
-3. Add the user prompt and any GAUSS code snippet.
-4. Ask the assistant to state assumptions, avoid invented syntax, and mark uncertain command syntax for verification.
-5. Review the answer against `evaluations/scoring.md` if the response is part of an evaluation.
-6. Verify official command documentation before using exact syntax in production.
+1. Choose a task mode: debugging, translation, review, explanation, refactoring, optimization, documentation, test generation, or design guidance.
+2. Provide the Code Assistant system prompt and the relevant context files listed above.
+3. Ask the user task, including any GAUSS code, error messages, source-language snippets, or data-structure details.
+4. Check whether official command documentation is needed for exact syntax, arguments, return values, examples, package behavior, or version behavior.
+5. Review the response against known GAUSS failure modes: invented functions, cross-language syntax, wrong data structure assumptions, dimension mistakes, missing dependency notes, and unverified command syntax.
+6. Optionally record the result as a manual evaluation using [workflows/manual-evaluation.md](../../workflows/manual-evaluation.md).
 
 ## Example Prompts
 
@@ -116,6 +116,10 @@ Be cautious when an answer:
 - Treats matrices, arrays, DataFrames, structures, or strings as interchangeable.
 - Claims code was run when no execution tool was used.
 - Uses a manual implementation where a verified native GAUSS procedure should be considered.
+
+## Trust And Verification
+
+The assistant should not invent GAUSS syntax. Native command categories identify candidate commands, official command-specific documentation verifies exact usage, and curated notes are only short convenience references. If syntax is not verified, the assistant should say so. Generated code should be reviewed and tested before production use.
 
 ## When To Verify Official Documentation
 

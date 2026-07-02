@@ -57,6 +57,8 @@ Expert modules encapsulate reusable domain expertise so multiple specialized age
 
 ## Roadmap
 
+See [ROADMAP.md](ROADMAP.md) for milestone-level planning. The current target is `v0.3.0`, the Code Assistant Preview, which focuses on making the [GAUSS Code Assistant](agents/code-assistant/README.md) usable through a quickstart, examples, clear limitations, and benchmark-backed evaluation guidance.
+
 ### Phase 1
 
 * Build the GAUSS Code Assistant.
