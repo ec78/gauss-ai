@@ -28,6 +28,7 @@ This file records notable changes to the GAUSS AI framework.
 - Improved Code Assistant README documentation.
 - Refined `v0.3.0` Code Assistant preview documentation links, manual trial workflow, and trust guidance.
 - Added `v0.3.0` Code Assistant Preview readiness checklist and audit notes.
+- Removed tracked local knowledge source configuration and added a safe local override example.
 
 ## [0.1.0] - 2026-06-26
 

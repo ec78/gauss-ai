@@ -1,0 +1,24 @@
+# GAUSS AI local knowledge source override example.
+# Copy this file to configs/knowledge_sources.local.yaml and edit paths for your machine.
+# Do not commit configs/knowledge_sources.local or configs/knowledge_sources.local.yaml.
+
+knowledge_sources:
+  - id: official_gauss_docs
+    enabled: true
+    path: /REPLACE/WITH/LOCAL/PATH/gauss-docs
+
+  - id: official_gauss_command_categories
+    enabled: true
+    path: /REPLACE/WITH/LOCAL/PATH/gauss-docs/docs/cc
+
+  - id: aptech_gauss_llm_reference
+    enabled: true
+    path: /REPLACE/WITH/LOCAL/PATH/gauss-llm-reference
+
+  - id: ec78_gauss_programming_llm
+    enabled: true
+    path: /REPLACE/WITH/LOCAL/PATH/gauss-programming-llm
+
+  - id: aptech_gauss_blog
+    enabled: false
+    path: /REPLACE/WITH/LOCAL/PATH/gauss_blog

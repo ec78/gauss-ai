@@ -1,4 +1,5 @@
 # Local machine-specific knowledge source paths
+configs/knowledge_sources.local
 configs/knowledge_sources.local.yaml
 
 # OS files

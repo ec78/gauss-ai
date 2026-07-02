@@ -1,8 +1,8 @@
 # GAUSS AI knowledge source configuration.
 # This file is safe to commit and should contain source metadata only.
 # Do not store personal machine-specific paths here.
-#Real local paths should be stored in:
-#configs/knowledge_sources.local.yaml
+# Real local paths should be stored in configs/knowledge_sources.local.yaml.
+# To create one, copy configs/knowledge_sources.local.example.yaml.
 
 knowledge_sources:
   - id: official_gauss_docs

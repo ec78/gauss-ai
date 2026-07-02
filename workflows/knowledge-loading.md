@@ -14,14 +14,17 @@ This is the committed registry of known knowledge sources. It should contain sta
 
 This optional local file is for private machine-specific paths and overrides. It must not be committed. Local overrides should match committed sources by source `id`.
 
+Create it by copying `configs/knowledge_sources.local.example.yaml` to `configs/knowledge_sources.local.yaml` and editing paths for the local machine.
+
 ## 3. Resolution Rules
 
 - Use `configs/knowledge_sources.yaml` as the committed registry.
 - Use `configs/knowledge_sources.local.yaml` for private local paths.
+- Use `configs/knowledge_sources.local.example.yaml` as the committed template for local overrides.
 - Match local overrides by source `id`.
 - Prefer enabled local paths for retrieval.
 - Fall back to canonical URLs when local paths are unavailable.
-- Do not commit machine-specific paths.
+- Do not commit machine-specific paths or actual local config files.
 
 YAML placeholders such as `${GAUSS_LLM_REFERENCE_PATH}` are not automatically resolved unless future tooling explicitly implements that behavior.
 
