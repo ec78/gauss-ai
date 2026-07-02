@@ -22,6 +22,8 @@ Replace the docs root with the local path to an official GAUSS documentation che
 
 Keyword snippets are evidence from the matched official documentation page. They should not be treated as interpretation by themselves.
 
+Quote multi-word keyword phrases (for example `"not found"`) so they are searched as one phrase rather than split into separate single-word keywords.
+
 ## Suggested Pilot Commands
 
 - `olsmt`

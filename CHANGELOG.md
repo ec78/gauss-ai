@@ -36,6 +36,7 @@ This file records notable changes to the GAUSS AI framework.
 - Added retrieval examples directory.
 - Improved command documentation lookup extraction.
 - Added keyword-focused retrieval support.
+- Fixed `strindx` retrieval example: the `"not found"` keyword phrase had been split into separate single-word keywords by an unquoted shell invocation; regenerated with the phrase quoted so the example reports honest (empty) keyword hits for the literal phrase.
 
 ## [0.1.0] - 2026-06-26
 

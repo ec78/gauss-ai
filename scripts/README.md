@@ -25,6 +25,8 @@ python scripts/command_doc_lookup.py olsmt --docs-root "C:/Users/eclow/Documents
 
 Keyword snippets are evidence from the matched documentation page. They are not interpretation, and the script should not infer behavior that is not present in the snippets.
 
+Quote multi-word keyword phrases (for example `"not found"`) so the shell passes them as a single keyword. An unquoted multi-word phrase is split into separate single-word keywords, which can produce misleading individual-word hits instead of a real phrase match.
+
 ## Output Fields
 
 - `command_name`: command requested by the user.
