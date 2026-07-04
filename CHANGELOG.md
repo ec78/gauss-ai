@@ -42,6 +42,7 @@ This file records notable changes to the GAUSS AI framework.
 - Passed the category-only command candidate evaluation (Prompt 11.3), completing initial Retrieval category coverage: the Code Assistant refused to invent syntax from category membership alone and recommended `scripts/command_doc_lookup.py` retrieval before giving exact usage.
 - Started `v0.5.0` retrieval integration and response quality planning.
 - Added retrieval-backed response pattern guidance for `v0.5.0`.
+- Integrated retrieval-backed guidance across Code Assistant workflows, task modes, and system prompt instructions.
 - Added `v0.5.0` retrieval integration benchmark prompts.
 - Evaluated `v0.5.0` retrieval integration benchmarks 12.1-12.6.
 - Verified retrieval-backed response behavior across translation, debugging, incomplete extraction, docs-not-found, ambiguous-match, and curated-note-vs-official-docs cases.
