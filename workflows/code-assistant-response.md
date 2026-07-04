@@ -47,6 +47,8 @@ Retrieve or recommend retrieval when exact authority matters or uncertainty woul
 
 Knowledge retrieval should follow a local-first policy: use configured, enabled local sources before falling back to canonical URLs when supported.
 
+When the request depends on command-specific GAUSS behavior (exact syntax, defaults, control options, return fields, or examples), follow `workflows/retrieval-backed-response-pattern.md` for how to structure the answer once retrieval has been attempted or deliberately skipped.
+
 ## 6. Step 4: Choose an Implementation Strategy
 
 Choose a strategy that fits the user's goal and avoids overbuilding:

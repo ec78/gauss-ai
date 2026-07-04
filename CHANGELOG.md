@@ -41,6 +41,7 @@ This file records notable changes to the GAUSS AI framework.
 - Passed the `strindx` retrieval evaluation (Prompt 11.2): the Code Assistant verified `strindx` returns `0` when not found using official lookup evidence, distinct from Python `.find()`'s `-1`.
 - Passed the category-only command candidate evaluation (Prompt 11.3), completing initial Retrieval category coverage: the Code Assistant refused to invent syntax from category membership alone and recommended `scripts/command_doc_lookup.py` retrieval before giving exact usage.
 - Started `v0.5.0` retrieval integration and response quality planning.
+- Added retrieval-backed response pattern guidance for `v0.5.0`.
 
 ## [0.1.0] - 2026-06-26
 
