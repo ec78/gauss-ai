@@ -80,6 +80,8 @@ The validator requires the Python `jsonschema` package. If it is not installed, 
 
 `examples/retrieval/schema-fixtures/ambiguous-command-match.json` is a schema-valid fixture with `retrieval_status: "ambiguous"` and two synthetic candidates, for testing ambiguous-evidence handling. It uses placeholder command names and file paths only.
 
+`examples/retrieval/schema-fixtures/official-vs-curated-conflict.json` is a schema-valid fixture with `retrieval_status: "conflict"` and placeholder official/curated values, for testing official-docs-vs-curated-note conflict behavior.
+
 ## Pass, Fail, And Warnings
 
 A pass means the evidence object conforms to the JSON Schema and, in strict mode, has no practical warnings.

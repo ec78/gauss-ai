@@ -1,0 +1,54 @@
+{
+  "schema_version": "0.1.0",
+  "command_name": "placeholder_command",
+  "retrieval_status": "conflict",
+  "source_authority": "official_docs",
+  "source_type": "official_local_rst",
+  "confidence": 0.9,
+  "matches": [
+    {
+      "command_name": "placeholder_command",
+      "file_path": "docs/placeholder_command.rst",
+      "heading": "placeholder_command",
+      "source_type": "official_local_rst",
+      "source_authority": "official_docs",
+      "confidence": 0.9,
+      "match_reason": [
+        "synthetic_fixture"
+      ],
+      "syntax_blocks": [],
+      "inputs_section": null,
+      "outputs_section": null,
+      "returns_section": null,
+      "controls_section": null,
+      "formula_section": null,
+      "examples": [],
+      "notes": [
+        "Synthetic match object for conflict fixture testing."
+      ],
+      "keyword_hits": {},
+      "related_links": [],
+      "raw_section_headings": [],
+      "unresolved_questions": [],
+      "extraction_warnings": []
+    }
+  ],
+  "unresolved_questions": [],
+  "extraction_warnings": [],
+  "docs_root_redacted": true,
+  "conflicts": [
+    {
+      "field": "verified_syntax",
+      "official_value": "official placeholder syntax value",
+      "curated_value": "curated placeholder syntax value",
+      "resolution": "Use official documentation value; curated note must be corrected.",
+      "source_precedence": [
+        "official_docs",
+        "curated_command_note"
+      ]
+    }
+  ],
+  "notes": [
+    "Synthetic conflict fixture for schema behavior testing. Placeholder values are not GAUSS documentation and must not be treated as real command behavior."
+  ]
+}
