@@ -39,3 +39,11 @@ The current `olsmt.lookup.json` and `strindx.lookup.json` files were generated b
 The existing lookup JSON files predate, or only partially align with, the formal evidence schema in `schemas/command_lookup_evidence.schema.json`.
 
 They remain useful as v0.4.0 prototype outputs and evaluation evidence. Future retrieval examples should be schema-aligned and validated once the lookup script and validator support that workflow.
+
+Future schema-aligned lookup outputs should pass:
+
+```text
+python scripts/validate_lookup_evidence.py path/to/evidence.json
+```
+
+Use `--strict` when warnings should block release readiness, and `--json` when another tool needs machine-readable validation results.

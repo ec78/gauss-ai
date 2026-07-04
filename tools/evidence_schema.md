@@ -135,15 +135,13 @@ JSON Schema can validate shape. It cannot prove that extracted facts are semanti
 ## Known Limitations
 
 - The schema is a design/prototype artifact.
-- Existing lookup JSON files are not yet schema-aligned.
-- The validator is planned but not implemented.
-- JSON Schema cannot verify official documentation semantics.
+- Existing lookup JSON files are not yet schema-aligned; both `examples/retrieval/olsmt.lookup.json` and `examples/retrieval/strindx.lookup.json` fail schema validation today because they predate this schema's field names and shapes.
+- The validator (`scripts/validate_lookup_evidence.py`) checks shape and a set of practical warnings; it cannot verify official documentation semantics.
 - Staleness can be represented before it can be automatically detected.
 - Official GAUSS documentation remains authoritative.
 
 ## Future Improvements
 
-- Implement `scripts/validate_lookup_evidence.py`.
 - Add schema-aligned lookup output from `scripts/command_doc_lookup.py`.
 - Regenerate or map existing lookup examples.
 - Add schema-focused benchmark prompts.

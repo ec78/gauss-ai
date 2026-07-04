@@ -2,11 +2,13 @@
 
 ## Purpose
 
-Plan a lightweight validator for command lookup evidence objects. This is an implementation plan only; the validator is not created in this task.
+Plan a lightweight validator for command lookup evidence objects. The first implementation now exists, but future improvements remain planned work.
 
 ## Proposed Script
 
 `scripts/validate_lookup_evidence.py`
+
+Status: initial implementation created.
 
 ## Inputs
 
@@ -19,6 +21,7 @@ Plan a lightweight validator for command lookup evidence objects. This is an imp
 - JSON Schema validation errors.
 - Warnings for risky evidence states.
 - Optional summary of retrieval status, source authority, and unresolved questions.
+- Optional machine-readable JSON output via `--json`.
 
 ## Suggested Checks
 
@@ -67,3 +70,18 @@ Each fixture should have one expected pass/fail result and expected warnings.
 - How should the validator distinguish documentation snippets from copied full documentation pages?
 - Should docs-root redaction be enforced for all local runs or only committed artifacts?
 - How should `tool_version` be derived: package version, script hash, git commit, or manual string?
+
+## Implemented In First Pass
+
+- Command-line script with evidence path, optional `--schema`, optional `--strict`, and optional `--json`.
+- JSON Schema validation through the `jsonschema` package when installed.
+- Clear dependency failure when `jsonschema` is unavailable.
+- Practical warnings for ambiguous, conflict, stale, found-empty, found-incomplete, category-list, provenance, and local-path risks.
+
+## Future Improvements
+
+- Add repository fixtures for every retrieval status.
+- Add tests for strict vs non-strict warning behavior.
+- Decide whether to vendor a minimal schema validator fallback or keep `jsonschema` as an explicit dependency.
+- Add schema-aligned output support to `scripts/command_doc_lookup.py`.
+- Add CI or pre-release checks once schema-aligned evidence artifacts exist.

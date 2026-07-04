@@ -43,6 +43,38 @@ If evidence conflicts with official documentation, official documentation wins.
 
 ## Current Status
 
-These schemas are design/prototype artifacts. They are not yet production enforcement, and no validator is implemented in this task.
+These schemas are design/prototype artifacts. They are not yet production enforcement. A first lightweight validator exists at `scripts/validate_lookup_evidence.py`.
 
 Official GAUSS documentation remains the source of truth for exact syntax, inputs, outputs, defaults, examples, and command behavior.
+
+## Running the Validator
+
+Use the validator to check a lookup/evidence JSON file against the schema:
+
+```text
+python scripts/validate_lookup_evidence.py examples/retrieval/schema-fixtures/minimal-found-complete.json
+```
+
+Use `--json` for machine-readable output:
+
+```text
+python scripts/validate_lookup_evidence.py examples/retrieval/schema-fixtures/minimal-found-complete.json --json
+```
+
+Use `--strict` to treat warnings as failures:
+
+```text
+python scripts/validate_lookup_evidence.py examples/retrieval/schema-fixtures/minimal-found-complete.json --strict
+```
+
+The validator requires the Python `jsonschema` package. If it is not installed, the script fails clearly with an installation hint rather than silently skipping schema validation.
+
+## Pass, Fail, And Warnings
+
+A pass means the evidence object conforms to the JSON Schema and, in strict mode, has no practical warnings.
+
+A fail means the evidence object did not validate against the schema, the validator could not perform schema validation, or `--strict` was used with warnings present.
+
+Warnings identify risky evidence states, such as incomplete extraction, ambiguity without candidate details, conflicts without conflict records, stale evidence without staleness metadata, category-list evidence with verified-looking facts, or unredacted local paths.
+
+Existing v0.4.0 prototype lookup JSON files may not fully conform until regenerated or mapped into the schema. They remain useful evidence, but schema validation should not be treated as retroactively required for those files.

@@ -51,6 +51,8 @@ This file records notable changes to the GAUSS AI framework.
 - Started `v0.6.0` evidence schema implementation.
 - Added initial command lookup evidence JSON Schema.
 - Added evidence schema design and validation planning docs.
+- Added initial command lookup evidence validator.
+- Added validation warnings for risky evidence states.
 
 ## [0.1.0] - 2026-06-26
 
