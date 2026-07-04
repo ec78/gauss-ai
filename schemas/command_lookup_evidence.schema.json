@@ -1,0 +1,358 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gauss-ai.local/schemas/command_lookup_evidence.schema.json",
+  "title": "GAUSS Command Lookup Evidence",
+  "description": "A structured evidence object for GAUSS command-specific documentation lookup results.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "command_name",
+    "retrieval_status",
+    "source_authority",
+    "source_type",
+    "confidence",
+    "matches",
+    "unresolved_questions",
+    "extraction_warnings"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Version of this evidence schema used by the object."
+    },
+    "command_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "retrieval_status": {
+      "$ref": "#/$defs/retrieval_status"
+    },
+    "source_authority": {
+      "$ref": "#/$defs/source_authority"
+    },
+    "source_type": {
+      "$ref": "#/$defs/source_type"
+    },
+    "confidence": {
+      "$ref": "#/$defs/confidence"
+    },
+    "matches": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/match"
+      }
+    },
+    "unresolved_questions": {
+      "$ref": "#/$defs/string_array"
+    },
+    "extraction_warnings": {
+      "$ref": "#/$defs/string_array"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "tool_name": {
+      "type": "string"
+    },
+    "tool_version": {
+      "type": "string"
+    },
+    "docs_root_redacted": {
+      "type": "boolean"
+    },
+    "best_match": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/match"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "ambiguity": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ambiguity"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/conflict"
+      }
+    },
+    "stale_evidence": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/stale_evidence"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "notes": {
+      "$ref": "#/$defs/string_array"
+    },
+    "error_code": {
+      "type": "string"
+    },
+    "error_message": {
+      "type": "string"
+    }
+  },
+  "$defs": {
+    "retrieval_status": {
+      "type": "string",
+      "enum": [
+        "found_complete",
+        "found_incomplete",
+        "not_found",
+        "ambiguous",
+        "conflict",
+        "stale",
+        "error"
+      ]
+    },
+    "source_authority": {
+      "type": "string",
+      "enum": [
+        "official_docs",
+        "official_package_docs",
+        "official_source_code",
+        "curated_command_note",
+        "example_or_blog",
+        "category_list",
+        "model_knowledge",
+        "unknown"
+      ]
+    },
+    "source_type": {
+      "type": "string",
+      "enum": [
+        "official_local_rst",
+        "official_package_rst",
+        "official_source_file",
+        "curated_markdown",
+        "category_index",
+        "example_file",
+        "unknown"
+      ]
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "string_array": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "match": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command_name",
+        "file_path",
+        "source_type",
+        "source_authority",
+        "confidence",
+        "match_reason",
+        "unresolved_questions",
+        "extraction_warnings"
+      ],
+      "properties": {
+        "command_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "file_path": {
+          "type": "string",
+          "description": "Relative, redacted, or otherwise share-safe path to the matched source. Absolute local paths are not required."
+        },
+        "heading": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_type": {
+          "$ref": "#/$defs/source_type"
+        },
+        "source_authority": {
+          "$ref": "#/$defs/source_authority"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "match_reason": {
+          "$ref": "#/$defs/string_array"
+        },
+        "syntax_blocks": {
+          "$ref": "#/$defs/string_array"
+        },
+        "inputs_section": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outputs_section": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "returns_section": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "controls_section": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "formula_section": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "examples": {
+          "$ref": "#/$defs/string_array"
+        },
+        "notes": {
+          "$ref": "#/$defs/string_array"
+        },
+        "keyword_hits": {
+          "$ref": "#/$defs/keyword_hits"
+        },
+        "related_links": {
+          "$ref": "#/$defs/string_array"
+        },
+        "raw_section_headings": {
+          "$ref": "#/$defs/string_array"
+        },
+        "unresolved_questions": {
+          "$ref": "#/$defs/string_array"
+        },
+        "extraction_warnings": {
+          "$ref": "#/$defs/string_array"
+        }
+      }
+    },
+    "keyword_hits": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/keyword_hit"
+        }
+      }
+    },
+    "keyword_hit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "snippet": {
+          "type": "string"
+        }
+      }
+    },
+    "conflict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field",
+        "official_value",
+        "curated_value",
+        "resolution",
+        "source_precedence"
+      ],
+      "properties": {
+        "field": {
+          "type": "string"
+        },
+        "official_value": true,
+        "curated_value": true,
+        "resolution": {
+          "type": "string"
+        },
+        "source_precedence": {
+          "$ref": "#/$defs/string_array"
+        }
+      }
+    },
+    "ambiguity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "is_ambiguous",
+        "candidate_count",
+        "reason",
+        "candidates"
+      ],
+      "properties": {
+        "is_ambiguous": {
+          "type": "boolean"
+        },
+        "candidate_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reason": {
+          "type": "string"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/match"
+          }
+        }
+      }
+    },
+    "stale_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "is_stale",
+        "reason",
+        "recommended_action"
+      ],
+      "properties": {
+        "is_stale": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "generated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "checked_against": {
+          "type": "string"
+        },
+        "recommended_action": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

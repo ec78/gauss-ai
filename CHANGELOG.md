@@ -48,6 +48,9 @@ This file records notable changes to the GAUSS AI framework.
 - Verified retrieval-backed response behavior across translation, debugging, incomplete extraction, docs-not-found, ambiguous-match, and curated-note-vs-official-docs cases.
 - Added manual evaluation coverage for key retrieval-backed response states.
 - Started `v0.6.0` tool interface and evidence schema planning.
+- Started `v0.6.0` evidence schema implementation.
+- Added initial command lookup evidence JSON Schema.
+- Added evidence schema design and validation planning docs.
 
 ## [0.1.0] - 2026-06-26
 

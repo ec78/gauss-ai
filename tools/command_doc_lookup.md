@@ -9,6 +9,8 @@ This design supports retrieval prototypes only. Official GAUSS documentation rem
 First prototype:
 The initial local script exists at `scripts/command_doc_lookup.py`.
 
+Future command lookup outputs should align with `schemas/command_lookup_evidence.schema.json`. The current script and existing retrieval examples predate that formal schema and are not required to emit schema-aligned evidence yet.
+
 ## Inputs
 
 - `command_name`: GAUSS command or procedure name to look up.
@@ -30,6 +32,8 @@ The initial local script exists at `scripts/command_doc_lookup.py`.
 - Control, formula, return, related-link, and raw-heading evidence if found.
 - Unresolved questions.
 - Confidence level.
+
+The evidence schema design in `tools/evidence_schema.md` defines the target structure for future command lookup evidence objects, including retrieval status, source authority, ambiguity, conflicts, stale evidence, unresolved questions, and extraction warnings.
 
 ## Expected Local Docs Source
 

@@ -37,6 +37,7 @@
 - Define a command lookup evidence schema: required/optional fields, status values, confidence, and source provenance.
 - Define an explicit source authority model (official docs, official package docs, official source, curated notes, examples, category lists, general knowledge).
 - Define consumption rules tying schema fields back to retrieval-backed response behavior, and validation checks for evidence quality (missing fields, unredacted paths, missing provenance).
+- Plan a lightweight evidence validator for lookup JSON artifacts.
 - Add evidence-schema-focused benchmarks distinct from `v0.5.0`'s response-quality benchmarks.
 
 ## v0.7.0: Expanded Benchmark Suite and Automated Evaluation Support
