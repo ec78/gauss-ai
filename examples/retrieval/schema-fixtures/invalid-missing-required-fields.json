@@ -1,0 +1,9 @@
+{
+  "fixture_note": "Intentionally invalid schema fixture for testing validation failure behavior.",
+  "command_name": "placeholder_command",
+  "source_type": "official_local_rst",
+  "confidence": 1.0,
+  "matches": [],
+  "unresolved_questions": [],
+  "extraction_warnings": []
+}

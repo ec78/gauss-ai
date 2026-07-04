@@ -76,6 +76,8 @@ python scripts/validate_lookup_evidence.py examples/retrieval/schema-fixtures/mi
 
 The validator requires the Python `jsonschema` package. If it is not installed, the script fails clearly with an installation hint rather than silently skipping schema validation.
 
+`examples/retrieval/schema-fixtures/invalid-missing-required-fields.json` is a companion fixture that intentionally omits required fields (`schema_version`, `retrieval_status`, `source_authority`) to demonstrate validation failure. It is clearly labeled as an intentional test fixture and uses a placeholder command name; it does not represent any real command.
+
 ## Pass, Fail, And Warnings
 
 A pass means the evidence object conforms to the JSON Schema and, in strict mode, has no practical warnings.
