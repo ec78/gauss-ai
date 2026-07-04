@@ -1,0 +1,135 @@
+{
+  "schema_version": "0.1.0",
+  "command_name": "placeholder_command",
+  "retrieval_status": "ambiguous",
+  "source_authority": "official_docs",
+  "source_type": "official_local_rst",
+  "confidence": 0.6,
+  "matches": [
+    {
+      "command_name": "placeholder_command",
+      "file_path": "docs/placeholder_command_alpha.rst",
+      "heading": "placeholder_command",
+      "source_type": "official_local_rst",
+      "source_authority": "official_docs",
+      "confidence": 0.6,
+      "match_reason": [
+        "command_in_file_name"
+      ],
+      "syntax_blocks": [],
+      "inputs_section": null,
+      "outputs_section": null,
+      "returns_section": null,
+      "controls_section": null,
+      "formula_section": null,
+      "examples": [],
+      "notes": [
+        "Synthetic fixture candidate; not real GAUSS documentation."
+      ],
+      "keyword_hits": {},
+      "related_links": [],
+      "raw_section_headings": [],
+      "unresolved_questions": [],
+      "extraction_warnings": []
+    },
+    {
+      "command_name": "placeholder_command",
+      "file_path": "docs/placeholder_command_beta.rst",
+      "heading": "placeholder_command (beta variant)",
+      "source_type": "official_local_rst",
+      "source_authority": "official_docs",
+      "confidence": 0.58,
+      "match_reason": [
+        "command_in_heading"
+      ],
+      "syntax_blocks": [],
+      "inputs_section": null,
+      "outputs_section": null,
+      "returns_section": null,
+      "controls_section": null,
+      "formula_section": null,
+      "examples": [],
+      "notes": [
+        "Synthetic fixture candidate; not real GAUSS documentation."
+      ],
+      "keyword_hits": {},
+      "related_links": [],
+      "raw_section_headings": [],
+      "unresolved_questions": [],
+      "extraction_warnings": []
+    }
+  ],
+  "unresolved_questions": [
+    "Multiple plausible command documentation matches found."
+  ],
+  "extraction_warnings": [],
+  "generated_at": "2026-07-04T00:00:00Z",
+  "tool_name": "schema-fixture",
+  "tool_version": "0.1.0",
+  "docs_root_redacted": true,
+  "best_match": null,
+  "ambiguity": {
+    "is_ambiguous": true,
+    "candidate_count": 2,
+    "reason": "Multiple candidate documentation pages matched with similar confidence scores; the correct command could not be determined automatically.",
+    "candidates": [
+      {
+        "command_name": "placeholder_command",
+        "file_path": "docs/placeholder_command_alpha.rst",
+        "heading": "placeholder_command",
+        "source_type": "official_local_rst",
+        "source_authority": "official_docs",
+        "confidence": 0.6,
+        "match_reason": [
+          "command_in_file_name"
+        ],
+        "syntax_blocks": [],
+        "inputs_section": null,
+        "outputs_section": null,
+        "returns_section": null,
+        "controls_section": null,
+        "formula_section": null,
+        "examples": [],
+        "notes": [
+          "Synthetic fixture candidate; not real GAUSS documentation."
+        ],
+        "keyword_hits": {},
+        "related_links": [],
+        "raw_section_headings": [],
+        "unresolved_questions": [],
+        "extraction_warnings": []
+      },
+      {
+        "command_name": "placeholder_command",
+        "file_path": "docs/placeholder_command_beta.rst",
+        "heading": "placeholder_command (beta variant)",
+        "source_type": "official_local_rst",
+        "source_authority": "official_docs",
+        "confidence": 0.58,
+        "match_reason": [
+          "command_in_heading"
+        ],
+        "syntax_blocks": [],
+        "inputs_section": null,
+        "outputs_section": null,
+        "returns_section": null,
+        "controls_section": null,
+        "formula_section": null,
+        "examples": [],
+        "notes": [
+          "Synthetic fixture candidate; not real GAUSS documentation."
+        ],
+        "keyword_hits": {},
+        "related_links": [],
+        "raw_section_headings": [],
+        "unresolved_questions": [],
+        "extraction_warnings": []
+      }
+    ]
+  },
+  "conflicts": [],
+  "stale_evidence": null,
+  "notes": [
+    "Synthetic schema fixture for testing ambiguous evidence handling. Command names and file paths are placeholders, not real GAUSS documentation."
+  ]
+}

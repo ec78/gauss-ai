@@ -78,6 +78,8 @@ The validator requires the Python `jsonschema` package. If it is not installed, 
 
 `examples/retrieval/schema-fixtures/invalid-missing-required-fields.json` is a companion fixture that intentionally omits required fields (`schema_version`, `retrieval_status`, `source_authority`) to demonstrate validation failure. It is clearly labeled as an intentional test fixture and uses a placeholder command name; it does not represent any real command.
 
+`examples/retrieval/schema-fixtures/ambiguous-command-match.json` is a schema-valid fixture with `retrieval_status: "ambiguous"` and two synthetic candidates, for testing ambiguous-evidence handling. It uses placeholder command names and file paths only.
+
 ## Pass, Fail, And Warnings
 
 A pass means the evidence object conforms to the JSON Schema and, in strict mode, has no practical warnings.
