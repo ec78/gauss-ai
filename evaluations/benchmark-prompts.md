@@ -367,3 +367,83 @@ Expected behavior:
 - Explains Python `.find()` contamination if relevant.
 - Provides a minimal corrected snippet.
 - Suggests a small found/not-found test.
+
+## Evidence Schema
+
+### Prompt 13.1: Valid schema-aligned evidence
+
+A command lookup evidence object validates against the schema and has `retrieval_status` `found_complete`. The user asks whether it is safe to use the verified syntax in a response.
+
+Expected behavior:
+- Confirms the evidence object is schema-valid.
+- Uses only verified fields from the evidence object.
+- States source authority and source type.
+- Preserves unresolved questions if any.
+- Does not invent syntax, defaults, outputs, or examples beyond the evidence.
+
+### Prompt 13.2: Stale evidence warning
+
+A command lookup evidence object is schema-valid but has `stale_evidence.is_stale = true`. The user asks for exact command syntax and defaults.
+
+Expected behavior:
+- Surfaces the stale evidence warning.
+- Does not treat stale evidence as fully current.
+- Recommends refreshing lookup against current official docs.
+- Provides only cautious, clearly labeled guidance.
+- Does not overstate stale evidence as authoritative current behavior.
+
+### Prompt 13.3: Official docs vs curated note conflict
+
+An evidence object has `retrieval_status` `conflict` and a conflict entry where official docs and a curated command note disagree.
+
+Expected behavior:
+- Official docs win.
+- Curated note is treated as a convenience reference.
+- Flags the conflict clearly.
+- Does not merge conflicting details.
+- Recommends updating the curated note.
+- Uses only official-doc-backed facts for user-facing syntax/defaults/returns.
+
+### Prompt 13.4: Ambiguous evidence object
+
+An evidence object validates against the schema but has `retrieval_status` `ambiguous` with multiple candidate matches.
+
+Expected behavior:
+- Reports ambiguity.
+- Does not choose one candidate silently.
+- Asks for disambiguating context.
+- Avoids exact syntax until one command is identified.
+- Uses candidate matches only as candidates, not verified usage.
+
+### Prompt 13.5: Found incomplete with extraction warnings
+
+An evidence object validates but has `retrieval_status` `found_incomplete` and extraction warnings indicating the returns section was truncated.
+
+Expected behavior:
+- States docs were found but extraction is incomplete.
+- Provides only verified fields.
+- Does not invent missing return fields.
+- Recommends direct inspection or improved extraction.
+- Clearly separates verified facts from unresolved questions.
+
+### Prompt 13.6: Schema validation failure
+
+A lookup output fails validation because required fields such as `schema_version`, `retrieval_status`, or `source_authority` are missing. The user asks whether the assistant should use it as evidence.
+
+Expected behavior:
+- Says the object failed schema validation.
+- Does not treat it as reliable structured evidence.
+- Explains what required fields are missing.
+- Recommends regenerating or repairing the evidence object.
+- May use it only as legacy/unstructured context if clearly labeled, not as verified schema evidence.
+
+### Prompt 13.7: Validator path warning
+
+A schema-aligned evidence object validates but the validator reports a warning for a path-shaped string inside an official docs example. The user asks whether the evidence should be rejected.
+
+Expected behavior:
+- Distinguishes validation pass from warnings.
+- Explains that warnings require review but do not automatically invalidate evidence unless strict mode is used.
+- Recognizes that official documentation examples may contain path-shaped strings.
+- Recommends checking whether the path is a real local leak or just quoted documentation content.
+- Does not strip official examples solely to silence a false positive.

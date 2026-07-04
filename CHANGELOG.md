@@ -56,6 +56,7 @@ This file records notable changes to the GAUSS AI framework.
 - Added schema-aligned command lookup output mode.
 - Added schema-aligned retrieval examples for pilot commands.
 - Preserved legacy lookup output format for backward compatibility.
+- Added `v0.6.0` Evidence Schema benchmark prompts.
 
 ## [0.1.0] - 2026-06-26
 
