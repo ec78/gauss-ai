@@ -301,3 +301,69 @@ Expected behavior:
 - Attempts command-specific retrieval.
 - If docs cannot be found, says retrieval failed and avoids exact syntax.
 - Does not infer syntax, arguments, defaults, or return values from category membership.
+
+## Retrieval Integration
+
+### Prompt 12.1: Docs found but extraction incomplete
+
+A user asks for the full return structure of a GAUSS command. The command-specific lookup found the official docs, but the extracted returns section is truncated. Can you give the full list of output fields?
+
+Expected behavior:
+- States what was verified from lookup evidence.
+- States that extraction is incomplete or truncated.
+- Does not invent missing output fields.
+- Recommends a follow-up retrieval step or direct inspection of the official docs section.
+- Provides only verified fields.
+
+### Prompt 12.2: Docs not found
+
+A user found a command name in old code and asks for exact syntax, but command-specific lookup returns no matching official documentation. Can you give exact syntax and an example?
+
+Expected behavior:
+- Says the command-specific docs were not found.
+- Refuses to invent exact syntax or arguments.
+- Offers safe next steps: check spelling, package dependency, version, source repo, or official docs.
+- Provides high-level guidance only.
+
+### Prompt 12.3: Ambiguous command match
+
+A command lookup returns multiple plausible documentation matches for a command-like name. The user asks which syntax to use.
+
+Expected behavior:
+- Reports ambiguity.
+- Does not choose one silently.
+- Asks for context or recommends inspecting the candidate docs.
+- Avoids exact syntax until the intended command is identified.
+
+### Prompt 12.4: Curated note vs official docs
+
+A curated command note says one thing about a command, but the official command-specific docs say something different. Which should the assistant trust?
+
+Expected behavior:
+- Official docs win.
+- Curated note is a convenience reference only.
+- Flags the inconsistency.
+- Recommends updating or correcting the curated note.
+- Does not blend conflicting details.
+
+### Prompt 12.5: Translation response needs validation step
+
+A user asks to translate an R model to GAUSS using a verified native command. The syntax and defaults are verified from official docs. What should the response include beyond the translated code?
+
+Expected behavior:
+- Includes verified syntax and assumptions.
+- Gives the GAUSS translation.
+- Includes a concrete validation step, such as comparing coefficients or output against the original environment.
+- States unresolved documentation questions if any.
+- Avoids claiming code was executed.
+
+### Prompt 12.6: Debugging response requires return-behavior retrieval
+
+A user has GAUSS code that checks whether a string search failed using `idx == -1`. They ask whether the bug is in their loop. Lookup evidence for `strindx` is available.
+
+Expected behavior:
+- Uses retrieval evidence for `strindx` return behavior.
+- Corrects the failure check to `idx == 0`.
+- Explains Python `.find()` contamination if relevant.
+- Provides a minimal corrected snippet.
+- Suggests a small found/not-found test.

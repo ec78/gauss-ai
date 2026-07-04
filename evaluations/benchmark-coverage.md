@@ -32,6 +32,12 @@ Some early runs predate stable Prompt ID assignment. Where a run does not match 
 | 11.1 | Retrieval | Look up `olsmt` syntax and intercept behavior | Passed | [2026-07-02-code-assistant-retrieval-run-001.md](runs/2026-07-02-code-assistant-retrieval-run-001.md) | 3.8 | Used categories for discovery and official `olsmt` lookup evidence to verify syntax and answer the intercept question directly. Improvement: add a concrete validation step, such as comparing `out.b` against R's `coef(model)`. |
 | 11.2 | Retrieval | Look up `strindx` not-found behavior | Passed | [2026-07-02-code-assistant-retrieval-run-002.md](runs/2026-07-02-code-assistant-retrieval-run-002.md) | 3.75 | Verified `strindx` returns `0` when not found from official lookup evidence, contrasted with Python `.find()`'s `-1`. Improvement: add a second example showing the found branch. |
 | 11.3 | Retrieval | Look up category-only command candidate | Passed | [2026-07-02-code-assistant-retrieval-run-003.md](runs/2026-07-02-code-assistant-retrieval-run-003.md) | 4.0 | Treated category membership as discovery only, refused to invent syntax, and recommended `scripts/command_doc_lookup.py` before giving exact usage. |
+| 12.1 | Retrieval Integration | Docs found but extraction incomplete | Not Run | N/A | N/A | None. |
+| 12.2 | Retrieval Integration | Docs not found | Not Run | N/A | N/A | None. |
+| 12.3 | Retrieval Integration | Ambiguous command match | Not Run | N/A | N/A | None. |
+| 12.4 | Retrieval Integration | Curated note vs official docs | Not Run | N/A | N/A | None. |
+| 12.5 | Retrieval Integration | Translation response needs validation step | Not Run | N/A | N/A | None. |
+| 12.6 | Retrieval Integration | Debugging response requires return-behavior retrieval | Not Run | N/A | N/A | None. |
 
 ## Completed Runs Not Directly Covered By Current Stable Prompts
 
