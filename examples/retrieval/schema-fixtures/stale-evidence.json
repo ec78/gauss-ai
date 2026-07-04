@@ -1,0 +1,84 @@
+{
+  "schema_version": "0.1.0",
+  "command_name": "placeholder_command",
+  "retrieval_status": "stale",
+  "source_authority": "official_docs",
+  "source_type": "official_local_rst",
+  "confidence": 0.8,
+  "matches": [
+    {
+      "command_name": "placeholder_command",
+      "file_path": "docs/placeholder_command.rst",
+      "heading": "placeholder_command",
+      "source_type": "official_local_rst",
+      "source_authority": "official_docs",
+      "confidence": 0.8,
+      "match_reason": [
+        "synthetic_fixture"
+      ],
+      "syntax_blocks": [
+        "placeholder_syntax_only_not_real_gauss"
+      ],
+      "inputs_section": null,
+      "outputs_section": null,
+      "returns_section": null,
+      "controls_section": null,
+      "formula_section": null,
+      "examples": [],
+      "notes": [
+        "Synthetic match object for stale evidence fixture testing. This is not real GAUSS documentation."
+      ],
+      "keyword_hits": {},
+      "related_links": [],
+      "raw_section_headings": [],
+      "unresolved_questions": [],
+      "extraction_warnings": []
+    }
+  ],
+  "unresolved_questions": [],
+  "extraction_warnings": [],
+  "generated_at": "2025-01-01T00:00:00Z",
+  "tool_name": "schema-fixture",
+  "tool_version": "0.1.0",
+  "docs_root_redacted": true,
+  "best_match": {
+    "command_name": "placeholder_command",
+    "file_path": "docs/placeholder_command.rst",
+    "heading": "placeholder_command",
+    "source_type": "official_local_rst",
+    "source_authority": "official_docs",
+    "confidence": 0.8,
+    "match_reason": [
+      "synthetic_fixture"
+    ],
+    "syntax_blocks": [
+      "placeholder_syntax_only_not_real_gauss"
+    ],
+    "inputs_section": null,
+    "outputs_section": null,
+    "returns_section": null,
+    "controls_section": null,
+    "formula_section": null,
+    "examples": [],
+    "notes": [
+      "Synthetic match object for stale evidence fixture testing. This is not real GAUSS documentation."
+    ],
+    "keyword_hits": {},
+    "related_links": [],
+    "raw_section_headings": [],
+    "unresolved_questions": [],
+    "extraction_warnings": []
+  },
+  "ambiguity": null,
+  "conflicts": [],
+  "stale_evidence": {
+    "is_stale": true,
+    "reason": "Synthetic fixture representing evidence generated from an older documentation checkout.",
+    "generated_at": "2025-01-01T00:00:00Z",
+    "checked_against": "Current docs version unknown",
+    "recommended_action": "Regenerate the lookup against the current official documentation before relying on exact syntax or defaults."
+  },
+  "notes": [
+    "Synthetic stale evidence fixture for schema behavior testing. Command name, paths, and syntax are placeholders, not real GAUSS documentation."
+  ]
+}

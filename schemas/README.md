@@ -82,6 +82,8 @@ The validator requires the Python `jsonschema` package. If it is not installed, 
 
 `examples/retrieval/schema-fixtures/official-vs-curated-conflict.json` is a schema-valid fixture with `retrieval_status: "conflict"` and placeholder official/curated values, for testing official-docs-vs-curated-note conflict behavior.
 
+`examples/retrieval/schema-fixtures/stale-evidence.json` is a schema-valid fixture with `retrieval_status: "stale"` and a populated `stale_evidence` block, for testing stale-evidence handling. It uses a placeholder command name and syntax string only.
+
 ## Pass, Fail, And Warnings
 
 A pass means the evidence object conforms to the JSON Schema and, in strict mode, has no practical warnings.
