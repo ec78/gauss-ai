@@ -9,7 +9,9 @@ This design supports retrieval prototypes only. Official GAUSS documentation rem
 First prototype:
 The initial local script exists at `scripts/command_doc_lookup.py`.
 
-Future command lookup outputs should align with `schemas/command_lookup_evidence.schema.json`. The current script and existing retrieval examples predate that formal schema and are not required to emit schema-aligned evidence yet.
+The script can optionally emit output aligned with `schemas/command_lookup_evidence.schema.json` by passing `--schema-output`. The default output format is unchanged; schema-aligned output is opt-in only. Existing retrieval examples generated before this flag existed (`examples/retrieval/olsmt.lookup.json`, `examples/retrieval/strindx.lookup.json`) predate the schema and remain legacy prototype outputs — they are not required to be regenerated. New schema-aligned examples live under `examples/retrieval/schema-aligned/`.
+
+Schema-aligned output does not change what the script extracts or searches; it only renames and regroups the same fields (for example, `status` becomes `retrieval_status`, and string sections such as `examples`/`notes` become string arrays) so the result validates against the schema. Validate a generated evidence file with `scripts/validate_lookup_evidence.py`.
 
 ## Inputs
 

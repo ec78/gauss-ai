@@ -53,6 +53,9 @@ This file records notable changes to the GAUSS AI framework.
 - Added evidence schema design and validation planning docs.
 - Added initial command lookup evidence validator.
 - Added validation warnings for risky evidence states.
+- Added schema-aligned command lookup output mode.
+- Added schema-aligned retrieval examples for pilot commands.
+- Preserved legacy lookup output format for backward compatibility.
 
 ## [0.1.0] - 2026-06-26
 

@@ -11,8 +11,14 @@ import argparse
 import json
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+
+SCHEMA_VERSION = "0.1.0"
+TOOL_NAME = "command_doc_lookup"
+TOOL_VERSION = "0.1.0"
 
 
 SECTION_TITLES = {
@@ -485,6 +491,125 @@ def lookup(command_name: str, docs_root: Path, max_results: int, keywords: list[
     return result
 
 
+def to_string_array(value: Any) -> list[str]:
+    """Convert a legacy string-or-null section into a schema-aligned string array."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if isinstance(value, list):
+        return value
+    return [str(value)]
+
+
+def map_match_to_schema(match: dict[str, Any], command_name: str) -> dict[str, Any]:
+    """Map a legacy match dict (from extract_match) into the evidence schema's match shape."""
+    source_type = match.get("source_type", "official_local_rst")
+    source_authority = "official_docs" if source_type == "official_local_rst" else "unknown"
+    return {
+        "command_name": command_name,
+        "file_path": match.get("file_path", ""),
+        "heading": match.get("heading"),
+        "source_type": source_type,
+        "source_authority": source_authority,
+        "confidence": match.get("confidence", 0.0),
+        "match_reason": match.get("match_reason", []),
+        "syntax_blocks": match.get("syntax_blocks", []),
+        "inputs_section": match.get("inputs_section"),
+        "outputs_section": match.get("outputs_section"),
+        "returns_section": match.get("returns_section"),
+        "controls_section": match.get("controls_section"),
+        "formula_section": match.get("formula_section"),
+        "examples": to_string_array(match.get("examples")),
+        "notes": to_string_array(match.get("notes")),
+        "keyword_hits": match.get("keyword_hits", {}),
+        "related_links": match.get("related_links", []),
+        "raw_section_headings": match.get("raw_section_headings", []),
+        "unresolved_questions": match.get("unresolved_questions", []),
+        "extraction_warnings": match.get("extraction_warnings", []),
+    }
+
+
+def build_schema_aligned_output(
+    legacy_result: dict[str, Any],
+    command_name: str,
+    docs_root_redacted: bool,
+) -> dict[str, Any]:
+    """Map the legacy lookup() result into a schema-aligned evidence object.
+
+    This does not change extraction behavior; it only renames/regroups fields
+    already produced by lookup()/extract_match() into the shape defined by
+    schemas/command_lookup_evidence.schema.json.
+    """
+    legacy_status = legacy_result.get("status", "not_found")
+    matches = [
+        map_match_to_schema(match, command_name) for match in legacy_result.get("matches", [])
+    ]
+    best_match = matches[0] if matches else None
+
+    if legacy_status == "error":
+        retrieval_status = "error"
+    elif legacy_status == "not_found":
+        retrieval_status = "not_found"
+    elif legacy_status == "ambiguous":
+        retrieval_status = "ambiguous"
+    elif legacy_status == "found":
+        has_gaps = bool(
+            (best_match or {}).get("unresolved_questions")
+            or (best_match or {}).get("extraction_warnings")
+        )
+        retrieval_status = "found_incomplete" if has_gaps else "found_complete"
+    else:
+        retrieval_status = "not_found"
+
+    if best_match is not None:
+        source_type = best_match["source_type"]
+        source_authority = best_match["source_authority"]
+        extraction_warnings = best_match.get("extraction_warnings", [])
+    else:
+        source_type = "unknown"
+        source_authority = "unknown"
+        extraction_warnings = []
+
+    schema_output: dict[str, Any] = {
+        "schema_version": SCHEMA_VERSION,
+        "command_name": command_name,
+        "retrieval_status": retrieval_status,
+        "source_authority": source_authority,
+        "source_type": source_type,
+        "confidence": legacy_result.get("confidence", 0.0),
+        "matches": matches,
+        "unresolved_questions": legacy_result.get("unresolved_questions", []),
+        "extraction_warnings": extraction_warnings,
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "tool_name": TOOL_NAME,
+        "tool_version": TOOL_VERSION,
+        "docs_root_redacted": docs_root_redacted,
+        "best_match": best_match,
+        "ambiguity": None,
+        "conflicts": [],
+        "stale_evidence": None,
+        "notes": [],
+    }
+
+    if retrieval_status == "ambiguous":
+        schema_output["ambiguity"] = {
+            "is_ambiguous": True,
+            "candidate_count": len(matches),
+            "reason": "Multiple plausible documentation matches were found with similar scores.",
+            "candidates": matches,
+        }
+
+    if retrieval_status == "error":
+        reasons = legacy_result.get("unresolved_questions", [])
+        schema_output["error_code"] = "docs_root_unavailable"
+        schema_output["error_message"] = (
+            reasons[0] if reasons else "Lookup failed for an unspecified reason."
+        )
+
+    return schema_output
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="Lookup GAUSS command docs in local official .rst files.")
     parser.add_argument("command_name", help="GAUSS command or procedure name to look up.")
@@ -501,14 +626,32 @@ def main(argv: list[str]) -> int:
         action="store_true",
         help="Replace docs_root in JSON output with a placeholder for shareable examples.",
     )
+    parser.add_argument(
+        "--schema-output",
+        action="store_true",
+        help=(
+            "Emit evidence JSON conforming to "
+            "schemas/command_lookup_evidence.schema.json instead of the legacy output "
+            "shape. Does not change extraction behavior or the default output format."
+        ),
+    )
     args = parser.parse_args(argv)
 
     max_results = max(1, args.max_results)
     data = lookup(args.command_name, Path(args.docs_root), max_results, args.keywords)
+    exit_code = 0 if data["status"] != "error" else 2
+
+    if args.schema_output:
+        schema_data = build_schema_aligned_output(
+            data, args.command_name, docs_root_redacted=args.redact_docs_root
+        )
+        print(json.dumps(schema_data, indent=2, sort_keys=True))
+        return exit_code
+
     if args.redact_docs_root:
         data["docs_root"] = "<local official GAUSS docs root>"
     print(json.dumps(data, indent=2, sort_keys=True))
-    return 0 if data["status"] != "error" else 2
+    return exit_code
 
 
 if __name__ == "__main__":

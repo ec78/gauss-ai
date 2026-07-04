@@ -1,0 +1,148 @@
+{
+  "ambiguity": null,
+  "best_match": {
+    "command_name": "strindx",
+    "confidence": 1.0,
+    "controls_section": null,
+    "examples": [
+      "// Find the index of \"age\" in 'rep78'\n    idx = strindx(rep78, \"age\");\n\n    // Print the first 5 observations of 'idx'\n    head(idx);\n\n// Create file name with full path\n    fname = getGAUSSHome(\"examples/auto2.dta\");\n\n    // Load 'rep78' and 'make` variable\n    rep78 = loadd(fname, \"rep78 + make\");\n\n    // Find the index of \"age\" in 'rep78'\n    // and \"AMC\" in 'make'\n    idx = strindx(rep78, \"age\"$~\"AMC\");\n\n    // Print the first 5 observations of 'idx'\n    head(idx);\n\n// Find the first instance of the\n    // letter 'a' starting from the\n    // 5th character of the string\n    strindx(state, \"a\", 5);\n\n// String to search in\n   haystack = \"nameagepaysex\";\n\n   // String to search for\n   needle = \"pay\";\n\n   // Find starting index of 'needle'\n   idx = strindx(haystack, needle, 1);"
+    ],
+    "extraction_warnings": [
+      "no keyword hits for: returns, not found"
+    ],
+    "file_path": "strindx.rst",
+    "formula_section": null,
+    "heading": "strindx",
+    "inputs_section": ":param haystack: The data to be searched.\n:type haystack: String array, or dataframe of type category or string\n\n:param needles: The substring to be searched for in *haystack*. Must be ExE conformable with *haystack* input.\n:type needles: String array or string\n\n:param start: Optional argument, the starting point of the element-by-element search in *haystack* for an occurrence of *needle*.\nThe index of the first character in a string is 1. Default=1.\n:type start: Scalar",
+    "keyword_hits": {
+      "not found": [],
+      "returns": [],
+      "substring": [
+        {
+          "line": 16,
+          "snippet": ":type haystack: String array, or dataframe of type category or string\n\n    :param needles: The substring to be searched for in *haystack*. Must be ExE conformable with *haystack* input. \n    :type needles: String array or string"
+        },
+        {
+          "line": 164,
+          "snippet": "8.00\n\nThis function is used with :func:`strsect` for extracting substrings.\n\n.. seealso:: Functions :func:`strrindx`, :func:`strlen`, :func:`strsect`, :func:`strput`, :func:`strreplace`"
+        }
+      ]
+    },
+    "match_reason": [
+      "exact_file_name",
+      "exact_heading",
+      "command_call_text",
+      "command_reference_text"
+    ],
+    "notes": [],
+    "outputs_section": ":return idx: Contains the index of the first occurrence of *needle*, within *haystack*,\nwhich is greater than or equal to *start*. If no occurrence is found, it will be 0.\n:rtype idx: Matrix",
+    "raw_section_headings": [
+      "strindx",
+      "Purpose",
+      "Format",
+      "Examples",
+      "Dataframe example",
+      "Dataframe example #2: Searching across multiple variables",
+      "String array example",
+      "String example"
+    ],
+    "related_links": [
+      "strindx",
+      "strsect",
+      "strrindx",
+      "strlen",
+      "strput",
+      "strreplace",
+      "\"age\""
+    ],
+    "returns_section": ":return idx: Contains the index of the first occurrence of *needle*, within *haystack*,\nwhich is greater than or equal to *start*. If no occurrence is found, it will be 0.\n:rtype idx: Matrix",
+    "source_authority": "official_docs",
+    "source_type": "official_local_rst",
+    "syntax_blocks": [
+      ".. function:: idx = strindx(haystack, needle [, start])"
+    ],
+    "unresolved_questions": []
+  },
+  "command_name": "strindx",
+  "confidence": 1.0,
+  "conflicts": [],
+  "docs_root_redacted": true,
+  "extraction_warnings": [
+    "no keyword hits for: returns, not found"
+  ],
+  "generated_at": "2026-07-04T18:09:40Z",
+  "matches": [
+    {
+      "command_name": "strindx",
+      "confidence": 1.0,
+      "controls_section": null,
+      "examples": [
+        "// Find the index of \"age\" in 'rep78'\n    idx = strindx(rep78, \"age\");\n\n    // Print the first 5 observations of 'idx'\n    head(idx);\n\n// Create file name with full path\n    fname = getGAUSSHome(\"examples/auto2.dta\");\n\n    // Load 'rep78' and 'make` variable\n    rep78 = loadd(fname, \"rep78 + make\");\n\n    // Find the index of \"age\" in 'rep78'\n    // and \"AMC\" in 'make'\n    idx = strindx(rep78, \"age\"$~\"AMC\");\n\n    // Print the first 5 observations of 'idx'\n    head(idx);\n\n// Find the first instance of the\n    // letter 'a' starting from the\n    // 5th character of the string\n    strindx(state, \"a\", 5);\n\n// String to search in\n   haystack = \"nameagepaysex\";\n\n   // String to search for\n   needle = \"pay\";\n\n   // Find starting index of 'needle'\n   idx = strindx(haystack, needle, 1);"
+      ],
+      "extraction_warnings": [
+        "no keyword hits for: returns, not found"
+      ],
+      "file_path": "strindx.rst",
+      "formula_section": null,
+      "heading": "strindx",
+      "inputs_section": ":param haystack: The data to be searched.\n:type haystack: String array, or dataframe of type category or string\n\n:param needles: The substring to be searched for in *haystack*. Must be ExE conformable with *haystack* input.\n:type needles: String array or string\n\n:param start: Optional argument, the starting point of the element-by-element search in *haystack* for an occurrence of *needle*.\nThe index of the first character in a string is 1. Default=1.\n:type start: Scalar",
+      "keyword_hits": {
+        "not found": [],
+        "returns": [],
+        "substring": [
+          {
+            "line": 16,
+            "snippet": ":type haystack: String array, or dataframe of type category or string\n\n    :param needles: The substring to be searched for in *haystack*. Must be ExE conformable with *haystack* input. \n    :type needles: String array or string"
+          },
+          {
+            "line": 164,
+            "snippet": "8.00\n\nThis function is used with :func:`strsect` for extracting substrings.\n\n.. seealso:: Functions :func:`strrindx`, :func:`strlen`, :func:`strsect`, :func:`strput`, :func:`strreplace`"
+          }
+        ]
+      },
+      "match_reason": [
+        "exact_file_name",
+        "exact_heading",
+        "command_call_text",
+        "command_reference_text"
+      ],
+      "notes": [],
+      "outputs_section": ":return idx: Contains the index of the first occurrence of *needle*, within *haystack*,\nwhich is greater than or equal to *start*. If no occurrence is found, it will be 0.\n:rtype idx: Matrix",
+      "raw_section_headings": [
+        "strindx",
+        "Purpose",
+        "Format",
+        "Examples",
+        "Dataframe example",
+        "Dataframe example #2: Searching across multiple variables",
+        "String array example",
+        "String example"
+      ],
+      "related_links": [
+        "strindx",
+        "strsect",
+        "strrindx",
+        "strlen",
+        "strput",
+        "strreplace",
+        "\"age\""
+      ],
+      "returns_section": ":return idx: Contains the index of the first occurrence of *needle*, within *haystack*,\nwhich is greater than or equal to *start*. If no occurrence is found, it will be 0.\n:rtype idx: Matrix",
+      "source_authority": "official_docs",
+      "source_type": "official_local_rst",
+      "syntax_blocks": [
+        ".. function:: idx = strindx(haystack, needle [, start])"
+      ],
+      "unresolved_questions": []
+    }
+  ],
+  "notes": [],
+  "retrieval_status": "found_incomplete",
+  "schema_version": "0.1.0",
+  "source_authority": "official_docs",
+  "source_type": "official_local_rst",
+  "stale_evidence": null,
+  "tool_name": "command_doc_lookup",
+  "tool_version": "0.1.0",
+  "unresolved_questions": []
+}

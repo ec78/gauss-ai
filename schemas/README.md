@@ -21,9 +21,16 @@ A schema gives those distinctions stable field names instead of relying on prose
 
 ## Relationship to Retrieval Tools
 
-The initial retrieval prototype is `scripts/command_doc_lookup.py`. Existing lookup examples may predate this schema or only partially align with it.
+The initial retrieval prototype is `scripts/command_doc_lookup.py`. Existing lookup examples (`examples/retrieval/olsmt.lookup.json`, `examples/retrieval/strindx.lookup.json`) predate this schema and only partially align with it; they are not required to be rewritten.
 
-Future command lookup outputs should align with `command_lookup_evidence.schema.json`, but this directory does not require rewriting existing prototype outputs.
+`scripts/command_doc_lookup.py` can now emit schema-aligned output directly via `--schema-output`. The default output format is unchanged when the flag is omitted. Schema-aligned examples generated with this flag live under `examples/retrieval/schema-aligned/` and are expected to validate against `command_lookup_evidence.schema.json`.
+
+To generate and validate a schema-aligned example:
+
+```text
+python scripts/command_doc_lookup.py olsmt --docs-root "<local docs root>" --schema-output --redact-docs-root > examples/retrieval/schema-aligned/olsmt.evidence.json
+python scripts/validate_lookup_evidence.py examples/retrieval/schema-aligned/olsmt.evidence.json
+```
 
 ## Relationship to Code Assistant Responses
 

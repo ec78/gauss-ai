@@ -20,6 +20,8 @@ The first schema file is:
 
 Existing `examples/retrieval/*.lookup.json` files predate this schema and should be treated as prototype outputs until regenerated or mapped.
 
+`scripts/command_doc_lookup.py` can now emit schema-aligned evidence directly using `--schema-output`. The default output format is unchanged when the flag is omitted, so legacy outputs remain valid and are not required to be regenerated. Schema-aligned examples generated with the flag live under `examples/retrieval/schema-aligned/`.
+
 ## Source Authority Model
 
 Authority levels are represented with `source_authority`:
@@ -142,7 +144,7 @@ JSON Schema can validate shape. It cannot prove that extracted facts are semanti
 
 ## Future Improvements
 
-- Add schema-aligned lookup output from `scripts/command_doc_lookup.py`.
-- Regenerate or map existing lookup examples.
+- Regenerate or map existing legacy lookup examples (`olsmt.lookup.json`, `strindx.lookup.json`) to schema-aligned equivalents, if that is later judged worthwhile.
 - Add schema-focused benchmark prompts.
 - Add evidence fixtures for incomplete, ambiguous, stale, conflict, and error states.
+- Detect and populate `conflicts` (curated note vs. official docs) and `stale_evidence` automatically; `--schema-output` does not yet produce these, since the lookup script has no curated-note comparison or staleness-detection logic.
