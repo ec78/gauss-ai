@@ -44,6 +44,8 @@ Cached notes should not include copied full examples, long parameter tables, or 
 
 ## Response Policy
 
+Use `retrieval-backed-response-pattern.md` for the standard response structure and wording when an answer relies on command-specific retrieval evidence.
+
 Use clear source-status language:
 
 - "I verified this from official docs: ..."
@@ -71,6 +73,7 @@ When exact syntax is not verified:
 - `experts/gauss-language/COMMAND_CATEGORIES.md` discovers candidate commands.
 - `experts/gauss-language/commands/` may contain short curated notes for selected commands.
 - `workflows/native-command-selection.md` decides whether to use native commands or manual implementations.
+- `workflows/retrieval-backed-response-pattern.md` defines how to phrase verified facts, unresolved items, incomplete extraction, ambiguous matches, stale lookup evidence, and validation steps in the final response.
 - `workflows/knowledge-loading.md` defines source resolution and local-first retrieval.
 - `prompts/code_assistant_system.md` gives runtime guidance to the Code Assistant.
 - Official GAUSS documentation remains authoritative in all conflicts.

@@ -144,7 +144,7 @@ Use this mode when the user provides broken code, an error message, unexpected o
 * Are missing values considered when relevant?
 * Does the response include a way to verify the fix?
 
-When the diagnosis depends on documented command-specific behavior (for example, a return-value field or a not-found/missing-value convention), follow `workflows/retrieval-backed-response-pattern.md` and include its validation-step requirement in the fix.
+When the diagnosis depends on documented command-specific behavior (for example, a return-value field or a not-found/missing-value convention), follow `../../workflows/retrieval-backed-response-pattern.md` and include its validation-step requirement in the fix.
 
 ## 3. Code Explanation Mode
 
@@ -233,7 +233,7 @@ Use this mode when the user asks to translate code from Python, R, MATLAB, Stata
 * Are package dependencies stated?
 * Is the translated code runnable or clearly marked as a pattern?
 
-When the translation relies on a native command whose behavior was verified through documentation lookup, follow `workflows/retrieval-backed-response-pattern.md` and include its validation-step requirement (for example, comparing the GAUSS result against the source language's result on the same data).
+When the translation relies on a native command whose behavior was verified through documentation lookup, follow `../../workflows/retrieval-backed-response-pattern.md` and include its validation-step requirement (for example, comparing the GAUSS result against the source language's result on the same data).
 
 ## 5. Code Review Mode
 

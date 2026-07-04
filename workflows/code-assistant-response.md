@@ -47,7 +47,7 @@ Retrieve or recommend retrieval when exact authority matters or uncertainty woul
 
 Knowledge retrieval should follow a local-first policy: use configured, enabled local sources before falling back to canonical URLs when supported.
 
-When the request depends on command-specific GAUSS behavior (exact syntax, defaults, control options, return fields, or examples), follow `workflows/retrieval-backed-response-pattern.md` for how to structure the answer once retrieval has been attempted or deliberately skipped.
+When the request depends on command-specific GAUSS behavior (exact syntax, defaults, control options, return fields, or examples), follow `retrieval-backed-response-pattern.md` for how to structure the answer once retrieval has been attempted or deliberately skipped.
 
 ## 6. Step 4: Choose an Implementation Strategy
 
@@ -144,4 +144,4 @@ Ask one focused clarifying question only when missing information materially cha
 
 ## 12. Maintenance Notes
 
-Keep this workflow aligned with `agents/code-assistant/AGENT.md`, `prompts/code_assistant_system.md`, `agents/code-assistant/task_modes.md`, and `tools/knowledge_search.md`. Update it when task modes, expert modules, retrieval behavior, source hierarchy, tool capabilities, or recurring benchmark failures change.
+Keep this workflow aligned with `agents/code-assistant/AGENT.md`, `prompts/code_assistant_system.md`, `agents/code-assistant/task_modes.md`, `tools/knowledge_search.md`, and `workflows/retrieval-backed-response-pattern.md`. Update it when task modes, expert modules, retrieval behavior, source hierarchy, tool capabilities, or recurring benchmark failures change.

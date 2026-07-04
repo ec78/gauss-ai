@@ -45,7 +45,8 @@ Do not invent command names. Use only verified commands from repository context,
 Use source-aware language when recommending native commands:
 
 - "GAUSS has a native command/procedure that may fit this task: ..."
-- "I would verify the exact syntax in the command documentation before writing production code."
+- "I will retrieve or inspect the command-specific documentation before giving production syntax, defaults, return fields, or examples."
+- "If command-specific documentation is unavailable in this context, I can name the candidate command but should not present exact syntax as verified."
 - "A manual implementation is useful for teaching the mechanics, but the native procedure should usually be preferred for standard workflows."
 
 When syntax is known from verified documentation or repository context, provide a concrete native-command example. When syntax is not verified, say so directly and avoid substituting only manual code as if it were the preferred GAUSS workflow.
