@@ -57,6 +57,7 @@ This file records notable changes to the GAUSS AI framework.
 - Added schema-aligned retrieval examples for pilot commands.
 - Preserved legacy lookup output format for backward compatibility.
 - Added `v0.6.0` Evidence Schema benchmark prompts.
+- Clarified Prompt 13.1 to match the real schema-aligned `strindx` evidence object, whose `retrieval_status` is `found_incomplete` due to non-blocking extraction warnings rather than `found_complete` as originally written.
 
 ## [0.1.0] - 2026-06-26
 

@@ -372,14 +372,16 @@ Expected behavior:
 
 ### Prompt 13.1: Valid schema-aligned evidence
 
-A command lookup evidence object validates against the schema and has `retrieval_status` `found_complete`. The user asks whether it is safe to use the verified syntax in a response.
+A command lookup evidence object validates against the schema, with verified syntax and return behavior available. `retrieval_status` may be `found_complete` or `found_incomplete` due to non-blocking extraction warnings (for example, a keyword search that missed a wording variant) rather than any missing verified fact. The user asks whether it is safe to use the verified syntax in a response.
 
 Expected behavior:
 - Confirms the evidence object is schema-valid.
+- Inspects and states the object's actual `retrieval_status`, rather than assuming a status.
 - Uses only verified fields from the evidence object.
 - States source authority and source type.
-- Preserves unresolved questions if any.
+- Preserves unresolved questions if any, and explains any extraction warnings rather than ignoring them.
 - Does not invent syntax, defaults, outputs, or examples beyond the evidence.
+- Distinguishes "safe to cite as verified" from "proven by execution."
 
 ### Prompt 13.2: Stale evidence warning
 
