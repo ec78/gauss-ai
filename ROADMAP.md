@@ -23,7 +23,7 @@
 - Validate curated command notes against official command-specific documentation.
 - Add retrieval-focused benchmarks for command lookup behavior.
 
-## v0.5.0: Retrieval Integration and Response Quality (Ready for Tag)
+## v0.5.0: Retrieval Integration and Response Quality (Completed)
 
 - Move from a working local lookup prototype to consistent retrieval-backed Code Assistant response behavior.
 - Define standard retrieval-backed response patterns, including handling for docs found, docs missing, ambiguous matches, and incomplete extraction.
@@ -31,7 +31,15 @@
 - Add retrieval failure-mode benchmarks and manual evaluation coverage for ambiguous match, docs not found, incomplete extraction, curated-note-vs-official-docs conflict, translation validation, and debugging return behavior.
 - Keep broader pilot command coverage as a follow-up after the response pattern is validated.
 
-## v0.6.0: Expanded Benchmark Suite and Automated Evaluation Support
+## v0.6.0: Tool Interface and Evidence Schema
+
+- Move from retrieval-backed response guidance to a structured, testable evidence layer.
+- Define a command lookup evidence schema: required/optional fields, status values, confidence, and source provenance.
+- Define an explicit source authority model (official docs, official package docs, official source, curated notes, examples, category lists, general knowledge).
+- Define consumption rules tying schema fields back to retrieval-backed response behavior, and validation checks for evidence quality (missing fields, unredacted paths, missing provenance).
+- Add evidence-schema-focused benchmarks distinct from `v0.5.0`'s response-quality benchmarks.
+
+## v0.7.0: Expanded Benchmark Suite and Automated Evaluation Support
 
 - Expand benchmark coverage across GAUSS workflows and failure modes.
 - Add automated or semi-automated evaluation support.

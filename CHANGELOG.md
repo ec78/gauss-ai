@@ -47,6 +47,7 @@ This file records notable changes to the GAUSS AI framework.
 - Evaluated `v0.5.0` retrieval integration benchmarks 12.1-12.6.
 - Verified retrieval-backed response behavior across translation, debugging, incomplete extraction, docs-not-found, ambiguous-match, and curated-note-vs-official-docs cases.
 - Added manual evaluation coverage for key retrieval-backed response states.
+- Started `v0.6.0` tool interface and evidence schema planning.
 
 ## [0.1.0] - 2026-06-26
 
