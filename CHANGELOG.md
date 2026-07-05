@@ -67,6 +67,7 @@ This file records notable changes to the GAUSS AI framework.
 - Added schema-aligned evidence example for `dstatmt`.
 - Added schema-aligned evidence example for `qnewtonmt`.
 - Added schema-aligned evidence example for `pdsummary`, completing the `v0.7.0` High-priority pilot command set.
+- Added `minimize` as a current GAUSS 26 optimization coverage candidate for `v0.7.0` and added a real schema-aligned evidence example for it, alongside the existing `qnewtonmt` example.
 
 ## [0.1.0] - 2026-06-26
 

@@ -1,0 +1,276 @@
+{
+  "ambiguity": null,
+  "best_match": {
+    "command_name": "minimize",
+    "confidence": 1.0,
+    "controls_section": ":param ctl: Optional input. Instance of a :class:`minimizeControl` structure. Normally an instance\nis initialized by calling :func:`minimizeControlCreate` and members of this instance can be\nset to other values by the user. For an instance named *ctl*, the members are:\n.. csv-table::\n\"ctl.m\", \"scalar, number of L-BFGS corrections to store. Default = 10.\"\n\"ctl.maxIters\", \"scalar, maximum number of iterations. Default = 1000.\"\n\"ctl.factr\", \"scalar, function convergence tolerance factor. Convergence occurs when ``|f_k - f_{k+1}| < factr * machine_epsilon``. Use 1e12 for low accuracy, 1e7 for moderate accuracy (default), 1e1 for high accuracy.\"\n\"ctl.pgtol\", \"scalar, projected gradient tolerance. Default = 1e-5.\"\n\"ctl.bounds\", \"Kx2 matrix or 1x2 vector specifying parameter bounds. Column 1 contains lower bounds, column 2 contains upper bounds. If 1x2, applies to all parame\n...[truncated]",
+    "examples": [
+      "out = minimize(&fct, x0, ctl)\n\nout = minimize(&fct, x0, ...)\n\nout = minimize(&fct, x0, ..., ctl)\n\n// Rosenbrock function\n    proc (1) = rosenbrock(x);\n        retp((1 - x[1])^2 + 100*(x[2] - x[1]^2)^2);\n    endp;\n\n    // Starting point\n    x0 = { -1, 1 };\n\n    // Minimize\n    struct minimizeOut out;\n    out = minimize(&rosenbrock, x0);\n\n    print \"Solution: \" out.x';\n    print \"Objective: \" out.fval;"
+    ],
+    "extraction_warnings": [
+      "no keyword hits for: missing, output, returns"
+    ],
+    "file_path": "minimize.rst",
+    "formula_section": null,
+    "heading": "minimize",
+    "inputs_section": ":param &fct: pointer to a procedure that computes the objective function to be minimized.\nThe procedure receives the parameter vector *x* as its first argument, plus any additional\ndata arguments passed to :func:`minimize`.\n:type &fct: function pointer\n\n:param x0: Kx1 vector, starting values for the parameters.\n:type x0: vector\n\n:param ...: Optional extra arguments. These arguments are passed untouched to the user-provided objective function.\n:type ...: any\n\n:param ctl: Optional input. Instance of a :class:`minimizeControl` structure. Normally an instance\nis initialized by calling :func:`minimizeControlCreate` and members of this instance can be\nset to other values by the user. For an instance named *ctl*, the members are:\n.. csv-table::\n\"ctl.m\", \"scalar, number of L-BFGS corrections to store. Default = 10.\"\n\"ctl.maxIters\", \"scalar, maximum number of iterations. Default = 1000.\"\n\"ctl.factr\", \"scalar, function convergence tolerance factor. Convergence occurs when ``|f_k - f_{k+1}| < factr * machine_epsilon``. Use 1e12 for low accuracy, 1e7 for moderate accuracy (default), 1e1 for high accuracy.\"\n\"ctl.pgtol\", \"scalar, projected gradient tolerance. Default = 1e-5.\"\n\"ctl.bounds\", \"Kx2 matrix or 1x2 vector specifying parameter bounds. Column 1 contains lower bounds, column 2 contains upper bounds. If 1x2, applies to all parame\n...[truncated]",
+    "keyword_hits": {
+      "bounds": [
+        {
+          "line": 39,
+          "snippet": "\"ctl.factr\", \"scalar, function convergence tolerance factor. Convergence occurs when ``|f_k - f_{k+1}| < factr * machine_epsilon``. Use 1e12 for low accuracy, 1e7 for moderate accuracy (default), 1e1 for high accuracy.\"\n            \"ctl.pgtol\", \"scalar, projected gradient tolerance. Default = 1e-5.\"\n            \"ctl.bounds\", \"Kx2 matrix or 1x2 vector specifying parameter bounds. Column 1 contains lower bounds, column 2 contains upper bounds. If 1x2, applies to all parameters. Default = ``{ -1e300 1e300 }`` (effectively unbounded).\"\n            \"ctl.printSummary\", \"scalar, print final summary. 0 = no (default), 1 = yes.\"\n            \"ctl.printEvery\", \"scalar, print progress every N iterations. 0 = never (default), N = every N iterations.\""
+        },
+        {
+          "line": 134,
+          "snippet": "x0 = { 5, 5, 5 };\n\n    // Set bounds: all parameters in [0, 10]\n    struct minimizeControl ctl;\n    ctl = minimizeControlCreate();"
+        },
+        {
+          "line": 137,
+          "snippet": "struct minimizeControl ctl;\n    ctl = minimizeControlCreate();\n    ctl.bounds = { 0 10 };\n\n    struct minimizeOut out;"
+        },
+        {
+          "line": 144,
+          "snippet": "print \"Solution: \" out.x';\n\nExample 4: Variable-specific bounds\n++++++++++++++++++++++++++++++++++++++++++++"
+        },
+        {
+          "line": 158,
+          "snippet": "struct minimizeControl ctl;\n    ctl = minimizeControlCreate();\n    ctl.bounds = { 0 1e300,    // x[1] >= 0\n                   0     2 };  // x[2] in [0, 2]"
+        },
+        {
+          "line": 199,
+          "snippet": "**Starting point:**\n\nIf the starting point *x0* violates any bounds, it is automatically projected\ninto the feasible region before optimization begins."
+        }
+      ],
+      "control": [
+        {
+          "line": 28,
+          "snippet": ":type ...: any\n\n    :param ctl: Optional input. Instance of a :class:`minimizeControl` structure. Normally an instance\n        is initialized by calling :func:`minimizeControlCreate` and members of this instance can be\n        set to other values by the user. For an instance named *ctl*, the members are:"
+        },
+        {
+          "line": 29,
+          "snippet": ":param ctl: Optional input. Instance of a :class:`minimizeControl` structure. Normally an instance\n        is initialized by calling :func:`minimizeControlCreate` and members of this instance can be\n        set to other values by the user. For an instance named *ctl*, the members are:"
+        },
+        {
+          "line": 135,
+          "snippet": "// Set bounds: all parameters in [0, 10]\n    struct minimizeControl ctl;\n    ctl = minimizeControlCreate();\n    ctl.bounds = { 0 10 };"
+        },
+        {
+          "line": 136,
+          "snippet": "// Set bounds: all parameters in [0, 10]\n    struct minimizeControl ctl;\n    ctl = minimizeControlCreate();\n    ctl.bounds = { 0 10 };"
+        },
+        {
+          "line": 156,
+          "snippet": "// x[1] in [0, inf), x[2] in [0, 2]\n    struct minimizeControl ctl;\n    ctl = minimizeControlCreate();\n    ctl.bounds = { 0 1e300,    // x[1] >= 0"
+        },
+        {
+          "line": 157,
+          "snippet": "// x[1] in [0, inf), x[2] in [0, 2]\n    struct minimizeControl ctl;\n    ctl = minimizeControlCreate();\n    ctl.bounds = { 0 1e300,    // x[1] >= 0\n                   0     2 };  // x[2] in [0, 2]"
+        },
+        {
+          "line": 179,
+          "snippet": "L-BFGS-B approximates the Hessian using a limited number of past gradients\n(controlled by ``ctl.m``), making it memory-efficient for large problems.\n\nFor problems with more complex constraints (linear equality/inequality,"
+        },
+        {
+          "line": 202,
+          "snippet": "into the feasible region before optimization begins.\n\n.. seealso:: Functions :func:`minimizeControlCreate`, :func:`sqpSolveMT`"
+        }
+      ],
+      "missing": [],
+      "output": [],
+      "returns": []
+    },
+    "match_reason": [
+      "exact_file_name",
+      "exact_heading",
+      "command_call_text",
+      "command_reference_text"
+    ],
+    "notes": [
+      "Remarks\n-------\n\n:func:`minimize` uses the L-BFGS-B algorithm, a limited-memory quasi-Newton method\nthat is the gold standard for smooth bound-constrained optimization. It is\nparticularly suitable for:\n\n- Smooth differentiable objective functions\n- Large-scale problems (hundreds to thousands of variables)\n- Simple bound constraints (each parameter has a lower and/or upper bound)\n\nL-BFGS-B approximates the Hessian using a limited number of past gradients\n(controlled by ``ctl.m``), making it memory-efficient for large problems.\n\nFor problems with more complex constraints (linear equality/inequality,\nnonlinear constraints), use :func:`sqpSolveMT` instead.\n\n**Gradient computation:**\n\n:func:`minimize` automatically computes gradients numerically using finite differences.\nFuture versions may support user-provided analytical gradients.\n\n**Convergence criteria:**\n\nThe algorithm terminates when either:\n\n1. The function value change is small: ``|f_k - f_{k+1}| < factr * eps``\n2. The projected gradient is small: ``max|g_i| < pgtol``\n3. Maximum iterations is reached\n\n**Starting point:**\n\nIf the starting point *x0* violates any bounds, it is automatically projected\ninto the feasible region before optimization begins.\n\n.. seealso:: Functions :func:`minimizeControlCreate`, :func:`sqpSolveMT`"
+    ],
+    "outputs_section": ":return out: an instance of a :class:`minimizeOut` structure. For an instance named *out*, the members are:\n.. list-table::\n* - out.x\n- Kx1 vector, solution values.\n* - out.fval\n- scalar, objective function value at solution.\n* - out.gradient\n- Kx1 vector, gradient at solution.\n* - out.retcode\n- scalar, return code:\n* - out.iterations\n- scalar, number of iterations used.\n* - out.fnEvals\n- scalar, number of function evaluations.\n* - out.retmsg\n- string, message describing convergence status.\n:rtype out: struct",
+    "raw_section_headings": [
+      "minimize",
+      "Purpose",
+      "Format",
+      "Examples",
+      "Example 1: Basic unconstrained minimization",
+      "Example 2: With data arguments",
+      "Example 3: Bound-constrained optimization",
+      "Example 4: Variable-specific bounds",
+      "Remarks"
+    ],
+    "related_links": [
+      "minimize",
+      "minimizeControlCreate",
+      "sqpSolveMT",
+      "minimizeControl",
+      "minimizeOut",
+      "|f_k - f_{k+1}| < factr * machine_epsilon",
+      "{ -1e300 1e300 }",
+      "ctl.m",
+      "|f_k - f_{k+1}| < factr * eps",
+      "max|g_i| < pgtol"
+    ],
+    "returns_section": ":return out: an instance of a :class:`minimizeOut` structure. For an instance named *out*, the members are:\n.. list-table::\n* - out.x\n- Kx1 vector, solution values.\n* - out.fval\n- scalar, objective function value at solution.\n* - out.gradient\n- Kx1 vector, gradient at solution.\n* - out.retcode\n- scalar, return code:\n* - out.iterations\n- scalar, number of iterations used.\n* - out.fnEvals\n- scalar, number of function evaluations.\n* - out.retmsg\n- string, message describing convergence status.\n:rtype out: struct",
+    "source_authority": "official_docs",
+    "source_type": "official_local_rst",
+    "syntax_blocks": [
+      ".. function:: out = minimize(&fct, x0)",
+      "out = minimize(&fct, x0, ctl)",
+      "out = minimize(&fct, x0, ...)",
+      "out = minimize(&fct, x0, ..., ctl)",
+      "\"ctl.factr\", \"scalar, function convergence tolerance factor. Convergence occurs when ``|f_k - f_{k+1}| < factr * machine_epsilon``. Use 1e12 for low accuracy, 1e7 for moderate accuracy (default), 1e1 for high accuracy.\"",
+      "\"ctl.bounds\", \"Kx2 matrix or 1x2 vector specifying parameter bounds. Column 1 contains lower bounds, column 2 contains upper bounds. If 1x2, applies to all parameters. Default = ``{ -1e300 1e300 }`` (effectively unbounded).\"",
+      "\"ctl.printSummary\", \"scalar, print final summary. 0 = no (default), 1 = yes.\"",
+      "\"ctl.printEvery\", \"scalar, print progress every N iterations. 0 = never (default), N = every N iterations.\""
+    ],
+    "unresolved_questions": []
+  },
+  "command_name": "minimize",
+  "confidence": 1.0,
+  "conflicts": [],
+  "docs_root_redacted": true,
+  "extraction_warnings": [
+    "no keyword hits for: missing, output, returns"
+  ],
+  "generated_at": "2026-07-05T21:31:26Z",
+  "matches": [
+    {
+      "command_name": "minimize",
+      "confidence": 1.0,
+      "controls_section": ":param ctl: Optional input. Instance of a :class:`minimizeControl` structure. Normally an instance\nis initialized by calling :func:`minimizeControlCreate` and members of this instance can be\nset to other values by the user. For an instance named *ctl*, the members are:\n.. csv-table::\n\"ctl.m\", \"scalar, number of L-BFGS corrections to store. Default = 10.\"\n\"ctl.maxIters\", \"scalar, maximum number of iterations. Default = 1000.\"\n\"ctl.factr\", \"scalar, function convergence tolerance factor. Convergence occurs when ``|f_k - f_{k+1}| < factr * machine_epsilon``. Use 1e12 for low accuracy, 1e7 for moderate accuracy (default), 1e1 for high accuracy.\"\n\"ctl.pgtol\", \"scalar, projected gradient tolerance. Default = 1e-5.\"\n\"ctl.bounds\", \"Kx2 matrix or 1x2 vector specifying parameter bounds. Column 1 contains lower bounds, column 2 contains upper bounds. If 1x2, applies to all parame\n...[truncated]",
+      "examples": [
+        "out = minimize(&fct, x0, ctl)\n\nout = minimize(&fct, x0, ...)\n\nout = minimize(&fct, x0, ..., ctl)\n\n// Rosenbrock function\n    proc (1) = rosenbrock(x);\n        retp((1 - x[1])^2 + 100*(x[2] - x[1]^2)^2);\n    endp;\n\n    // Starting point\n    x0 = { -1, 1 };\n\n    // Minimize\n    struct minimizeOut out;\n    out = minimize(&rosenbrock, x0);\n\n    print \"Solution: \" out.x';\n    print \"Objective: \" out.fval;"
+      ],
+      "extraction_warnings": [
+        "no keyword hits for: missing, output, returns"
+      ],
+      "file_path": "minimize.rst",
+      "formula_section": null,
+      "heading": "minimize",
+      "inputs_section": ":param &fct: pointer to a procedure that computes the objective function to be minimized.\nThe procedure receives the parameter vector *x* as its first argument, plus any additional\ndata arguments passed to :func:`minimize`.\n:type &fct: function pointer\n\n:param x0: Kx1 vector, starting values for the parameters.\n:type x0: vector\n\n:param ...: Optional extra arguments. These arguments are passed untouched to the user-provided objective function.\n:type ...: any\n\n:param ctl: Optional input. Instance of a :class:`minimizeControl` structure. Normally an instance\nis initialized by calling :func:`minimizeControlCreate` and members of this instance can be\nset to other values by the user. For an instance named *ctl*, the members are:\n.. csv-table::\n\"ctl.m\", \"scalar, number of L-BFGS corrections to store. Default = 10.\"\n\"ctl.maxIters\", \"scalar, maximum number of iterations. Default = 1000.\"\n\"ctl.factr\", \"scalar, function convergence tolerance factor. Convergence occurs when ``|f_k - f_{k+1}| < factr * machine_epsilon``. Use 1e12 for low accuracy, 1e7 for moderate accuracy (default), 1e1 for high accuracy.\"\n\"ctl.pgtol\", \"scalar, projected gradient tolerance. Default = 1e-5.\"\n\"ctl.bounds\", \"Kx2 matrix or 1x2 vector specifying parameter bounds. Column 1 contains lower bounds, column 2 contains upper bounds. If 1x2, applies to all parame\n...[truncated]",
+      "keyword_hits": {
+        "bounds": [
+          {
+            "line": 39,
+            "snippet": "\"ctl.factr\", \"scalar, function convergence tolerance factor. Convergence occurs when ``|f_k - f_{k+1}| < factr * machine_epsilon``. Use 1e12 for low accuracy, 1e7 for moderate accuracy (default), 1e1 for high accuracy.\"\n            \"ctl.pgtol\", \"scalar, projected gradient tolerance. Default = 1e-5.\"\n            \"ctl.bounds\", \"Kx2 matrix or 1x2 vector specifying parameter bounds. Column 1 contains lower bounds, column 2 contains upper bounds. If 1x2, applies to all parameters. Default = ``{ -1e300 1e300 }`` (effectively unbounded).\"\n            \"ctl.printSummary\", \"scalar, print final summary. 0 = no (default), 1 = yes.\"\n            \"ctl.printEvery\", \"scalar, print progress every N iterations. 0 = never (default), N = every N iterations.\""
+          },
+          {
+            "line": 134,
+            "snippet": "x0 = { 5, 5, 5 };\n\n    // Set bounds: all parameters in [0, 10]\n    struct minimizeControl ctl;\n    ctl = minimizeControlCreate();"
+          },
+          {
+            "line": 137,
+            "snippet": "struct minimizeControl ctl;\n    ctl = minimizeControlCreate();\n    ctl.bounds = { 0 10 };\n\n    struct minimizeOut out;"
+          },
+          {
+            "line": 144,
+            "snippet": "print \"Solution: \" out.x';\n\nExample 4: Variable-specific bounds\n++++++++++++++++++++++++++++++++++++++++++++"
+          },
+          {
+            "line": 158,
+            "snippet": "struct minimizeControl ctl;\n    ctl = minimizeControlCreate();\n    ctl.bounds = { 0 1e300,    // x[1] >= 0\n                   0     2 };  // x[2] in [0, 2]"
+          },
+          {
+            "line": 199,
+            "snippet": "**Starting point:**\n\nIf the starting point *x0* violates any bounds, it is automatically projected\ninto the feasible region before optimization begins."
+          }
+        ],
+        "control": [
+          {
+            "line": 28,
+            "snippet": ":type ...: any\n\n    :param ctl: Optional input. Instance of a :class:`minimizeControl` structure. Normally an instance\n        is initialized by calling :func:`minimizeControlCreate` and members of this instance can be\n        set to other values by the user. For an instance named *ctl*, the members are:"
+          },
+          {
+            "line": 29,
+            "snippet": ":param ctl: Optional input. Instance of a :class:`minimizeControl` structure. Normally an instance\n        is initialized by calling :func:`minimizeControlCreate` and members of this instance can be\n        set to other values by the user. For an instance named *ctl*, the members are:"
+          },
+          {
+            "line": 135,
+            "snippet": "// Set bounds: all parameters in [0, 10]\n    struct minimizeControl ctl;\n    ctl = minimizeControlCreate();\n    ctl.bounds = { 0 10 };"
+          },
+          {
+            "line": 136,
+            "snippet": "// Set bounds: all parameters in [0, 10]\n    struct minimizeControl ctl;\n    ctl = minimizeControlCreate();\n    ctl.bounds = { 0 10 };"
+          },
+          {
+            "line": 156,
+            "snippet": "// x[1] in [0, inf), x[2] in [0, 2]\n    struct minimizeControl ctl;\n    ctl = minimizeControlCreate();\n    ctl.bounds = { 0 1e300,    // x[1] >= 0"
+          },
+          {
+            "line": 157,
+            "snippet": "// x[1] in [0, inf), x[2] in [0, 2]\n    struct minimizeControl ctl;\n    ctl = minimizeControlCreate();\n    ctl.bounds = { 0 1e300,    // x[1] >= 0\n                   0     2 };  // x[2] in [0, 2]"
+          },
+          {
+            "line": 179,
+            "snippet": "L-BFGS-B approximates the Hessian using a limited number of past gradients\n(controlled by ``ctl.m``), making it memory-efficient for large problems.\n\nFor problems with more complex constraints (linear equality/inequality,"
+          },
+          {
+            "line": 202,
+            "snippet": "into the feasible region before optimization begins.\n\n.. seealso:: Functions :func:`minimizeControlCreate`, :func:`sqpSolveMT`"
+          }
+        ],
+        "missing": [],
+        "output": [],
+        "returns": []
+      },
+      "match_reason": [
+        "exact_file_name",
+        "exact_heading",
+        "command_call_text",
+        "command_reference_text"
+      ],
+      "notes": [
+        "Remarks\n-------\n\n:func:`minimize` uses the L-BFGS-B algorithm, a limited-memory quasi-Newton method\nthat is the gold standard for smooth bound-constrained optimization. It is\nparticularly suitable for:\n\n- Smooth differentiable objective functions\n- Large-scale problems (hundreds to thousands of variables)\n- Simple bound constraints (each parameter has a lower and/or upper bound)\n\nL-BFGS-B approximates the Hessian using a limited number of past gradients\n(controlled by ``ctl.m``), making it memory-efficient for large problems.\n\nFor problems with more complex constraints (linear equality/inequality,\nnonlinear constraints), use :func:`sqpSolveMT` instead.\n\n**Gradient computation:**\n\n:func:`minimize` automatically computes gradients numerically using finite differences.\nFuture versions may support user-provided analytical gradients.\n\n**Convergence criteria:**\n\nThe algorithm terminates when either:\n\n1. The function value change is small: ``|f_k - f_{k+1}| < factr * eps``\n2. The projected gradient is small: ``max|g_i| < pgtol``\n3. Maximum iterations is reached\n\n**Starting point:**\n\nIf the starting point *x0* violates any bounds, it is automatically projected\ninto the feasible region before optimization begins.\n\n.. seealso:: Functions :func:`minimizeControlCreate`, :func:`sqpSolveMT`"
+      ],
+      "outputs_section": ":return out: an instance of a :class:`minimizeOut` structure. For an instance named *out*, the members are:\n.. list-table::\n* - out.x\n- Kx1 vector, solution values.\n* - out.fval\n- scalar, objective function value at solution.\n* - out.gradient\n- Kx1 vector, gradient at solution.\n* - out.retcode\n- scalar, return code:\n* - out.iterations\n- scalar, number of iterations used.\n* - out.fnEvals\n- scalar, number of function evaluations.\n* - out.retmsg\n- string, message describing convergence status.\n:rtype out: struct",
+      "raw_section_headings": [
+        "minimize",
+        "Purpose",
+        "Format",
+        "Examples",
+        "Example 1: Basic unconstrained minimization",
+        "Example 2: With data arguments",
+        "Example 3: Bound-constrained optimization",
+        "Example 4: Variable-specific bounds",
+        "Remarks"
+      ],
+      "related_links": [
+        "minimize",
+        "minimizeControlCreate",
+        "sqpSolveMT",
+        "minimizeControl",
+        "minimizeOut",
+        "|f_k - f_{k+1}| < factr * machine_epsilon",
+        "{ -1e300 1e300 }",
+        "ctl.m",
+        "|f_k - f_{k+1}| < factr * eps",
+        "max|g_i| < pgtol"
+      ],
+      "returns_section": ":return out: an instance of a :class:`minimizeOut` structure. For an instance named *out*, the members are:\n.. list-table::\n* - out.x\n- Kx1 vector, solution values.\n* - out.fval\n- scalar, objective function value at solution.\n* - out.gradient\n- Kx1 vector, gradient at solution.\n* - out.retcode\n- scalar, return code:\n* - out.iterations\n- scalar, number of iterations used.\n* - out.fnEvals\n- scalar, number of function evaluations.\n* - out.retmsg\n- string, message describing convergence status.\n:rtype out: struct",
+      "source_authority": "official_docs",
+      "source_type": "official_local_rst",
+      "syntax_blocks": [
+        ".. function:: out = minimize(&fct, x0)",
+        "out = minimize(&fct, x0, ctl)",
+        "out = minimize(&fct, x0, ...)",
+        "out = minimize(&fct, x0, ..., ctl)",
+        "\"ctl.factr\", \"scalar, function convergence tolerance factor. Convergence occurs when ``|f_k - f_{k+1}| < factr * machine_epsilon``. Use 1e12 for low accuracy, 1e7 for moderate accuracy (default), 1e1 for high accuracy.\"",
+        "\"ctl.bounds\", \"Kx2 matrix or 1x2 vector specifying parameter bounds. Column 1 contains lower bounds, column 2 contains upper bounds. If 1x2, applies to all parameters. Default = ``{ -1e300 1e300 }`` (effectively unbounded).\"",
+        "\"ctl.printSummary\", \"scalar, print final summary. 0 = no (default), 1 = yes.\"",
+        "\"ctl.printEvery\", \"scalar, print progress every N iterations. 0 = never (default), N = every N iterations.\""
+      ],
+      "unresolved_questions": []
+    }
+  ],
+  "notes": [],
+  "retrieval_status": "found_incomplete",
+  "schema_version": "0.1.0",
+  "source_authority": "official_docs",
+  "source_type": "official_local_rst",
+  "stale_evidence": null,
+  "tool_name": "command_doc_lookup",
+  "tool_version": "0.1.0",
+  "unresolved_questions": []
+}
