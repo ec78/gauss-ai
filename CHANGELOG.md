@@ -64,6 +64,7 @@ This file records notable changes to the GAUSS AI framework.
 - Updated `KNOWN_LIMITATIONS.md` for `v0.6.0` evidence schema, validator, schema-aligned output, and schema-specific limitations.
 - Added validate-all evidence script for schema-aligned examples and fixtures.
 - Added schema-aligned evidence example for `strsplit`.
+- Added schema-aligned evidence example for `dstatmt`.
 
 ## [0.1.0] - 2026-06-26
 

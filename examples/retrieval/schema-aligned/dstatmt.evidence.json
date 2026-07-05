@@ -1,0 +1,390 @@
+{
+  "ambiguity": null,
+  "best_match": {
+    "command_name": "dstatmt",
+    "confidence": 1.0,
+    "controls_section": ":param ctl: An optional :class:`dstatmtControl` structure containing the following members:\n.. list-table::\n* - *ctl.altnames*\n- Kx1 string array of alternate variable names to be used if a matrix in memory is analyzed (i.e., dataset is a null string or 0). Default = \"\".\n* - *ctl.maxbytes*\n- Scalar, the maximum number of bytes to be read per iteration of the read loop. Default = 1e9.\n* - *ctl.vartype*\n- Scalar, unused in dstatmt.\n* - *ctl.miss*\n- Scalar, default 0.\n* - *ctl.row*\n- Scalar, the number of rows to read per iteration of the read loop.If 0, (default) the number of rows will be calculated using *ctl.maxbytes* and *maxvec*.\n* - *ctl.output*\n- Scalar, controls output, default 1.\n:type ctl: Struct",
+    "examples": [
+      "// Create file name with full path\n    file_name = getGAUSSHome(\"examples/fueleconomy.dat\");\n\n    /*\n    ** Compute statistics for all variables in the dataset\n    ** The 'call' keyword disregards return values from the function\n    */\n    call  dstatmt(file_name);\n\n// Create file name with full path\n    file_name = getGAUSSHome(\"examples/fueleconomy.dat\");\n\n    // Only calculate statistics on the second variable\n    vars = 2;\n\n    // Compute statistics for only the second variable in the dataset\n    call  dstatmt(file_name, vars);\n\n// Create file name with full path\n    file_name = getGAUSSHome(\"examples/binary.csv\");\n\n    // Set up a formula string with variables \"gre\" and \"gpa\"\n    vars = \"gre + gpa\";\n\n    /*\n    ** Compute statistics for all variables in the dataset\n    ** The 'call' keyword disregards return values from the function\n    */\n    call  dstatmt(file_name, vars);\n\n/*\n    ** Perform import\n    */\n    auto2 = loadd(getGAUSShome(\"examples/auto2.dta\"));\n\n    // Specify formula to\n    // compute descriptive statistics on mpg\n    // based on domestic/foreign status\n    formula = \"headroom + mpg + by(foreign)\";\n\n    // Print statistics table\n    call dstatmt(auto2, formula);"
+    ],
+    "extraction_warnings": [
+      "no keyword hits for: returns, weights"
+    ],
+    "file_path": "dstatmt.rst",
+    "formula_section": null,
+    "heading": "dstatmt",
+    "inputs_section": ":param data: A dataframe or the name of dataset. If *data* is an empty string or 0, *vars* will be assumed to be a matrix containing the data.\n:type data: string or dataframe\n\n:param vars: Optional, the variables.\nIf *data* contains a dataframe or the name of a dataset, *vars* will be interpreted as either:\n* A Kx1 character vector containing the names of variables.\n* A Kx1 numeric vector containing indices of variables.\n* A `formula string`.\ne.g. :code:`\"PAY + WT\"` or :code:`\". - sex\"`\ne.g :code:`\"X1 + by(X2)\", \"by(X2)\"` specifies that the data should be separated into different tables based on the groups defined by ``X2``.\nThese can be any size subset of the variables in the dataset and can be in any order. Dafault = all columns of the dataset.\nIf *data* is an empty string or 0, *vars* will be interpreted as an NxK matrix, the data on which to compute the descriptive statistics.\n:type vars: String or string array\n\n:param ctl: An optional :class:`dstatmtControl` structure containing the following members:\n.. list-table::\n* - *ctl.altnames*\n- Kx1 string array of alternate variable names to be used if a matrix in memory is analyzed (i.e., dataset is a null string or 0). Default = \"\".\n* - *ctl.maxbytes*\n- Scalar, the maximum number of bytes to be read per iteration of the read loop. Default = 1e9.\n* - *ctl.vartype*\n- Scalar, unused in dstatmt.\n* - *ctl.miss*\n- Scalar, default 0.\n* - *ctl.row*\n- Scalar, the number of rows to read per iteration of the read loop.If 0, (default) the number of rows will be calculated using *ctl.maxbytes* and *maxvec*.\n* - *ctl.output*\n- Scalar, controls output, default 1.\n:type ctl: Struct",
+    "keyword_hits": {
+      "control": [
+        {
+          "line": 33,
+          "snippet": ":type vars: String or string array\n\n    :param ctl: An optional :class:`dstatmtControl` structure containing the following members:\n\n        .. list-table::"
+        },
+        {
+          "line": 54,
+          "snippet": "- Scalar, the number of rows to read per iteration of the read loop.If 0, (default) the number of rows will be calculated using *ctl.maxbytes* and *maxvec*.\n            * - *ctl.output*\n              - Scalar, controls output, default 1.\n\n                :1: print output table."
+        },
+        {
+          "line": 88,
+          "snippet": ":2: Can't open file.\n                :7: Too many missings - no data left after packing.\n                :9: *altnames* member of :class:`dstatmtControl` structure wrong size.\n                :10: *vartype* member of :class:`dstatmtControl` structure wrong size."
+        },
+        {
+          "line": 89,
+          "snippet": ":7: Too many missings - no data left after packing.\n                :9: *altnames* member of :class:`dstatmtControl` structure wrong size.\n                :10: *vartype* member of :class:`dstatmtControl` structure wrong size.\n\n    :rtype dout: Struct"
+        },
+        {
+          "line": 212,
+          "snippet": "mpg             24.77       6.611         43.71          14          41        22    0 \n  \nUsing control and output structures\n++++++++++++++++++++++++++++++++++++"
+        },
+        {
+          "line": 220,
+          "snippet": "file_name = getGAUSSHome(\"examples/credit.dat\");\n\n    // Declare control structure and fill in with defaults\n    struct dstatmtControl dctl;\n    dctl = dstatmtControlCreate();"
+        },
+        {
+          "line": 221,
+          "snippet": "// Declare control structure and fill in with defaults\n    struct dstatmtControl dctl;\n    dctl = dstatmtControlCreate();"
+        },
+        {
+          "line": 222,
+          "snippet": "// Declare control structure and fill in with defaults\n    struct dstatmtControl dctl;\n    dctl = dstatmtControlCreate();\n\n    // Do not print output to the screen"
+        }
+      ],
+      "missing": [
+        {
+          "line": 47,
+          "snippet": "- Scalar, default 0.\n\n                :0: there are no missing values (fastest).\n                :1: listwise deletion, drop a row if any missings occur in it.\n                :2: pairwise deletion."
+        },
+        {
+          "line": 48,
+          "snippet": ":0: there are no missing values (fastest).\n                :1: listwise deletion, drop a row if any missings occur in it.\n                :2: pairwise deletion."
+        },
+        {
+          "line": 81,
+          "snippet": "* - *dout.valid*\n              - Kx1 vector, the number of valid cases.\n            * - *dout.missing*\n              - Kx1 vector, the number of missing cases.\n            * - *dout.errcode*"
+        },
+        {
+          "line": 82,
+          "snippet": "- Kx1 vector, the number of valid cases.\n            * - *dout.missing*\n              - Kx1 vector, the number of missing cases.\n            * - *dout.errcode*\n              - Scalar, error code, 0 if successful; otherwise, one of the following:"
+        },
+        {
+          "line": 87,
+          "snippet": ":2: Can't open file.\n                :7: Too many missings - no data left after packing.\n                :9: *altnames* member of :class:`dstatmtControl` structure wrong size.\n                :10: *vartype* member of :class:`dstatmtControl` structure wrong size."
+        },
+        {
+          "line": 115,
+          "snippet": "----------------------------------------------------------------------------------------\n    Variable               Mean     Std Dev    Variance   Minimum   Maximum  Valid   Missing\n    ----------------------------------------------------------------------------------------"
+        },
+        {
+          "line": 140,
+          "snippet": "----------------------------------------------------------------------------------------\n    Variable                Mean    Std Dev   Variance   Minimum   Maximum   Valid   Missing\n    ----------------------------------------------------------------------------------------\n    engine_displacement    3.233      1.376     1.892          1       8.4     978         0"
+        },
+        {
+          "line": 166,
+          "snippet": "--------------------------------------------------------------------------------\n    Variable     Mean   Std Dev    Variance    Minimum     Maximum   Valid   Missing\n    --------------------------------------------------------------------------------"
+        }
+      ],
+      "output": [
+        {
+          "line": 53,
+          "snippet": "* - *ctl.row*\n              - Scalar, the number of rows to read per iteration of the read loop.If 0, (default) the number of rows will be calculated using *ctl.maxbytes* and *maxvec*.\n            * - *ctl.output*\n              - Scalar, controls output, default 1."
+        },
+        {
+          "line": 54,
+          "snippet": "- Scalar, the number of rows to read per iteration of the read loop.If 0, (default) the number of rows will be calculated using *ctl.maxbytes* and *maxvec*.\n            * - *ctl.output*\n              - Scalar, controls output, default 1.\n\n                :1: print output table."
+        },
+        {
+          "line": 56,
+          "snippet": "- Scalar, controls output, default 1.\n\n                :1: print output table.\n                :0: do not print output."
+        },
+        {
+          "line": 57,
+          "snippet": ":1: print output table.\n                :0: do not print output."
+        },
+        {
+          "line": 212,
+          "snippet": "mpg             24.77       6.611         43.71          14          41        22    0 \n  \nUsing control and output structures\n++++++++++++++++++++++++++++++++++++"
+        },
+        {
+          "line": 224,
+          "snippet": "dctl = dstatmtControlCreate();\n\n    // Do not print output to the screen\n    dctl.output = 0;"
+        },
+        {
+          "line": 225,
+          "snippet": "// Do not print output to the screen\n    dctl.output = 0;\n\n    // Declare output structure"
+        },
+        {
+          "line": 227,
+          "snippet": "dctl.output = 0;\n\n    // Declare output structure\n    struct dstatmtOut dout;"
+        }
+      ],
+      "returns": [],
+      "weights": []
+    },
+    "match_reason": [
+      "exact_file_name",
+      "exact_heading",
+      "command_call_text"
+    ],
+    "notes": [
+      "Remarks\n-------\n\n1. If pairwise deletion is used, the minima and maxima will be the true\n   values for the valid data. The means and standard deviations will be\n   computed using the correct number of valid observations for each\n   variable.\n\n2. For backwards compatiblitity, the following format is still\n   supported:\n\n   ::\n\n      dout = dstatmt(dctl, dataset, vars);\n\n   However, all new code should use one of the formats listed at the top\n   of this document.\n\n3. The supported dataset types are ``CSV``, ``XLS``, ``XLSX``, ``HDF5``, ``FMT``, ``DAT``, ``DTA``\n\n\n4. For ``HDF5`` files, the dataset must include a ``file schema`` and both file name and dataset name must be provided, e.g.\n   :code:`dstatmt(\"h5://testdata.h5/mydata\")`."
+    ],
+    "outputs_section": ":return dout: Instance of :class:`dstatmtOut` structure containing the following members:\n.. list-table::\n* - *dout.vnames*\n- Kx1 string array, the names of the variables used in the statistics.\n* - *dout.mean*\n- Kx1 vector, means.\n* - *dout.var*\n- Kx1 vector, variance.\n* - *dout.std*\n- Kx1 vector, standard deviation.\n* - *dout.min*\n- Kx1 vector, minima.\n* - *dout.max*\n- Kx1 vector, maxima.\n* - *dout.valid*\n- Kx1 vector, the number of valid cases.\n* - *dout.missing*\n- Kx1 vector, the number of missing cases.\n* - *dout.errcode*\n- Scalar, error code, 0 if successful; otherwise, one of the following:\n:rtype dout: Struct",
+    "raw_section_headings": [
+      "dstatmt",
+      "Purpose",
+      "Format",
+      "Examples",
+      "Computing statistics on a GAUSS dataset",
+      "Variable               Mean     Std Dev    Variance   Minimum   Maximum  Valid   Missing",
+      "Variable                Mean    Std Dev   Variance   Minimum   Maximum   Valid   Missing",
+      "Computing statistics on a csv dataset with formula string",
+      "Variable     Mean   Std Dev    Variance    Minimum     Maximum   Valid   Missing",
+      "Computing statistics by groups",
+      "foreign: Domestic",
+      "Variable         Mean     Std Dev      Variance     Minimum     Maximum     Valid Missing",
+      "mpg             19.83       4.743          22.5          12          34        52    0",
+      "foreign: Foreign",
+      "Variable         Mean     Std Dev      Variance     Minimum     Maximum     Valid Missing",
+      "Using control and output structures",
+      "Computing statistics on a matrix",
+      "Variable    Mean    Std Dev     Variance     Minimum    Maximum  Valid  Missing",
+      "Computing statistics on a matrix, using structures",
+      "Variable     Mean    Std Dev    Variance    Minimum    Maximum  Valid  Missing",
+      "Remarks",
+      "Source"
+    ],
+    "related_links": [
+      "dstatmtControlCreate",
+      "dstatmtControl",
+      "dstatmtOut",
+      "formula string",
+      "\"PAY + WT\"",
+      "\". - sex\"",
+      "\"X1 + by(X2)\", \"by(X2)\"",
+      "X2",
+      "\"by\"",
+      "CSV",
+      ",",
+      "XLS",
+      "XLSX",
+      "HDF5",
+      "FMT",
+      "DAT",
+      "DTA",
+      "files, the dataset must include a",
+      "file schema",
+      "dstatmt(\"h5://testdata.h5/mydata\")"
+    ],
+    "returns_section": ":return dout: Instance of :class:`dstatmtOut` structure containing the following members:\n.. list-table::\n* - *dout.vnames*\n- Kx1 string array, the names of the variables used in the statistics.\n* - *dout.mean*\n- Kx1 vector, means.\n* - *dout.var*\n- Kx1 vector, variance.\n* - *dout.std*\n- Kx1 vector, standard deviation.\n* - *dout.min*\n- Kx1 vector, minima.\n* - *dout.max*\n- Kx1 vector, maxima.\n* - *dout.valid*\n- Kx1 vector, the number of valid cases.\n* - *dout.missing*\n- Kx1 vector, the number of missing cases.\n* - *dout.errcode*\n- Scalar, error code, 0 if successful; otherwise, one of the following:\n:rtype dout: Struct",
+    "source_authority": "official_docs",
+    "source_type": "official_local_rst",
+    "syntax_blocks": [
+      ".. function:: dout = dstatmt(data [, vars, ctl])",
+      "e.g :code:`\"X1 + by(X2)\", \"by(X2)\"` specifies that the data should be separated into different tables based on the groups defined by ``X2``."
+    ],
+    "unresolved_questions": []
+  },
+  "command_name": "dstatmt",
+  "confidence": 1.0,
+  "conflicts": [],
+  "docs_root_redacted": true,
+  "extraction_warnings": [
+    "no keyword hits for: returns, weights"
+  ],
+  "generated_at": "2026-07-05T19:36:16Z",
+  "matches": [
+    {
+      "command_name": "dstatmt",
+      "confidence": 1.0,
+      "controls_section": ":param ctl: An optional :class:`dstatmtControl` structure containing the following members:\n.. list-table::\n* - *ctl.altnames*\n- Kx1 string array of alternate variable names to be used if a matrix in memory is analyzed (i.e., dataset is a null string or 0). Default = \"\".\n* - *ctl.maxbytes*\n- Scalar, the maximum number of bytes to be read per iteration of the read loop. Default = 1e9.\n* - *ctl.vartype*\n- Scalar, unused in dstatmt.\n* - *ctl.miss*\n- Scalar, default 0.\n* - *ctl.row*\n- Scalar, the number of rows to read per iteration of the read loop.If 0, (default) the number of rows will be calculated using *ctl.maxbytes* and *maxvec*.\n* - *ctl.output*\n- Scalar, controls output, default 1.\n:type ctl: Struct",
+      "examples": [
+        "// Create file name with full path\n    file_name = getGAUSSHome(\"examples/fueleconomy.dat\");\n\n    /*\n    ** Compute statistics for all variables in the dataset\n    ** The 'call' keyword disregards return values from the function\n    */\n    call  dstatmt(file_name);\n\n// Create file name with full path\n    file_name = getGAUSSHome(\"examples/fueleconomy.dat\");\n\n    // Only calculate statistics on the second variable\n    vars = 2;\n\n    // Compute statistics for only the second variable in the dataset\n    call  dstatmt(file_name, vars);\n\n// Create file name with full path\n    file_name = getGAUSSHome(\"examples/binary.csv\");\n\n    // Set up a formula string with variables \"gre\" and \"gpa\"\n    vars = \"gre + gpa\";\n\n    /*\n    ** Compute statistics for all variables in the dataset\n    ** The 'call' keyword disregards return values from the function\n    */\n    call  dstatmt(file_name, vars);\n\n/*\n    ** Perform import\n    */\n    auto2 = loadd(getGAUSShome(\"examples/auto2.dta\"));\n\n    // Specify formula to\n    // compute descriptive statistics on mpg\n    // based on domestic/foreign status\n    formula = \"headroom + mpg + by(foreign)\";\n\n    // Print statistics table\n    call dstatmt(auto2, formula);"
+      ],
+      "extraction_warnings": [
+        "no keyword hits for: returns, weights"
+      ],
+      "file_path": "dstatmt.rst",
+      "formula_section": null,
+      "heading": "dstatmt",
+      "inputs_section": ":param data: A dataframe or the name of dataset. If *data* is an empty string or 0, *vars* will be assumed to be a matrix containing the data.\n:type data: string or dataframe\n\n:param vars: Optional, the variables.\nIf *data* contains a dataframe or the name of a dataset, *vars* will be interpreted as either:\n* A Kx1 character vector containing the names of variables.\n* A Kx1 numeric vector containing indices of variables.\n* A `formula string`.\ne.g. :code:`\"PAY + WT\"` or :code:`\". - sex\"`\ne.g :code:`\"X1 + by(X2)\", \"by(X2)\"` specifies that the data should be separated into different tables based on the groups defined by ``X2``.\nThese can be any size subset of the variables in the dataset and can be in any order. Dafault = all columns of the dataset.\nIf *data* is an empty string or 0, *vars* will be interpreted as an NxK matrix, the data on which to compute the descriptive statistics.\n:type vars: String or string array\n\n:param ctl: An optional :class:`dstatmtControl` structure containing the following members:\n.. list-table::\n* - *ctl.altnames*\n- Kx1 string array of alternate variable names to be used if a matrix in memory is analyzed (i.e., dataset is a null string or 0). Default = \"\".\n* - *ctl.maxbytes*\n- Scalar, the maximum number of bytes to be read per iteration of the read loop. Default = 1e9.\n* - *ctl.vartype*\n- Scalar, unused in dstatmt.\n* - *ctl.miss*\n- Scalar, default 0.\n* - *ctl.row*\n- Scalar, the number of rows to read per iteration of the read loop.If 0, (default) the number of rows will be calculated using *ctl.maxbytes* and *maxvec*.\n* - *ctl.output*\n- Scalar, controls output, default 1.\n:type ctl: Struct",
+      "keyword_hits": {
+        "control": [
+          {
+            "line": 33,
+            "snippet": ":type vars: String or string array\n\n    :param ctl: An optional :class:`dstatmtControl` structure containing the following members:\n\n        .. list-table::"
+          },
+          {
+            "line": 54,
+            "snippet": "- Scalar, the number of rows to read per iteration of the read loop.If 0, (default) the number of rows will be calculated using *ctl.maxbytes* and *maxvec*.\n            * - *ctl.output*\n              - Scalar, controls output, default 1.\n\n                :1: print output table."
+          },
+          {
+            "line": 88,
+            "snippet": ":2: Can't open file.\n                :7: Too many missings - no data left after packing.\n                :9: *altnames* member of :class:`dstatmtControl` structure wrong size.\n                :10: *vartype* member of :class:`dstatmtControl` structure wrong size."
+          },
+          {
+            "line": 89,
+            "snippet": ":7: Too many missings - no data left after packing.\n                :9: *altnames* member of :class:`dstatmtControl` structure wrong size.\n                :10: *vartype* member of :class:`dstatmtControl` structure wrong size.\n\n    :rtype dout: Struct"
+          },
+          {
+            "line": 212,
+            "snippet": "mpg             24.77       6.611         43.71          14          41        22    0 \n  \nUsing control and output structures\n++++++++++++++++++++++++++++++++++++"
+          },
+          {
+            "line": 220,
+            "snippet": "file_name = getGAUSSHome(\"examples/credit.dat\");\n\n    // Declare control structure and fill in with defaults\n    struct dstatmtControl dctl;\n    dctl = dstatmtControlCreate();"
+          },
+          {
+            "line": 221,
+            "snippet": "// Declare control structure and fill in with defaults\n    struct dstatmtControl dctl;\n    dctl = dstatmtControlCreate();"
+          },
+          {
+            "line": 222,
+            "snippet": "// Declare control structure and fill in with defaults\n    struct dstatmtControl dctl;\n    dctl = dstatmtControlCreate();\n\n    // Do not print output to the screen"
+          }
+        ],
+        "missing": [
+          {
+            "line": 47,
+            "snippet": "- Scalar, default 0.\n\n                :0: there are no missing values (fastest).\n                :1: listwise deletion, drop a row if any missings occur in it.\n                :2: pairwise deletion."
+          },
+          {
+            "line": 48,
+            "snippet": ":0: there are no missing values (fastest).\n                :1: listwise deletion, drop a row if any missings occur in it.\n                :2: pairwise deletion."
+          },
+          {
+            "line": 81,
+            "snippet": "* - *dout.valid*\n              - Kx1 vector, the number of valid cases.\n            * - *dout.missing*\n              - Kx1 vector, the number of missing cases.\n            * - *dout.errcode*"
+          },
+          {
+            "line": 82,
+            "snippet": "- Kx1 vector, the number of valid cases.\n            * - *dout.missing*\n              - Kx1 vector, the number of missing cases.\n            * - *dout.errcode*\n              - Scalar, error code, 0 if successful; otherwise, one of the following:"
+          },
+          {
+            "line": 87,
+            "snippet": ":2: Can't open file.\n                :7: Too many missings - no data left after packing.\n                :9: *altnames* member of :class:`dstatmtControl` structure wrong size.\n                :10: *vartype* member of :class:`dstatmtControl` structure wrong size."
+          },
+          {
+            "line": 115,
+            "snippet": "----------------------------------------------------------------------------------------\n    Variable               Mean     Std Dev    Variance   Minimum   Maximum  Valid   Missing\n    ----------------------------------------------------------------------------------------"
+          },
+          {
+            "line": 140,
+            "snippet": "----------------------------------------------------------------------------------------\n    Variable                Mean    Std Dev   Variance   Minimum   Maximum   Valid   Missing\n    ----------------------------------------------------------------------------------------\n    engine_displacement    3.233      1.376     1.892          1       8.4     978         0"
+          },
+          {
+            "line": 166,
+            "snippet": "--------------------------------------------------------------------------------\n    Variable     Mean   Std Dev    Variance    Minimum     Maximum   Valid   Missing\n    --------------------------------------------------------------------------------"
+          }
+        ],
+        "output": [
+          {
+            "line": 53,
+            "snippet": "* - *ctl.row*\n              - Scalar, the number of rows to read per iteration of the read loop.If 0, (default) the number of rows will be calculated using *ctl.maxbytes* and *maxvec*.\n            * - *ctl.output*\n              - Scalar, controls output, default 1."
+          },
+          {
+            "line": 54,
+            "snippet": "- Scalar, the number of rows to read per iteration of the read loop.If 0, (default) the number of rows will be calculated using *ctl.maxbytes* and *maxvec*.\n            * - *ctl.output*\n              - Scalar, controls output, default 1.\n\n                :1: print output table."
+          },
+          {
+            "line": 56,
+            "snippet": "- Scalar, controls output, default 1.\n\n                :1: print output table.\n                :0: do not print output."
+          },
+          {
+            "line": 57,
+            "snippet": ":1: print output table.\n                :0: do not print output."
+          },
+          {
+            "line": 212,
+            "snippet": "mpg             24.77       6.611         43.71          14          41        22    0 \n  \nUsing control and output structures\n++++++++++++++++++++++++++++++++++++"
+          },
+          {
+            "line": 224,
+            "snippet": "dctl = dstatmtControlCreate();\n\n    // Do not print output to the screen\n    dctl.output = 0;"
+          },
+          {
+            "line": 225,
+            "snippet": "// Do not print output to the screen\n    dctl.output = 0;\n\n    // Declare output structure"
+          },
+          {
+            "line": 227,
+            "snippet": "dctl.output = 0;\n\n    // Declare output structure\n    struct dstatmtOut dout;"
+          }
+        ],
+        "returns": [],
+        "weights": []
+      },
+      "match_reason": [
+        "exact_file_name",
+        "exact_heading",
+        "command_call_text"
+      ],
+      "notes": [
+        "Remarks\n-------\n\n1. If pairwise deletion is used, the minima and maxima will be the true\n   values for the valid data. The means and standard deviations will be\n   computed using the correct number of valid observations for each\n   variable.\n\n2. For backwards compatiblitity, the following format is still\n   supported:\n\n   ::\n\n      dout = dstatmt(dctl, dataset, vars);\n\n   However, all new code should use one of the formats listed at the top\n   of this document.\n\n3. The supported dataset types are ``CSV``, ``XLS``, ``XLSX``, ``HDF5``, ``FMT``, ``DAT``, ``DTA``\n\n\n4. For ``HDF5`` files, the dataset must include a ``file schema`` and both file name and dataset name must be provided, e.g.\n   :code:`dstatmt(\"h5://testdata.h5/mydata\")`."
+      ],
+      "outputs_section": ":return dout: Instance of :class:`dstatmtOut` structure containing the following members:\n.. list-table::\n* - *dout.vnames*\n- Kx1 string array, the names of the variables used in the statistics.\n* - *dout.mean*\n- Kx1 vector, means.\n* - *dout.var*\n- Kx1 vector, variance.\n* - *dout.std*\n- Kx1 vector, standard deviation.\n* - *dout.min*\n- Kx1 vector, minima.\n* - *dout.max*\n- Kx1 vector, maxima.\n* - *dout.valid*\n- Kx1 vector, the number of valid cases.\n* - *dout.missing*\n- Kx1 vector, the number of missing cases.\n* - *dout.errcode*\n- Scalar, error code, 0 if successful; otherwise, one of the following:\n:rtype dout: Struct",
+      "raw_section_headings": [
+        "dstatmt",
+        "Purpose",
+        "Format",
+        "Examples",
+        "Computing statistics on a GAUSS dataset",
+        "Variable               Mean     Std Dev    Variance   Minimum   Maximum  Valid   Missing",
+        "Variable                Mean    Std Dev   Variance   Minimum   Maximum   Valid   Missing",
+        "Computing statistics on a csv dataset with formula string",
+        "Variable     Mean   Std Dev    Variance    Minimum     Maximum   Valid   Missing",
+        "Computing statistics by groups",
+        "foreign: Domestic",
+        "Variable         Mean     Std Dev      Variance     Minimum     Maximum     Valid Missing",
+        "mpg             19.83       4.743          22.5          12          34        52    0",
+        "foreign: Foreign",
+        "Variable         Mean     Std Dev      Variance     Minimum     Maximum     Valid Missing",
+        "Using control and output structures",
+        "Computing statistics on a matrix",
+        "Variable    Mean    Std Dev     Variance     Minimum    Maximum  Valid  Missing",
+        "Computing statistics on a matrix, using structures",
+        "Variable     Mean    Std Dev    Variance    Minimum    Maximum  Valid  Missing",
+        "Remarks",
+        "Source"
+      ],
+      "related_links": [
+        "dstatmtControlCreate",
+        "dstatmtControl",
+        "dstatmtOut",
+        "formula string",
+        "\"PAY + WT\"",
+        "\". - sex\"",
+        "\"X1 + by(X2)\", \"by(X2)\"",
+        "X2",
+        "\"by\"",
+        "CSV",
+        ",",
+        "XLS",
+        "XLSX",
+        "HDF5",
+        "FMT",
+        "DAT",
+        "DTA",
+        "files, the dataset must include a",
+        "file schema",
+        "dstatmt(\"h5://testdata.h5/mydata\")"
+      ],
+      "returns_section": ":return dout: Instance of :class:`dstatmtOut` structure containing the following members:\n.. list-table::\n* - *dout.vnames*\n- Kx1 string array, the names of the variables used in the statistics.\n* - *dout.mean*\n- Kx1 vector, means.\n* - *dout.var*\n- Kx1 vector, variance.\n* - *dout.std*\n- Kx1 vector, standard deviation.\n* - *dout.min*\n- Kx1 vector, minima.\n* - *dout.max*\n- Kx1 vector, maxima.\n* - *dout.valid*\n- Kx1 vector, the number of valid cases.\n* - *dout.missing*\n- Kx1 vector, the number of missing cases.\n* - *dout.errcode*\n- Scalar, error code, 0 if successful; otherwise, one of the following:\n:rtype dout: Struct",
+      "source_authority": "official_docs",
+      "source_type": "official_local_rst",
+      "syntax_blocks": [
+        ".. function:: dout = dstatmt(data [, vars, ctl])",
+        "e.g :code:`\"X1 + by(X2)\", \"by(X2)\"` specifies that the data should be separated into different tables based on the groups defined by ``X2``."
+      ],
+      "unresolved_questions": []
+    }
+  ],
+  "notes": [],
+  "retrieval_status": "found_incomplete",
+  "schema_version": "0.1.0",
+  "source_authority": "official_docs",
+  "source_type": "official_local_rst",
+  "stale_evidence": null,
+  "tool_name": "command_doc_lookup",
+  "tool_version": "0.1.0",
+  "unresolved_questions": []
+}
