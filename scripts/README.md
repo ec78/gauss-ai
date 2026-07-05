@@ -45,6 +45,33 @@ Validate schema-aligned output with:
 python scripts/validate_lookup_evidence.py path/to/evidence.json
 ```
 
+## `validate_all_evidence.py`
+
+Purpose:
+Validate every committed schema-aligned evidence example and schema fixture in one pass, instead of running `validate_lookup_evidence.py` against each file individually. It reuses `validate_lookup_evidence.py`'s validation logic directly (imported, not reimplemented), so there is one source of truth for what "valid" means.
+
+By default it checks every `*.json` file under `examples/retrieval/schema-aligned/` and `examples/retrieval/schema-fixtures/`:
+
+```text
+python scripts/validate_all_evidence.py
+```
+
+Pass specific files or directories to check a subset instead:
+
+```text
+python scripts/validate_all_evidence.py examples/retrieval/schema-aligned/olsmt.evidence.json
+```
+
+**Expected-valid vs. expected-invalid.** Every file is expected to pass schema validation, except files under `examples/retrieval/schema-fixtures/` whose name starts with `invalid-` (currently `invalid-missing-required-fields.json`), which are expected to *fail* schema validation on purpose. The script checks each file against its expected outcome, not just "did it pass": an expected-valid file that fails, or an expected-invalid file that unexpectedly passes, is reported as unexpected and causes a nonzero exit.
+
+**`--strict`** is passed through to each file's validation, same as `validate_lookup_evidence.py`: it treats warnings as failures for expected-valid files. A known example: `olsmt.evidence.json` has two documented false-positive path warnings (from an official-docs HDF5-URI example), so `--strict` reports it as an unexpected failure — the script states this plainly rather than hiding it, since strict mode intentionally has a higher bar than the default.
+
+**`--json`** emits a machine-readable summary (per-file results plus an overall `overall_pass`/`unexpected_count`) instead of the human-readable listing.
+
+Exit code is `0` only when every file's actual outcome matches its expected outcome (under the current strictness setting); otherwise nonzero.
+
+This script does not require GAUSS to be installed and does not access the network. It checks evidence *structure*, not GAUSS semantic correctness — a file passing here is not proof that any GAUSS code was executed or that the command behavior described is current.
+
 ## Output Fields
 
 - `command_name`: command requested by the user.

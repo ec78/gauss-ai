@@ -45,3 +45,11 @@ python scripts/validate_lookup_evidence.py examples/retrieval/schema-aligned/<co
 ```
 
 Use `--strict` when warnings should block release readiness, and `--json` when another tool needs machine-readable validation results.
+
+To check every schema-aligned example and schema fixture in this directory tree at once, use `scripts/validate_all_evidence.py` instead of running the single-file validator repeatedly:
+
+```text
+python scripts/validate_all_evidence.py
+```
+
+It expects every file here to pass validation except `schema-fixtures/invalid-*.json` files, which are intentionally invalid and expected to fail. Passing this check confirms evidence *structure* is correct — it does not mean any GAUSS code was executed, and it does not replace official GAUSS documentation as the authoritative source for command behavior.

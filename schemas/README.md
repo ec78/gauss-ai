@@ -93,3 +93,15 @@ A fail means the evidence object did not validate against the schema, the valida
 Warnings identify risky evidence states, such as incomplete extraction, ambiguity without candidate details, conflicts without conflict records, stale evidence without staleness metadata, category-list evidence with verified-looking facts, or unredacted local paths.
 
 Existing v0.4.0 prototype lookup JSON files may not fully conform until regenerated or mapped into the schema. They remain useful evidence, but schema validation should not be treated as retroactively required for those files.
+
+Schema validation checks evidence *structure* — required fields, enum values, types — not GAUSS execution or semantic correctness. A schema-valid object is not proof that any GAUSS code was run, and it does not replace official GAUSS documentation as the authoritative source.
+
+## Validating Everything At Once
+
+`scripts/validate_all_evidence.py` checks every schema-aligned example and schema fixture in one command, instead of running the single-file validator against each one by hand:
+
+```text
+python scripts/validate_all_evidence.py
+```
+
+It treats every file as expected to pass, except `examples/retrieval/schema-fixtures/invalid-*.json` files, which are expected to fail — and reports an unexpected result (an expected-valid file failing, or an expected-invalid file passing) as an overall failure. It supports `--strict` and `--json` with the same meaning as the single-file validator, and accepts optional file/directory arguments to check a subset. See `scripts/README.md` for full usage.
