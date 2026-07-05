@@ -1,0 +1,290 @@
+{
+  "ambiguity": null,
+  "best_match": {
+    "command_name": "pdsummary",
+    "confidence": 1.0,
+    "controls_section": null,
+    "examples": [
+      "// Import data\n    fname = getGAUSSHome(\"examples/pd_ab.gdat\");\n    pd_ab = loadd(fname);\n\n    // Get summary statistics\n    pd_summary = pdSummary(pd_ab);"
+    ],
+    "extraction_warnings": [
+      "no keyword hits for: output, returns"
+    ],
+    "file_path": "pdsummary.rst",
+    "formula_section": null,
+    "heading": "pdSummary",
+    "inputs_section": ":param df: Contains long-form panel data with :math:`N_i \\times T_i` rows and K columns.\n:type df: Dataframe\n\n:param varlist: Optional, A list of variables to include in the summary. Default is all variables.\n:type varlist: 1xP string array\n\n:param missings: Optional, scalar, indicator that missings are present in data. Missing values must be removed for procedure. Setting to 0 will speed up procedure but should be used only if certain that no missings are present. Default = 1.\n:type missings: Scalar\n\n:param groupvar: Optional, specifies the name of the variable used to identify group membership for panel observations. Defaults to the first categorical or string variable in the dataframe.\n:type groupvar: String\n\n:param datevar: Optional, specifies the name of the variable used to identify dates for panel observations. Defaults to the first date variable in the dataframe.\n:type datevar: String",
+    "keyword_hits": {
+      "group": [
+        {
+          "line": 6,
+          "snippet": "Purpose\n----------------\nGenerates summary statistics for panel data, including overall, between-group, and within-group statistics.\n\nFormat"
+        },
+        {
+          "line": 10,
+          "snippet": "Format\n----------------\n.. function:: pdOut = pdSummary(df [, varlist, missings, groupvar, datevar])\n\n    :param df: Contains long-form panel data with :math:`N_i \\times T_i` rows and K columns."
+        },
+        {
+          "line": 21,
+          "snippet": ":type missings: Scalar\n\n    :param groupvar: Optional, specifies the name of the variable used to identify group membership for panel observations. Defaults to the first categorical or string variable in the dataframe.\n    :type groupvar: String"
+        },
+        {
+          "line": 22,
+          "snippet": ":param groupvar: Optional, specifies the name of the variable used to identify group membership for panel observations. Defaults to the first categorical or string variable in the dataframe.\n    :type groupvar: String\n\n    :param datevar: Optional, specifies the name of the variable used to identify dates for panel observations. Defaults to the first date variable in the dataframe."
+        },
+        {
+          "line": 30,
+          "snippet": "- Overall statistics: mean, standard deviation, minimum, and maximum for each variable.\n        - Between-group statistics: mean, standard deviation, minimum, and maximum.\n        - Within-group statistics: mean, standard deviation, minimum, and maximum."
+        },
+        {
+          "line": 31,
+          "snippet": "- Overall statistics: mean, standard deviation, minimum, and maximum for each variable.\n        - Between-group statistics: mean, standard deviation, minimum, and maximum.\n        - Within-group statistics: mean, standard deviation, minimum, and maximum.\n  \n    :rtype pdOut: Dataframe"
+        },
+        {
+          "line": 51,
+          "snippet": "==========================================================================================\n    Group ID:                             id          Balanced:                             No\n    Valid cases:                        1031          Missings:                              0\n    N. Groups:                           140          T. Average:                        7.364"
+        },
+        {
+          "line": 53,
+          "snippet": "Group ID:                             id          Balanced:                             No\n    Valid cases:                        1031          Missings:                              0\n    N. Groups:                           140          T. Average:                        7.364\n    ==========================================================================================\n    Variable               Measure           Mean      Std. Dev.        Minimum        Maximum"
+        }
+      ],
+      "missing": [
+        {
+          "line": 10,
+          "snippet": "Format\n----------------\n.. function:: pdOut = pdSummary(df [, varlist, missings, groupvar, datevar])\n\n    :param df: Contains long-form panel data with :math:`N_i \\times T_i` rows and K columns."
+        },
+        {
+          "line": 18,
+          "snippet": ":type varlist: 1xP string array\n\n    :param missings: Optional, scalar, indicator that missings are present in data. Missing values must be removed for procedure. Setting to 0 will speed up procedure but should be used only if certain that no missings are present. Default = 1. \n    :type missings: Scalar"
+        },
+        {
+          "line": 19,
+          "snippet": ":param missings: Optional, scalar, indicator that missings are present in data. Missing values must be removed for procedure. Setting to 0 will speed up procedure but should be used only if certain that no missings are present. Default = 1. \n    :type missings: Scalar\n\n    :param groupvar: Optional, specifies the name of the variable used to identify group membership for panel observations. Defaults to the first categorical or string variable in the dataframe."
+        },
+        {
+          "line": 52,
+          "snippet": "==========================================================================================\n    Group ID:                             id          Balanced:                             No\n    Valid cases:                        1031          Missings:                              0\n    N. Groups:                           140          T. Average:                        7.364\n    =========================================================================================="
+        }
+      ],
+      "output": [],
+      "panel": [
+        {
+          "line": 6,
+          "snippet": "Purpose\n----------------\nGenerates summary statistics for panel data, including overall, between-group, and within-group statistics.\n\nFormat"
+        },
+        {
+          "line": 12,
+          "snippet": ".. function:: pdOut = pdSummary(df [, varlist, missings, groupvar, datevar])\n\n    :param df: Contains long-form panel data with :math:`N_i \\times T_i` rows and K columns.\n    :type df: Dataframe"
+        },
+        {
+          "line": 21,
+          "snippet": ":type missings: Scalar\n\n    :param groupvar: Optional, specifies the name of the variable used to identify group membership for panel observations. Defaults to the first categorical or string variable in the dataframe.\n    :type groupvar: String"
+        },
+        {
+          "line": 24,
+          "snippet": ":type groupvar: String\n\n    :param datevar: Optional, specifies the name of the variable used to identify dates for panel observations. Defaults to the first date variable in the dataframe.\n    :type datevar: String"
+        },
+        {
+          "line": 68,
+          "snippet": "-------\n\nThis function takes long-form panel data. To transform wide data to long-form data see :func:`dfLonger`.\n\nThis function assumes panel is sorted by group and date. Note that panel data can be sorted using :func:`pdSort`."
+        },
+        {
+          "line": 70,
+          "snippet": "This function takes long-form panel data. To transform wide data to long-form data see :func:`dfLonger`.\n\nThis function assumes panel is sorted by group and date. Note that panel data can be sorted using :func:`pdSort`.\n\nThis function determines summary statistics for panel data using the specified *groupvar* and *datevar*:"
+        },
+        {
+          "line": 72,
+          "snippet": "This function assumes panel is sorted by group and date. Note that panel data can be sorted using :func:`pdSort`.\n\nThis function determines summary statistics for panel data using the specified *groupvar* and *datevar*: \n\n- If *groupvar* is not provided, the function defaults to the first categorical or string variable in the dataframe."
+        }
+      ],
+      "returns": []
+    },
+    "match_reason": [
+      "exact_file_name",
+      "exact_heading",
+      "command_call_text"
+    ],
+    "notes": [
+      "Remarks\n-------\n\nThis function takes long-form panel data. To transform wide data to long-form data see :func:`dfLonger`.\n\nThis function assumes panel is sorted by group and date. Note that panel data can be sorted using :func:`pdSort`.\n\nThis function determines summary statistics for panel data using the specified *groupvar* and *datevar*: \n\n- If *groupvar* is not provided, the function defaults to the first categorical or string variable in the dataframe.\n- If *datevar* is not provided, the function defaults to the first date variable in the dataframe.\n\n.. seealso:: :func:`pdsize`, :func:`pdTimeSpans`"
+    ],
+    "outputs_section": ":return pdOut: A dataframe containing summary statistics:\n- Overall statistics: mean, standard deviation, minimum, and maximum for each variable.\n- Between-group statistics: mean, standard deviation, minimum, and maximum.\n- Within-group statistics: mean, standard deviation, minimum, and maximum.\n:rtype pdOut: Dataframe",
+    "raw_section_headings": [
+      "pdSummary",
+      "Purpose",
+      "Format",
+      "Examples",
+      "N. Groups:                           140          T. Average:                        7.364",
+      "Variable               Measure           Mean      Std. Dev.        Minimum        Maximum",
+      "Within              .          2.068         11.722         40.935",
+      "Remarks"
+    ],
+    "related_links": [
+      "dfLonger",
+      "pdSort",
+      "pdsize",
+      "pdTimeSpans",
+      "N_i \\times T_i"
+    ],
+    "returns_section": ":return pdOut: A dataframe containing summary statistics:\n- Overall statistics: mean, standard deviation, minimum, and maximum for each variable.\n- Between-group statistics: mean, standard deviation, minimum, and maximum.\n- Within-group statistics: mean, standard deviation, minimum, and maximum.\n:rtype pdOut: Dataframe",
+    "source_authority": "official_docs",
+    "source_type": "official_local_rst",
+    "syntax_blocks": [
+      ".. function:: pdOut = pdSummary(df [, varlist, missings, groupvar, datevar])"
+    ],
+    "unresolved_questions": []
+  },
+  "command_name": "pdsummary",
+  "confidence": 1.0,
+  "conflicts": [],
+  "docs_root_redacted": true,
+  "extraction_warnings": [
+    "no keyword hits for: output, returns"
+  ],
+  "generated_at": "2026-07-05T21:23:50Z",
+  "matches": [
+    {
+      "command_name": "pdsummary",
+      "confidence": 1.0,
+      "controls_section": null,
+      "examples": [
+        "// Import data\n    fname = getGAUSSHome(\"examples/pd_ab.gdat\");\n    pd_ab = loadd(fname);\n\n    // Get summary statistics\n    pd_summary = pdSummary(pd_ab);"
+      ],
+      "extraction_warnings": [
+        "no keyword hits for: output, returns"
+      ],
+      "file_path": "pdsummary.rst",
+      "formula_section": null,
+      "heading": "pdSummary",
+      "inputs_section": ":param df: Contains long-form panel data with :math:`N_i \\times T_i` rows and K columns.\n:type df: Dataframe\n\n:param varlist: Optional, A list of variables to include in the summary. Default is all variables.\n:type varlist: 1xP string array\n\n:param missings: Optional, scalar, indicator that missings are present in data. Missing values must be removed for procedure. Setting to 0 will speed up procedure but should be used only if certain that no missings are present. Default = 1.\n:type missings: Scalar\n\n:param groupvar: Optional, specifies the name of the variable used to identify group membership for panel observations. Defaults to the first categorical or string variable in the dataframe.\n:type groupvar: String\n\n:param datevar: Optional, specifies the name of the variable used to identify dates for panel observations. Defaults to the first date variable in the dataframe.\n:type datevar: String",
+      "keyword_hits": {
+        "group": [
+          {
+            "line": 6,
+            "snippet": "Purpose\n----------------\nGenerates summary statistics for panel data, including overall, between-group, and within-group statistics.\n\nFormat"
+          },
+          {
+            "line": 10,
+            "snippet": "Format\n----------------\n.. function:: pdOut = pdSummary(df [, varlist, missings, groupvar, datevar])\n\n    :param df: Contains long-form panel data with :math:`N_i \\times T_i` rows and K columns."
+          },
+          {
+            "line": 21,
+            "snippet": ":type missings: Scalar\n\n    :param groupvar: Optional, specifies the name of the variable used to identify group membership for panel observations. Defaults to the first categorical or string variable in the dataframe.\n    :type groupvar: String"
+          },
+          {
+            "line": 22,
+            "snippet": ":param groupvar: Optional, specifies the name of the variable used to identify group membership for panel observations. Defaults to the first categorical or string variable in the dataframe.\n    :type groupvar: String\n\n    :param datevar: Optional, specifies the name of the variable used to identify dates for panel observations. Defaults to the first date variable in the dataframe."
+          },
+          {
+            "line": 30,
+            "snippet": "- Overall statistics: mean, standard deviation, minimum, and maximum for each variable.\n        - Between-group statistics: mean, standard deviation, minimum, and maximum.\n        - Within-group statistics: mean, standard deviation, minimum, and maximum."
+          },
+          {
+            "line": 31,
+            "snippet": "- Overall statistics: mean, standard deviation, minimum, and maximum for each variable.\n        - Between-group statistics: mean, standard deviation, minimum, and maximum.\n        - Within-group statistics: mean, standard deviation, minimum, and maximum.\n  \n    :rtype pdOut: Dataframe"
+          },
+          {
+            "line": 51,
+            "snippet": "==========================================================================================\n    Group ID:                             id          Balanced:                             No\n    Valid cases:                        1031          Missings:                              0\n    N. Groups:                           140          T. Average:                        7.364"
+          },
+          {
+            "line": 53,
+            "snippet": "Group ID:                             id          Balanced:                             No\n    Valid cases:                        1031          Missings:                              0\n    N. Groups:                           140          T. Average:                        7.364\n    ==========================================================================================\n    Variable               Measure           Mean      Std. Dev.        Minimum        Maximum"
+          }
+        ],
+        "missing": [
+          {
+            "line": 10,
+            "snippet": "Format\n----------------\n.. function:: pdOut = pdSummary(df [, varlist, missings, groupvar, datevar])\n\n    :param df: Contains long-form panel data with :math:`N_i \\times T_i` rows and K columns."
+          },
+          {
+            "line": 18,
+            "snippet": ":type varlist: 1xP string array\n\n    :param missings: Optional, scalar, indicator that missings are present in data. Missing values must be removed for procedure. Setting to 0 will speed up procedure but should be used only if certain that no missings are present. Default = 1. \n    :type missings: Scalar"
+          },
+          {
+            "line": 19,
+            "snippet": ":param missings: Optional, scalar, indicator that missings are present in data. Missing values must be removed for procedure. Setting to 0 will speed up procedure but should be used only if certain that no missings are present. Default = 1. \n    :type missings: Scalar\n\n    :param groupvar: Optional, specifies the name of the variable used to identify group membership for panel observations. Defaults to the first categorical or string variable in the dataframe."
+          },
+          {
+            "line": 52,
+            "snippet": "==========================================================================================\n    Group ID:                             id          Balanced:                             No\n    Valid cases:                        1031          Missings:                              0\n    N. Groups:                           140          T. Average:                        7.364\n    =========================================================================================="
+          }
+        ],
+        "output": [],
+        "panel": [
+          {
+            "line": 6,
+            "snippet": "Purpose\n----------------\nGenerates summary statistics for panel data, including overall, between-group, and within-group statistics.\n\nFormat"
+          },
+          {
+            "line": 12,
+            "snippet": ".. function:: pdOut = pdSummary(df [, varlist, missings, groupvar, datevar])\n\n    :param df: Contains long-form panel data with :math:`N_i \\times T_i` rows and K columns.\n    :type df: Dataframe"
+          },
+          {
+            "line": 21,
+            "snippet": ":type missings: Scalar\n\n    :param groupvar: Optional, specifies the name of the variable used to identify group membership for panel observations. Defaults to the first categorical or string variable in the dataframe.\n    :type groupvar: String"
+          },
+          {
+            "line": 24,
+            "snippet": ":type groupvar: String\n\n    :param datevar: Optional, specifies the name of the variable used to identify dates for panel observations. Defaults to the first date variable in the dataframe.\n    :type datevar: String"
+          },
+          {
+            "line": 68,
+            "snippet": "-------\n\nThis function takes long-form panel data. To transform wide data to long-form data see :func:`dfLonger`.\n\nThis function assumes panel is sorted by group and date. Note that panel data can be sorted using :func:`pdSort`."
+          },
+          {
+            "line": 70,
+            "snippet": "This function takes long-form panel data. To transform wide data to long-form data see :func:`dfLonger`.\n\nThis function assumes panel is sorted by group and date. Note that panel data can be sorted using :func:`pdSort`.\n\nThis function determines summary statistics for panel data using the specified *groupvar* and *datevar*:"
+          },
+          {
+            "line": 72,
+            "snippet": "This function assumes panel is sorted by group and date. Note that panel data can be sorted using :func:`pdSort`.\n\nThis function determines summary statistics for panel data using the specified *groupvar* and *datevar*: \n\n- If *groupvar* is not provided, the function defaults to the first categorical or string variable in the dataframe."
+          }
+        ],
+        "returns": []
+      },
+      "match_reason": [
+        "exact_file_name",
+        "exact_heading",
+        "command_call_text"
+      ],
+      "notes": [
+        "Remarks\n-------\n\nThis function takes long-form panel data. To transform wide data to long-form data see :func:`dfLonger`.\n\nThis function assumes panel is sorted by group and date. Note that panel data can be sorted using :func:`pdSort`.\n\nThis function determines summary statistics for panel data using the specified *groupvar* and *datevar*: \n\n- If *groupvar* is not provided, the function defaults to the first categorical or string variable in the dataframe.\n- If *datevar* is not provided, the function defaults to the first date variable in the dataframe.\n\n.. seealso:: :func:`pdsize`, :func:`pdTimeSpans`"
+      ],
+      "outputs_section": ":return pdOut: A dataframe containing summary statistics:\n- Overall statistics: mean, standard deviation, minimum, and maximum for each variable.\n- Between-group statistics: mean, standard deviation, minimum, and maximum.\n- Within-group statistics: mean, standard deviation, minimum, and maximum.\n:rtype pdOut: Dataframe",
+      "raw_section_headings": [
+        "pdSummary",
+        "Purpose",
+        "Format",
+        "Examples",
+        "N. Groups:                           140          T. Average:                        7.364",
+        "Variable               Measure           Mean      Std. Dev.        Minimum        Maximum",
+        "Within              .          2.068         11.722         40.935",
+        "Remarks"
+      ],
+      "related_links": [
+        "dfLonger",
+        "pdSort",
+        "pdsize",
+        "pdTimeSpans",
+        "N_i \\times T_i"
+      ],
+      "returns_section": ":return pdOut: A dataframe containing summary statistics:\n- Overall statistics: mean, standard deviation, minimum, and maximum for each variable.\n- Between-group statistics: mean, standard deviation, minimum, and maximum.\n- Within-group statistics: mean, standard deviation, minimum, and maximum.\n:rtype pdOut: Dataframe",
+      "source_authority": "official_docs",
+      "source_type": "official_local_rst",
+      "syntax_blocks": [
+        ".. function:: pdOut = pdSummary(df [, varlist, missings, groupvar, datevar])"
+      ],
+      "unresolved_questions": []
+    }
+  ],
+  "notes": [],
+  "retrieval_status": "found_incomplete",
+  "schema_version": "0.1.0",
+  "source_authority": "official_docs",
+  "source_type": "official_local_rst",
+  "stale_evidence": null,
+  "tool_name": "command_doc_lookup",
+  "tool_version": "0.1.0",
+  "unresolved_questions": []
+}

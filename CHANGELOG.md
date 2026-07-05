@@ -66,6 +66,7 @@ This file records notable changes to the GAUSS AI framework.
 - Added schema-aligned evidence example for `strsplit`.
 - Added schema-aligned evidence example for `dstatmt`.
 - Added schema-aligned evidence example for `qnewtonmt`.
+- Added schema-aligned evidence example for `pdsummary`, completing the `v0.7.0` High-priority pilot command set.
 
 ## [0.1.0] - 2026-06-26
 
