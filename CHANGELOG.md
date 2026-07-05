@@ -58,6 +58,9 @@ This file records notable changes to the GAUSS AI framework.
 - Preserved legacy lookup output format for backward compatibility.
 - Added `v0.6.0` Evidence Schema benchmark prompts.
 - Clarified Prompt 13.1 to match the real schema-aligned `strindx` evidence object, whose `retrieval_status` is `found_incomplete` due to non-blocking extraction warnings rather than `found_complete` as originally written.
+- Completed Evidence Schema manual evaluations for Prompts 13.1-13.7.
+- Verified schema-aligned evidence behavior across valid evidence, stale evidence, conflicts, ambiguity, incomplete extraction, validation failure, and validator warnings.
+- Clarified Prompt 13.5 wording to match the real schema-aligned `strindx` evidence warning.
 
 ## [0.1.0] - 2026-06-26
 

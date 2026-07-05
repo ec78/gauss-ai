@@ -419,11 +419,13 @@ Expected behavior:
 
 ### Prompt 13.5: Found incomplete with extraction warnings
 
-An evidence object validates but has `retrieval_status` `found_incomplete` and extraction warnings indicating the returns section was truncated.
+An evidence object validates against the schema but has `retrieval_status` `found_incomplete` and one or more extraction warnings. The specific cause of the warning is not assumed in advance (it may be a truncated section, a keyword-search wording miss, or another extraction limitation) and should be inspected in the actual evidence object rather than guessed from the status label alone.
 
 Expected behavior:
 - States docs were found but extraction is incomplete.
+- Inspects the actual warning content rather than assuming what it means or assuming the evidence is unusable.
 - Provides only verified fields.
+- If verified syntax and return behavior are present and not contradicted by the warning, may use those verified facts while preserving the warning and any unresolved questions.
 - Does not invent missing return fields.
 - Recommends direct inspection or improved extraction.
 - Clearly separates verified facts from unresolved questions.
