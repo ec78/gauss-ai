@@ -1,0 +1,176 @@
+{
+  "ambiguity": null,
+  "best_match": {
+    "command_name": "strsplit",
+    "confidence": 1.0,
+    "controls_section": null,
+    "examples": [
+      "dt = \"1977/04/03\";\n    dt_split = strsplit(dt, \"/\");\n\nvars = \"CPI,PPI,Employment,Oil:Brent blend,Oil:WTI\";\n    vars = strsplit(vars, \",\");\n\n// Create a 3x1 string array\n    string dow_str = { \"apple:technology\",\n                       \"goldman sachs:finance\",\n                       \"home depot:retail\" };\n\n    // Split 'dow_str' into a 3x2 string array\n    dow_sa = strsplit(dow_str, \":\");\n\nss = \"classification 'scientific taxonomy'\";\n    ss2 = strsplit(ss);\n\n    print \"ss2[1] = \" ss2[1];\n    print \"ss2[2] = \" ss2[2];"
+    ],
+    "extraction_warnings": [
+      "no keyword hits for: substring, returns"
+    ],
+    "file_path": "strsplit.rst",
+    "formula_section": null,
+    "heading": "strsplit",
+    "inputs_section": ":param str: data to be split.\n:type str: string or Nx1 string array\n\n:param sep: Optional argument, containing the character used to separate the input string into individual tokens.\n:type sep: string",
+    "keyword_hits": {
+      "delimiter": [
+        {
+          "line": 95,
+          "snippet": "ss2[2] = scientific taxonomy\n\nString array with multi-character delimiter\n+++++++++++++++++++++++++++++++++++++++++++"
+        },
+        {
+          "line": 121,
+          "snippet": "If :func:`strsplit` is called with only one input (i.e. a separator is not\npassed in as the second argument), each of the following characters are\nconsidered delimiters:\n\n+-----------------+----------+"
+        },
+        {
+          "line": 149,
+          "snippet": "\"alpha\"    \"1\"       \"beta\"    \"2\"    \"gamma\"    \"3\"\n\nTokens containing delimiters must be enclosed in single or double quotes\nor parentheses. Tokens enclosed in single or double quotes will NOT\nretain the quotes upon translation. Tokens enclosed in parentheses WILL"
+        }
+      ],
+      "examples": [
+        {
+          "line": 23,
+          "snippet": ":rtype sa: 1xK or NxK string array\n\nExamples\n----------------"
+        }
+      ],
+      "returns": [],
+      "substring": []
+    },
+    "match_reason": [
+      "exact_file_name",
+      "exact_heading",
+      "command_call_text",
+      "command_reference_text"
+    ],
+    "notes": [
+      "Remarks\n-------"
+    ],
+    "outputs_section": ":return sa: original string split into individual tokens.\n:rtype sa: 1xK or NxK string array",
+    "raw_section_headings": [
+      "strsplit",
+      "Purpose",
+      "Format",
+      "Examples",
+      "Dates",
+      "Comma-separated list of variables",
+      "String array with supplied separator",
+      "String array without supplied separator",
+      "String array with multi-character delimiter",
+      "Remarks",
+      "Case 1: No supplied separator",
+      "Case 2: Supplied separator"
+    ],
+    "related_links": [
+      "strsplit",
+      "strsplitPad",
+      "vars",
+      "dow_sa",
+      "'scientific taxonomy'"
+    ],
+    "returns_section": ":return sa: original string split into individual tokens.\n:rtype sa: 1xK or NxK string array",
+    "source_authority": "official_docs",
+    "source_type": "official_local_rst",
+    "syntax_blocks": [
+      ".. function:: sa = strsplit(str[, sep])"
+    ],
+    "unresolved_questions": []
+  },
+  "command_name": "strsplit",
+  "confidence": 1.0,
+  "conflicts": [],
+  "docs_root_redacted": true,
+  "extraction_warnings": [
+    "no keyword hits for: substring, returns"
+  ],
+  "generated_at": "2026-07-05T19:20:17Z",
+  "matches": [
+    {
+      "command_name": "strsplit",
+      "confidence": 1.0,
+      "controls_section": null,
+      "examples": [
+        "dt = \"1977/04/03\";\n    dt_split = strsplit(dt, \"/\");\n\nvars = \"CPI,PPI,Employment,Oil:Brent blend,Oil:WTI\";\n    vars = strsplit(vars, \",\");\n\n// Create a 3x1 string array\n    string dow_str = { \"apple:technology\",\n                       \"goldman sachs:finance\",\n                       \"home depot:retail\" };\n\n    // Split 'dow_str' into a 3x2 string array\n    dow_sa = strsplit(dow_str, \":\");\n\nss = \"classification 'scientific taxonomy'\";\n    ss2 = strsplit(ss);\n\n    print \"ss2[1] = \" ss2[1];\n    print \"ss2[2] = \" ss2[2];"
+      ],
+      "extraction_warnings": [
+        "no keyword hits for: substring, returns"
+      ],
+      "file_path": "strsplit.rst",
+      "formula_section": null,
+      "heading": "strsplit",
+      "inputs_section": ":param str: data to be split.\n:type str: string or Nx1 string array\n\n:param sep: Optional argument, containing the character used to separate the input string into individual tokens.\n:type sep: string",
+      "keyword_hits": {
+        "delimiter": [
+          {
+            "line": 95,
+            "snippet": "ss2[2] = scientific taxonomy\n\nString array with multi-character delimiter\n+++++++++++++++++++++++++++++++++++++++++++"
+          },
+          {
+            "line": 121,
+            "snippet": "If :func:`strsplit` is called with only one input (i.e. a separator is not\npassed in as the second argument), each of the following characters are\nconsidered delimiters:\n\n+-----------------+----------+"
+          },
+          {
+            "line": 149,
+            "snippet": "\"alpha\"    \"1\"       \"beta\"    \"2\"    \"gamma\"    \"3\"\n\nTokens containing delimiters must be enclosed in single or double quotes\nor parentheses. Tokens enclosed in single or double quotes will NOT\nretain the quotes upon translation. Tokens enclosed in parentheses WILL"
+          }
+        ],
+        "examples": [
+          {
+            "line": 23,
+            "snippet": ":rtype sa: 1xK or NxK string array\n\nExamples\n----------------"
+          }
+        ],
+        "returns": [],
+        "substring": []
+      },
+      "match_reason": [
+        "exact_file_name",
+        "exact_heading",
+        "command_call_text",
+        "command_reference_text"
+      ],
+      "notes": [
+        "Remarks\n-------"
+      ],
+      "outputs_section": ":return sa: original string split into individual tokens.\n:rtype sa: 1xK or NxK string array",
+      "raw_section_headings": [
+        "strsplit",
+        "Purpose",
+        "Format",
+        "Examples",
+        "Dates",
+        "Comma-separated list of variables",
+        "String array with supplied separator",
+        "String array without supplied separator",
+        "String array with multi-character delimiter",
+        "Remarks",
+        "Case 1: No supplied separator",
+        "Case 2: Supplied separator"
+      ],
+      "related_links": [
+        "strsplit",
+        "strsplitPad",
+        "vars",
+        "dow_sa",
+        "'scientific taxonomy'"
+      ],
+      "returns_section": ":return sa: original string split into individual tokens.\n:rtype sa: 1xK or NxK string array",
+      "source_authority": "official_docs",
+      "source_type": "official_local_rst",
+      "syntax_blocks": [
+        ".. function:: sa = strsplit(str[, sep])"
+      ],
+      "unresolved_questions": []
+    }
+  ],
+  "notes": [],
+  "retrieval_status": "found_incomplete",
+  "schema_version": "0.1.0",
+  "source_authority": "official_docs",
+  "source_type": "official_local_rst",
+  "stale_evidence": null,
+  "tool_name": "command_doc_lookup",
+  "tool_version": "0.1.0",
+  "unresolved_questions": []
+}
