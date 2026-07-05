@@ -65,6 +65,7 @@ This file records notable changes to the GAUSS AI framework.
 - Added validate-all evidence script for schema-aligned examples and fixtures.
 - Added schema-aligned evidence example for `strsplit`.
 - Added schema-aligned evidence example for `dstatmt`.
+- Added schema-aligned evidence example for `qnewtonmt`.
 
 ## [0.1.0] - 2026-06-26
 

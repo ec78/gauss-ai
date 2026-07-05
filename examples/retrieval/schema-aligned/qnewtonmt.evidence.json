@@ -1,0 +1,260 @@
+{
+  "ambiguity": null,
+  "best_match": {
+    "command_name": "qnewtonmt",
+    "confidence": 1.0,
+    "controls_section": ":type ...: any\n\n    :param c: An instance of a :class:`QNewtonmtControl` structure. Normally an instance is initialized\n        by calling :func:`QNewtonmtControlCreate` and members of this instance can be set to other values by the user.\n\n:param c: An instance of a :class:`QNewtonmtControl` structure. Normally an instance is initialized\n        by calling :func:`QNewtonmtControlCreate` and members of this instance can be set to other values by the user.\n\n        For an instance named *c*, the members are:\n\nstruct :class:`PV`. On input to the call to :func:`QNewtonmt`, the first argument\ncontains starting values for the parameters. The arguments following the\n:class:`PV` structure (except for the optional control structure) contain any\nrequired data.\n\nqnewtonmt.src\n\n.. seealso:: Functions :func:`QNewtonmtControlCreate`, :func:`QNewtonmtOutCreate`",
+    "examples": [
+      "// Define function to be minimized\n    // The first input is a PV structure containing the parameters\n    // The following arguments contain data, other than the parameters,\n    // which is needed by the function\n    proc (1) = Micherlitz(struct PV par1, y, x);\n       local p0, e, s2;\n\n       p0 = pvUnpack(par1, \"parameters\");\n\n       e = y - p0[1] - p0[2]*exp(-p0[3] * x);\n\n       retp(-lnpdfmvn(e, e'e/rows(e)));\n    endp;\n\n    // Create extra data needed by objective function\n    y = { 3.183,\n          3.059,\n          2.871,\n          2.622,\n          2.541,\n          2.184,\n          2.110,\n          2.075,\n          2.018,\n          1.903,\n          1.770,\n          1.762,\n          1.550 };\n\n    x = seqa(1, 1, 13);\n\n    // Declare 'par' to be a PV structure\n    struct PV par;\n\n    // Set PV defaults in 'par'\n    par = pvCreate();\n\n    // Add a variable named 'parameters' to par with a 3x1\n    // vector of starting values\n    par = pvPack(par, 1|1|0, \"parameters\");\n\n    // Declare 'out' to be a QNewtonmtOut structure\n    // to hold data returned by QNewtonmt\n    struct QNewtonmtout out;\n\n    // Minimize the 'Micherlitz' function\n    out = QNewtonmt(&Micherlitz, par, y, x);\n\n    // Get returned parameters from the output structure\n    parms = pvGetParVector(out.par);\n\n    // Print returned parameters\n    print parms;"
+    ],
+    "extraction_warnings": [
+      "no keyword hits for: missing"
+    ],
+    "file_path": "qnewtonmt.rst",
+    "formula_section": null,
+    "heading": "QNewtonmt",
+    "inputs_section": ":param &fct: pointer to a procedure that computes the\nfunction to be minimized. This procedure must have at least one input\nargument, an instance of a PV structure containing\nthe parameters. And, one output argument, the value of the function evaluated\nat the input vector of parameter values.\n:type &fct: function pointer\n\n:param par: Optional, an instance of a :class:`PV` structure. The *par* instance is passed to the user-provided procedure\npointed to by *&fct*. *par* is constructed using the :func:`pvPack` functions.\n:type par: struct\n\n:param ...: Optional extra arguments. These arguments are passed untouched to the user-provided\nobjective function, by :func:`QNewtonmt`.\n:type ...: any\n\n:param c: An instance of a :class:`QNewtonmtControl` structure. Normally an instance is initialized\nby calling :func:`QNewtonmtControlCreate` and members of this instance can be set to other values by the user.\nFor an instance named *c*, the members are:\n.. csv-table::\n\"c.CovType\", \"scalar, if 1, ML covariance matrix, else if 2, QML covariance matrix is computed. Default is 0, no covariance matrix.\"\n\"c.GradProc\", \"scalar, pointer to a procedure that computes the gradient of the function with respect to the parameters. Default = ., i.e., no gradient procedure has been provided.\"\n\"c.MaxIters\", \"scalar, maximum number of iterations. Default = 1e+5.\"\n\"c.MaxTries\", \"scalar, maximum number of attemps in random search. Default = 100.\"\n\"c.relGradTol\", \"scalar, convergence tolerance for gradient of estimated coefficients. Default = 1e-5. When this criterion has been satisifed\n...[truncated]",
+    "keyword_hits": {
+      "control": [
+        {
+          "line": 28,
+          "snippet": ":type ...: any\n\n    :param c: An instance of a :class:`QNewtonmtControl` structure. Normally an instance is initialized\n        by calling :func:`QNewtonmtControlCreate` and members of this instance can be set to other values by the user."
+        },
+        {
+          "line": 29,
+          "snippet": ":param c: An instance of a :class:`QNewtonmtControl` structure. Normally an instance is initialized\n        by calling :func:`QNewtonmtControlCreate` and members of this instance can be set to other values by the user.\n\n        For an instance named *c*, the members are:"
+        },
+        {
+          "line": 156,
+          "snippet": "struct :class:`PV`. On input to the call to :func:`QNewtonmt`, the first argument\ncontains starting values for the parameters. The arguments following the\n:class:`PV` structure (except for the optional control structure) contain any\nrequired data."
+        },
+        {
+          "line": 196,
+          "snippet": "qnewtonmt.src\n\n.. seealso:: Functions :func:`QNewtonmtControlCreate`, :func:`QNewtonmtOutCreate`"
+        }
+      ],
+      "gradient": [
+        {
+          "line": 37,
+          "snippet": "\"c.CovType\", \"scalar, if 1, ML covariance matrix, else if 2, QML covariance matrix is computed. Default is 0, no covariance matrix.\"\n            \"c.GradProc\", \"scalar, pointer to a procedure that computes the gradient of the function with respect to the parameters. Default = ., i.e., no gradient procedure has been provided.\"\n            \"c.MaxIters\", \"scalar, maximum number of iterations. Default = 1e+5.\"\n            \"c.MaxTries\", \"scalar, maximum number of attemps in random search. Default = 100.\""
+        },
+        {
+          "line": 40,
+          "snippet": "\"c.MaxIters\", \"scalar, maximum number of iterations. Default = 1e+5.\"\n            \"c.MaxTries\", \"scalar, maximum number of attemps in random search. Default = 100.\"\n            \"c.relGradTol\", \"scalar, convergence tolerance for gradient of estimated coefficients. Default = 1e-5. When this criterion has been satisifed :func:`QNewtonmt` exits the iterations.\"\n            \"c.randRadius\", \"scalar, If zero, no random search is attempted. If nonzero, it is the radius of the random search. Default = .001.\"\n            \"c.output\", \"scalar, if nonzero, results are printed. Default = 0.\""
+        },
+        {
+          "line": 66,
+          "snippet": ":2: maximum number of iterations exceeded.\n                :3: function calculation failed.\n                :4: gradient calculation failed.\n                :5: Hessian calculation failed.\n                :6: line search failed."
+        },
+        {
+          "line": 151,
+          "snippet": "There is one required user-provided procedure, the one computing the\nobjective function to be minimized, and another optional functions, the\ngradient of the objective function.\n\nThese functions have one input argument that is an instance of type"
+        }
+      ],
+      "missing": [],
+      "output": [
+        {
+          "line": 16,
+          "snippet": "function to be minimized. This procedure must have at least one input\n        argument, an instance of a PV structure containing\n        the parameters. And, one output argument, the value of the function evaluated\n        at the input vector of parameter values.\n    :type &fct: function pointer"
+        },
+        {
+          "line": 42,
+          "snippet": "\"c.relGradTol\", \"scalar, convergence tolerance for gradient of estimated coefficients. Default = 1e-5. When this criterion has been satisifed :func:`QNewtonmt` exits the iterations.\"\n            \"c.randRadius\", \"scalar, If zero, no random search is attempted. If nonzero, it is the radius of the random search. Default = .001.\"\n            \"c.output\", \"scalar, if nonzero, results are printed. Default = 0.\"\n            \"c.PrintIters\", \"scalar, if nonzero, prints iteration information. Default = 0.\"\n            \"c.disableKey\", \"scalar, if nonzero, keyboard input disabled\""
+        },
+        {
+          "line": 132,
+          "snippet": "out = QNewtonmt(&Micherlitz, par, y, x);\n\n    // Get returned parameters from the output structure\n    parms = pvGetParVector(out.par);"
+        },
+        {
+          "line": 138,
+          "snippet": "print parms;\n\nThe code above should return the following output:\n\n::"
+        },
+        {
+          "line": 184,
+          "snippet": "and if *c.covType* is set to 1, the covariance matrix of the parameters is\ncomputed and returned in *out.moment*, and standard errors, t-statistics\nand probabilities are printed if *c.output* = 1.\n\nIf the objective function returns the negative of a vector of"
+        }
+      ],
+      "returns": [
+        {
+          "line": 186,
+          "snippet": "and probabilities are printed if *c.output* = 1.\n\nIf the objective function returns the negative of a vector of\nlog-likelihoods, and if *c.covType* is set to 2, the quasi-maximum\nlikelihood (QML) covariance matrix of the parameters is computed."
+        }
+      ]
+    },
+    "match_reason": [
+      "exact_file_name",
+      "exact_heading",
+      "command_call_text",
+      "command_reference_text"
+    ],
+    "notes": [
+      "Remarks\n-------\n\nThere is one required user-provided procedure, the one computing the\nobjective function to be minimized, and another optional functions, the\ngradient of the objective function.\n\nThese functions have one input argument that is an instance of type\nstruct :class:`PV`. On input to the call to :func:`QNewtonmt`, the first argument\ncontains starting values for the parameters. The arguments following the\n:class:`PV` structure (except for the optional control structure) contain any\nrequired data.\n\nThe :class:`PV` structures are set up using the :class:`PV` pack procedures, :func:`pvPack`,\n:func:`pvPackm`, :func:`pvPacks`, and :func:`pvPacksm`. These procedures allow for setting up a\nparameter vector in a variety of ways.\n\nFor example, we might have the following objective function for fitting\na nonlinear curve to data:\n\n::\n\n   proc (1) = Micherlitz(struct PV par1, y, x);\n      local p0, e, s2;\n\n      p0 = pvUnpack(par1, \"parameters\");\n\n      e = y - p0[1] - p0[2]*exp(-p0[3] * x);\n\n      retp(-lnpdfmvn(e, e'e/rows(e)));\n   endp;\n\nIn this example the dependent and independent variables are passed to\nthe procedure as the second and third arguments to the procedure.\n\nIf the objective function is the negative of a proper log-likelihood,\nand if *c.covType* is set to 1, the covariance matrix of the parameters is\ncomputed and returned in *out.moment*, and s\n...[truncated]"
+    ],
+    "outputs_section": ":return out: instance of :class:`QNewtonmtOut` struct.\nFor an instance named *out*, the members are:\n.. list-table::\n* - out.par\n- instance of a :class:`PV` structure containing the parameter estimates will be placed in the member matrix *out.par*.\n* - out.fct\n- scalar, function evaluated at *x*.\n* - out.retcode\n- scalar, return code:\n* - out.moment\n- KxK matrix, covariance matrix of parameters, if *c.covType* > 0.\n* - out.hessian\n- KxK matrix, matrix of second derivatives of objective function with respect to parameters.\n:rtype out: struct",
+    "raw_section_headings": [
+      "QNewtonmt",
+      "Purpose",
+      "Format",
+      "Examples",
+      "Remarks",
+      "Source"
+    ],
+    "related_links": [
+      "pvPack",
+      "QNewtonmt",
+      "QNewtonmtControlCreate",
+      "pvPackm",
+      "pvPacks",
+      "pvPacksm",
+      "QNewtonmtOutCreate",
+      "PV",
+      "QNewtonmtControl",
+      "QNewtonmtOut"
+    ],
+    "returns_section": ":return out: instance of :class:`QNewtonmtOut` struct.\nFor an instance named *out*, the members are:\n.. list-table::\n* - out.par\n- instance of a :class:`PV` structure containing the parameter estimates will be placed in the member matrix *out.par*.\n* - out.fct\n- scalar, function evaluated at *x*.\n* - out.retcode\n- scalar, return code:\n* - out.moment\n- KxK matrix, covariance matrix of parameters, if *c.covType* > 0.\n* - out.hessian\n- KxK matrix, matrix of second derivatives of objective function with respect to parameters.\n:rtype out: struct",
+    "source_authority": "official_docs",
+    "source_type": "official_local_rst",
+    "syntax_blocks": [
+      ".. function:: out = QNewtonmt(&fct, par[, ...[, c]])"
+    ],
+    "unresolved_questions": []
+  },
+  "command_name": "qnewtonmt",
+  "confidence": 1.0,
+  "conflicts": [],
+  "docs_root_redacted": true,
+  "extraction_warnings": [
+    "no keyword hits for: missing"
+  ],
+  "generated_at": "2026-07-05T21:19:32Z",
+  "matches": [
+    {
+      "command_name": "qnewtonmt",
+      "confidence": 1.0,
+      "controls_section": ":type ...: any\n\n    :param c: An instance of a :class:`QNewtonmtControl` structure. Normally an instance is initialized\n        by calling :func:`QNewtonmtControlCreate` and members of this instance can be set to other values by the user.\n\n:param c: An instance of a :class:`QNewtonmtControl` structure. Normally an instance is initialized\n        by calling :func:`QNewtonmtControlCreate` and members of this instance can be set to other values by the user.\n\n        For an instance named *c*, the members are:\n\nstruct :class:`PV`. On input to the call to :func:`QNewtonmt`, the first argument\ncontains starting values for the parameters. The arguments following the\n:class:`PV` structure (except for the optional control structure) contain any\nrequired data.\n\nqnewtonmt.src\n\n.. seealso:: Functions :func:`QNewtonmtControlCreate`, :func:`QNewtonmtOutCreate`",
+      "examples": [
+        "// Define function to be minimized\n    // The first input is a PV structure containing the parameters\n    // The following arguments contain data, other than the parameters,\n    // which is needed by the function\n    proc (1) = Micherlitz(struct PV par1, y, x);\n       local p0, e, s2;\n\n       p0 = pvUnpack(par1, \"parameters\");\n\n       e = y - p0[1] - p0[2]*exp(-p0[3] * x);\n\n       retp(-lnpdfmvn(e, e'e/rows(e)));\n    endp;\n\n    // Create extra data needed by objective function\n    y = { 3.183,\n          3.059,\n          2.871,\n          2.622,\n          2.541,\n          2.184,\n          2.110,\n          2.075,\n          2.018,\n          1.903,\n          1.770,\n          1.762,\n          1.550 };\n\n    x = seqa(1, 1, 13);\n\n    // Declare 'par' to be a PV structure\n    struct PV par;\n\n    // Set PV defaults in 'par'\n    par = pvCreate();\n\n    // Add a variable named 'parameters' to par with a 3x1\n    // vector of starting values\n    par = pvPack(par, 1|1|0, \"parameters\");\n\n    // Declare 'out' to be a QNewtonmtOut structure\n    // to hold data returned by QNewtonmt\n    struct QNewtonmtout out;\n\n    // Minimize the 'Micherlitz' function\n    out = QNewtonmt(&Micherlitz, par, y, x);\n\n    // Get returned parameters from the output structure\n    parms = pvGetParVector(out.par);\n\n    // Print returned parameters\n    print parms;"
+      ],
+      "extraction_warnings": [
+        "no keyword hits for: missing"
+      ],
+      "file_path": "qnewtonmt.rst",
+      "formula_section": null,
+      "heading": "QNewtonmt",
+      "inputs_section": ":param &fct: pointer to a procedure that computes the\nfunction to be minimized. This procedure must have at least one input\nargument, an instance of a PV structure containing\nthe parameters. And, one output argument, the value of the function evaluated\nat the input vector of parameter values.\n:type &fct: function pointer\n\n:param par: Optional, an instance of a :class:`PV` structure. The *par* instance is passed to the user-provided procedure\npointed to by *&fct*. *par* is constructed using the :func:`pvPack` functions.\n:type par: struct\n\n:param ...: Optional extra arguments. These arguments are passed untouched to the user-provided\nobjective function, by :func:`QNewtonmt`.\n:type ...: any\n\n:param c: An instance of a :class:`QNewtonmtControl` structure. Normally an instance is initialized\nby calling :func:`QNewtonmtControlCreate` and members of this instance can be set to other values by the user.\nFor an instance named *c*, the members are:\n.. csv-table::\n\"c.CovType\", \"scalar, if 1, ML covariance matrix, else if 2, QML covariance matrix is computed. Default is 0, no covariance matrix.\"\n\"c.GradProc\", \"scalar, pointer to a procedure that computes the gradient of the function with respect to the parameters. Default = ., i.e., no gradient procedure has been provided.\"\n\"c.MaxIters\", \"scalar, maximum number of iterations. Default = 1e+5.\"\n\"c.MaxTries\", \"scalar, maximum number of attemps in random search. Default = 100.\"\n\"c.relGradTol\", \"scalar, convergence tolerance for gradient of estimated coefficients. Default = 1e-5. When this criterion has been satisifed\n...[truncated]",
+      "keyword_hits": {
+        "control": [
+          {
+            "line": 28,
+            "snippet": ":type ...: any\n\n    :param c: An instance of a :class:`QNewtonmtControl` structure. Normally an instance is initialized\n        by calling :func:`QNewtonmtControlCreate` and members of this instance can be set to other values by the user."
+          },
+          {
+            "line": 29,
+            "snippet": ":param c: An instance of a :class:`QNewtonmtControl` structure. Normally an instance is initialized\n        by calling :func:`QNewtonmtControlCreate` and members of this instance can be set to other values by the user.\n\n        For an instance named *c*, the members are:"
+          },
+          {
+            "line": 156,
+            "snippet": "struct :class:`PV`. On input to the call to :func:`QNewtonmt`, the first argument\ncontains starting values for the parameters. The arguments following the\n:class:`PV` structure (except for the optional control structure) contain any\nrequired data."
+          },
+          {
+            "line": 196,
+            "snippet": "qnewtonmt.src\n\n.. seealso:: Functions :func:`QNewtonmtControlCreate`, :func:`QNewtonmtOutCreate`"
+          }
+        ],
+        "gradient": [
+          {
+            "line": 37,
+            "snippet": "\"c.CovType\", \"scalar, if 1, ML covariance matrix, else if 2, QML covariance matrix is computed. Default is 0, no covariance matrix.\"\n            \"c.GradProc\", \"scalar, pointer to a procedure that computes the gradient of the function with respect to the parameters. Default = ., i.e., no gradient procedure has been provided.\"\n            \"c.MaxIters\", \"scalar, maximum number of iterations. Default = 1e+5.\"\n            \"c.MaxTries\", \"scalar, maximum number of attemps in random search. Default = 100.\""
+          },
+          {
+            "line": 40,
+            "snippet": "\"c.MaxIters\", \"scalar, maximum number of iterations. Default = 1e+5.\"\n            \"c.MaxTries\", \"scalar, maximum number of attemps in random search. Default = 100.\"\n            \"c.relGradTol\", \"scalar, convergence tolerance for gradient of estimated coefficients. Default = 1e-5. When this criterion has been satisifed :func:`QNewtonmt` exits the iterations.\"\n            \"c.randRadius\", \"scalar, If zero, no random search is attempted. If nonzero, it is the radius of the random search. Default = .001.\"\n            \"c.output\", \"scalar, if nonzero, results are printed. Default = 0.\""
+          },
+          {
+            "line": 66,
+            "snippet": ":2: maximum number of iterations exceeded.\n                :3: function calculation failed.\n                :4: gradient calculation failed.\n                :5: Hessian calculation failed.\n                :6: line search failed."
+          },
+          {
+            "line": 151,
+            "snippet": "There is one required user-provided procedure, the one computing the\nobjective function to be minimized, and another optional functions, the\ngradient of the objective function.\n\nThese functions have one input argument that is an instance of type"
+          }
+        ],
+        "missing": [],
+        "output": [
+          {
+            "line": 16,
+            "snippet": "function to be minimized. This procedure must have at least one input\n        argument, an instance of a PV structure containing\n        the parameters. And, one output argument, the value of the function evaluated\n        at the input vector of parameter values.\n    :type &fct: function pointer"
+          },
+          {
+            "line": 42,
+            "snippet": "\"c.relGradTol\", \"scalar, convergence tolerance for gradient of estimated coefficients. Default = 1e-5. When this criterion has been satisifed :func:`QNewtonmt` exits the iterations.\"\n            \"c.randRadius\", \"scalar, If zero, no random search is attempted. If nonzero, it is the radius of the random search. Default = .001.\"\n            \"c.output\", \"scalar, if nonzero, results are printed. Default = 0.\"\n            \"c.PrintIters\", \"scalar, if nonzero, prints iteration information. Default = 0.\"\n            \"c.disableKey\", \"scalar, if nonzero, keyboard input disabled\""
+          },
+          {
+            "line": 132,
+            "snippet": "out = QNewtonmt(&Micherlitz, par, y, x);\n\n    // Get returned parameters from the output structure\n    parms = pvGetParVector(out.par);"
+          },
+          {
+            "line": 138,
+            "snippet": "print parms;\n\nThe code above should return the following output:\n\n::"
+          },
+          {
+            "line": 184,
+            "snippet": "and if *c.covType* is set to 1, the covariance matrix of the parameters is\ncomputed and returned in *out.moment*, and standard errors, t-statistics\nand probabilities are printed if *c.output* = 1.\n\nIf the objective function returns the negative of a vector of"
+          }
+        ],
+        "returns": [
+          {
+            "line": 186,
+            "snippet": "and probabilities are printed if *c.output* = 1.\n\nIf the objective function returns the negative of a vector of\nlog-likelihoods, and if *c.covType* is set to 2, the quasi-maximum\nlikelihood (QML) covariance matrix of the parameters is computed."
+          }
+        ]
+      },
+      "match_reason": [
+        "exact_file_name",
+        "exact_heading",
+        "command_call_text",
+        "command_reference_text"
+      ],
+      "notes": [
+        "Remarks\n-------\n\nThere is one required user-provided procedure, the one computing the\nobjective function to be minimized, and another optional functions, the\ngradient of the objective function.\n\nThese functions have one input argument that is an instance of type\nstruct :class:`PV`. On input to the call to :func:`QNewtonmt`, the first argument\ncontains starting values for the parameters. The arguments following the\n:class:`PV` structure (except for the optional control structure) contain any\nrequired data.\n\nThe :class:`PV` structures are set up using the :class:`PV` pack procedures, :func:`pvPack`,\n:func:`pvPackm`, :func:`pvPacks`, and :func:`pvPacksm`. These procedures allow for setting up a\nparameter vector in a variety of ways.\n\nFor example, we might have the following objective function for fitting\na nonlinear curve to data:\n\n::\n\n   proc (1) = Micherlitz(struct PV par1, y, x);\n      local p0, e, s2;\n\n      p0 = pvUnpack(par1, \"parameters\");\n\n      e = y - p0[1] - p0[2]*exp(-p0[3] * x);\n\n      retp(-lnpdfmvn(e, e'e/rows(e)));\n   endp;\n\nIn this example the dependent and independent variables are passed to\nthe procedure as the second and third arguments to the procedure.\n\nIf the objective function is the negative of a proper log-likelihood,\nand if *c.covType* is set to 1, the covariance matrix of the parameters is\ncomputed and returned in *out.moment*, and s\n...[truncated]"
+      ],
+      "outputs_section": ":return out: instance of :class:`QNewtonmtOut` struct.\nFor an instance named *out*, the members are:\n.. list-table::\n* - out.par\n- instance of a :class:`PV` structure containing the parameter estimates will be placed in the member matrix *out.par*.\n* - out.fct\n- scalar, function evaluated at *x*.\n* - out.retcode\n- scalar, return code:\n* - out.moment\n- KxK matrix, covariance matrix of parameters, if *c.covType* > 0.\n* - out.hessian\n- KxK matrix, matrix of second derivatives of objective function with respect to parameters.\n:rtype out: struct",
+      "raw_section_headings": [
+        "QNewtonmt",
+        "Purpose",
+        "Format",
+        "Examples",
+        "Remarks",
+        "Source"
+      ],
+      "related_links": [
+        "pvPack",
+        "QNewtonmt",
+        "QNewtonmtControlCreate",
+        "pvPackm",
+        "pvPacks",
+        "pvPacksm",
+        "QNewtonmtOutCreate",
+        "PV",
+        "QNewtonmtControl",
+        "QNewtonmtOut"
+      ],
+      "returns_section": ":return out: instance of :class:`QNewtonmtOut` struct.\nFor an instance named *out*, the members are:\n.. list-table::\n* - out.par\n- instance of a :class:`PV` structure containing the parameter estimates will be placed in the member matrix *out.par*.\n* - out.fct\n- scalar, function evaluated at *x*.\n* - out.retcode\n- scalar, return code:\n* - out.moment\n- KxK matrix, covariance matrix of parameters, if *c.covType* > 0.\n* - out.hessian\n- KxK matrix, matrix of second derivatives of objective function with respect to parameters.\n:rtype out: struct",
+      "source_authority": "official_docs",
+      "source_type": "official_local_rst",
+      "syntax_blocks": [
+        ".. function:: out = QNewtonmt(&fct, par[, ...[, c]])"
+      ],
+      "unresolved_questions": []
+    }
+  ],
+  "notes": [],
+  "retrieval_status": "found_incomplete",
+  "schema_version": "0.1.0",
+  "source_authority": "official_docs",
+  "source_type": "official_local_rst",
+  "stale_evidence": null,
+  "tool_name": "command_doc_lookup",
+  "tool_version": "0.1.0",
+  "unresolved_questions": []
+}

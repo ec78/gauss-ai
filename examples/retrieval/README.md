@@ -38,7 +38,7 @@ The current `olsmt.lookup.json` and `strindx.lookup.json` files were generated b
 
 The lookup JSON files directly in this directory (`olsmt.lookup.json`, `strindx.lookup.json`) predate the formal evidence schema in `schemas/command_lookup_evidence.schema.json` and only partially align with it. They remain historical `v0.4.0` prototype outputs and evaluation evidence, and are not rewritten.
 
-Schema-aligned outputs, generated with `scripts/command_doc_lookup.py --schema-output`, live under `examples/retrieval/schema-aligned/`. Current real schema-aligned examples: `olsmt.evidence.json`, `strindx.evidence.json`, `strsplit.evidence.json`, and `dstatmt.evidence.json`. Future retrieval examples should be added there and should validate against the schema:
+Schema-aligned outputs, generated with `scripts/command_doc_lookup.py --schema-output`, live under `examples/retrieval/schema-aligned/`. Current real schema-aligned examples: `olsmt.evidence.json`, `strindx.evidence.json`, `strsplit.evidence.json`, `dstatmt.evidence.json`, and `qnewtonmt.evidence.json`. Future retrieval examples should be added there and should validate against the schema:
 
 ```text
 python scripts/validate_lookup_evidence.py examples/retrieval/schema-aligned/<command>.evidence.json
