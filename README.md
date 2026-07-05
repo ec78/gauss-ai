@@ -6,9 +6,9 @@ Rather than creating a single, monolithic chatbot, this project defines a collec
 
 ## Current Status
 
-The project is currently working toward `v0.3.0` - Code Assistant Preview. This milestone focuses on making the GAUSS Code Assistant understandable, usable, and evaluable by people who were not part of the design process.
+The project is currently working toward `v0.6.0` - Tool Interface and Evidence Schema. This milestone represents command lookup evidence in a structured, versioned JSON Schema, validates that evidence mechanically, and adds schema-aligned output to the retrieval prototype alongside the existing lookup format.
 
-The `v0.2.0` milestone established the knowledge and evaluation foundation: expert guidance, benchmark prompts, scoring rubrics, manual evaluation records, native command category discovery, and command documentation retrieval workflows.
+Prior milestones: `v0.2.0` established the knowledge and evaluation foundation (expert guidance, benchmark prompts, scoring rubrics, manual evaluation records, native command category discovery, and command documentation retrieval workflows); `v0.3.0` made the Code Assistant usable and evaluable for manual preview; `v0.4.0` added a local-first command documentation lookup prototype; `v0.5.0` standardized retrieval-backed response behavior across the assistant's task modes. See [ROADMAP.md](ROADMAP.md) for full milestone history.
 
 ## Try The GAUSS Code Assistant
 
@@ -49,7 +49,7 @@ See [known limitations](KNOWN_LIMITATIONS.md) for the current constraint list.
 At this stage:
 
 * The framework does not yet execute GAUSS code.
-* Retrieval guidance exists, but retrieval automation is still developing.
+* A local-first retrieval prototype and evidence schema exist (`scripts/command_doc_lookup.py`, `schemas/command_lookup_evidence.schema.json`), but they remain a small, heuristic, local-only prototype, not a production retrieval system.
 * Benchmark coverage is growing but not exhaustive.
 * Exact command syntax should be verified against official GAUSS documentation when it has not already been verified.
 * The Code Assistant Preview is not a claim of production readiness.
@@ -107,7 +107,7 @@ Expert modules encapsulate reusable domain expertise so multiple specialized age
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for milestone-level planning. The current target is `v0.3.0`, the Code Assistant Preview, which focuses on making the [GAUSS Code Assistant](agents/code-assistant/README.md) usable through a quickstart, examples, clear limitations, and benchmark-backed evaluation guidance.
+See [ROADMAP.md](ROADMAP.md) for milestone-level planning. The current target is `v0.6.0`, Tool Interface and Evidence Schema, which builds a structured, validated evidence layer on top of the retrieval prototype introduced in `v0.4.0` and the retrieval-backed response behavior standardized in `v0.5.0`.
 
 ### Phase 1
 

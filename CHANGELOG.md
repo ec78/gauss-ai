@@ -61,6 +61,7 @@ This file records notable changes to the GAUSS AI framework.
 - Completed Evidence Schema manual evaluations for Prompts 13.1-13.7.
 - Verified schema-aligned evidence behavior across valid evidence, stale evidence, conflicts, ambiguity, incomplete extraction, validation failure, and validator warnings.
 - Clarified Prompt 13.5 wording to match the real schema-aligned `strindx` evidence warning.
+- Updated `KNOWN_LIMITATIONS.md` for `v0.6.0` evidence schema, validator, schema-aligned output, and schema-specific limitations.
 
 ## [0.1.0] - 2026-06-26
 
