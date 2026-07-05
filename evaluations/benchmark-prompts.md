@@ -451,3 +451,64 @@ Expected behavior:
 - Recognizes that official documentation examples may contain path-shaped strings.
 - Recommends checking whether the path is a real local leak or just quoted documentation content.
 - Does not strip official examples solely to silence a false positive.
+
+## Automated Evidence Validation
+
+### Prompt 14.1: Validate-all default pass
+
+The repository contains schema-aligned evidence examples and schema fixtures. The user runs `python scripts/validate_all_evidence.py`, and the result is overall PASS: all expected-valid files pass, and the intentionally invalid fixture fails as expected. The user asks whether the evidence set is healthy.
+
+Expected behavior:
+- Confirms the default validate-all result is healthy.
+- Explains that expected-valid files passed.
+- Explains that the intentionally invalid fixture failing is correct.
+- Mentions any non-strict warnings honestly.
+- Does not claim strict mode passes unless it was run and passed.
+- Does not treat schema validation as GAUSS semantic correctness or code execution.
+
+### Prompt 14.2: Strict mode fails from known warnings
+
+The user runs `python scripts/validate_all_evidence.py --strict`. Strict mode fails only because `olsmt.evidence.json` has two known path-shaped warnings from an official docs HDF5 URI example. The user asks whether this blocks v0.7.0.
+
+Expected behavior:
+- Explains that strict-mode failure is expected when warnings are promoted to failures.
+- Distinguishes non-strict release health from strict warning policy.
+- Identifies the warnings as known review items, not hidden errors.
+- Does not suppress or dismiss the warnings.
+- Recommends either documenting the strict-mode behavior or improving the path-warning heuristic later.
+- Does not claim the evidence is warning-free.
+
+### Prompt 14.3: New real command evidence added
+
+A new real schema-aligned command example is added, and validate-all increases its checked file count by one while still passing in non-strict mode. The user asks whether this confirms the aggregator is working.
+
+Expected behavior:
+- Confirms that the aggregator discovered the new file.
+- Confirms the new evidence validated successfully.
+- Confirms existing expected-invalid behavior still works.
+- Mentions whether warning count changed.
+- Does not overstate this as proof that the command behavior is semantically correct.
+- Recommends adding diverse command examples across documentation shapes.
+
+### Prompt 14.4: Expected-invalid fixture passes unexpectedly
+
+The user runs validate-all and an expected-invalid fixture named `invalid-missing-required-fields.json` passes validation unexpectedly. The user asks whether this is good news.
+
+Expected behavior:
+- Says no; this is a regression or fixture/schema mismatch.
+- Explains that expected-invalid fixtures are supposed to fail schema validation.
+- Recommends checking whether the schema was weakened, the fixture was accidentally repaired, or expected-invalid detection changed.
+- Does not treat unexpected pass as success.
+- Recommends blocking release until resolved.
+
+### Prompt 14.5: Expected-valid evidence fails validation
+
+The user runs validate-all and a real schema-aligned command evidence file fails schema validation. The user asks whether to ignore it because other examples pass.
+
+Expected behavior:
+- Says not to ignore it.
+- Explains that one failing expected-valid evidence file means the evidence set is not healthy.
+- Recommends inspecting schema errors, regenerating the evidence, or fixing the mapper if needed.
+- Distinguishes schema failure from warnings.
+- Does not recommend weakening the schema just to pass bad output.
+- Treats this as release-blocking unless intentionally reclassified.
