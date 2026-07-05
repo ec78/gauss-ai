@@ -70,6 +70,8 @@ python scripts/validate_all_evidence.py examples/retrieval/schema-aligned/olsmt.
 
 Exit code is `0` only when every file's actual outcome matches its expected outcome (under the current strictness setting); otherwise nonzero.
 
+**`v0.7.0` strict-mode policy.** The default, non-strict run (`python scripts/validate_all_evidence.py`) is the `v0.7.0` release-health check and is expected to pass. `--strict` promotes warnings to failures, and the current evidence set is expected to fail under `--strict`: `examples/retrieval/schema-aligned/olsmt.evidence.json` has two reviewed path-warning false positives (from an official `olsmt` HDF5-URI documentation example, not a leaked local path). This strict-mode failure is documented here rather than suppressed or worked around. Improving the validator's path-warning heuristic so this stops triggering is tracked as future work, not a `v0.7.0` blocker.
+
 This script does not require GAUSS to be installed and does not access the network. It checks evidence *structure*, not GAUSS semantic correctness — a file passing here is not proof that any GAUSS code was executed or that the command behavior described is current.
 
 ## Output Fields

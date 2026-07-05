@@ -105,3 +105,5 @@ python scripts/validate_all_evidence.py
 ```
 
 It treats every file as expected to pass, except `examples/retrieval/schema-fixtures/invalid-*.json` files, which are expected to fail — and reports an unexpected result (an expected-valid file failing, or an expected-invalid file passing) as an overall failure. It supports `--strict` and `--json` with the same meaning as the single-file validator, and accepts optional file/directory arguments to check a subset. See `scripts/README.md` for full usage.
+
+The default non-strict run is the `v0.7.0` release-health check and currently passes. `--strict` is expected to fail on the known, reviewed `olsmt.evidence.json` path warnings; see the strict-mode policy note in `scripts/README.md` rather than treating that failure as hidden or unexplained.
