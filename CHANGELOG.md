@@ -78,6 +78,7 @@ This file records notable changes to the GAUSS AI framework.
 - Added GAUSS Language Expert operational profile for `v0.8.0`.
 - Added expert routing workflow for `v0.8.0`.
 - Integrated expert routing into Code Assistant workflow and prompt documentation.
+- Added Expert Routing benchmark prompts 15.1-15.7.
 
 ## [0.1.0] - 2026-06-26
 

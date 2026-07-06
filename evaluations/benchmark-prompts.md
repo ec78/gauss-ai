@@ -512,3 +512,95 @@ Expected behavior:
 - Distinguishes schema failure from warnings.
 - Does not recommend weakening the schema just to pass bad output.
 - Treats this as release-blocking unless intentionally reclassified.
+
+## Expert Routing
+
+### Prompt 15.1: GAUSS code generation activates expert
+
+The user asks for GAUSS code to load a dataset, run a simple regression, and explain the result. The response will include GAUSS code and command/procedure recommendations.
+
+Expected behavior:
+- Routes through the GAUSS Language Expert because the answer includes GAUSS code and command/procedure usage.
+- Applies GAUSS Language Expert decision rules.
+- Uses verified native GAUSS procedures when appropriate.
+- Does not invent GAUSS syntax, commands, packages, or APIs.
+- Distinguishes syntax claims from general explanation.
+- Requires official-doc-backed evidence for exact command syntax/defaults/returns.
+- Includes a validation suggestion.
+- Does not literally need to print "GAUSS Language Expert activated."
+
+### Prompt 15.2: R-to-GAUSS translation uses expert and evidence
+
+The user provides R code using `lm(y ~ x1 + x2, data = df)` and asks for equivalent GAUSS code. The response recommends a native GAUSS procedure.
+
+Expected behavior:
+- Routes through the GAUSS Language Expert because this is translation into GAUSS.
+- Identifies this as Code Translation with secondary Code Generation.
+- Requires command evidence for the native GAUSS procedure before giving exact syntax.
+- Prefers verified native GAUSS procedure usage over manual matrix OLS when appropriate.
+- Does not silently substitute a manual implementation if verified native evidence exists.
+- Includes a validation suggestion comparing GAUSS output with R output.
+- Preserves uncertainty for any fields or defaults not verified.
+
+### Prompt 15.3: Debugging cross-language string contamination
+
+The user shows GAUSS-like code that uses a Python-style string `.find()` method and checks for `-1` when the substring is not found. They ask why it is not working.
+
+Expected behavior:
+- Routes through the GAUSS Language Expert because this is GAUSS debugging and cross-language contamination.
+- Identifies `.find()` / `-1` as Python-style contamination, not GAUSS behavior.
+- Requires or uses verified evidence for the relevant GAUSS string function behavior before giving exact return semantics.
+- Corrects to real GAUSS behavior such as `strindx` returning `0` when not found, if verified evidence is available.
+- Explains the fix without inventing methods or syntax.
+- Includes a small validation check or test case.
+
+### Prompt 15.4: Choosing between qnewtonmt and minimize
+
+The user asks which GAUSS optimization command to use for a smooth bounded optimization problem and mentions both `qnewtonmt` and `minimize`.
+
+Expected behavior:
+- Routes through the GAUSS Language Expert because this is command selection and version-sensitive GAUSS behavior.
+- Uses current, non-stale evidence for both commands if exact claims are made.
+- Distinguishes `minimize` as current GAUSS 26 bound-constrained optimization coverage if supported by evidence.
+- Preserves `qnewtonmt` as an established native optimization option unless evidence says otherwise.
+- Does not claim deprecation or replacement without evidence.
+- Does not pick one silently without stating criteria.
+- States version assumptions and recommends verifying against current official docs if version matters.
+
+### Prompt 15.5: DataFrame vs matrix design guidance
+
+The user asks whether to use a GAUSS DataFrame or matrix for a workflow that imports labeled data, cleans missing values, then performs numerical modeling.
+
+Expected behavior:
+- Routes through the GAUSS Language Expert because this is a GAUSS data-structure decision.
+- Uses BODY_OF_KNOWLEDGE-style language mechanics rather than command-specific retrieval unless exact command syntax is requested.
+- Distinguishes DataFrame and matrix roles clearly.
+- Recommends DataFrame for labeled/imported/mixed/date/categorical/cleaning context where appropriate.
+- Recommends matrix for numerical computation/modeling where appropriate.
+- Does not treat DataFrames and matrices as interchangeable.
+- States assumptions and possible workflow transition points.
+
+### Prompt 15.6: Ambiguous command evidence escalates
+
+The user asks for exact syntax for a command, but the available evidence object has `retrieval_status: ambiguous` with multiple plausible command documentation matches.
+
+Expected behavior:
+- Routes through the GAUSS Language Expert because exact GAUSS command syntax is requested.
+- Recognizes ambiguous evidence using the operational profile and retrieval-backed response pattern.
+- Does not silently choose the top candidate.
+- Does not invent syntax to resolve the ambiguity.
+- Asks for disambiguating context or routes back to retrieval.
+- Uses candidate matches only as candidates, not verified usage.
+- Explains that schema-valid ambiguity is not the same as verified command usage.
+
+### Prompt 15.7: Non-GAUSS task does not activate expert
+
+The user asks for a short changelog entry or release note for the repository. The task mentions GAUSS AI but does not require GAUSS code, syntax, command behavior, or data-structure guidance.
+
+Expected behavior:
+- Does not route through the GAUSS Language Expert.
+- Recognizes this as a non-activation case: release tracking, changelog drafting, or general writing.
+- Does not impose GAUSS-specific evidence requirements unnecessarily.
+- Does not ask for command documentation or retrieval evidence.
+- Still produces a useful changelog/release-note response.
+- Demonstrates that negative routing is part of correctness.
