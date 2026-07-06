@@ -6,6 +6,8 @@ Define the reusable expert module for authoritative GAUSS programming language g
 
 This file is a framework for future GAUSS-specific content. It should not be treated as a complete language reference until populated with validated knowledge sources.
 
+For operational routing, evidence requirements, activation triggers, and the output contract this expert must satisfy, see [OPERATIONAL_PROFILE.md](OPERATIONAL_PROFILE.md). This file remains the narrative specification; the operational profile is the checkable contract.
+
 ## Responsibilities
 
 - Guide agents on GAUSS language usage once authoritative knowledge is available.
