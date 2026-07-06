@@ -84,9 +84,12 @@ Identify whether the user is asking to:
 
 ### 2. Identify the relevant expertise
 
-Use the appropriate expert reasoning:
+For GAUSS-specific tasks (syntax, data structures, procedures, APIs, debugging, performance, packages, command selection, cross-language contamination risk), route through the GAUSS Language Expert — the first operational expert, defined in `experts/gauss-language/OPERATIONAL_PROFILE.md` and routed to via `workflows/expert-routing.md`. Follow that workflow's activation triggers and non-activation cases; do not treat every task as GAUSS-specific by default, and do not use expert routing as a way to skip retrieval or accept weaker evidence than the operational profile and `workflows/retrieval-backed-response-pattern.md` already require.
 
-* GAUSS syntax, data structures, procedures, APIs, debugging, performance, packages, documentation, and AI failure modes → GAUSS Language Expert
+Expert activation is internal by default — do not state "expert activated" unless it helps evaluation or the user asks how the answer was produced.
+
+For non-GAUSS aspects of a task, use the appropriate reasoning directly (these remain narrative guidance only; they are not yet operationalized):
+
 * Econometrics, statistics, time series, panel data, forecasting, model interpretation → Econometrics Expert
 * Package architecture, tests, maintainability, public APIs, release process → Software Engineering Expert
 * `.rst`, API docs, tutorials, examples, user-facing explanations → Documentation Expert

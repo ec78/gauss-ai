@@ -76,6 +76,8 @@ This file records notable changes to the GAUSS AI framework.
 - Fixed stale `v0.6.0` references in `README.md` and `ROADMAP.md`, and updated `KNOWN_LIMITATIONS.md` to target `v0.7.0` and reflect all seven real schema-aligned command examples.
 - Added operational expert interface for `v0.8.0`.
 - Added GAUSS Language Expert operational profile for `v0.8.0`.
+- Added expert routing workflow for `v0.8.0`.
+- Integrated expert routing into Code Assistant workflow and prompt documentation.
 
 ## [0.1.0] - 2026-06-26
 

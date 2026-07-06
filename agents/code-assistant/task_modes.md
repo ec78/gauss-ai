@@ -88,6 +88,8 @@ Use this mode when the user asks the agent to write new GAUSS code.
 * Are missing values considered where relevant?
 * Is the code appropriate for the user's experience level?
 
+For GAUSS-specific code, route through `../../workflows/expert-routing.md` and `../../experts/gauss-language/OPERATIONAL_PROFILE.md`. Exact syntax, defaults, and return values still require official-doc-backed evidence, not general knowledge.
+
 ## 2. Debugging Mode
 
 Use this mode when the user provides broken code, an error message, unexpected output, or asks why something is not working.
@@ -144,7 +146,7 @@ Use this mode when the user provides broken code, an error message, unexpected o
 * Are missing values considered when relevant?
 * Does the response include a way to verify the fix?
 
-When the diagnosis depends on documented command-specific behavior (for example, a return-value field or a not-found/missing-value convention), follow `../../workflows/retrieval-backed-response-pattern.md` and include its validation-step requirement in the fix.
+For GAUSS-specific debugging, route through `../../workflows/expert-routing.md` and the GAUSS Language Expert operational profile (`../../experts/gauss-language/OPERATIONAL_PROFILE.md`). When the diagnosis depends on documented command-specific behavior (for example, a return-value field or a not-found/missing-value convention), follow `../../workflows/retrieval-backed-response-pattern.md` and include its validation-step requirement in the fix.
 
 ## 3. Code Explanation Mode
 
@@ -182,6 +184,8 @@ Use this mode when the user asks what GAUSS code does or how a GAUSS concept wor
 * Does it avoid assuming too much for beginners?
 * Does it distinguish GAUSS syntax from general programming ideas?
 * Are data structures and dimensions explained when relevant?
+
+For explanations that involve GAUSS code, syntax, or commands, route through `../../workflows/expert-routing.md`; purely conceptual, non-GAUSS explanations do not require GAUSS Language Expert activation.
 
 ## 4. Code Translation Mode
 
@@ -233,7 +237,7 @@ Use this mode when the user asks to translate code from Python, R, MATLAB, Stata
 * Are package dependencies stated?
 * Is the translated code runnable or clearly marked as a pattern?
 
-When the translation relies on a native command whose behavior was verified through documentation lookup, follow `../../workflows/retrieval-backed-response-pattern.md` and include its validation-step requirement (for example, comparing the GAUSS result against the source language's result on the same data).
+Translation into or out of GAUSS routes through `../../workflows/expert-routing.md` and the GAUSS Language Expert operational profile. When the translation relies on a native command whose behavior was verified through documentation lookup, follow `../../workflows/retrieval-backed-response-pattern.md` and include its validation-step requirement (for example, comparing the GAUSS result against the source language's result on the same data).
 
 ## 5. Code Review Mode
 
@@ -276,6 +280,8 @@ Use this mode when the user asks for feedback on GAUSS code, package code, proce
 * Are tests or examples recommended when relevant?
 * Is feedback appropriate to the code’s purpose?
 
+For GAUSS code review, route through `../../workflows/expert-routing.md` and `../../experts/gauss-language/OPERATIONAL_PROFILE.md`; flag hallucinated functions or invalid syntax per the expert’s decision rules.
+
 ## 6. Refactoring Mode
 
 Use this mode when the user asks to improve existing GAUSS code without changing its intended behavior.
@@ -313,6 +319,8 @@ Use this mode when the user asks to improve existing GAUSS code without changing
 * Is the new code clearer?
 * Are dependencies unchanged or explained?
 * Are tests suggested for nontrivial refactors?
+
+For GAUSS-specific refactors, route through `../../workflows/expert-routing.md` and `../../experts/gauss-language/OPERATIONAL_PROFILE.md`.
 
 ## 7. Optimization Mode
 
@@ -352,6 +360,8 @@ Use this mode when the user asks to make GAUSS code faster or more memory effici
 * Are memory allocation and copying considered?
 * Is benchmarking suggested when appropriate?
 
+For GAUSS-specific optimization, route through `../../workflows/expert-routing.md` and `../../experts/gauss-language/OPERATIONAL_PROFILE.md`, including version-sensitive command choices (for example, `qnewtonmt` vs. `minimize`).
+
 ## 8. Documentation Mode
 
 Use this mode when the user asks for documentation, comments, examples, tutorials, `.rst` content, README content, or user-facing explanation.
@@ -389,6 +399,8 @@ Use this mode when the user asks for documentation, comments, examples, tutorial
 * Is an example included when useful?
 * Does the format match the requested documentation type?
 * Is documentation synchronized with code?
+
+For documentation describing GAUSS syntax, commands, or behavior, route through `../../workflows/expert-routing.md`; documentation about non-GAUSS content (general README structure, style) does not require GAUSS Language Expert activation.
 
 ## 9. Test Generation Mode
 
@@ -429,6 +441,8 @@ Use this mode when the user asks for tests or when reusable code would benefit f
 * Are dependencies stated?
 * Are tests appropriate for script, procedure, or package code?
 
+For GAUSS-specific tests, route through `../../workflows/expert-routing.md` and `../../experts/gauss-language/OPERATIONAL_PROFILE.md`.
+
 ## 10. Design Guidance Mode
 
 Use this mode when the user asks how to structure a GAUSS solution, choose data structures, design an API, organize a package, or decide between approaches.
@@ -465,6 +479,8 @@ Use this mode when the user asks how to structure a GAUSS solution, choose data 
 * Does the answer distinguish one-off code from reusable code?
 * Are data structures chosen intentionally?
 * Are package or API implications considered?
+
+For GAUSS data-structure or API design choices, route through `../../workflows/expert-routing.md` and `../../experts/gauss-language/OPERATIONAL_PROFILE.md`.
 
 ## Mode Escalation Rules
 
@@ -513,3 +529,4 @@ Before finalizing any response, the agent should check:
 * Is the response matched to the user’s actual task mode?
 * Is the answer over-engineered or under-engineered?
 * Would the user know what to do next?
+* Was GAUSS Language Expert routing applied only when the task actually needed it, per `../../workflows/expert-routing.md`’s non-activation cases? Non-GAUSS tasks should not be forced through GAUSS-specific reasoning.

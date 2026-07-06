@@ -27,9 +27,16 @@ The response style should follow the selected mode. A debugging request should g
 
 ## 4. Step 2: Identify Relevant Experts
 
-Use the smallest useful set of expert perspectives:
+Classify the task first (Step 1), then decide whether an operational expert activates using `expert-routing.md`:
 
-- GAUSS Language Expert: syntax, procedures, data structures, strings, arrays, packages, APIs, debugging, performance, and known AI failure modes.
+- For GAUSS-specific tasks (syntax, procedures, data structures, command/procedure selection, package vs. base-GAUSS distinction, version-sensitive behavior, cross-language contamination risk), route through the GAUSS Language Expert — the first operational expert, defined in `../experts/gauss-language/OPERATIONAL_PROFILE.md` against the generic shape in `../tools/operational_expert_interface.md`.
+- Check `expert-routing.md`'s non-activation cases before routing, so non-GAUSS tasks (general writing, release tracking, changelog drafting, purely econometric/statistical questions with no GAUSS implementation) are not forced through GAUSS-specific reasoning.
+- Determine the evidence a task requires from the operational profile's Required Evidence table, and route to retrieval (`command-documentation-retrieval.md`, then `retrieval-backed-response-pattern.md`) when command-specific evidence is required but not yet available. Never answer exact syntax, defaults, or return values from memory while that evidence is missing.
+- Apply the expert's decision rules internally when composing the response. Expert activation is internal by default — the final response does not need to state "GAUSS Language Expert activated"; routing should be evident from response quality, evidence use, and how uncertainty is preserved, not from a literal label.
+- Evaluate whether routing happened correctly by checking response behavior against `expert-routing.md`'s Step 10 criteria (correct activation or non-activation, evidence threshold met, decision rules applied, no invented syntax, uncertainty preserved).
+
+Only the GAUSS Language Expert is operationalized as of `v0.8.0`. The remaining expert perspectives below are still narrative-only guidance for identifying non-GAUSS reasoning needs, not yet backed by an operational profile:
+
 - Econometrics Expert: statistics, econometrics, forecasting, time series, panel data, models, and interpretation.
 - Software Engineering Expert: package structure, public APIs, tests, maintainability, release practices, and code review.
 - Documentation Expert: README content, API docs, tutorials, examples, and user-facing text.
@@ -144,4 +151,4 @@ Ask one focused clarifying question only when missing information materially cha
 
 ## 12. Maintenance Notes
 
-Keep this workflow aligned with `agents/code-assistant/AGENT.md`, `prompts/code_assistant_system.md`, `agents/code-assistant/task_modes.md`, `tools/knowledge_search.md`, and `workflows/retrieval-backed-response-pattern.md`. Update it when task modes, expert modules, retrieval behavior, source hierarchy, tool capabilities, or recurring benchmark failures change.
+Keep this workflow aligned with `agents/code-assistant/AGENT.md`, `prompts/code_assistant_system.md`, `agents/code-assistant/task_modes.md`, `tools/knowledge_search.md`, `workflows/retrieval-backed-response-pattern.md`, `workflows/expert-routing.md`, and `experts/gauss-language/OPERATIONAL_PROFILE.md`. Update it when task modes, expert modules, retrieval behavior, source hierarchy, tool capabilities, or recurring benchmark failures change.

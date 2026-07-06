@@ -127,6 +127,7 @@ Use language that makes the evidence source and confidence level explicit rather
 - `workflows/code-assistant-response.md` defines the assistant's general response workflow across all task modes. This document is the specialization to apply within that workflow's Step 3 (retrieval need) and Step 5 (generate/debug/translate) whenever a command-specific question is in play.
 - `tools/command_doc_lookup.md` documents the retrieval tool whose output states (found, ambiguous, not found, incomplete) map directly to Section 3 of this document.
 - `agents/code-assistant/task_modes.md` defines per-mode response patterns; its Code Translation and Debugging modes now point to this document's validation-step requirement (Section 7).
+- `workflows/expert-routing.md` and `experts/gauss-language/OPERATIONAL_PROFILE.md` determine *when* the GAUSS Language Expert activates and what evidence a task requires; this document determines *how* retrieved evidence states, once retrieval happens, shape the response.
 
 ## 11. Maintenance Notes
 
