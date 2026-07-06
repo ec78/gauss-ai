@@ -6,9 +6,9 @@ Rather than creating a single, monolithic chatbot, this project defines a collec
 
 ## Current Status
 
-The project is currently working toward `v0.6.0` - Tool Interface and Evidence Schema. This milestone represents command lookup evidence in a structured, versioned JSON Schema, validates that evidence mechanically, and adds schema-aligned output to the retrieval prototype alongside the existing lookup format.
+The project is currently working toward `v0.7.0` - Broader Command Coverage and Automated Evidence Tests. This milestone expands real schema-aligned command evidence coverage across a deliberately varied set of documentation shapes and adds an aggregate validator (`scripts/validate_all_evidence.py`) so every committed evidence example and fixture can be checked in one pass instead of by hand, one file at a time.
 
-Prior milestones: `v0.2.0` established the knowledge and evaluation foundation (expert guidance, benchmark prompts, scoring rubrics, manual evaluation records, native command category discovery, and command documentation retrieval workflows); `v0.3.0` made the Code Assistant usable and evaluable for manual preview; `v0.4.0` added a local-first command documentation lookup prototype; `v0.5.0` standardized retrieval-backed response behavior across the assistant's task modes. See [ROADMAP.md](ROADMAP.md) for full milestone history.
+Prior milestones: `v0.2.0` established the knowledge and evaluation foundation (expert guidance, benchmark prompts, scoring rubrics, manual evaluation records, native command category discovery, and command documentation retrieval workflows); `v0.3.0` made the Code Assistant usable and evaluable for manual preview; `v0.4.0` added a local-first command documentation lookup prototype; `v0.5.0` standardized retrieval-backed response behavior across the assistant's task modes; `v0.6.0` represented command lookup evidence in a structured, versioned JSON Schema, validated that evidence mechanically, and added schema-aligned output to the retrieval prototype alongside the existing lookup format. See [ROADMAP.md](ROADMAP.md) for full milestone history.
 
 ## Try The GAUSS Code Assistant
 
@@ -107,7 +107,7 @@ Expert modules encapsulate reusable domain expertise so multiple specialized age
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for milestone-level planning. The current target is `v0.6.0`, Tool Interface and Evidence Schema, which builds a structured, validated evidence layer on top of the retrieval prototype introduced in `v0.4.0` and the retrieval-backed response behavior standardized in `v0.5.0`.
+See [ROADMAP.md](ROADMAP.md) for milestone-level planning. The current target is `v0.7.0`, Broader Command Coverage and Automated Evidence Tests, which widens real schema-aligned evidence coverage and adds automated validation on top of the evidence schema and validator introduced in `v0.6.0`.
 
 ### Phase 1
 

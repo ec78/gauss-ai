@@ -72,6 +72,8 @@ This file records notable changes to the GAUSS AI framework.
 - Documented `v0.7.0` validate-all strict-mode behavior and the reviewed `olsmt` warning exception.
 - Completed Automated Evidence Validation manual evaluations for Prompts 14.1-14.3, covering default validate-all health, strict-mode warning policy, and aggregator discovery of a newly added real command example.
 - Completed Automated Evidence Validation evaluations for Prompts 14.4-14.5, covering expected-invalid and expected-valid regression behavior.
+- Added `v0.7.0` readiness checklist and pre-release audit.
+- Fixed stale `v0.6.0` references in `README.md` and `ROADMAP.md`, and updated `KNOWN_LIMITATIONS.md` to target `v0.7.0` and reflect all seven real schema-aligned command examples.
 
 ## [0.1.0] - 2026-06-26
 

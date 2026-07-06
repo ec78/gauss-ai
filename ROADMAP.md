@@ -31,17 +31,19 @@
 - Add retrieval failure-mode benchmarks and manual evaluation coverage for ambiguous match, docs not found, incomplete extraction, curated-note-vs-official-docs conflict, translation validation, and debugging return behavior.
 - Keep broader pilot command coverage as a follow-up after the response pattern is validated.
 
-## v0.6.0: Tool Interface and Evidence Schema
+## v0.6.0: Tool Interface and Evidence Schema (Completed)
 
 - Move from retrieval-backed response guidance to a structured, testable evidence layer.
 - Define a command lookup evidence schema: required/optional fields, status values, confidence, and source provenance.
 - Define an explicit source authority model (official docs, official package docs, official source, curated notes, examples, category lists, general knowledge).
 - Define consumption rules tying schema fields back to retrieval-backed response behavior, and validation checks for evidence quality (missing fields, unredacted paths, missing provenance).
-- Plan a lightweight evidence validator for lookup JSON artifacts.
-- Add evidence-schema-focused benchmarks distinct from `v0.5.0`'s response-quality benchmarks.
+- Add a lightweight evidence validator for lookup JSON artifacts (`scripts/validate_lookup_evidence.py`), plus schema-aligned output support (`--schema-output`) in the retrieval prototype.
+- Add and evaluate evidence-schema-focused benchmarks (13.1-13.7) distinct from `v0.5.0`'s response-quality benchmarks.
 
-## v0.7.0: Expanded Benchmark Suite and Automated Evaluation Support
+## v0.7.0: Broader Command Coverage and Automated Evidence Tests
 
-- Expand benchmark coverage across GAUSS workflows and failure modes.
-- Add automated or semi-automated evaluation support.
-- Track benchmark regressions across prompt, expert, and retrieval changes.
+- Expand real schema-aligned command evidence coverage beyond the two `v0.6.0` pilots (`olsmt`, `strindx`) to a deliberately varied set of documentation shapes: `strsplit`, `dstatmt`, `qnewtonmt`, `pdsummary`, and `minimize`.
+- Add an aggregate validator (`scripts/validate_all_evidence.py`) that checks every committed schema-aligned example and schema fixture in one pass, distinguishing expected-valid from intentionally-invalid files.
+- Document a strict-mode release policy: the non-strict validate-all run is the release-health check, with known reviewed warnings named explicitly rather than hidden.
+- Add and evaluate Automated Evidence Validation benchmarks (14.1-14.5) covering default validate-all health, strict-mode warning policy, aggregator discovery of new evidence, and both expected-invalid and expected-valid regression scenarios.
+- Keep the legacy (non-`--schema-output`) lookup format byte-for-byte unchanged.
