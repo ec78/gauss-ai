@@ -40,10 +40,19 @@
 - Add a lightweight evidence validator for lookup JSON artifacts (`scripts/validate_lookup_evidence.py`), plus schema-aligned output support (`--schema-output`) in the retrieval prototype.
 - Add and evaluate evidence-schema-focused benchmarks (13.1-13.7) distinct from `v0.5.0`'s response-quality benchmarks.
 
-## v0.7.0: Broader Command Coverage and Automated Evidence Tests
+## v0.7.0: Broader Command Coverage and Automated Evidence Tests (Completed)
 
 - Expand real schema-aligned command evidence coverage beyond the two `v0.6.0` pilots (`olsmt`, `strindx`) to a deliberately varied set of documentation shapes: `strsplit`, `dstatmt`, `qnewtonmt`, `pdsummary`, and `minimize`.
 - Add an aggregate validator (`scripts/validate_all_evidence.py`) that checks every committed schema-aligned example and schema fixture in one pass, distinguishing expected-valid from intentionally-invalid files.
 - Document a strict-mode release policy: the non-strict validate-all run is the release-health check, with known reviewed warnings named explicitly rather than hidden.
 - Add and evaluate Automated Evidence Validation benchmarks (14.1-14.5) covering default validate-all health, strict-mode warning policy, aggregator discovery of new evidence, and both expected-invalid and expected-valid regression scenarios.
 - Keep the legacy (non-`--schema-output`) lookup format byte-for-byte unchanged.
+
+## v0.8.0: Operational Expert Modules
+
+- Move expert modules from documentation/specification assets to operational components the Code Assistant explicitly routes through, starting with the GAUSS Language Expert.
+- Define a reusable operational expert interface (`tools/operational_expert_interface.md`): activation triggers, non-activation cases, required evidence by task type, decision rules, refusal/escalation conditions, an output contract, and evaluation criteria.
+- Fill in that interface for the GAUSS Language Expert (`experts/gauss-language/OPERATIONAL_PROFILE.md`), consuming the existing evidence schema and retrieval-backed response pattern rather than inventing a competing evidence vocabulary.
+- Add an expert routing workflow (`workflows/expert-routing.md`) and integrate it into the Code Assistant's response workflow, task modes, and system prompt, replacing the prior one-line "identify relevant experts" step.
+- Add and evaluate Expert Routing benchmarks (15.1-15.7) covering positive activation, correct non-activation, native command preference, translation, cross-language-contamination debugging, data-structure routing, ambiguity escalation, and version-sensitive command selection.
+- Keep expert activation internal by default: routing is checkable from response behavior, not a required "expert activated" label. Only the GAUSS Language Expert is operationalized in this milestone; the Econometrics, Software Engineering, Documentation, and Education experts remain narrative-only.

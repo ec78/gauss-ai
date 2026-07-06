@@ -6,9 +6,9 @@ Rather than creating a single, monolithic chatbot, this project defines a collec
 
 ## Current Status
 
-The project is currently working toward `v0.7.0` - Broader Command Coverage and Automated Evidence Tests. This milestone expands real schema-aligned command evidence coverage across a deliberately varied set of documentation shapes and adds an aggregate validator (`scripts/validate_all_evidence.py`) so every committed evidence example and fixture can be checked in one pass instead of by hand, one file at a time.
+The project is currently working toward `v0.8.0` - Operational Expert Modules. This milestone turns expert modules from documentation/specification assets into operational components the Code Assistant explicitly routes through, starting with the GAUSS Language Expert: a reusable operational expert interface, a filled-in GAUSS Language Expert profile, a routing workflow, and Code Assistant integration, evaluated by Expert Routing benchmarks. Expert activation is internal by default and does not weaken existing retrieval/evidence requirements; only the GAUSS Language Expert is operationalized so far.
 
-Prior milestones: `v0.2.0` established the knowledge and evaluation foundation (expert guidance, benchmark prompts, scoring rubrics, manual evaluation records, native command category discovery, and command documentation retrieval workflows); `v0.3.0` made the Code Assistant usable and evaluable for manual preview; `v0.4.0` added a local-first command documentation lookup prototype; `v0.5.0` standardized retrieval-backed response behavior across the assistant's task modes; `v0.6.0` represented command lookup evidence in a structured, versioned JSON Schema, validated that evidence mechanically, and added schema-aligned output to the retrieval prototype alongside the existing lookup format. See [ROADMAP.md](ROADMAP.md) for full milestone history.
+Prior milestones: `v0.2.0` established the knowledge and evaluation foundation (expert guidance, benchmark prompts, scoring rubrics, manual evaluation records, native command category discovery, and command documentation retrieval workflows); `v0.3.0` made the Code Assistant usable and evaluable for manual preview; `v0.4.0` added a local-first command documentation lookup prototype; `v0.5.0` standardized retrieval-backed response behavior across the assistant's task modes; `v0.6.0` represented command lookup evidence in a structured, versioned JSON Schema, validated that evidence mechanically, and added schema-aligned output to the retrieval prototype alongside the existing lookup format; `v0.7.0` expanded real schema-aligned command evidence coverage across varied documentation shapes and added an aggregate validator so every committed evidence example and fixture can be checked in one pass. See [ROADMAP.md](ROADMAP.md) for full milestone history.
 
 ## Try The GAUSS Code Assistant
 
@@ -107,7 +107,7 @@ Expert modules encapsulate reusable domain expertise so multiple specialized age
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for milestone-level planning. The current target is `v0.7.0`, Broader Command Coverage and Automated Evidence Tests, which widens real schema-aligned evidence coverage and adds automated validation on top of the evidence schema and validator introduced in `v0.6.0`.
+See [ROADMAP.md](ROADMAP.md) for milestone-level planning. The current target is `v0.8.0`, Operational Expert Modules, which builds a routable expert layer (starting with the GAUSS Language Expert) on top of the evidence schema and validator introduced in `v0.6.0` and the broadened evidence coverage from `v0.7.0`.
 
 ### Phase 1
 

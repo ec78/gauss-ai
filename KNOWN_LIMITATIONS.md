@@ -1,6 +1,6 @@
 # Known Limitations
 
-These limitations apply as of the `v0.7.0` Broader Command Coverage and Automated Evidence Tests milestone.
+These limitations apply as of the `v0.8.0` Operational Expert Modules milestone.
 
 ## Retrieval and Lookup
 
@@ -25,6 +25,16 @@ These limitations apply as of the `v0.7.0` Broader Command Coverage and Automate
 - Schema-aligned output is available through `--schema-output`, but legacy lookup output remains the default and is not schema-aligned unless the flag is passed. Legacy lookup JSON files (`examples/retrieval/olsmt.lookup.json`, `examples/retrieval/strindx.lookup.json`) predate the schema and may not match the schema-aligned evidence format.
 - Current schema-aligned examples cover seven real GAUSS commands (`olsmt`, `strindx`, `strsplit`, `dstatmt`, `qnewtonmt`, `pdsummary`, `minimize`); broader coverage across the full GAUSS command surface remains unverified.
 - `scripts/validate_all_evidence.py` aggregates the single-file validator's results across all committed examples and fixtures; it does not add new validation rules of its own, does not execute GAUSS, and does not access the network. The `v0.7.0` release-health bar is the default non-strict run; `--strict` currently fails only because of the two known, reviewed `olsmt.evidence.json` path-warning false positives above — this is documented policy, not a suppressed failure, and improving the path-warning heuristic so this stops triggering is tracked as future work.
+
+## Expert Routing and Operational Modules
+
+- Expert routing (`workflows/expert-routing.md`, `experts/gauss-language/OPERATIONAL_PROFILE.md`, `tools/operational_expert_interface.md`) is a documentation/checkable-workflow contract, not a runtime instrumentation layer. No code parses or enforces these files at runtime; a response is checked against them manually, the same way task-mode fit is checked today.
+- Only the GAUSS Language Expert is operationalized as of `v0.8.0`. The Econometrics, Software Engineering, Documentation, and Education experts named in `workflows/code-assistant-response.md` remain narrative-only guidance, not backed by an operational profile.
+- Manual evaluation still determines whether correct routing occurred (activation, non-activation, decision-rule application, evidence-threshold compliance) — there is no automated expert-routing test harness.
+- No multi-expert orchestration exists. What happens when two experts' domains overlap on a single task is explicitly out of scope for `v0.8.0`.
+- Expert profiles add domain-specific constraints on top of existing evidence requirements; they do not replace or weaken them. Evidence requirements still depend on the retrieval workflow and evidence schema, and expert profiles do not substitute for official GAUSS documentation.
+- Schema validation still does not prove GAUSS semantic correctness or that any GAUSS code was executed — this remains true regardless of which expert consulted the evidence.
+- Expert activation is internal by default; responses are not required to state which expert (if any) was consulted, which means routing correctness can only be confirmed by inspecting response content, not by reading a self-reported label.
 
 ## Evaluation and Process
 
