@@ -82,6 +82,7 @@ This file records notable changes to the GAUSS AI framework.
 - Completed Expert Routing benchmark evaluations 15.1-15.7; all passed with 4.0 scores.
 - Added `v0.8.0` readiness checklist and pre-release audit.
 - Fixed stale `v0.7.0`-as-current wording in `README.md` and `ROADMAP.md` (marked `v0.7.0` Completed, added a `v0.8.0` roadmap entry), and added an "Expert Routing and Operational Modules" section to `KNOWN_LIMITATIONS.md` targeting `v0.8.0`.
+- Added minimum Econometrics Expert narrative foundation for `v0.9.0`.
 
 ## [0.1.0] - 2026-06-26
 
