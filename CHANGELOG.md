@@ -90,6 +90,7 @@ This file records notable changes to the GAUSS AI framework.
 - Completed Multi-Expert Routing benchmark evaluations 16.1-16.8; all passed with 4.0 scores.
 - Added `v0.9.0` readiness checklist and pre-release audit.
 - Fixed stale `v0.8.0`-as-current wording in `README.md` and `ROADMAP.md` (marked `v0.8.0` Completed, added a `v0.9.0` roadmap entry), and updated `KNOWN_LIMITATIONS.md` to target `v0.9.0`, reflect both operationalized experts, distinguish documented multi-expert routing from runtime orchestration, and record the missing-`glm`-evidence and unresolved-panel-estimation-command findings.
+- Added schema-aligned `glm` evidence for `v0.10.0`, closing the local-evidence gap found during the `v0.9.0` `16.7` benchmark evaluation. Updated the documented strict-mode policy in `scripts/README.md` and `schemas/README.md` to name `glm.evidence.json`'s known HDF5-URI path-warning false positives alongside the existing `olsmt` exception.
 
 ## [0.1.0] - 2026-06-26
 
