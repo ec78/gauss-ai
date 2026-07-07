@@ -1,6 +1,6 @@
 # Known Limitations
 
-These limitations apply as of the `v0.8.0` Operational Expert Modules milestone.
+These limitations apply as of the `v0.9.0` Second Operational Expert and Multi-Expert Routing milestone.
 
 ## Retrieval and Lookup
 
@@ -28,13 +28,15 @@ These limitations apply as of the `v0.8.0` Operational Expert Modules milestone.
 
 ## Expert Routing and Operational Modules
 
-- Expert routing (`workflows/expert-routing.md`, `experts/gauss-language/OPERATIONAL_PROFILE.md`, `tools/operational_expert_interface.md`) is a documentation/checkable-workflow contract, not a runtime instrumentation layer. No code parses or enforces these files at runtime; a response is checked against them manually, the same way task-mode fit is checked today.
-- Only the GAUSS Language Expert is operationalized as of `v0.8.0`. The Econometrics, Software Engineering, Documentation, and Education experts named in `workflows/code-assistant-response.md` remain narrative-only guidance, not backed by an operational profile.
-- Manual evaluation still determines whether correct routing occurred (activation, non-activation, decision-rule application, evidence-threshold compliance) — there is no automated expert-routing test harness.
-- No multi-expert orchestration exists. What happens when two experts' domains overlap on a single task is explicitly out of scope for `v0.8.0`.
-- Expert profiles add domain-specific constraints on top of existing evidence requirements; they do not replace or weaken them. Evidence requirements still depend on the retrieval workflow and evidence schema, and expert profiles do not substitute for official GAUSS documentation.
-- Schema validation still does not prove GAUSS semantic correctness or that any GAUSS code was executed — this remains true regardless of which expert consulted the evidence.
-- Expert activation is internal by default; responses are not required to state which expert (if any) was consulted, which means routing correctness can only be confirmed by inspecting response content, not by reading a self-reported label.
+- Expert routing (`workflows/expert-routing.md`, `experts/gauss-language/OPERATIONAL_PROFILE.md`, `experts/econometrics/OPERATIONAL_PROFILE.md`, `tools/operational_expert_interface.md`) is a documentation/checkable-workflow contract, not a runtime instrumentation layer. No code parses or enforces these files at runtime; a response is checked against them manually, the same way task-mode fit is checked today.
+- Two experts are operationalized as of `v0.9.0`: the GAUSS Language Expert (implementation correctness) and the Econometrics Expert (methodological correctness). The Software Engineering, Documentation, and Education experts named in `workflows/code-assistant-response.md` remain narrative-only guidance, not backed by an operational profile.
+- Manual evaluation still determines whether correct routing occurred (activation, non-activation, decision-rule application, evidence/context-threshold compliance) — there is no automated multi-expert routing test harness.
+- Multi-expert *routing* is documented (`workflows/expert-routing.md` defines GAUSS-only, Econometrics-only, Both, and Neither, with coordination rules for the both-experts case), but no runtime multi-expert *orchestration engine* exists, and no automated conflict-resolution engine exists beyond those documented coordination rules — surfacing a conflict or tension between the two experts' conclusions is a response-writing responsibility, not an automated check.
+- Expert profiles add domain-specific constraints on top of existing evidence requirements; they do not replace or weaken them. GAUSS command evidence requirements still depend on the retrieval workflow and evidence schema, and remain entirely separate from the Econometrics Expert's methodological context requirements — meeting one is never sufficient to satisfy the other. Command availability is never evidence of methodological validity, and methodological plausibility never justifies inventing GAUSS syntax.
+- Schema validation still does not prove GAUSS semantic correctness or that any GAUSS code was executed — this remains true regardless of which expert(s) consulted the evidence.
+- Expert activation is internal by default; responses are not required to state which expert(s) were consulted, which means routing correctness can only be confirmed by inspecting response content, not by reading a self-reported label.
+- Local schema-aligned evidence coverage does not yet include `glm` (used for logistic/probit regression); a `16.x` benchmark evaluation verified `glm`'s syntax against live official documentation instead, since no local evidence file existed. Adding a real `glm.evidence.json` is tracked as future work.
+- No verified native GAUSS panel-estimation command (fixed/random effects regression) has been confirmed in the currently inspected command categories or evidence set — only panel data-management utilities (`pdSummary`, `pdBalance`, `pdLag`, etc.) are verified. Whether GAUSS has a dedicated panel-estimation command remains an open, unresolved item pending further retrieval, not something the Econometrics or GAUSS Language Expert should assume either way.
 
 ## Evaluation and Process
 

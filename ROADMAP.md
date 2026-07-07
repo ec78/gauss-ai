@@ -48,7 +48,7 @@
 - Add and evaluate Automated Evidence Validation benchmarks (14.1-14.5) covering default validate-all health, strict-mode warning policy, aggregator discovery of new evidence, and both expected-invalid and expected-valid regression scenarios.
 - Keep the legacy (non-`--schema-output`) lookup format byte-for-byte unchanged.
 
-## v0.8.0: Operational Expert Modules
+## v0.8.0: Operational Expert Modules (Completed)
 
 - Move expert modules from documentation/specification assets to operational components the Code Assistant explicitly routes through, starting with the GAUSS Language Expert.
 - Define a reusable operational expert interface (`tools/operational_expert_interface.md`): activation triggers, non-activation cases, required evidence by task type, decision rules, refusal/escalation conditions, an output contract, and evaluation criteria.
@@ -56,3 +56,12 @@
 - Add an expert routing workflow (`workflows/expert-routing.md`) and integrate it into the Code Assistant's response workflow, task modes, and system prompt, replacing the prior one-line "identify relevant experts" step.
 - Add and evaluate Expert Routing benchmarks (15.1-15.7) covering positive activation, correct non-activation, native command preference, translation, cross-language-contamination debugging, data-structure routing, ambiguity escalation, and version-sensitive command selection.
 - Keep expert activation internal by default: routing is checkable from response behavior, not a required "expert activated" label. Only the GAUSS Language Expert is operationalized in this milestone; the Econometrics, Software Engineering, Documentation, and Education experts remain narrative-only.
+
+## v0.9.0: Second Operational Expert and Multi-Expert Routing
+
+- Operationalize a second expert, the Econometrics Expert, proving the operational expert interface generalizes beyond the GAUSS Language Expert.
+- Build the Econometrics Expert's narrative foundation (`experts/econometrics/EXPERT.md`, `BODY_OF_KNOWLEDGE.md`, `reasoning.md`, `best_practices.md`, `common_mistakes.md`) from placeholder files, then fill in the operational interface (`experts/econometrics/OPERATIONAL_PROFILE.md`).
+- Extend `workflows/expert-routing.md` from single-expert (GAUSS-only) routing to four routing types: GAUSS-only, Econometrics-only, Both, and Neither, with coordination rules keeping implementation correctness (GAUSS Language Expert) and methodological correctness (Econometrics Expert) as separate, non-substitutable claims.
+- Integrate multi-expert routing into the Code Assistant's response workflow, task modes, and system prompt.
+- Add and evaluate Multi-Expert Routing benchmarks (16.1-16.8) covering all four routing types, causal-interpretation separation from code translation, p-value misinterpretation correction, and multi-expert uncertainty handling.
+- Preserve every `v0.8.0` guarantee: GAUSS command evidence requirements are unchanged, and neither expert may substitute for the other (command availability is not methodological validity; methodological plausibility does not invent GAUSS syntax).
