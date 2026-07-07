@@ -604,3 +604,137 @@ Expected behavior:
 - Does not ask for command documentation or retrieval evidence.
 - Still produces a useful changelog/release-note response.
 - Demonstrates that negative routing is part of correctness.
+
+## Multi-Expert Routing
+
+### Prompt 16.1: Econometrics-only activation
+
+The user asks whether OLS is appropriate for estimating a causal effect in a conceptual scenario. They do not ask for GAUSS code, syntax, commands, or implementation.
+
+Example prompt: "I have observational data on wages and education, and I want to estimate the causal effect of education on wages using OLS. Is OLS appropriate here, and what assumptions would I need?"
+
+Expected behavior:
+- Routes through the Econometrics Expert.
+- Does not route through the GAUSS Language Expert.
+- Identifies the task as methodology-focused, not implementation-focused.
+- Explains that OLS can estimate associations but causal interpretation requires identification assumptions.
+- Discusses omitted variable bias/endogeneity and possible design concerns.
+- Recommends diagnostics, robustness checks, or alternative strategies where appropriate.
+- Does not ask for GAUSS command documentation or official syntax evidence.
+- Does not invent GAUSS syntax.
+- Does not need a literal "Econometrics Expert activated" label.
+
+### Prompt 16.2: GAUSS-only activation
+
+The user asks for exact syntax or return fields for a GAUSS command, with no request for statistical interpretation.
+
+Example prompt: "What is the exact GAUSS syntax for `strindx`, and what does it return if the substring is not found?"
+
+Expected behavior:
+- Routes through the GAUSS Language Expert.
+- Does not route through the Econometrics Expert.
+- Identifies the task as implementation-focused.
+- Requires official-doc-backed evidence for exact syntax and return semantics.
+- Correctly uses verified `strindx` behavior if evidence is available.
+- Does not discuss model choice, assumptions, diagnostics, or statistical validity.
+- Does not claim execution.
+- Does not need a literal "GAUSS Language Expert activated" label.
+
+### Prompt 16.3: Both experts activate for R-to-GAUSS regression translation
+
+The user provides R code using `lm(y ~ education + experience, data = wages)` and asks for equivalent GAUSS code plus advice on whether the model is appropriate for interpreting education as causal.
+
+Example prompt: "Can you translate this R code to GAUSS and tell me whether it supports a causal interpretation?
+
+```r
+model <- lm(wage ~ education + experience, data = wages)
+summary(model)
+coef(model)
+```"
+
+Expected behavior:
+- Routes through both experts.
+- GAUSS Language Expert handles implementation correctness and `olsmt` evidence.
+- Econometrics Expert handles causal interpretation and assumptions.
+- Uses official-doc-backed evidence for exact GAUSS command syntax.
+- Does not treat `olsmt` availability as proof that the causal model is appropriate.
+- Explains that causal interpretation requires identification assumptions beyond code translation.
+- Provides validation suggestions for implementation and diagnostics/robustness suggestions for methodology.
+- Keeps implementation and methodology claims distinct.
+- Does not claim execution.
+
+### Prompt 16.4: Both experts activate for panel-data method choice in GAUSS
+
+The user asks which GAUSS approach to use for panel data where they have repeated observations by county over time and want to estimate an effect while controlling for county differences.
+
+Example prompt: "I have county-level panel data over 10 years and want to estimate the effect of a policy while controlling for county-level differences. What model should I consider, and how should I think about implementing this in GAUSS?"
+
+Expected behavior:
+- Routes through both experts.
+- Econometrics Expert handles panel methodology: unit/time structure, fixed effects vs random effects considerations, identification, clustering/serial correlation, diagnostics.
+- GAUSS Language Expert handles implementation boundaries and notes that exact GAUSS command syntax requires evidence.
+- Does not invent GAUSS panel command syntax.
+- Separates methodological recommendation from implementation availability.
+- Asks for or states assumptions about treatment timing, panel balance, policy variation, and clustering level.
+- Provides next steps without overclaiming.
+
+### Prompt 16.5: Methodologically bad request with valid GAUSS syntax
+
+The user asks for GAUSS code to run a regression and interpret a statistically significant coefficient as causal, but the setup is observational and lacks identification support.
+
+Example prompt: "I have observational customer data and want GAUSS code to regress purchase amount on whether someone saw an ad. If the ad coefficient is significant, can I say the ad caused higher purchases?"
+
+Expected behavior:
+- Routes through both experts.
+- GAUSS Language Expert may support implementation guidance if code is requested.
+- Econometrics Expert flags the causal interpretation problem.
+- Does not simply provide code and endorse the causal claim.
+- Explains that statistical significance is not causal evidence without design support.
+- Suggests design/robustness alternatives such as controls, matching, fixed effects, experiments, instruments, or sensitivity checks as appropriate.
+- Does not invent GAUSS syntax unless command evidence is available.
+- Keeps "can run this regression" separate from "can interpret it causally."
+
+### Prompt 16.6: Correct command, wrong interpretation
+
+The user has GAUSS regression output or describes output and misinterprets a p-value or coefficient.
+
+Example prompt: "My GAUSS regression output shows the coefficient on price is -0.8 with p = 0.03. Does that mean price explains 3% of the variation in sales?"
+
+Expected behavior:
+- Routes through the Econometrics Expert.
+- GAUSS Language Expert activates only if GAUSS output mechanics or command-specific fields are needed.
+- Corrects the p-value misunderstanding.
+- Explains what the coefficient means conditionally, subject to variable units and model specification.
+- Distinguishes p-values from R-squared or explanatory power.
+- States what additional context is needed for precise interpretation.
+- Does not invent GAUSS output-field meanings.
+- Does not overclaim causality.
+
+### Prompt 16.7: Multi-expert uncertainty/conflict
+
+The user asks for a GAUSS implementation of a model, but the methodological context is insufficient to know whether the model is appropriate.
+
+Example prompt: "I want to run a logistic regression in GAUSS because my outcome is 0/1. Can you give me the command and tell me if this is the right model?"
+
+Expected behavior:
+- Routes through both experts.
+- GAUSS Language Expert handles implementation only if evidence for the GAUSS command is available; otherwise routes to retrieval or states verification is needed.
+- Econometrics Expert says binary outcome suggests logistic/probit may be candidates but appropriateness depends on goal, data structure, sampling, separation, repeated observations, and interpretation needs.
+- Does not let implementation confidence mask methodological uncertainty.
+- Does not let methodological plausibility invent exact GAUSS syntax.
+- Asks focused clarifying questions or states assumptions.
+- Separates "candidate method" from "verified GAUSS implementation."
+
+### Prompt 16.8: Neither expert activates
+
+The user asks for a general changelog or release note about v0.9.0 multi-expert routing. The task mentions GAUSS AI and Econometrics Expert but does not require GAUSS syntax, command behavior, statistical interpretation, or model advice.
+
+Example prompt: "Write a short changelog entry saying we added multi-expert routing with the Econometrics Expert."
+
+Expected behavior:
+- Routes through neither operational expert.
+- Recognizes this as release tracking/changelog/general writing.
+- Does not impose GAUSS command evidence requirements.
+- Does not impose econometric-methodology context requirements.
+- Produces a useful changelog entry.
+- Demonstrates correct negative routing despite expert-related terminology appearing in the request.

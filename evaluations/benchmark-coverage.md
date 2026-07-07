@@ -57,6 +57,14 @@ Some early runs predate stable Prompt ID assignment. Where a run does not match 
 | 15.5 | Expert Routing | DataFrame vs matrix design guidance | Passed | [2026-07-05-code-assistant-expert-routing-run-006.md](runs/2026-07-05-code-assistant-expert-routing-run-006.md) | 4.0 | Recommended DataFrame-then-matrix using `BODY_OF_KNOWLEDGE.md`'s decision table, identified a concrete transition point, and declined to name exact procedure syntax without command-specific retrieval. |
 | 15.6 | Expert Routing | Ambiguous command evidence escalates | Passed | [2026-07-05-code-assistant-expert-routing-run-004.md](runs/2026-07-05-code-assistant-expert-routing-run-004.md) | 4.0 | Refused production-ready syntax against the real `ambiguous-command-match.json` fixture, cited the close confidence gap and empty candidate syntax fields, and flagged the fixture's synthetic-data disclosure. |
 | 15.7 | Expert Routing | Non-GAUSS task does not activate expert | Passed | [2026-07-05-code-assistant-expert-routing-run-001.md](runs/2026-07-05-code-assistant-expert-routing-run-001.md) | 4.0 | Drafted the requested changelog entry with zero GAUSS-specific reasoning, evidence requests, or retrieval-workflow language, confirming non-activation is checkable from the absence of that machinery. |
+| 16.1 | Multi-Expert Routing | Econometrics-only activation | Not Run | N/A | N/A | Tests Econometrics-only routing. |
+| 16.2 | Multi-Expert Routing | GAUSS-only activation | Not Run | N/A | N/A | Tests GAUSS-only routing. |
+| 16.3 | Multi-Expert Routing | Both experts activate for R-to-GAUSS regression translation | Not Run | N/A | N/A | Tests both-experts routing for R-to-GAUSS causal interpretation. |
+| 16.4 | Multi-Expert Routing | Both experts activate for panel-data method choice in GAUSS | Not Run | N/A | N/A | Tests both-experts routing for panel-data method choice in GAUSS. |
+| 16.5 | Multi-Expert Routing | Methodologically bad request with valid GAUSS syntax | Not Run | N/A | N/A | Tests valid-code/statistically-bad causal claim separation. |
+| 16.6 | Multi-Expert Routing | Correct command, wrong interpretation | Not Run | N/A | N/A | Tests interpretation correction without unnecessary GAUSS routing. |
+| 16.7 | Multi-Expert Routing | Multi-expert uncertainty/conflict | Not Run | N/A | N/A | Tests multi-expert uncertainty and separation of implementation/methodology. |
+| 16.8 | Multi-Expert Routing | Neither expert activates | Not Run | N/A | N/A | Tests neither-expert routing. |
 
 ## Completed Runs Not Directly Covered By Current Stable Prompts
 
