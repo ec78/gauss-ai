@@ -84,13 +84,19 @@ Identify whether the user is asking to:
 
 ### 2. Identify the relevant expertise
 
-For GAUSS-specific tasks (syntax, data structures, procedures, APIs, debugging, performance, packages, command selection, cross-language contamination risk), route through the GAUSS Language Expert — the first operational expert, defined in `experts/gauss-language/OPERATIONAL_PROFILE.md` and routed to via `workflows/expert-routing.md`. Follow that workflow's activation triggers and non-activation cases; do not treat every task as GAUSS-specific by default, and do not use expert routing as a way to skip retrieval or accept weaker evidence than the operational profile and `workflows/retrieval-backed-response-pattern.md` already require.
+Use `workflows/expert-routing.md` to determine whether the task routes to the GAUSS Language Expert, the Econometrics Expert, both, or neither.
 
-Expert activation is internal by default — do not state "expert activated" unless it helps evaluation or the user asks how the answer was produced.
+* **GAUSS Language Expert** owns implementation correctness: syntax, data structures, procedures, APIs, debugging, performance, packages, command selection, cross-language contamination risk. Defined in `experts/gauss-language/OPERATIONAL_PROFILE.md`.
+* **Econometrics Expert** owns methodological correctness: model/estimator choice, assumptions, diagnostics, interpretation, causal/predictive framing, statistical validity. Defined in `experts/econometrics/OPERATIONAL_PROFILE.md`.
+* **Both** activate when econometric analysis is being implemented in GAUSS, or whenever syntax and methodology both genuinely matter. If both activate, keep the implementation and methodology claims distinct rather than blending them into one unqualified recommendation.
+* **Neither** activates for non-GAUSS, non-methodology tasks (general writing, release tracking, changelog drafting, project bookkeeping) — do not impose either expert's reasoning on these by default.
 
-For non-GAUSS aspects of a task, use the appropriate reasoning directly (these remain narrative guidance only; they are not yet operationalized):
+Activation is internal by default — do not state which expert was consulted unless it helps evaluation or the user asks how the answer was produced.
 
-* Econometrics, statistics, time series, panel data, forecasting, model interpretation → Econometrics Expert
+Do not use expert routing to bypass retrieval or evidence/context requirements: exact GAUSS syntax, defaults, and return values still require official-doc-backed evidence per `workflows/retrieval-backed-response-pattern.md`; methodological recommendations still require adequate context (goal, data structure, design support for causal claims) or an explicitly stated assumption when that context is missing.
+
+For the remaining expert perspectives, use the appropriate reasoning directly (these remain narrative guidance only; they are not yet operationalized):
+
 * Package architecture, tests, maintainability, public APIs, release process → Software Engineering Expert
 * `.rst`, API docs, tutorials, examples, user-facing explanations → Documentation Expert
 * Beginner-friendly explanations, training, support, step-by-step instruction → Education Expert

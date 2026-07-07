@@ -88,7 +88,7 @@ Use this mode when the user asks the agent to write new GAUSS code.
 * Are missing values considered where relevant?
 * Is the code appropriate for the user's experience level?
 
-For GAUSS-specific code, route through `../../workflows/expert-routing.md` and `../../experts/gauss-language/OPERATIONAL_PROFILE.md`. Exact syntax, defaults, and return values still require official-doc-backed evidence, not general knowledge.
+GAUSS code generation activates the GAUSS Language Expert (`../../workflows/expert-routing.md`, `../../experts/gauss-language/OPERATIONAL_PROFILE.md`); exact syntax, defaults, and return values still require official-doc-backed evidence, not general knowledge. If the code implements a statistical/econometric method, the Econometrics Expert (`../../experts/econometrics/OPERATIONAL_PROFILE.md`) may also activate to confirm the method fits the stated goal and data.
 
 ## 2. Debugging Mode
 
@@ -146,7 +146,7 @@ Use this mode when the user provides broken code, an error message, unexpected o
 * Are missing values considered when relevant?
 * Does the response include a way to verify the fix?
 
-For GAUSS-specific debugging, route through `../../workflows/expert-routing.md` and the GAUSS Language Expert operational profile (`../../experts/gauss-language/OPERATIONAL_PROFILE.md`). When the diagnosis depends on documented command-specific behavior (for example, a return-value field or a not-found/missing-value convention), follow `../../workflows/retrieval-backed-response-pattern.md` and include its validation-step requirement in the fix.
+GAUSS syntax, runtime, or command issues activate the GAUSS Language Expert (`../../workflows/expert-routing.md`, `../../experts/gauss-language/OPERATIONAL_PROFILE.md`). Statistical or modeling issues (wrong estimator, violated assumption, misread diagnostic) activate the Econometrics Expert (`../../experts/econometrics/OPERATIONAL_PROFILE.md`) instead. Bugs that could be either — or both, such as code that runs but produces a statistically questionable result — may activate both experts; keep the syntax fix and the methodological concern distinct. When the diagnosis depends on documented command-specific behavior (for example, a return-value field or a not-found/missing-value convention), follow `../../workflows/retrieval-backed-response-pattern.md` and include its validation-step requirement in the fix.
 
 ## 3. Code Explanation Mode
 
@@ -185,7 +185,7 @@ Use this mode when the user asks what GAUSS code does or how a GAUSS concept wor
 * Does it distinguish GAUSS syntax from general programming ideas?
 * Are data structures and dimensions explained when relevant?
 
-For explanations that involve GAUSS code, syntax, or commands, route through `../../workflows/expert-routing.md`; purely conceptual, non-GAUSS explanations do not require GAUSS Language Expert activation.
+Explaining GAUSS syntax or code mechanics activates the GAUSS Language Expert (`../../workflows/expert-routing.md`). Explaining model interpretation or assumptions activates the Econometrics Expert (`../../experts/econometrics/OPERATIONAL_PROFILE.md`) instead. Explaining a GAUSS model's printed output may activate both — GAUSS-side mechanics from one, statistical meaning from the other. Purely conceptual, non-GAUSS, non-methodological explanations do not require either.
 
 ## 4. Code Translation Mode
 
@@ -237,7 +237,7 @@ Use this mode when the user asks to translate code from Python, R, MATLAB, Stata
 * Are package dependencies stated?
 * Is the translated code runnable or clearly marked as a pattern?
 
-Translation into or out of GAUSS routes through `../../workflows/expert-routing.md` and the GAUSS Language Expert operational profile. When the translation relies on a native command whose behavior was verified through documentation lookup, follow `../../workflows/retrieval-backed-response-pattern.md` and include its validation-step requirement (for example, comparing the GAUSS result against the source language's result on the same data).
+Translation into GAUSS activates the GAUSS Language Expert (`../../workflows/expert-routing.md`, `../../experts/gauss-language/OPERATIONAL_PROFILE.md`). Translating econometric or statistical code (a regression, a diagnostic, a forecasting model) may also activate the Econometrics Expert (`../../experts/econometrics/OPERATIONAL_PROFILE.md`) to confirm the method is still appropriate for the data, not just that the syntax translated correctly. When the translation relies on a native command whose behavior was verified through documentation lookup, follow `../../workflows/retrieval-backed-response-pattern.md` and include its validation-step requirement (for example, comparing the GAUSS result against the source language's result on the same data).
 
 ## 5. Code Review Mode
 
@@ -280,7 +280,7 @@ Use this mode when the user asks for feedback on GAUSS code, package code, proce
 * Are tests or examples recommended when relevant?
 * Is feedback appropriate to the code’s purpose?
 
-For GAUSS code review, route through `../../workflows/expert-routing.md` and `../../experts/gauss-language/OPERATIONAL_PROFILE.md`; flag hallucinated functions or invalid syntax per the expert’s decision rules.
+GAUSS implementation correctness (hallucinated functions, invalid syntax, data-structure misuse) activates the GAUSS Language Expert (`../../workflows/expert-routing.md`, `../../experts/gauss-language/OPERATIONAL_PROFILE.md`). Methodological or statistical validity (wrong estimator, unchecked assumption, misinterpreted output) activates the Econometrics Expert (`../../experts/econometrics/OPERATIONAL_PROFILE.md`). Reviewing analysis code (code that runs a statistical model) often activates both, since correctness and appropriateness are separate questions.
 
 ## 6. Refactoring Mode
 
@@ -320,7 +320,7 @@ Use this mode when the user asks to improve existing GAUSS code without changing
 * Are dependencies unchanged or explained?
 * Are tests suggested for nontrivial refactors?
 
-For GAUSS-specific refactors, route through `../../workflows/expert-routing.md` and `../../experts/gauss-language/OPERATIONAL_PROFILE.md`.
+GAUSS code structure activates the GAUSS Language Expert (`../../workflows/expert-routing.md`, `../../experts/gauss-language/OPERATIONAL_PROFILE.md`). The Econometrics Expert activates only if the refactor could change how a model, sample, or estimator is interpreted — for example, restructuring how missing values are dropped before estimation — not for a pure code-structure cleanup that preserves behavior.
 
 ## 7. Optimization Mode
 
@@ -360,7 +360,7 @@ Use this mode when the user asks to make GAUSS code faster or more memory effici
 * Are memory allocation and copying considered?
 * Is benchmarking suggested when appropriate?
 
-For GAUSS-specific optimization, route through `../../workflows/expert-routing.md` and `../../experts/gauss-language/OPERATIONAL_PROFILE.md`, including version-sensitive command choices (for example, `qnewtonmt` vs. `minimize`).
+GAUSS optimization command selection (for example, `qnewtonmt` vs. `minimize`) activates the GAUSS Language Expert (`../../workflows/expert-routing.md`, `../../experts/gauss-language/OPERATIONAL_PROFILE.md`), including version-sensitive choices. Whether an optimization-estimated model itself is methodologically appropriate (not just which optimizer to call) activates the Econometrics Expert (`../../experts/econometrics/OPERATIONAL_PROFILE.md`).
 
 ## 8. Documentation Mode
 
@@ -400,7 +400,7 @@ Use this mode when the user asks for documentation, comments, examples, tutorial
 * Does the format match the requested documentation type?
 * Is documentation synchronized with code?
 
-For documentation describing GAUSS syntax, commands, or behavior, route through `../../workflows/expert-routing.md`; documentation about non-GAUSS content (general README structure, style) does not require GAUSS Language Expert activation.
+Documentation describing GAUSS syntax, commands, or behavior activates the GAUSS Language Expert (`../../workflows/expert-routing.md`). Statistical interpretation or methodology-focused tutorial content activates the Econometrics Expert (`../../experts/econometrics/OPERATIONAL_PROFILE.md`) instead. General documentation with neither GAUSS syntax nor statistical methodology (README structure, general style) activates neither.
 
 ## 9. Test Generation Mode
 
@@ -441,7 +441,7 @@ Use this mode when the user asks for tests or when reusable code would benefit f
 * Are dependencies stated?
 * Are tests appropriate for script, procedure, or package code?
 
-For GAUSS-specific tests, route through `../../workflows/expert-routing.md` and `../../experts/gauss-language/OPERATIONAL_PROFILE.md`.
+GAUSS code tests (checking return values, dimensions, edge cases) activate the GAUSS Language Expert (`../../workflows/expert-routing.md`, `../../experts/gauss-language/OPERATIONAL_PROFILE.md`). Statistical validation or diagnostic tests (checking that a model's assumptions hold, or that a diagnostic behaves as expected) activate the Econometrics Expert (`../../experts/econometrics/OPERATIONAL_PROFILE.md`).
 
 ## 10. Design Guidance Mode
 
@@ -480,7 +480,7 @@ Use this mode when the user asks how to structure a GAUSS solution, choose data 
 * Are data structures chosen intentionally?
 * Are package or API implications considered?
 
-For GAUSS data-structure or API design choices, route through `../../workflows/expert-routing.md` and `../../experts/gauss-language/OPERATIONAL_PROFILE.md`.
+GAUSS data-structure or implementation design choices activate the GAUSS Language Expert (`../../workflows/expert-routing.md`, `../../experts/gauss-language/OPERATIONAL_PROFILE.md`). Statistical design or modeling strategy (which estimator family fits the research question) activates the Econometrics Expert (`../../experts/econometrics/OPERATIONAL_PROFILE.md`). End-to-end analysis design (data structure through to model choice and implementation) may activate both.
 
 ## Mode Escalation Rules
 
@@ -529,4 +529,6 @@ Before finalizing any response, the agent should check:
 * Is the response matched to the user’s actual task mode?
 * Is the answer over-engineered or under-engineered?
 * Would the user know what to do next?
-* Was GAUSS Language Expert routing applied only when the task actually needed it, per `../../workflows/expert-routing.md`’s non-activation cases? Non-GAUSS tasks should not be forced through GAUSS-specific reasoning.
+* Did the response choose the correct routing type — GAUSS-only, Econometrics-only, Both, or Neither — per `../../workflows/expert-routing.md`?
+* Did it avoid over-routing, applying either expert's reasoning to a task from that expert's non-activation cases?
+* If both experts activated, did the response keep the implementation recommendation and the methodology recommendation separate, rather than blending them into one unqualified claim?

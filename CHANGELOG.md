@@ -85,6 +85,7 @@ This file records notable changes to the GAUSS AI framework.
 - Added minimum Econometrics Expert narrative foundation for `v0.9.0`.
 - Added Econometrics Expert operational profile for `v0.9.0`.
 - Extended expert routing workflow for GAUSS Language and Econometrics multi-expert routing.
+- Integrated multi-expert routing into Code Assistant workflow and prompt documentation.
 
 ## [0.1.0] - 2026-06-26
 
