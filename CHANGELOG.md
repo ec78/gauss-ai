@@ -84,6 +84,7 @@ This file records notable changes to the GAUSS AI framework.
 - Fixed stale `v0.7.0`-as-current wording in `README.md` and `ROADMAP.md` (marked `v0.7.0` Completed, added a `v0.8.0` roadmap entry), and added an "Expert Routing and Operational Modules" section to `KNOWN_LIMITATIONS.md` targeting `v0.8.0`.
 - Added minimum Econometrics Expert narrative foundation for `v0.9.0`.
 - Added Econometrics Expert operational profile for `v0.9.0`.
+- Extended expert routing workflow for GAUSS Language and Econometrics multi-expert routing.
 
 ## [0.1.0] - 2026-06-26
 
