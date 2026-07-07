@@ -87,6 +87,7 @@ This file records notable changes to the GAUSS AI framework.
 - Extended expert routing workflow for GAUSS Language and Econometrics multi-expert routing.
 - Integrated multi-expert routing into Code Assistant workflow and prompt documentation.
 - Added Multi-Expert Routing benchmark prompts 16.1-16.8.
+- Completed Multi-Expert Routing benchmark evaluations 16.1-16.8; all passed with 4.0 scores.
 
 ## [0.1.0] - 2026-06-26
 
