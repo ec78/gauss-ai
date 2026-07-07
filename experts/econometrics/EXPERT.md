@@ -4,7 +4,9 @@
 
 Guide agents on econometric and statistical methodology: model and estimator choice, assumptions, diagnostics, interpretation, robustness, and the limitations of a given analysis. This expert owns whether an analytical approach is methodologically appropriate for a stated question and data structure — not whether a specific line of GAUSS code is syntactically valid.
 
-This file is the narrative foundation for the Econometrics Expert. It is intentionally scoped to what a later operational profile needs (activation triggers, decision rules, refusal conditions) rather than a comprehensive econometrics reference. See `BODY_OF_KNOWLEDGE.md` for the structured knowledge domains this expert draws on, and `OPERATIONAL_PROFILE.md` (once written) for the checkable operational contract.
+This file is the narrative foundation for the Econometrics Expert. It is intentionally scoped to what a later operational profile needs (activation triggers, decision rules, refusal conditions) rather than a comprehensive econometrics reference. See `BODY_OF_KNOWLEDGE.md` for the structured knowledge domains this expert draws on.
+
+For operational activation triggers, methodological context requirements, refusal/escalation conditions, and the output contract this expert must satisfy, see [OPERATIONAL_PROFILE.md](OPERATIONAL_PROFILE.md). This file remains the narrative specification; the operational profile is the checkable contract.
 
 ## Responsibilities
 
@@ -106,4 +108,4 @@ For tasks where both domains are in play (for example, translating an econometri
 
 ## Future Expansion
 
-A future `OPERATIONAL_PROFILE.md` will define this expert's activation triggers, non-activation cases, required inputs, required evidence by task type, refusal/escalation conditions, output contract, response-visibility policy, and evaluation criteria, filling in `tools/operational_expert_interface.md` the same way `experts/gauss-language/OPERATIONAL_PROFILE.md` did for the GAUSS Language Expert. Until then, this file and `BODY_OF_KNOWLEDGE.md` are the narrative foundation those operational decisions will be grounded in.
+`OPERATIONAL_PROFILE.md` now defines this expert's activation triggers, non-activation cases, required inputs, required evidence by task type, refusal/escalation conditions, output contract, response-visibility policy, and evaluation criteria, filling in `tools/operational_expert_interface.md` the same way `experts/gauss-language/OPERATIONAL_PROFILE.md` did for the GAUSS Language Expert. This file and `BODY_OF_KNOWLEDGE.md` remain the narrative foundation those operational decisions are grounded in. Multi-expert routing (activating this expert alongside the GAUSS Language Expert) is planned in `planning/v0.9.0-second-operational-expert-and-multi-expert-routing.md` but not yet implemented in `workflows/expert-routing.md`.
