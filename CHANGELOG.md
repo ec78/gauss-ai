@@ -91,6 +91,7 @@ This file records notable changes to the GAUSS AI framework.
 - Added `v0.9.0` readiness checklist and pre-release audit.
 - Fixed stale `v0.8.0`-as-current wording in `README.md` and `ROADMAP.md` (marked `v0.8.0` Completed, added a `v0.9.0` roadmap entry), and updated `KNOWN_LIMITATIONS.md` to target `v0.9.0`, reflect both operationalized experts, distinguish documented multi-expert routing from runtime orchestration, and record the missing-`glm`-evidence and unresolved-panel-estimation-command findings.
 - Added schema-aligned `glm` evidence for `v0.10.0`, closing the local-evidence gap found during the `v0.9.0` `16.7` benchmark evaluation. Updated the documented strict-mode policy in `scripts/README.md` and `schemas/README.md` to name `glm.evidence.json`'s known HDF5-URI path-warning false positives alongside the existing `olsmt` exception.
+- Added panel-estimation coverage audit for `v0.10.0` (`examples/retrieval/panel-estimation-coverage-audit.md`), correcting a `v0.9.0` preliminary finding: a verified panel-estimation command was found (`tscsFit`, from the commercial TSMT package), with new real schema-aligned evidence (`examples/retrieval/schema-aligned/tscsfit.evidence.json`). Updated `KNOWN_LIMITATIONS.md` to reflect the finding, the TSMT licensing dependency, and a known `command_doc_lookup.py` gap (does not yet distinguish `official_docs` from `official_package_docs`).
 
 ## [0.1.0] - 2026-06-26
 

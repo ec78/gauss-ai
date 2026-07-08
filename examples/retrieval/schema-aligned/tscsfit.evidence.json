@@ -1,0 +1,544 @@
+{
+  "ambiguity": null,
+  "best_match": {
+    "command_name": "tscsfit",
+    "confidence": 1.0,
+    "controls_section": ":type grp: Matrix\n\n   :param tsc: Optional input. Instance of a tscsmtControl structure. The following members of tsc are referenced within this routine:\n\n      .. list-table::\n\n- string, the name of a file in which to save the group means of the dataset. By default, tsc.mnsfn = \"\", so the means are not saved.\n         * - tsc.model\n           - scalar, controls the type of models to be estimated. Possible values are:\n\n             :0: All models are estimated.",
+    "examples": [
+      "tso = tscsFit(dataset, formula, grp[, tsc])\n\nnew;\n   cls,;\n   library tsmt;\n\n   // Declare tscsmt output structure\n   struct tscsmtOut tso;\n\n   // Estimate model\n   tso = tscsFit( getGAUSSHome() $+ \"pkgs/tsmt/examples/grunfeld.dat\", \"investment~firm_value + capital\", \"firm\");\n\nnew;\n   cls;\n   library tsmt;\n\n   // Load data from dataset\n   data=loadd(getGAUSSHome() $+ \"pkgs/tsmt/examples/munnell\");\n\n   // Independent variable\n   y = data[., 2];\n\n   // Dependent variable\n   x = data[., 3:6];\n\n   // Group variable\n   grp = data[.,1];\n\n   // Declare tscsmt output structure\n   struct tscsmtOut tso;\n\n   // Estimate model\n   tso = tscsFit(y, x, grp);"
+    ],
+    "extraction_warnings": [
+      "no keyword hits for: returns"
+    ],
+    "file_path": "tsmt/tscsfit.rst",
+    "formula_section": "Formula String\n+++++++++++++++\n\n::\n\n   new;\n   cls,;\n   library tsmt;\n\n   // Declare tscsmt output structure\n   struct tscsmtOut tso;\n\n   // Estimate model\n   tso = tscsFit( getGAUSSHome() $+ \"pkgs/tsmt/examples/grunfeld.dat\", \"investment~firm_value + capital\", \"firm\");\n\n:param formula: formula string of the model. E.g. ``\"y ~ X1 + X2\"`` 'y' is the name of dependent variable, '``X1``' and '``X2``' are names of independent variables; E.g. ``\"y ~ .\"``, '.' means including all variables except dependent variable 'y';\n:type formula: string\n\n- KxK matrix, variance-covariance matrix of the dummy variables regression model.\n         * - tso.mdv\n           - (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the dummy variables regression model.\n         * - tso.bec\n           - Kx1 vector, regression coefficients from the random effects regression model.\n\n- KxK matrix, variance-covariance matrix of the random effects regression model..\n         * - tso.mec\n           - (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the random effects regression model.\n         * - tso.fixedEffects\n           - matrix, fixed effects dummy variable estimates.",
+    "heading": "tscsFit",
+    "inputs_section": ":param y: data.\n:type y: Nx1 vector\n\n:param dataset: name of data set or null string.\n:type dataset: string\n\n:param formula: formula string of the model. E.g. ``\"y ~ X1 + X2\"`` 'y' is the name of dependent variable, '``X1``' and '``X2``' are names of independent variables; E.g. ``\"y ~ .\"``, '.' means including all variables except dependent variable 'y';\n:type formula: string\n\n:param grp: NTx1 of group identifiers.\n:type grp: Matrix\n\n:param tsc: Optional input. Instance of a tscsmtControl structure. The following members of tsc are referenced within this routine:\n.. list-table::\n* - tsc.header\n- string, specifies the format for the output header. tsc.header can contain zero or more of the following characters:\n.. list-table::\n* - t\n- title is to be printed.\n* - l\n- lines are to bracket the title.\n* - d\n- a date and time is to be printed.\n* - v\n- version number of program is to be printed\n* - f\n- file name being analyzed is to be printed\nExample:\ntsc.header = \"tld\";\nIf :code:`tsc.header = \"\"`, no header is printed. Default = \"tldvf\".\n* - tsc.ise\n- scalar. If 1, the ind ividual-specific effects are not printed. Default = 0.\n* - tsc.output\n- scalar, if nonzero, results are printed to screen. Default = 1.\n* - tsc.meth\n- scalar, Possible values are: Default = 0.\nDefault = 0.\n* - tsc.mnsfn\n- string, the\n...[truncated]",
+    "keyword_hits": {
+      "effects": [
+        {
+          "line": 56,
+          "snippet": "* - tsc.ise\n           - scalar. If 1, the ind ividual-specific effects are not printed. Default = 0.\n         * - tsc.output\n           - scalar, if nonzero, results are printed to screen. Default = 1."
+        },
+        {
+          "line": 62,
+          "snippet": "- scalar, Possible values are: Default = 0.\n\n             :0: Uses the fixed effects estimates of the ind ividual-specific effects to estimate the variance components of the random effects model. Us:e: this option if there are a different number of observations for each cross-sectional unit. Th:e: chi-squared test for the individual error components equal to 0 may not be correct if there are a different number of observations for each individual.\n             :1: Uses regression on group means to estimate variance components."
+        },
+        {
+          "line": 73,
+          "snippet": ":0: All models are estimated.\n             :1: The random effects (error components model) is not estimated.\n\n         * - tsc.rowfac"
+        },
+        {
+          "line": 100,
+          "snippet": "* - tso.bdv\n           - Kx1 vector, regression coefficients from the dummy effects model (excluding individual-variables regression model).\n         * - tso.vcdv\n           - KxK matrix, variance-covariance matrix of the dummy variables regression model."
+        },
+        {
+          "line": 106,
+          "snippet": "- (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the dummy variables regression model.\n         * - tso.bec\n           - Kx1 vector, regression coefficients from the random effects regression model.\n         * - tso.vcec\n           - KxK matrix, variance-covariance matrix of the random effects regression model.."
+        },
+        {
+          "line": 108,
+          "snippet": "- Kx1 vector, regression coefficients from the random effects regression model.\n         * - tso.vcec\n           - KxK matrix, variance-covariance matrix of the random effects regression model..\n         * - tso.mec\n           - (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the random effects regression model."
+        },
+        {
+          "line": 110,
+          "snippet": "- KxK matrix, variance-covariance matrix of the random effects regression model..\n         * - tso.mec\n           - (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the random effects regression model.\n         * - tso.fixedEffects\n           - matrix, fixed effects dummy variable estimates."
+        },
+        {
+          "line": 111,
+          "snippet": "* - tso.mec\n           - (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the random effects regression model.\n         * - tso.fixedEffects\n           - matrix, fixed effects dummy variable estimates.\n         * - tso.sefixedEffects"
+        }
+      ],
+      "fixed": [
+        {
+          "line": 62,
+          "snippet": "- scalar, Possible values are: Default = 0.\n\n             :0: Uses the fixed effects estimates of the ind ividual-specific effects to estimate the variance components of the random effects model. Us:e: this option if there are a different number of observations for each cross-sectional unit. Th:e: chi-squared test for the individual error components equal to 0 may not be correct if there are a different number of observations for each individual.\n             :1: Uses regression on group means to estimate variance components."
+        },
+        {
+          "line": 111,
+          "snippet": "* - tso.mec\n           - (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the random effects regression model.\n         * - tso.fixedEffects\n           - matrix, fixed effects dummy variable estimates.\n         * - tso.sefixedEffects"
+        },
+        {
+          "line": 112,
+          "snippet": "- (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the random effects regression model.\n         * - tso.fixedEffects\n           - matrix, fixed effects dummy variable estimates.\n         * - tso.sefixedEffects\n           - matrix, standard error of fixed effects dummy variable estimates."
+        },
+        {
+          "line": 113,
+          "snippet": "* - tso.fixedEffects\n           - matrix, fixed effects dummy variable estimates.\n         * - tso.sefixedEffects\n           - matrix, standard error of fixed effects dummy variable estimates.\n         * - tso.randomEffects"
+        },
+        {
+          "line": 114,
+          "snippet": "- matrix, fixed effects dummy variable estimates.\n         * - tso.sefixedEffects\n           - matrix, standard error of fixed effects dummy variable estimates.\n         * - tso.randomEffects\n           - matrix, estimated of random effects."
+        },
+        {
+          "line": 118,
+          "snippet": "- matrix, estimated of random effects.\n         * - tso.y_hat_dv\n           - matrix, fixed effects model estimated dependent variable.\n         * - tso.y_hat_ec\n           - matrix, random effects model estimated dependent variable."
+        },
+        {
+          "line": 122,
+          "snippet": "- matrix, random effects model estimated dependent variable.\n         * - tso.res_dv\n           - matrix, fixed effects model residuals.\n         * - tso.res_ec\n           - matrix, random model effects residuals."
+        }
+      ],
+      "formula": [
+        {
+          "line": 11,
+          "snippet": "------\n.. function:: tso = tscsFit(y, x, grp[, tsc])\n              tso = tscsFit(dataset, formula, grp[, tsc])\n\n   :param y: data."
+        },
+        {
+          "line": 19,
+          "snippet": ":type dataset: string\n\n   :param formula: formula string of the model. E.g. ``\"y ~ X1 + X2\"`` 'y' is the name of dependent variable, '``X1``' and '``X2``' are names of independent variables; E.g. ``\"y ~ .\"``, '.' means including all variables except dependent variable 'y';\n   :type formula: string"
+        },
+        {
+          "line": 20,
+          "snippet": ":param formula: formula string of the model. E.g. ``\"y ~ X1 + X2\"`` 'y' is the name of dependent variable, '``X1``' and '``X2``' are names of independent variables; E.g. ``\"y ~ .\"``, '.' means including all variables except dependent variable 'y';\n   :type formula: string\n\n   :param grp: NTx1 of group identifiers."
+        },
+        {
+          "line": 131,
+          "snippet": "--------\n\nFormula String\n+++++++++++++++"
+        }
+      ],
+      "grp": [
+        {
+          "line": 10,
+          "snippet": "Format\n------\n.. function:: tso = tscsFit(y, x, grp[, tsc])\n              tso = tscsFit(dataset, formula, grp[, tsc])"
+        },
+        {
+          "line": 11,
+          "snippet": "------\n.. function:: tso = tscsFit(y, x, grp[, tsc])\n              tso = tscsFit(dataset, formula, grp[, tsc])\n\n   :param y: data."
+        },
+        {
+          "line": 22,
+          "snippet": ":type formula: string\n\n   :param grp: NTx1 of group identifiers.\n   :type grp: Matrix"
+        },
+        {
+          "line": 23,
+          "snippet": ":param grp: NTx1 of group identifiers.\n   :type grp: Matrix\n\n   :param tsc: Optional input. Instance of a tscsmtControl structure. The following members of tsc are referenced within this routine:"
+        },
+        {
+          "line": 165,
+          "snippet": "// Group variable\n   grp = data[.,1];\n\n   // Declare tscsmt output structure"
+        },
+        {
+          "line": 171,
+          "snippet": "// Estimate model\n   tso = tscsFit(y, x, grp);\n\nRemarks"
+        }
+      ],
+      "output": [
+        {
+          "line": 31,
+          "snippet": "* - tsc.header\n           - string, specifies the format for the output header. tsc.header can contain zero or more of the following characters:\n\n             .. list-table::"
+        },
+        {
+          "line": 57,
+          "snippet": "* - tsc.ise\n           - scalar. If 1, the ind ividual-specific effects are not printed. Default = 0.\n         * - tsc.output\n           - scalar, if nonzero, results are printed to screen. Default = 1.\n         * - tsc.meth"
+        },
+        {
+          "line": 90,
+          "snippet": "- scalar. If 1, print standardized estimates of regression parameters. Default = 1.\n         * - tsc.title\n           - string, a title to be printed at the top of the output header (see tsc.header). By default, no title is printed (tsc.title = \"\").\n\n   :type tsc: struct"
+        },
+        {
+          "line": 140,
+          "snippet": "library tsmt;\n\n   // Declare tscsmt output structure\n   struct tscsmtOut tso;"
+        },
+        {
+          "line": 167,
+          "snippet": "grp = data[.,1];\n\n   // Declare tscsmt output structure\n   struct tscsmtOut tso;"
+        }
+      ],
+      "panel": [
+        {
+          "line": 175,
+          "snippet": "Remarks\n-------\nThe panel data must be contained in a stacked panel GAUSS dataset,\nwith one variable containing an index for the units. From each\ncross-sectional unit all observations must be grouped together. For"
+        }
+      ],
+      "random": [
+        {
+          "line": 62,
+          "snippet": "- scalar, Possible values are: Default = 0.\n\n             :0: Uses the fixed effects estimates of the ind ividual-specific effects to estimate the variance components of the random effects model. Us:e: this option if there are a different number of observations for each cross-sectional unit. Th:e: chi-squared test for the individual error components equal to 0 may not be correct if there are a different number of observations for each individual.\n             :1: Uses regression on group means to estimate variance components."
+        },
+        {
+          "line": 73,
+          "snippet": ":0: All models are estimated.\n             :1: The random effects (error components model) is not estimated.\n\n         * - tsc.rowfac"
+        },
+        {
+          "line": 106,
+          "snippet": "- (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the dummy variables regression model.\n         * - tso.bec\n           - Kx1 vector, regression coefficients from the random effects regression model.\n         * - tso.vcec\n           - KxK matrix, variance-covariance matrix of the random effects regression model.."
+        },
+        {
+          "line": 108,
+          "snippet": "- Kx1 vector, regression coefficients from the random effects regression model.\n         * - tso.vcec\n           - KxK matrix, variance-covariance matrix of the random effects regression model..\n         * - tso.mec\n           - (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the random effects regression model."
+        },
+        {
+          "line": 110,
+          "snippet": "- KxK matrix, variance-covariance matrix of the random effects regression model..\n         * - tso.mec\n           - (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the random effects regression model.\n         * - tso.fixedEffects\n           - matrix, fixed effects dummy variable estimates."
+        },
+        {
+          "line": 115,
+          "snippet": "* - tso.sefixedEffects\n           - matrix, standard error of fixed effects dummy variable estimates.\n         * - tso.randomEffects\n           - matrix, estimated of random effects.\n         * - tso.y_hat_dv"
+        },
+        {
+          "line": 116,
+          "snippet": "- matrix, standard error of fixed effects dummy variable estimates.\n         * - tso.randomEffects\n           - matrix, estimated of random effects.\n         * - tso.y_hat_dv\n           - matrix, fixed effects model estimated dependent variable."
+        },
+        {
+          "line": 120,
+          "snippet": "- matrix, fixed effects model estimated dependent variable.\n         * - tso.y_hat_ec\n           - matrix, random effects model estimated dependent variable.\n         * - tso.res_dv\n           - matrix, fixed effects model residuals."
+        }
+      ],
+      "returns": [],
+      "tsc": [
+        {
+          "line": 1,
+          "snippet": "tscsFit\n======="
+        },
+        {
+          "line": 10,
+          "snippet": "Format\n------\n.. function:: tso = tscsFit(y, x, grp[, tsc])\n              tso = tscsFit(dataset, formula, grp[, tsc])"
+        },
+        {
+          "line": 11,
+          "snippet": "------\n.. function:: tso = tscsFit(y, x, grp[, tsc])\n              tso = tscsFit(dataset, formula, grp[, tsc])\n\n   :param y: data."
+        },
+        {
+          "line": 25,
+          "snippet": ":type grp: Matrix\n\n   :param tsc: Optional input. Instance of a tscsmtControl structure. The following members of tsc are referenced within this routine:\n\n      .. list-table::"
+        },
+        {
+          "line": 30,
+          "snippet": ":widths: auto\n\n         * - tsc.header\n           - string, specifies the format for the output header. tsc.header can contain zero or more of the following characters:"
+        },
+        {
+          "line": 31,
+          "snippet": "* - tsc.header\n           - string, specifies the format for the output header. tsc.header can contain zero or more of the following characters:\n\n             .. list-table::"
+        },
+        {
+          "line": 51,
+          "snippet": "::\n\n               tsc.header = \"tld\";\n\n             If :code:`tsc.header = \"\"`, no header is printed. Default = \"tldvf\"."
+        },
+        {
+          "line": 53,
+          "snippet": "tsc.header = \"tld\";\n\n             If :code:`tsc.header = \"\"`, no header is printed. Default = \"tldvf\".\n\n         * - tsc.ise"
+        }
+      ]
+    },
+    "match_reason": [
+      "exact_file_name",
+      "exact_heading",
+      "command_call_text"
+    ],
+    "notes": [
+      "Remarks\n-------\nThe panel data must be contained in a stacked panel GAUSS dataset,\nwith one variable containing an index for the units. From each\ncross-sectional unit all observations must be grouped together. For\nexample, for the first cross-sectional unit there may be 10 rows in\nthe dataset, for the second cross-sectional unit there may be another\n10 rows, and so on. Each row in the dataset contains measurements on\nthe endogenous and exogenous variables measured for each observation\nalong with the index identifying the cross-sectional unit.\n\nThe index variable must be a series of integers. While all\nobservations for each cross-sectional unit must be grouped together,\nthey do not have to be sorted according to the index."
+    ],
+    "outputs_section": ":return tso: An instance of a :class:`tscsFitOut` structure containing the following members:\n.. list-table::\n* - tso.bdv\n- Kx1 vector, regression coefficients from the dummy effects model (excluding individual-variables regression model).\n* - tso.vcdv\n- KxK matrix, variance-covariance matrix of the dummy variables regression model.\n* - tso.mdv\n- (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the dummy variables regression model.\n* - tso.bec\n- Kx1 vector, regression coefficients from the random effects regression model.\n* - tso.vcec\n- KxK matrix, variance-covariance matrix of the random effects regression model..\n* - tso.mec\n- (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the random effects regression model.\n* - tso.fixedEffects\n- matrix, fixed effects dummy variable estimates.\n*\n...[truncated]",
+    "raw_section_headings": [
+      "tscsFit",
+      "Purpose",
+      "Format",
+      "Examples",
+      "Formula String",
+      "Data Matrices",
+      "Remarks",
+      "Library",
+      "Source"
+    ],
+    "related_links": [
+      "tscsFitOut",
+      "\"y ~ X1 + X2\"",
+      "'y' is the name of dependent variable, '",
+      "X1",
+      "' and '",
+      "X2",
+      "' are names of independent variables; E.g.",
+      "\"y ~ .\"",
+      "tsc.header = \"\""
+    ],
+    "returns_section": ":return tso: An instance of a :class:`tscsFitOut` structure containing the following members:\n.. list-table::\n* - tso.bdv\n- Kx1 vector, regression coefficients from the dummy effects model (excluding individual-variables regression model).\n* - tso.vcdv\n- KxK matrix, variance-covariance matrix of the dummy variables regression model.\n* - tso.mdv\n- (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the dummy variables regression model.\n* - tso.bec\n- Kx1 vector, regression coefficients from the random effects regression model.\n* - tso.vcec\n- KxK matrix, variance-covariance matrix of the random effects regression model..\n* - tso.mec\n- (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the random effects regression model.\n* - tso.fixedEffects\n- matrix, fixed effects dummy variable estimates.\n*\n...[truncated]",
+    "source_authority": "official_docs",
+    "source_type": "official_local_rst",
+    "syntax_blocks": [
+      ".. function:: tso = tscsFit(y, x, grp[, tsc])",
+      "tso = tscsFit(dataset, formula, grp[, tsc])"
+    ],
+    "unresolved_questions": []
+  },
+  "command_name": "tscsfit",
+  "confidence": 1.0,
+  "conflicts": [],
+  "docs_root_redacted": true,
+  "extraction_warnings": [
+    "no keyword hits for: returns"
+  ],
+  "generated_at": "2026-07-07T18:00:37Z",
+  "matches": [
+    {
+      "command_name": "tscsfit",
+      "confidence": 1.0,
+      "controls_section": ":type grp: Matrix\n\n   :param tsc: Optional input. Instance of a tscsmtControl structure. The following members of tsc are referenced within this routine:\n\n      .. list-table::\n\n- string, the name of a file in which to save the group means of the dataset. By default, tsc.mnsfn = \"\", so the means are not saved.\n         * - tsc.model\n           - scalar, controls the type of models to be estimated. Possible values are:\n\n             :0: All models are estimated.",
+      "examples": [
+        "tso = tscsFit(dataset, formula, grp[, tsc])\n\nnew;\n   cls,;\n   library tsmt;\n\n   // Declare tscsmt output structure\n   struct tscsmtOut tso;\n\n   // Estimate model\n   tso = tscsFit( getGAUSSHome() $+ \"pkgs/tsmt/examples/grunfeld.dat\", \"investment~firm_value + capital\", \"firm\");\n\nnew;\n   cls;\n   library tsmt;\n\n   // Load data from dataset\n   data=loadd(getGAUSSHome() $+ \"pkgs/tsmt/examples/munnell\");\n\n   // Independent variable\n   y = data[., 2];\n\n   // Dependent variable\n   x = data[., 3:6];\n\n   // Group variable\n   grp = data[.,1];\n\n   // Declare tscsmt output structure\n   struct tscsmtOut tso;\n\n   // Estimate model\n   tso = tscsFit(y, x, grp);"
+      ],
+      "extraction_warnings": [
+        "no keyword hits for: returns"
+      ],
+      "file_path": "tsmt/tscsfit.rst",
+      "formula_section": "Formula String\n+++++++++++++++\n\n::\n\n   new;\n   cls,;\n   library tsmt;\n\n   // Declare tscsmt output structure\n   struct tscsmtOut tso;\n\n   // Estimate model\n   tso = tscsFit( getGAUSSHome() $+ \"pkgs/tsmt/examples/grunfeld.dat\", \"investment~firm_value + capital\", \"firm\");\n\n:param formula: formula string of the model. E.g. ``\"y ~ X1 + X2\"`` 'y' is the name of dependent variable, '``X1``' and '``X2``' are names of independent variables; E.g. ``\"y ~ .\"``, '.' means including all variables except dependent variable 'y';\n:type formula: string\n\n- KxK matrix, variance-covariance matrix of the dummy variables regression model.\n         * - tso.mdv\n           - (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the dummy variables regression model.\n         * - tso.bec\n           - Kx1 vector, regression coefficients from the random effects regression model.\n\n- KxK matrix, variance-covariance matrix of the random effects regression model..\n         * - tso.mec\n           - (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the random effects regression model.\n         * - tso.fixedEffects\n           - matrix, fixed effects dummy variable estimates.",
+      "heading": "tscsFit",
+      "inputs_section": ":param y: data.\n:type y: Nx1 vector\n\n:param dataset: name of data set or null string.\n:type dataset: string\n\n:param formula: formula string of the model. E.g. ``\"y ~ X1 + X2\"`` 'y' is the name of dependent variable, '``X1``' and '``X2``' are names of independent variables; E.g. ``\"y ~ .\"``, '.' means including all variables except dependent variable 'y';\n:type formula: string\n\n:param grp: NTx1 of group identifiers.\n:type grp: Matrix\n\n:param tsc: Optional input. Instance of a tscsmtControl structure. The following members of tsc are referenced within this routine:\n.. list-table::\n* - tsc.header\n- string, specifies the format for the output header. tsc.header can contain zero or more of the following characters:\n.. list-table::\n* - t\n- title is to be printed.\n* - l\n- lines are to bracket the title.\n* - d\n- a date and time is to be printed.\n* - v\n- version number of program is to be printed\n* - f\n- file name being analyzed is to be printed\nExample:\ntsc.header = \"tld\";\nIf :code:`tsc.header = \"\"`, no header is printed. Default = \"tldvf\".\n* - tsc.ise\n- scalar. If 1, the ind ividual-specific effects are not printed. Default = 0.\n* - tsc.output\n- scalar, if nonzero, results are printed to screen. Default = 1.\n* - tsc.meth\n- scalar, Possible values are: Default = 0.\nDefault = 0.\n* - tsc.mnsfn\n- string, the\n...[truncated]",
+      "keyword_hits": {
+        "effects": [
+          {
+            "line": 56,
+            "snippet": "* - tsc.ise\n           - scalar. If 1, the ind ividual-specific effects are not printed. Default = 0.\n         * - tsc.output\n           - scalar, if nonzero, results are printed to screen. Default = 1."
+          },
+          {
+            "line": 62,
+            "snippet": "- scalar, Possible values are: Default = 0.\n\n             :0: Uses the fixed effects estimates of the ind ividual-specific effects to estimate the variance components of the random effects model. Us:e: this option if there are a different number of observations for each cross-sectional unit. Th:e: chi-squared test for the individual error components equal to 0 may not be correct if there are a different number of observations for each individual.\n             :1: Uses regression on group means to estimate variance components."
+          },
+          {
+            "line": 73,
+            "snippet": ":0: All models are estimated.\n             :1: The random effects (error components model) is not estimated.\n\n         * - tsc.rowfac"
+          },
+          {
+            "line": 100,
+            "snippet": "* - tso.bdv\n           - Kx1 vector, regression coefficients from the dummy effects model (excluding individual-variables regression model).\n         * - tso.vcdv\n           - KxK matrix, variance-covariance matrix of the dummy variables regression model."
+          },
+          {
+            "line": 106,
+            "snippet": "- (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the dummy variables regression model.\n         * - tso.bec\n           - Kx1 vector, regression coefficients from the random effects regression model.\n         * - tso.vcec\n           - KxK matrix, variance-covariance matrix of the random effects regression model.."
+          },
+          {
+            "line": 108,
+            "snippet": "- Kx1 vector, regression coefficients from the random effects regression model.\n         * - tso.vcec\n           - KxK matrix, variance-covariance matrix of the random effects regression model..\n         * - tso.mec\n           - (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the random effects regression model."
+          },
+          {
+            "line": 110,
+            "snippet": "- KxK matrix, variance-covariance matrix of the random effects regression model..\n         * - tso.mec\n           - (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the random effects regression model.\n         * - tso.fixedEffects\n           - matrix, fixed effects dummy variable estimates."
+          },
+          {
+            "line": 111,
+            "snippet": "* - tso.mec\n           - (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the random effects regression model.\n         * - tso.fixedEffects\n           - matrix, fixed effects dummy variable estimates.\n         * - tso.sefixedEffects"
+          }
+        ],
+        "fixed": [
+          {
+            "line": 62,
+            "snippet": "- scalar, Possible values are: Default = 0.\n\n             :0: Uses the fixed effects estimates of the ind ividual-specific effects to estimate the variance components of the random effects model. Us:e: this option if there are a different number of observations for each cross-sectional unit. Th:e: chi-squared test for the individual error components equal to 0 may not be correct if there are a different number of observations for each individual.\n             :1: Uses regression on group means to estimate variance components."
+          },
+          {
+            "line": 111,
+            "snippet": "* - tso.mec\n           - (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the random effects regression model.\n         * - tso.fixedEffects\n           - matrix, fixed effects dummy variable estimates.\n         * - tso.sefixedEffects"
+          },
+          {
+            "line": 112,
+            "snippet": "- (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the random effects regression model.\n         * - tso.fixedEffects\n           - matrix, fixed effects dummy variable estimates.\n         * - tso.sefixedEffects\n           - matrix, standard error of fixed effects dummy variable estimates."
+          },
+          {
+            "line": 113,
+            "snippet": "* - tso.fixedEffects\n           - matrix, fixed effects dummy variable estimates.\n         * - tso.sefixedEffects\n           - matrix, standard error of fixed effects dummy variable estimates.\n         * - tso.randomEffects"
+          },
+          {
+            "line": 114,
+            "snippet": "- matrix, fixed effects dummy variable estimates.\n         * - tso.sefixedEffects\n           - matrix, standard error of fixed effects dummy variable estimates.\n         * - tso.randomEffects\n           - matrix, estimated of random effects."
+          },
+          {
+            "line": 118,
+            "snippet": "- matrix, estimated of random effects.\n         * - tso.y_hat_dv\n           - matrix, fixed effects model estimated dependent variable.\n         * - tso.y_hat_ec\n           - matrix, random effects model estimated dependent variable."
+          },
+          {
+            "line": 122,
+            "snippet": "- matrix, random effects model estimated dependent variable.\n         * - tso.res_dv\n           - matrix, fixed effects model residuals.\n         * - tso.res_ec\n           - matrix, random model effects residuals."
+          }
+        ],
+        "formula": [
+          {
+            "line": 11,
+            "snippet": "------\n.. function:: tso = tscsFit(y, x, grp[, tsc])\n              tso = tscsFit(dataset, formula, grp[, tsc])\n\n   :param y: data."
+          },
+          {
+            "line": 19,
+            "snippet": ":type dataset: string\n\n   :param formula: formula string of the model. E.g. ``\"y ~ X1 + X2\"`` 'y' is the name of dependent variable, '``X1``' and '``X2``' are names of independent variables; E.g. ``\"y ~ .\"``, '.' means including all variables except dependent variable 'y';\n   :type formula: string"
+          },
+          {
+            "line": 20,
+            "snippet": ":param formula: formula string of the model. E.g. ``\"y ~ X1 + X2\"`` 'y' is the name of dependent variable, '``X1``' and '``X2``' are names of independent variables; E.g. ``\"y ~ .\"``, '.' means including all variables except dependent variable 'y';\n   :type formula: string\n\n   :param grp: NTx1 of group identifiers."
+          },
+          {
+            "line": 131,
+            "snippet": "--------\n\nFormula String\n+++++++++++++++"
+          }
+        ],
+        "grp": [
+          {
+            "line": 10,
+            "snippet": "Format\n------\n.. function:: tso = tscsFit(y, x, grp[, tsc])\n              tso = tscsFit(dataset, formula, grp[, tsc])"
+          },
+          {
+            "line": 11,
+            "snippet": "------\n.. function:: tso = tscsFit(y, x, grp[, tsc])\n              tso = tscsFit(dataset, formula, grp[, tsc])\n\n   :param y: data."
+          },
+          {
+            "line": 22,
+            "snippet": ":type formula: string\n\n   :param grp: NTx1 of group identifiers.\n   :type grp: Matrix"
+          },
+          {
+            "line": 23,
+            "snippet": ":param grp: NTx1 of group identifiers.\n   :type grp: Matrix\n\n   :param tsc: Optional input. Instance of a tscsmtControl structure. The following members of tsc are referenced within this routine:"
+          },
+          {
+            "line": 165,
+            "snippet": "// Group variable\n   grp = data[.,1];\n\n   // Declare tscsmt output structure"
+          },
+          {
+            "line": 171,
+            "snippet": "// Estimate model\n   tso = tscsFit(y, x, grp);\n\nRemarks"
+          }
+        ],
+        "output": [
+          {
+            "line": 31,
+            "snippet": "* - tsc.header\n           - string, specifies the format for the output header. tsc.header can contain zero or more of the following characters:\n\n             .. list-table::"
+          },
+          {
+            "line": 57,
+            "snippet": "* - tsc.ise\n           - scalar. If 1, the ind ividual-specific effects are not printed. Default = 0.\n         * - tsc.output\n           - scalar, if nonzero, results are printed to screen. Default = 1.\n         * - tsc.meth"
+          },
+          {
+            "line": 90,
+            "snippet": "- scalar. If 1, print standardized estimates of regression parameters. Default = 1.\n         * - tsc.title\n           - string, a title to be printed at the top of the output header (see tsc.header). By default, no title is printed (tsc.title = \"\").\n\n   :type tsc: struct"
+          },
+          {
+            "line": 140,
+            "snippet": "library tsmt;\n\n   // Declare tscsmt output structure\n   struct tscsmtOut tso;"
+          },
+          {
+            "line": 167,
+            "snippet": "grp = data[.,1];\n\n   // Declare tscsmt output structure\n   struct tscsmtOut tso;"
+          }
+        ],
+        "panel": [
+          {
+            "line": 175,
+            "snippet": "Remarks\n-------\nThe panel data must be contained in a stacked panel GAUSS dataset,\nwith one variable containing an index for the units. From each\ncross-sectional unit all observations must be grouped together. For"
+          }
+        ],
+        "random": [
+          {
+            "line": 62,
+            "snippet": "- scalar, Possible values are: Default = 0.\n\n             :0: Uses the fixed effects estimates of the ind ividual-specific effects to estimate the variance components of the random effects model. Us:e: this option if there are a different number of observations for each cross-sectional unit. Th:e: chi-squared test for the individual error components equal to 0 may not be correct if there are a different number of observations for each individual.\n             :1: Uses regression on group means to estimate variance components."
+          },
+          {
+            "line": 73,
+            "snippet": ":0: All models are estimated.\n             :1: The random effects (error components model) is not estimated.\n\n         * - tsc.rowfac"
+          },
+          {
+            "line": 106,
+            "snippet": "- (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the dummy variables regression model.\n         * - tso.bec\n           - Kx1 vector, regression coefficients from the random effects regression model.\n         * - tso.vcec\n           - KxK matrix, variance-covariance matrix of the random effects regression model.."
+          },
+          {
+            "line": 108,
+            "snippet": "- Kx1 vector, regression coefficients from the random effects regression model.\n         * - tso.vcec\n           - KxK matrix, variance-covariance matrix of the random effects regression model..\n         * - tso.mec\n           - (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the random effects regression model."
+          },
+          {
+            "line": 110,
+            "snippet": "- KxK matrix, variance-covariance matrix of the random effects regression model..\n         * - tso.mec\n           - (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the random effects regression model.\n         * - tso.fixedEffects\n           - matrix, fixed effects dummy variable estimates."
+          },
+          {
+            "line": 115,
+            "snippet": "* - tso.sefixedEffects\n           - matrix, standard error of fixed effects dummy variable estimates.\n         * - tso.randomEffects\n           - matrix, estimated of random effects.\n         * - tso.y_hat_dv"
+          },
+          {
+            "line": 116,
+            "snippet": "- matrix, standard error of fixed effects dummy variable estimates.\n         * - tso.randomEffects\n           - matrix, estimated of random effects.\n         * - tso.y_hat_dv\n           - matrix, fixed effects model estimated dependent variable."
+          },
+          {
+            "line": 120,
+            "snippet": "- matrix, fixed effects model estimated dependent variable.\n         * - tso.y_hat_ec\n           - matrix, random effects model estimated dependent variable.\n         * - tso.res_dv\n           - matrix, fixed effects model residuals."
+          }
+        ],
+        "returns": [],
+        "tsc": [
+          {
+            "line": 1,
+            "snippet": "tscsFit\n======="
+          },
+          {
+            "line": 10,
+            "snippet": "Format\n------\n.. function:: tso = tscsFit(y, x, grp[, tsc])\n              tso = tscsFit(dataset, formula, grp[, tsc])"
+          },
+          {
+            "line": 11,
+            "snippet": "------\n.. function:: tso = tscsFit(y, x, grp[, tsc])\n              tso = tscsFit(dataset, formula, grp[, tsc])\n\n   :param y: data."
+          },
+          {
+            "line": 25,
+            "snippet": ":type grp: Matrix\n\n   :param tsc: Optional input. Instance of a tscsmtControl structure. The following members of tsc are referenced within this routine:\n\n      .. list-table::"
+          },
+          {
+            "line": 30,
+            "snippet": ":widths: auto\n\n         * - tsc.header\n           - string, specifies the format for the output header. tsc.header can contain zero or more of the following characters:"
+          },
+          {
+            "line": 31,
+            "snippet": "* - tsc.header\n           - string, specifies the format for the output header. tsc.header can contain zero or more of the following characters:\n\n             .. list-table::"
+          },
+          {
+            "line": 51,
+            "snippet": "::\n\n               tsc.header = \"tld\";\n\n             If :code:`tsc.header = \"\"`, no header is printed. Default = \"tldvf\"."
+          },
+          {
+            "line": 53,
+            "snippet": "tsc.header = \"tld\";\n\n             If :code:`tsc.header = \"\"`, no header is printed. Default = \"tldvf\".\n\n         * - tsc.ise"
+          }
+        ]
+      },
+      "match_reason": [
+        "exact_file_name",
+        "exact_heading",
+        "command_call_text"
+      ],
+      "notes": [
+        "Remarks\n-------\nThe panel data must be contained in a stacked panel GAUSS dataset,\nwith one variable containing an index for the units. From each\ncross-sectional unit all observations must be grouped together. For\nexample, for the first cross-sectional unit there may be 10 rows in\nthe dataset, for the second cross-sectional unit there may be another\n10 rows, and so on. Each row in the dataset contains measurements on\nthe endogenous and exogenous variables measured for each observation\nalong with the index identifying the cross-sectional unit.\n\nThe index variable must be a series of integers. While all\nobservations for each cross-sectional unit must be grouped together,\nthey do not have to be sorted according to the index."
+      ],
+      "outputs_section": ":return tso: An instance of a :class:`tscsFitOut` structure containing the following members:\n.. list-table::\n* - tso.bdv\n- Kx1 vector, regression coefficients from the dummy effects model (excluding individual-variables regression model).\n* - tso.vcdv\n- KxK matrix, variance-covariance matrix of the dummy variables regression model.\n* - tso.mdv\n- (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the dummy variables regression model.\n* - tso.bec\n- Kx1 vector, regression coefficients from the random effects regression model.\n* - tso.vcec\n- KxK matrix, variance-covariance matrix of the random effects regression model..\n* - tso.mec\n- (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the random effects regression model.\n* - tso.fixedEffects\n- matrix, fixed effects dummy variable estimates.\n*\n...[truncated]",
+      "raw_section_headings": [
+        "tscsFit",
+        "Purpose",
+        "Format",
+        "Examples",
+        "Formula String",
+        "Data Matrices",
+        "Remarks",
+        "Library",
+        "Source"
+      ],
+      "related_links": [
+        "tscsFitOut",
+        "\"y ~ X1 + X2\"",
+        "'y' is the name of dependent variable, '",
+        "X1",
+        "' and '",
+        "X2",
+        "' are names of independent variables; E.g.",
+        "\"y ~ .\"",
+        "tsc.header = \"\""
+      ],
+      "returns_section": ":return tso: An instance of a :class:`tscsFitOut` structure containing the following members:\n.. list-table::\n* - tso.bdv\n- Kx1 vector, regression coefficients from the dummy effects model (excluding individual-variables regression model).\n* - tso.vcdv\n- KxK matrix, variance-covariance matrix of the dummy variables regression model.\n* - tso.mdv\n- (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the dummy variables regression model.\n* - tso.bec\n- Kx1 vector, regression coefficients from the random effects regression model.\n* - tso.vcec\n- KxK matrix, variance-covariance matrix of the random effects regression model..\n* - tso.mec\n- (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the random effects regression model.\n* - tso.fixedEffects\n- matrix, fixed effects dummy variable estimates.\n*\n...[truncated]",
+      "source_authority": "official_docs",
+      "source_type": "official_local_rst",
+      "syntax_blocks": [
+        ".. function:: tso = tscsFit(y, x, grp[, tsc])",
+        "tso = tscsFit(dataset, formula, grp[, tsc])"
+      ],
+      "unresolved_questions": []
+    }
+  ],
+  "notes": [],
+  "retrieval_status": "found_incomplete",
+  "schema_version": "0.1.0",
+  "source_authority": "official_docs",
+  "source_type": "official_local_rst",
+  "stale_evidence": null,
+  "tool_name": "command_doc_lookup",
+  "tool_version": "0.1.0",
+  "unresolved_questions": []
+}
