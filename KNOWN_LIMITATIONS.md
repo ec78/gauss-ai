@@ -1,6 +1,6 @@
 # Known Limitations
 
-These limitations apply as of the `v0.10.0` Evidence Coverage and Routing Regression Guards milestone.
+These limitations apply as of the `v0.11.0` Repository Hygiene and Evaluation Policy Cleanup milestone.
 
 ## Retrieval and Lookup
 
@@ -47,4 +47,4 @@ These limitations apply as of the `v0.10.0` Evidence Coverage and Routing Regres
 - Manual evaluation runs are useful evidence, but automated regression evaluation is not implemented yet.
 - Any tracked local machine-specific configuration should be removed, renamed, or clearly documented before broader public use.
 - A local evaluation tracking consistency guard (`scripts/check_evaluation_tracking.py`, added `v0.10.0`) checks that `evaluations/benchmark-prompts.md`, `evaluations/benchmark-coverage.md`, `evaluations/runs/INDEX.md`, and the run files under `evaluations/runs/` stay consistent with each other. It is local-only with no CI integration yet, and it does not check response quality or scoring correctness — that remains a manual-evaluation responsibility. As of `v0.10.0`, its default run reports 0 errors and exactly 2 documented historical warnings (a Prompt ID mismatch on a pre-stable-ID run file, and a legacy pre-Prompt-ID-era smoke-test run file that is intentionally not indexed); `--strict` fails only because those two warnings are promoted, which is expected policy, not a defect.
-- Benchmark prompts that hardcode specific volatile repository counts (for example, an exact prompt-ID count or warning count) in their expected-behavior text can go stale as soon as later milestones add more prompts or runs, unless the benchmark is explicitly scoped to a fixed, frozen repository state. This was observed directly during the `v0.10.0` `17.5`/`17.6` evaluations; the correct evaluated behavior is to report the true live tool output rather than the prompt's originally-written figures.
+- Benchmark prompts that hardcode specific volatile repository counts (for example, an exact prompt-ID count or warning count) in their expected-behavior text can go stale as soon as later milestones add more prompts or runs, unless the benchmark is explicitly scoped to a fixed, frozen repository state. This was observed directly during the `v0.10.0` `17.5`/`17.6` evaluations; the correct evaluated behavior is to report the true live tool output rather than the prompt's originally-written figures. `v0.11.0` added benchmark-authoring guidance (`workflows/manual-evaluation.md`, "Benchmark Authoring Guidance") to reduce recurrence going forward, but this is process guidance for future authoring, not an automated guard against it — a future benchmark can still be written this way if the guidance isn't followed.

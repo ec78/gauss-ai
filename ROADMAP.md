@@ -66,10 +66,20 @@
 - Add and evaluate Multi-Expert Routing benchmarks (16.1-16.8) covering all four routing types, causal-interpretation separation from code translation, p-value misinterpretation correction, and multi-expert uncertainty handling.
 - Preserve every `v0.8.0` guarantee: GAUSS command evidence requirements are unchanged, and neither expert may substitute for the other (command availability is not methodological validity; methodological plausibility does not invent GAUSS syntax).
 
-## v0.10.0: Evidence Coverage and Routing Regression Guards
+## v0.10.0: Evidence Coverage and Routing Regression Guards (Completed)
 
 - Close the local `glm` evidence gap surfaced by a `v0.9.0` benchmark evaluation (`16.7`), which had to verify `glm` against live official documentation instead of a committed local file: add real schema-aligned evidence (`examples/retrieval/schema-aligned/glm.evidence.json`) generated from the local official `glm.rst`.
 - Systematically audit local and package-level GAUSS documentation for a panel-estimation command, resolving the open question left by `v0.9.0`'s `16.4` evaluation: find `tscsFit` (from the commercial TSMT package) as a verified pooled time-series-cross-section regression estimator, document it (`examples/retrieval/panel-estimation-coverage-audit.md`), and add real schema-aligned evidence (`examples/retrieval/schema-aligned/tscsfit.evidence.json`) while clearly distinguishing panel data-management utilities and panel diagnostic/test commands from actual panel estimation.
 - Add a lightweight, local evaluation tracking consistency guard (`scripts/check_evaluation_tracking.py`) that checks benchmark prompts, coverage rows, run files, and the run index for consistency with each other, so tracking drift is caught mechanically rather than only by an evaluator's diligence.
 - Add and evaluate Evidence Coverage and Tracking Guards benchmarks (17.1-17.6) covering `glm` evidence validation, a logistic-regression response grounded in local evidence, panel-audit non-invention, and the tracking guard's default/JSON/strict behavior including historical-warning handling.
 - Add no new operational expert, no new routing type, and no runtime orchestration — this milestone hardens the evidence and tracking layers underneath the `v0.9.0` routing system rather than extending routing itself.
+
+## v0.11.0: Repository Hygiene and Evaluation Policy Cleanup
+
+- Fix stale wording in the Econometrics Expert's operational profile (`experts/econometrics/OPERATIONAL_PROFILE.md`) that still described multi-expert routing as unbuilt, despite `v0.9.0` having completed and evaluated it — a documentation-only fix with no change to expert behavior, decision rules, or activation conditions.
+- Document an explicit, written policy for two long-standing evaluation-tracking warnings (a historical Prompt ID mismatch, and a pre-Prompt-ID-era smoke-test run file) in `evaluations/benchmark-coverage.md`'s "Historical Tracking Exceptions" section: preserve both without rewriting historical run files, since rewriting them would misrepresent what was actually evaluated at the time.
+- Add benchmark-authoring guidance (`workflows/manual-evaluation.md`) against hardcoding volatile repository counts in a benchmark's expected-behavior text, grounded in a real precedent from `v0.10.0`'s `17.5`/`17.6` evaluations.
+- Clarify `experts/econometrics/knowledge.md`, a one-line placeholder superseded by `BODY_OF_KNOWLEDGE.md`, as an explicit compatibility stub rather than an unexplained gap.
+- Close a command-evidence source-classification gap: `scripts/command_doc_lookup.py` now distinguishes core GAUSS documentation from separately-licensed package documentation (`official_docs`/`official_local_rst` vs. `official_package_docs`/`official_package_rst`), using a package-directory list derived from the official GAUSS Applications index — the schema already supported this distinction; only the tool's classification logic was missing it.
+- Add and evaluate Repository Hygiene and Evaluation Policy Cleanup benchmarks (18.1-18.6) validating every item above.
+- Add no new operational expert, no new routing type, and no runtime orchestration — this milestone is cleanup and policy clarity only.

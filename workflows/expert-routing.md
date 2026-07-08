@@ -338,15 +338,15 @@ Manual evaluation should check:
 - **`tools/operational_expert_interface.md`** — defines the generic interface (activation triggers, evidence/context requirements, decision rules, output contract, evaluation criteria) that this workflow routes against for both experts. This workflow does not redefine that interface's fields.
 - **`experts/gauss-language/OPERATIONAL_PROFILE.md`** — the filled-in GAUSS Language Expert profile this workflow's GAUSS-side steps are sourced from. If the profile changes, this workflow's GAUSS-side content should be updated to match rather than allowed to drift.
 - **`experts/econometrics/OPERATIONAL_PROFILE.md`** — the filled-in Econometrics Expert profile this workflow's econometrics-side steps are sourced from, following the same drift-prevention principle.
-- **`workflows/code-assistant-response.md`** — this workflow is the specialization of that document's Step 2 ("Identify Relevant Experts") for both operational experts; the general response workflow still governs task classification, retrieval need, and response composition around it. Not yet updated to reference the multi-expert version of this workflow (see Maintenance Notes / next task).
+- **`workflows/code-assistant-response.md`** — this workflow is the specialization of that document's Step 2 ("Identify Relevant Experts") for both operational experts; the general response workflow still governs task classification, retrieval need, and response composition around it. Step 2 was updated in `v0.9.0` to reference this workflow's four-way routing.
 - **`workflows/retrieval-backed-response-pattern.md`** — governs Step 7's GAUSS-side evidence-state handling; this workflow does not redefine states A-H.
 - **`workflows/command-documentation-retrieval.md`** — governs the hybrid discovery/retrieval strategy this workflow routes to in Step 7 for GAUSS command evidence.
 - **`workflows/native-command-selection.md`** — governs the native-vs-manual decision this workflow's Step 8 GAUSS-side rules reference.
-- **`agents/code-assistant/task_modes.md`** — the task-mode definitions consumed in Step 1 and the Clarifying Question Rules referenced in Step 5. Not yet updated for multi-expert routing (see Maintenance Notes / next task).
-- **`prompts/code_assistant_system.md`** — the system prompt whose "Identify the relevant expertise" step this workflow operationalizes. Not yet updated for multi-expert routing (see Maintenance Notes / next task).
+- **`agents/code-assistant/task_modes.md`** — the task-mode definitions consumed in Step 1 and the Clarifying Question Rules referenced in Step 5. Updated for multi-expert routing in `v0.9.0`.
+- **`prompts/code_assistant_system.md`** — the system prompt whose "Identify the relevant expertise" step this workflow operationalizes. Updated for multi-expert routing in `v0.9.0`.
 
 ## Maintenance Notes
 
 - Update this workflow when either `OPERATIONAL_PROFILE.md` changes, or when a new operational expert is added (extending Step 2's trigger lists, Step 3's non-activation lists, and Step 4's routing-type categories to cover it).
 - Keep each expert's trigger/non-activation lists in this workflow aligned with its own `OPERATIONAL_PROFILE.md` — this workflow should mirror those profiles, never diverge from them.
-- Future benchmark category `16.x` should test GAUSS-only, econometrics-only, both-experts, and neither-expert routing, extending the single-expert coverage already validated by `15.x`.
+- Benchmark category `16.x` (Multi-Expert Routing) tested GAUSS-only, econometrics-only, both-experts, and neither-expert routing, extending the single-expert coverage validated by `15.x` — completed and evaluated (all eight prompts passed) in `v0.9.0`.
