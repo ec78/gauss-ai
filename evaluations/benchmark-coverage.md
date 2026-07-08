@@ -65,6 +65,12 @@ Some early runs predate stable Prompt ID assignment. Where a run does not match 
 | 16.6 | Multi-Expert Routing | Correct command, wrong interpretation | Passed | [2026-07-05-code-assistant-multi-expert-routing-run-004.md](runs/2026-07-05-code-assistant-multi-expert-routing-run-004.md) | 4.0 | Corrected the p-value-as-variance-explained misunderstanding and distinguished it from R-squared, with no GAUSS routing since the question was pure interpretation. |
 | 16.7 | Multi-Expert Routing | Multi-expert uncertainty/conflict | Passed | [2026-07-05-code-assistant-multi-expert-routing-run-007.md](runs/2026-07-05-code-assistant-multi-expert-routing-run-007.md) | 4.0 | Verified `glm`/binomial/logit syntax via a live fetch of official docs, then raised concrete methodological considerations rather than letting verified syntax imply model correctness. |
 | 16.8 | Multi-Expert Routing | Neither expert activates | Passed | [2026-07-05-code-assistant-multi-expert-routing-run-001.md](runs/2026-07-05-code-assistant-multi-expert-routing-run-001.md) | 4.0 | Drafted the requested changelog entry with no GAUSS or econometric reasoning despite expert-related terminology in the prompt. |
+| 17.1 | Evidence Coverage and Tracking Guards | glm schema-aligned evidence exists and validates | Not Run | N/A | N/A | Tests glm evidence existence and validation reporting. |
+| 17.2 | Evidence Coverage and Tracking Guards | Logistic regression response uses local glm evidence | Not Run | N/A | N/A | Tests logistic regression response using local glm evidence. |
+| 17.3 | Evidence Coverage and Tracking Guards | Panel estimation coverage audit does not invent support | Not Run | N/A | N/A | Tests panel-estimation audit behavior and non-invention. |
+| 17.4 | Evidence Coverage and Tracking Guards | Tracking guard catches missing coverage row | Not Run | N/A | N/A | Tests missing-coverage-row guard behavior. |
+| 17.5 | Evidence Coverage and Tracking Guards | Tracking guard handles historical warnings | Not Run | N/A | N/A | Tests strict-mode historical warnings. |
+| 17.6 | Evidence Coverage and Tracking Guards | Tracking guard passes current evaluated categories | Not Run | N/A | N/A | Tests current tracking guard pass behavior. |
 
 ## Completed Runs Not Directly Covered By Current Stable Prompts
 

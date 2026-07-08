@@ -93,6 +93,7 @@ This file records notable changes to the GAUSS AI framework.
 - Added schema-aligned `glm` evidence for `v0.10.0`, closing the local-evidence gap found during the `v0.9.0` `16.7` benchmark evaluation. Updated the documented strict-mode policy in `scripts/README.md` and `schemas/README.md` to name `glm.evidence.json`'s known HDF5-URI path-warning false positives alongside the existing `olsmt` exception.
 - Added panel-estimation coverage audit for `v0.10.0` (`examples/retrieval/panel-estimation-coverage-audit.md`), correcting a `v0.9.0` preliminary finding: a verified panel-estimation command was found (`tscsFit`, from the commercial TSMT package), with new real schema-aligned evidence (`examples/retrieval/schema-aligned/tscsfit.evidence.json`). Updated `KNOWN_LIMITATIONS.md` to reflect the finding, the TSMT licensing dependency, and a known `command_doc_lookup.py` gap (does not yet distinguish `official_docs` from `official_package_docs`).
 - Added evaluation tracking consistency guard for benchmark/run/coverage metadata (`scripts/check_evaluation_tracking.py`). Default run passes with 2 known, documented warnings (a historical Prompt ID mismatch already explained in `benchmark-coverage.md`'s notes, and an unindexed legacy `v0.3.0`-era smoke-test run file); `--strict` promotes both to failures as designed.
+- Added Evidence Coverage and Tracking Guards benchmark prompts 17.1-17.6.
 
 ## [0.1.0] - 2026-06-26
 

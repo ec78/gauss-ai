@@ -738,3 +738,95 @@ Expected behavior:
 - Does not impose econometric-methodology context requirements.
 - Produces a useful changelog entry.
 - Demonstrates correct negative routing despite expert-related terminology appearing in the request.
+
+## Evidence Coverage and Tracking Guards
+
+### Prompt 17.1: glm schema-aligned evidence exists and validates
+
+The user asks whether local schema-aligned evidence now exists for GAUSS `glm` and whether it validates.
+
+Expected behavior:
+- Confirms `examples/retrieval/schema-aligned/glm.evidence.json` exists.
+- Reports it was generated from local official `glm.rst`, not hand-written.
+- Reports single-file validation passes.
+- Reports validate-all default passes.
+- Reports validate-all JSON mode passes.
+- Notes strict mode fails only because reviewed HDF5 URI path-warning false positives are promoted to failures, now affecting both `glm` and `olsmt`.
+- Does not claim schema validation proves GAUSS semantic correctness or execution.
+- Mentions any extraction warnings/unresolved questions accurately.
+
+### Prompt 17.2: Logistic regression response uses local glm evidence
+
+The user asks how to run logistic regression in GAUSS and whether logistic regression is appropriate for a binary outcome.
+
+Expected behavior:
+- Uses local `glm.evidence.json`, not live docs.
+- Routes through both GAUSS Language Expert and Econometrics Expert.
+- Uses verified `glm` evidence for implementation facts:
+  - `glm` call formats where extracted
+  - `family` includes `"binomial"`
+  - Binomial default link is `logit`
+  - official logistic example if extracted
+- Separates verified implementation from methodological appropriateness.
+- States that binary outcome makes logistic/probit plausible but appropriateness depends on goal, sampling, repeated observations, separation, omitted variables, and interpretation needs.
+- Does not let `glm` availability prove model appropriateness.
+- Does not claim execution.
+
+### Prompt 17.3: Panel estimation coverage audit does not invent support
+
+The user asks whether GAUSS AI now has verified local evidence for a panel-estimation command and what the Code Assistant should say if asked for panel regression syntax.
+
+Expected behavior:
+- Uses the panel-estimation coverage audit.
+- Accurately reports whether a verified general-purpose panel-estimation command was found.
+- Distinguishes panel data-management/summary utilities from panel estimation.
+- Distinguishes panel unit-root/stationarity tests from panel regression estimation.
+- Does not invent panel-estimation command syntax.
+- Explains that methodology guidance may still be given by the Econometrics Expert.
+- Explains that exact implementation syntax requires verified GAUSS command evidence.
+- Identifies follow-ups if coverage remains unresolved.
+
+### Prompt 17.4: Tracking guard catches missing coverage row
+
+The user asks what the evaluation tracking guard should report if a benchmark prompt exists in `evaluations/benchmark-prompts.md` but has no row in `evaluations/benchmark-coverage.md`.
+
+Expected behavior:
+- Uses `scripts/check_evaluation_tracking.py` behavior.
+- Explains this is a structural error, not just a warning.
+- States default mode should fail with nonzero exit.
+- Explains why every Prompt ID needs a coverage row.
+- Does not modify files during the explanation.
+- Does not claim the current repo has this error unless the script actually reported it.
+
+### Prompt 17.5: Tracking guard handles historical warnings
+
+The user asks why `scripts/check_evaluation_tracking.py --strict` fails even though the default tracking check passes.
+
+Expected behavior:
+- Reports default mode passes with 0 errors and 2 warnings.
+- Explains strict mode promotes warnings to failures.
+- Names the two documented warnings:
+  - historical 2.2 → run-001 internal Prompt ID 2.3 mismatch
+  - unindexed v0.3.0 smoke-test file predating the Prompt ID tracking system
+- Explains these are historical/documented states, not current blockers.
+- Does not silently recommend rewriting old run files.
+- Clearly distinguishes errors from warnings.
+
+### Prompt 17.6: Tracking guard passes current evaluated categories
+
+The user asks whether the current benchmark prompt, coverage, run-file, and index metadata are consistent after the latest evaluated categories.
+
+Expected behavior:
+- Runs or reports the current `scripts/check_evaluation_tracking.py` default result.
+- Reports:
+  - 59 prompt IDs
+  - 59 coverage rows
+  - 46 run files referenced
+  - 51 index entries checked
+  - 0 errors
+  - 2 warnings
+  - overall PASS
+- Explains the two warnings as documented historical warnings.
+- States strict mode would fail because warnings are promoted.
+- Does not claim there are no warnings.
+- Does not claim strict mode passes.
