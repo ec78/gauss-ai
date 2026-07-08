@@ -4,6 +4,8 @@ This file evaluates the GAUSS Code Assistant against representative GAUSS progra
 
 Manual evaluation run files should reference the stable Prompt IDs assigned in this file.
 
+When writing a new prompt's expected behavior, see `workflows/manual-evaluation.md`'s "Benchmark Authoring Guidance" section — in particular, avoid hardcoding volatile repository counts (prompt/coverage/run/index/warning counts) unless the benchmark is explicitly tied to a fixed repository state.
+
 ## Code Generation
 
 ### Prompt 1.1: Matrix summary procedure

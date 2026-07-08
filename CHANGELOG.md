@@ -97,6 +97,7 @@ This file records notable changes to the GAUSS AI framework.
 - Completed Evidence Coverage and Tracking Guards benchmark evaluations 17.1-17.6; all passed with 4.0 scores. Two runs (17.5, 17.6) caught a benchmark-authoring artifact where the prompt's own expected-behavior text hardcoded warning/prompt counts that had gone stale once 17.1-17.6 were added and evaluated, and correctly reported the true live `scripts/check_evaluation_tracking.py` output instead. After updating tracking, the guard's default run reports 65 prompt IDs, 65 coverage rows, 52 run files referenced, 57 index entries, 0 errors, and exactly the 2 known historical warnings (`--strict` still fails on those two by design).
 - Fixed stale Econometrics Expert operational profile wording to reflect completed documented multi-expert routing from v0.9.0.
 - Documented evaluation tracking historical-warning policy for the 2.2/2.3 mismatch and the v0.3.0 smoke-test file.
+- Added benchmark-authoring guidance to avoid hardcoded volatile repository counts in evaluation prompts.
 
 ## [0.1.0] - 2026-06-26
 
