@@ -74,6 +74,34 @@ Exit code is `0` only when every file's actual outcome matches its expected outc
 
 This script does not require GAUSS to be installed and does not access the network. It checks evidence *structure*, not GAUSS semantic correctness — a file passing here is not proof that any GAUSS code was executed or that the command behavior described is current.
 
+## `check_evaluation_tracking.py`
+
+Purpose:
+Check that the manual-evaluation tracking files stay consistent with each other: `evaluations/benchmark-prompts.md`, `evaluations/benchmark-coverage.md`, `evaluations/runs/INDEX.md`, and the run files under `evaluations/runs/`. It reuses these existing markdown files as its only inputs — it does not introduce a new metadata format, and it does not check response quality or scoring correctness, which remain a manual-evaluation responsibility per `workflows/manual-evaluation.md`.
+
+```text
+python scripts/check_evaluation_tracking.py
+```
+
+It checks, at minimum:
+
+- Every benchmark prompt ID in `benchmark-prompts.md` has a row in `benchmark-coverage.md` (and flags a coverage row with no matching prompt heading as a warning).
+- Every coverage row's status is a recognized value (`Not Run`, `Passed`, `Failed`, `Blocked`, `Accepted Exception`); anything else is an error.
+- Every `Passed`/`Failed` coverage row references a run file, and that run file exists under `evaluations/runs/`. `Not Run` rows are not required to reference one.
+- Every referenced run file contains `Prompt ID`, `Prompt Category`, `Overall Score`, and `Decision` fields.
+- Every referenced run file appears in `runs/INDEX.md`, and every file `runs/INDEX.md` lists actually exists.
+- `runs/INDEX.md`'s recorded Prompt ID for a run file matches that run file's own `Prompt ID:` field (a hard error — both are authored together at evaluation time, so a mismatch here is a real mistake, not a historical exception).
+- Duplicate Prompt IDs across coverage rows, and the same run file referenced by more than one coverage row, are both errors.
+- (Warning, not error) `benchmark-coverage.md`'s linked run file for a Prompt ID states a *different* Prompt ID internally — several early runs predate stable Prompt ID assignment and are deliberately linked this way, documented in `benchmark-coverage.md`'s own notes and its "Completed Runs Not Directly Covered By Current Stable Prompts" section; this check surfaces such a mismatch without failing the default run.
+- (Warning) a run file exists under `evaluations/runs/` but is referenced by neither `benchmark-coverage.md` nor `runs/INDEX.md` (an orphaned or forgotten-to-be-indexed run).
+- (Warning) a benchmark prompt in the current, highest-numbered category is still `Not Run`.
+
+**`--json`** emits a machine-readable summary (`prompt_id_count`, `coverage_row_count`, `run_files_referenced`, `index_entry_count`, `errors`, `warnings`, `overall_pass`) instead of the human-readable listing.
+
+**`--strict`** promotes warnings to failures, the same convention as `validate_lookup_evidence.py`/`validate_all_evidence.py`. The default, non-strict run is expected to pass; `--strict` is expected to fail on the two known findings named above (a documented historical Prompt ID mismatch, and one legacy `v0.3.0`-era smoke-test run file that predates the Prompt-ID-based tracking system entirely) — this is a policy choice, not a bug, consistent with the strict-mode policy already established for evidence validation.
+
+This script does not implement CI, does not rewrite the evaluation framework, and does not modify scoring rules, benchmark prompt text, or existing run files — it only reports what it finds under `evaluations/`.
+
 ## Output Fields
 
 - `command_name`: command requested by the user.

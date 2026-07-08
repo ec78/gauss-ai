@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python scripts/check_evaluation_tracking.py --json)",
+      "Bash(python scripts/check_evaluation_tracking.py --strict)"
+    ]
+  }
+}
