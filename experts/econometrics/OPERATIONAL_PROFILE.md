@@ -4,7 +4,7 @@
 
 This profile operationalizes the Econometrics Expert by defining when it activates, what inputs it needs, what methodological evidence/context it requires, what decision rules it applies, and what it contributes to the Code Assistant. It fills in the interface defined in `tools/operational_expert_interface.md` with Econometrics-Expert-specific content, the same way `experts/gauss-language/OPERATIONAL_PROFILE.md` did for the GAUSS Language Expert.
 
-This profile governs methodological/statistical reasoning: whether a model, estimator, interpretation, or diagnostic is appropriate for a stated question and data structure. It does not govern exact GAUSS syntax, and it cannot bypass the GAUSS Language Expert's evidence requirements for implementation claims — a methodological recommendation is never sufficient grounds for asserting unverified GAUSS syntax. This is markdown/YAML-style documentation, not runtime code; no engine parses or executes this file, and it does not implement multi-expert orchestration (see `planning/v0.9.0-second-operational-expert-and-multi-expert-routing.md` for that design, not yet built into `workflows/expert-routing.md`).
+This profile governs methodological/statistical reasoning: whether a model, estimator, interpretation, or diagnostic is appropriate for a stated question and data structure. It does not govern exact GAUSS syntax, and it cannot bypass the GAUSS Language Expert's evidence requirements for implementation claims — a methodological recommendation is never sufficient grounds for asserting unverified GAUSS syntax. This is markdown/YAML-style documentation, not runtime code; no engine parses or executes this file, and it does not implement runtime multi-expert orchestration — multi-expert routing (GAUSS-only, Econometrics-only, both experts, and neither expert) is documented in `workflows/expert-routing.md` and checked by manual evaluation, per the design in `planning/v0.9.0-second-operational-expert-and-multi-expert-routing.md`, which `v0.9.0` completed.
 
 ## Interface Summary
 
@@ -208,7 +208,7 @@ State uncertainty or decline an exact methodological claim when:
 - Ask the user for methodological context when goal, outcome, data structure, or design is unclear.
 - Route to the Software Engineering Expert if the central issue is production architecture, testing strategy, or maintainability rather than methodology.
 - Route to the Documentation or Education Expert if the central issue is tutorial design or learning explanation rather than methodology.
-- Activate both the Econometrics Expert and the GAUSS Language Expert when the user asks for econometric analysis implemented in GAUSS — this is the multi-expert case `planning/v0.9.0-second-operational-expert-and-multi-expert-routing.md` is designed around, though the routing mechanics for it are not yet built into `workflows/expert-routing.md`.
+- Activate both the Econometrics Expert and the GAUSS Language Expert when the user asks for econometric analysis implemented in GAUSS — this is the documented "both experts" routing type in `workflows/expert-routing.md` (completed in `v0.9.0` per `planning/v0.9.0-second-operational-expert-and-multi-expert-routing.md`): the GAUSS Language Expert owns implementation correctness, this expert owns methodological correctness, and the two experts' claims must remain separate in the response rather than blended.
 
 ## Output Contract
 
@@ -235,7 +235,7 @@ These are internal reasoning fields this expert's consultation contributes to th
 
 ## Evaluation Criteria
 
-Checkable directly against a response, consistent with `tools/operational_expert_interface.md`'s Evaluation Guidance and reusable for a future multi-expert benchmark category (planned as `16.x` in `planning/v0.9.0-second-operational-expert-and-multi-expert-routing.md`, not yet added):
+Checkable directly against a response, consistent with `tools/operational_expert_interface.md`'s Evaluation Guidance and exercised by the Multi-Expert Routing benchmark category (`16.x`, evaluated and passed in `v0.9.0` per `planning/v0.9.0-second-operational-expert-and-multi-expert-routing.md`):
 
 - Correct activation for methodology/statistical tasks.
 - Correct non-activation for implementation-only GAUSS syntax tasks.
@@ -257,6 +257,6 @@ Checkable directly against a response, consistent with `tools/operational_expert
 - **`experts/econometrics/common_mistakes.md`** — the failure-mode list this profile's Refusal Conditions and Decision Rules 4, 10, 11, and 12 directly address.
 - **`tools/operational_expert_interface.md`** — the generic interface this profile fills in; field definitions and design principles live there, not repeated here.
 - **`experts/gauss-language/OPERATIONAL_PROFILE.md`** — the first operational profile, whose shape this one mirrors, and the expert this profile hands off implementation-specific claims to.
-- **`workflows/expert-routing.md`** — currently defines only single-expert (GAUSS Language Expert) routing. It has not yet been extended for multi-expert routing; this profile's Escalation Conditions describe the intended both-experts-active case, but the routing mechanics themselves remain a `v0.9.0` follow-on task, not yet implemented.
-- **`workflows/code-assistant-response.md`** — the general response workflow this profile's activation slots into once multi-expert routing is added to Step 2.
+- **`workflows/expert-routing.md`** — defines four routing types (GAUSS-only, Econometrics-only, both experts, neither), extended for multi-expert routing in `v0.9.0`. This profile's Escalation Conditions describe the both-experts-active case that workflow implements; multi-expert routing is a documented, manually-evaluated workflow, not a runtime orchestration engine.
+- **`workflows/code-assistant-response.md`** — the general response workflow this profile's activation slots into via Step 2, which routes to `workflows/expert-routing.md`'s four routing types.
 - **`schemas/command_lookup_evidence.schema.json`** — referenced only to draw the boundary: GAUSS command evidence (`retrieval_status`, `source_authority`, etc.) is entirely outside this profile's evidence authority and remains governed by the GAUSS Language Expert.
