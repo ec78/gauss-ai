@@ -101,6 +101,7 @@ This file records notable changes to the GAUSS AI framework.
 - Clarified experts/econometrics/knowledge.md as a compatibility placeholder redirecting to BODY_OF_KNOWLEDGE.md.
 - Improved command lookup source classification for official package documentation.
 - Added Repository Hygiene and Evaluation Policy Cleanup benchmark prompts 18.1-18.6.
+- Completed Repository Hygiene and Evaluation Policy Cleanup benchmark evaluations 18.1-18.6; all passed with 4.0 scores. Confirmed runtime orchestration remained disclaimed and both evidence-validation and tracking-guard strict-mode failures stayed limited to the same previously-documented exceptions. After updating tracking, the guard's default run reports 71 prompt IDs, 71 coverage rows, 58 run files referenced, 63 index entries, 0 errors, and exactly the 2 known historical warnings (`--strict` still fails on those two by design).
 
 ## [0.1.0] - 2026-06-26
 
