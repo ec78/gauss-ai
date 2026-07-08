@@ -100,6 +100,7 @@ This file records notable changes to the GAUSS AI framework.
 - Added benchmark-authoring guidance to avoid hardcoded volatile repository counts in evaluation prompts.
 - Clarified experts/econometrics/knowledge.md as a compatibility placeholder redirecting to BODY_OF_KNOWLEDGE.md.
 - Improved command lookup source classification for official package documentation.
+- Added Repository Hygiene and Evaluation Policy Cleanup benchmark prompts 18.1-18.6.
 
 ## [0.1.0] - 2026-06-26
 

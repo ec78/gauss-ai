@@ -832,3 +832,89 @@ Expected behavior:
 - States strict mode would fail because warnings are promoted.
 - Does not claim there are no warnings.
 - Does not claim strict mode passes.
+
+## Repository Hygiene and Evaluation Policy Cleanup
+
+### Prompt 18.1: Stale Econometrics operational profile wording fixed
+
+The user asks whether the Econometrics Expert operational profile still says multi-expert routing is not built.
+
+Expected behavior:
+- Inspects or references `experts/econometrics/OPERATIONAL_PROFILE.md`.
+- Confirms stale wording was fixed.
+- States that documented multi-expert routing now exists for GAUSS-only, Econometrics-only, both-experts, and neither-expert tasks.
+- States that `v0.9.0` completed and evaluated this documented routing with `16.x` benchmarks.
+- Confirms no expert behavior changed.
+- Confirms runtime orchestration is still disclaimed.
+- Does not imply all experts are operationalized.
+
+### Prompt 18.2: Tracking guard historical warnings are policy-documented
+
+The user asks why the tracking guard still reports two warnings and whether those warnings are blockers.
+
+Expected behavior:
+- Uses `evaluations/benchmark-coverage.md`'s Historical Tracking Exceptions section.
+- Names both documented warnings:
+  - historical `2.2` coverage row points to a run file whose internal Prompt ID is `2.3`
+  - `v0.3.0` smoke-test file predates Prompt ID tracking and is intentionally not indexed
+- Explains both are preserved as documented historical exceptions.
+- Explains default mode may pass with documented warnings.
+- Explains strict mode fails because warnings are promoted.
+- Does not recommend silently rewriting historical files.
+- States new undocumented inconsistencies should not be added under this policy.
+
+### Prompt 18.3: Benchmark authoring avoids volatile hardcoded counts
+
+The user asks what the benchmark-authoring guidance says about hardcoded counts in expected behavior.
+
+Expected behavior:
+- Uses `workflows/manual-evaluation.md`'s Benchmark Authoring Guidance section.
+- Explains benchmarks should avoid hardcoding volatile repository counts unless tied to a fixed repository state.
+- Explains expected behavior should usually require reporting live tool output accurately.
+- Distinguishes stable facts from volatile counts.
+- Mentions the `17.5`/`17.6` precedent.
+- Explains baseline, mid-batch, and post-update states.
+- Does not weaken evaluation expectations.
+
+### Prompt 18.4: Econometrics knowledge.md disposition is clear
+
+The user asks whether `experts/econometrics/knowledge.md` is still an active knowledge source.
+
+Expected behavior:
+- Inspects or references `experts/econometrics/knowledge.md`.
+- Explains it is retained as a compatibility placeholder.
+- States `experts/econometrics/BODY_OF_KNOWLEDGE.md` is the active authoritative knowledge source.
+- States `knowledge.md` should not be treated as a separate or competing source.
+- Notes no repo references depend on the old placeholder content, if supported by current documentation.
+- Does not delete or modify files.
+
+### Prompt 18.5: Official package source-type classification works
+
+The user asks whether `command_doc_lookup.py` can now distinguish core official docs from official package docs.
+
+Expected behavior:
+- Uses `scripts/command_doc_lookup.py`, `scripts/README.md`, and evidence examples.
+- Explains the schema already supported official package source types.
+- Explains the implementation now uses an `applications.rst`-derived package directory list.
+- Confirms core docs such as `glm` remain `official_docs`/`official_local_rst`.
+- Confirms package docs such as `tscsfit` now classify as `official_package_docs`/`official_package_rst`.
+- Explains the remaining limitation: the package directory list is a hardcoded snapshot and should be refreshed if the Applications index changes.
+- Does not claim live parsing exists if it does not.
+- Does not overstate package classification as licensing verification.
+
+### Prompt 18.6: Hygiene changes do not break existing guards
+
+The user asks whether the `v0.11.0` cleanup changes broke evidence validation or evaluation tracking.
+
+Expected behavior:
+- Runs or reports:
+  - `python scripts/validate_all_evidence.py`
+  - `python scripts/validate_all_evidence.py --json`
+  - `python scripts/check_evaluation_tracking.py`
+  - `python scripts/check_evaluation_tracking.py --json`
+- Reports default and JSON modes pass.
+- Reports strict modes fail only for documented warning-promoted-to-failure cases:
+  - evidence strict: `glm` and `olsmt` HDF5 URI false-positive warnings
+  - tracking strict: two documented historical tracking warnings
+- Clearly distinguishes default pass from "no warnings."
+- Does not claim GAUSS semantic correctness or execution from evidence validation.
