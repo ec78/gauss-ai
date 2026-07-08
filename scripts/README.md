@@ -39,6 +39,8 @@ python scripts/command_doc_lookup.py olsmt --docs-root "C:/Users/eclow/Documents
 
 `--schema-output` does not affect the default output format; omit the flag to get the original shape.
 
+**Core vs. package source classification (added `v0.11.0`).** A matched local `.rst` file's `source_type`/`source_authority` is `official_local_rst`/`official_docs` by default, or `official_package_rst`/`official_package_docs` if the file's docs-root-relative path starts with a known GAUSS "Application" (package) directory — for example, `tsmt/tscsfit.rst` classifies as `official_package_docs`, while a core-docs file like `glm.rst` or `olsmt.rst` classifies as `official_docs`. The set of known package directories is derived from the official Applications index (`docs_root/applications.rst`'s own `:link:` targets, e.g. `tsmt/index` -> `tsmt`), not guessed from command names, and is hardcoded as `PACKAGE_DOC_DIRECTORIES` in `command_doc_lookup.py` as a snapshot of that index — it should be refreshed if the Applications index changes. A directory missing from this set is classified as core documentation by default, so a stale snapshot only under-classifies a newer package; it cannot mis-classify base GAUSS documentation as a package.
+
 Validate schema-aligned output with:
 
 ```text

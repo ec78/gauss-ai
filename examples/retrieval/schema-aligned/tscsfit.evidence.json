@@ -253,8 +253,8 @@
       "tsc.header = \"\""
     ],
     "returns_section": ":return tso: An instance of a :class:`tscsFitOut` structure containing the following members:\n.. list-table::\n* - tso.bdv\n- Kx1 vector, regression coefficients from the dummy effects model (excluding individual-variables regression model).\n* - tso.vcdv\n- KxK matrix, variance-covariance matrix of the dummy variables regression model.\n* - tso.mdv\n- (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the dummy variables regression model.\n* - tso.bec\n- Kx1 vector, regression coefficients from the random effects regression model.\n* - tso.vcec\n- KxK matrix, variance-covariance matrix of the random effects regression model..\n* - tso.mec\n- (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the random effects regression model.\n* - tso.fixedEffects\n- matrix, fixed effects dummy variable estimates.\n*\n...[truncated]",
-    "source_authority": "official_docs",
-    "source_type": "official_local_rst",
+    "source_authority": "official_package_docs",
+    "source_type": "official_package_rst",
     "syntax_blocks": [
       ".. function:: tso = tscsFit(y, x, grp[, tsc])",
       "tso = tscsFit(dataset, formula, grp[, tsc])"
@@ -268,7 +268,7 @@
   "extraction_warnings": [
     "no keyword hits for: returns"
   ],
-  "generated_at": "2026-07-07T18:00:37Z",
+  "generated_at": "2026-07-08T13:54:17Z",
   "matches": [
     {
       "command_name": "tscsfit",
@@ -523,8 +523,8 @@
         "tsc.header = \"\""
       ],
       "returns_section": ":return tso: An instance of a :class:`tscsFitOut` structure containing the following members:\n.. list-table::\n* - tso.bdv\n- Kx1 vector, regression coefficients from the dummy effects model (excluding individual-variables regression model).\n* - tso.vcdv\n- KxK matrix, variance-covariance matrix of the dummy variables regression model.\n* - tso.mdv\n- (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the dummy variables regression model.\n* - tso.bec\n- Kx1 vector, regression coefficients from the random effects regression model.\n* - tso.vcec\n- KxK matrix, variance-covariance matrix of the random effects regression model..\n* - tso.mec\n- (K+1)x(K+1) matrix, moment matrix of the transformed variables (including a constant) from the random effects regression model.\n* - tso.fixedEffects\n- matrix, fixed effects dummy variable estimates.\n*\n...[truncated]",
-      "source_authority": "official_docs",
-      "source_type": "official_local_rst",
+      "source_authority": "official_package_docs",
+      "source_type": "official_package_rst",
       "syntax_blocks": [
         ".. function:: tso = tscsFit(y, x, grp[, tsc])",
         "tso = tscsFit(dataset, formula, grp[, tsc])"
@@ -535,8 +535,8 @@
   "notes": [],
   "retrieval_status": "found_incomplete",
   "schema_version": "0.1.0",
-  "source_authority": "official_docs",
-  "source_type": "official_local_rst",
+  "source_authority": "official_package_docs",
+  "source_type": "official_package_rst",
   "stale_evidence": null,
   "tool_name": "command_doc_lookup",
   "tool_version": "0.1.0",

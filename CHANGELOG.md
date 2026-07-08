@@ -99,6 +99,7 @@ This file records notable changes to the GAUSS AI framework.
 - Documented evaluation tracking historical-warning policy for the 2.2/2.3 mismatch and the v0.3.0 smoke-test file.
 - Added benchmark-authoring guidance to avoid hardcoded volatile repository counts in evaluation prompts.
 - Clarified experts/econometrics/knowledge.md as a compatibility placeholder redirecting to BODY_OF_KNOWLEDGE.md.
+- Improved command lookup source classification for official package documentation.
 
 ## [0.1.0] - 2026-06-26
 

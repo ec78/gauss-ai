@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(python scripts/check_evaluation_tracking.py --json)",
-      "Bash(python scripts/check_evaluation_tracking.py --strict)"
+      "Bash(python scripts/check_evaluation_tracking.py --strict)",
+      "Bash(python scripts/command_doc_lookup.py glm --docs-root \"C:/Users/eclow/Documents/GitHub/docs/docs\" --schema-output --redact-docs-root)",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('top-level:', d['source_type'], d['source_authority']\\); print\\('file_path:', d['best_match']['file_path']\\)\")",
+      "Bash(python scripts/command_doc_lookup.py tscsfit --docs-root \"C:/Users/eclow/Documents/GitHub/docs/docs\" --keywords panel grp fixed random effects tsc formula output returns --schema-output --redact-docs-root)",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('overall_pass:', d['overall_pass'], 'unexpected_count:', d['unexpected_count'], 'total_warnings:', d['total_warnings']\\)\")"
     ]
   }
 }

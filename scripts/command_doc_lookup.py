@@ -20,6 +20,35 @@ SCHEMA_VERSION = "0.1.0"
 TOOL_NAME = "command_doc_lookup"
 TOOL_VERSION = "0.1.0"
 
+# Top-level docs-root directories that correspond to separately distributed
+# GAUSS "Applications" (packages) rather than base GAUSS documentation, per
+# the official Applications index (docs_root/applications.rst as of 2026-07).
+# Derived directly from that index's `:link:` targets (e.g. `tsmt/index` ->
+# `tsmt`), not guessed from command names or directory-naming conventions.
+# Refresh this set if the Applications index changes; a directory that is
+# missing from this set is classified as core documentation by default, so a
+# stale entry only under-classifies a newer package, it does not
+# mis-classify base GAUSS documentation as a package.
+PACKAGE_DOC_DIRECTORIES = {
+    "ad",
+    "bet",
+    "bhatlib",
+    "cf",
+    "cmlmt",
+    "comt",
+    "dc",
+    "ds",
+    "fanpac",
+    "llmt",
+    "lpmt",
+    "lrmt",
+    "mlmt",
+    "optmt",
+    "sslib",
+    "tsmt",
+    "tspdlib",
+}
+
 
 SECTION_TITLES = {
     "syntax_blocks": ("syntax", "format", "formats", "usage"),
@@ -502,13 +531,29 @@ def to_string_array(value: Any) -> list[str]:
     return [str(value)]
 
 
+def classify_source(file_path: str, base_source_type: str) -> tuple[str, str]:
+    """Classify a docs-root-relative match path as core or package documentation.
+
+    Returns (source_type, source_authority). Only distinguishes core vs. package
+    for locally extracted `.rst` matches (`base_source_type == "official_local_rst"`);
+    any other base source type is returned unchanged with an "unknown" authority,
+    preserving prior behavior for non-local-rst sources.
+    """
+    if base_source_type != "official_local_rst":
+        return base_source_type, "unknown"
+    first_segment = file_path.split("/", 1)[0] if file_path else ""
+    if first_segment in PACKAGE_DOC_DIRECTORIES:
+        return "official_package_rst", "official_package_docs"
+    return "official_local_rst", "official_docs"
+
+
 def map_match_to_schema(match: dict[str, Any], command_name: str) -> dict[str, Any]:
     """Map a legacy match dict (from extract_match) into the evidence schema's match shape."""
-    source_type = match.get("source_type", "official_local_rst")
-    source_authority = "official_docs" if source_type == "official_local_rst" else "unknown"
+    file_path = match.get("file_path", "")
+    source_type, source_authority = classify_source(file_path, match.get("source_type", "official_local_rst"))
     return {
         "command_name": command_name,
-        "file_path": match.get("file_path", ""),
+        "file_path": file_path,
         "heading": match.get("heading"),
         "source_type": source_type,
         "source_authority": source_authority,
