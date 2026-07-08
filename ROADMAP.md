@@ -57,7 +57,7 @@
 - Add and evaluate Expert Routing benchmarks (15.1-15.7) covering positive activation, correct non-activation, native command preference, translation, cross-language-contamination debugging, data-structure routing, ambiguity escalation, and version-sensitive command selection.
 - Keep expert activation internal by default: routing is checkable from response behavior, not a required "expert activated" label. Only the GAUSS Language Expert is operationalized in this milestone; the Econometrics, Software Engineering, Documentation, and Education experts remain narrative-only.
 
-## v0.9.0: Second Operational Expert and Multi-Expert Routing
+## v0.9.0: Second Operational Expert and Multi-Expert Routing (Completed)
 
 - Operationalize a second expert, the Econometrics Expert, proving the operational expert interface generalizes beyond the GAUSS Language Expert.
 - Build the Econometrics Expert's narrative foundation (`experts/econometrics/EXPERT.md`, `BODY_OF_KNOWLEDGE.md`, `reasoning.md`, `best_practices.md`, `common_mistakes.md`) from placeholder files, then fill in the operational interface (`experts/econometrics/OPERATIONAL_PROFILE.md`).
@@ -65,3 +65,11 @@
 - Integrate multi-expert routing into the Code Assistant's response workflow, task modes, and system prompt.
 - Add and evaluate Multi-Expert Routing benchmarks (16.1-16.8) covering all four routing types, causal-interpretation separation from code translation, p-value misinterpretation correction, and multi-expert uncertainty handling.
 - Preserve every `v0.8.0` guarantee: GAUSS command evidence requirements are unchanged, and neither expert may substitute for the other (command availability is not methodological validity; methodological plausibility does not invent GAUSS syntax).
+
+## v0.10.0: Evidence Coverage and Routing Regression Guards
+
+- Close the local `glm` evidence gap surfaced by a `v0.9.0` benchmark evaluation (`16.7`), which had to verify `glm` against live official documentation instead of a committed local file: add real schema-aligned evidence (`examples/retrieval/schema-aligned/glm.evidence.json`) generated from the local official `glm.rst`.
+- Systematically audit local and package-level GAUSS documentation for a panel-estimation command, resolving the open question left by `v0.9.0`'s `16.4` evaluation: find `tscsFit` (from the commercial TSMT package) as a verified pooled time-series-cross-section regression estimator, document it (`examples/retrieval/panel-estimation-coverage-audit.md`), and add real schema-aligned evidence (`examples/retrieval/schema-aligned/tscsfit.evidence.json`) while clearly distinguishing panel data-management utilities and panel diagnostic/test commands from actual panel estimation.
+- Add a lightweight, local evaluation tracking consistency guard (`scripts/check_evaluation_tracking.py`) that checks benchmark prompts, coverage rows, run files, and the run index for consistency with each other, so tracking drift is caught mechanically rather than only by an evaluator's diligence.
+- Add and evaluate Evidence Coverage and Tracking Guards benchmarks (17.1-17.6) covering `glm` evidence validation, a logistic-regression response grounded in local evidence, panel-audit non-invention, and the tracking guard's default/JSON/strict behavior including historical-warning handling.
+- Add no new operational expert, no new routing type, and no runtime orchestration — this milestone hardens the evidence and tracking layers underneath the `v0.9.0` routing system rather than extending routing itself.
