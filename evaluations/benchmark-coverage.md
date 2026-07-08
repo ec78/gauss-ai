@@ -76,3 +76,39 @@ Some early runs predate stable Prompt ID assignment. Where a run does not match 
 
 - [2026-06-30-code-assistant-manual-run-002.md](runs/2026-06-30-code-assistant-manual-run-002.md): evaluated a trimmed-`y` row-alignment dimension mismatch prompt under historical Prompt ID 2.1.
 - [2026-06-30-code-assistant-manual-run-003.md](runs/2026-06-30-code-assistant-manual-run-003.md): evaluated Python `.find()` to GAUSS `strindx` translation under historical Prompt ID 4.1.
+
+## Historical Tracking Exceptions
+
+This section is the canonical policy location for tracking-guard warnings (`scripts/check_evaluation_tracking.py`) that are expected to persist rather than be fixed. It was added in `v0.11.0` (`planning/v0.11.0-repository-hygiene-and-evaluation-policy-cleanup.md`, Deliverable 2) to give the two long-standing warnings an explicit, cross-referenced disposition instead of leaving their explanation scattered only in row-level notes or a script's warning text.
+
+### 2.2 / 2.3 Prompt ID mismatch
+
+**What the mismatch is:** the `2.2` row above links to [2026-06-30-code-assistant-manual-run-001.md](runs/2026-06-30-code-assistant-manual-run-001.md), but that run file's own `Prompt ID:` field states `2.3`. The run itself evaluated a GAUSS string-search debugging prompt (`strpos` → `strindx`, `-1` → `0` not-found handling), which maps by content to today's `2.2` benchmark ("String search bug"), not to today's `2.3` benchmark ("Scope and package dependency") — the two prompts were renumbered after this run was recorded, before stable Prompt IDs existed.
+
+**Why it is preserved:** rewriting `run-001.md`'s own `Prompt ID:` field to say `2.2` would misrepresent what was actually recorded at evaluation time, and re-linking the `2.2` row to a different run would discard real evaluation evidence that still accurately covers the current `2.2` benchmark's content. Preserving both files as originally written, with the mismatch explained here, is more honest than editing either one to make the numbers agree.
+
+**Why it is not a current blocker:** the run's content coverage (GAUSS string search, `strindx == 0` not-found handling) is accurate and still applicable to the current `2.2` benchmark; the mismatch is purely a labeling artifact from before stable Prompt IDs existed, not a gap in what was actually tested.
+
+**How the tracking guard reports it:** as a warning (not an error) when `benchmark-coverage.md`'s row for a Prompt ID links to a run file whose own `Prompt ID:` field differs — see `scripts/README.md` for the exact check. Default mode does not fail because of it; `--strict` promotes it to a failure, by design.
+
+**Guidance for future runs:** new evaluations should not reproduce this pattern — a coverage row's Prompt ID and its linked run file's own `Prompt ID:` field should always match going forward. This exception applies only to runs recorded before stable Prompt ID assignment.
+
+### v0.3.0 smoke-test file
+
+**What it is:** `evaluations/runs/2026-07-01-code-assistant-smoke-test-v0.3.0.md` is a run-like file that predates the Prompt-ID-based tracking system entirely. It tested whether the `v0.3.0` Code Assistant Preview's quickstart and onboarding documentation gave a new user enough context for a safe, GAUSS-native answer to a representative R-to-GAUSS translation prompt — a broader onboarding-readiness check, not an evaluation of one stable benchmark Prompt ID.
+
+**Why it is legitimate repository history:** it is a real, dated evaluation record (`2026-07-02`) that informed a real decision (whether `v0.3.0` was ready to tag), including a documented "Pass with minor revision" finding, a follow-up action, and a documented rerun after that follow-up was addressed. It should be preserved as-is, the same way any other completed evaluation record is preserved.
+
+**Why it is intentionally not retrofitted into the current system:** it does not correspond to a single stable Prompt ID from `evaluations/benchmark-prompts.md`, so forcing it into a `benchmark-coverage.md` row or `runs/INDEX.md` entry would misrepresent it as testing one specific benchmark when it actually tested broader onboarding readiness. Retrofitting it would distort what the file actually is rather than clarify it.
+
+**How the tracking guard reports it:** as a warning (not an error) — an unreferenced/orphaned run file under `evaluations/runs/` that is not linked from `benchmark-coverage.md` or `runs/INDEX.md`. Default mode does not fail because of it; `--strict` promotes it to a failure, by design.
+
+**Guidance for future smoke tests:** a future broad onboarding/readiness smoke test should either (a) be evaluated against one or more stable Prompt IDs and recorded through the normal run-file/coverage/index convention, or (b) if it is genuinely broader than any single Prompt ID, be clearly named and documented as a smoke test (as this one is) so it is never mistaken for an untracked or forgotten benchmark evaluation.
+
+### Policy statement
+
+- Historical exceptions may be preserved, without rewriting the underlying run file(s), when doing so would distort what was actually evaluated or recorded at the time.
+- Every preserved exception must be documented here (or in an equivalent, clearly cross-referenced location), not left implicit in a script's warning text alone.
+- The tracking guard's default mode may pass with documented warnings present — a `PASS` result does not mean zero warnings, only zero errors.
+- `--strict` mode intentionally fails whenever any warning is present, including these documented ones — this is expected policy, not a defect to fix before release.
+- New tracking inconsistencies must not be added under cover of this policy. This policy documents two specific, already-existing, dated exceptions; it is not a general license to skip matching coverage rows to run files going forward.
