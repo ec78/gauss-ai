@@ -111,6 +111,7 @@ This file records notable changes to the GAUSS AI framework.
 - Completed Default CI Guard Integration benchmark evaluations 20.1-20.5; all passed with 4.0 scores. Confirmed the CI workflow does not enforce strict mode, does not suppress or hide any warning, and introduced no separate code path from the already-verified local release-readiness command. After updating tracking, the guard's default run reports 81 prompt IDs, 81 coverage rows, 68 run files referenced, 73 index entries, 0 errors, and exactly the 2 known historical warnings (`--strict` still fails on those two by design); `scripts/check_release_readiness.py` reports default PASS with `--strict` failures remaining informational only.
 - Added Software Engineering Expert narrative foundation for v0.14.0.
 - Added Software Engineering Expert operational profile for v0.14.0.
+- Extended expert-routing workflow for three operational experts: GAUSS Language, Econometrics, and Software Engineering.
 
 ## [0.1.0] - 2026-06-26
 
