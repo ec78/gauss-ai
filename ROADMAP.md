@@ -93,7 +93,7 @@
 - Add and evaluate GAUSS Language Knowledge Cleanup and CI Guard Prep benchmarks (19.1-19.5) validating every item above.
 - Add no new operational expert, no new routing type, no runtime orchestration, and no CI workflow files — this milestone prepares for CI, it does not add it.
 
-## v0.13.0: Default CI Guard Integration
+## v0.13.0: Default CI Guard Integration (Completed)
 
 - Add a minimal GitHub Actions workflow (`.github/workflows/release-readiness.yml`, name "Release Readiness") that runs on every `push` and `pull_request`: checks out the repository, sets up Python `3.11`, installs the one required dependency (`jsonschema`), and runs `python scripts/check_release_readiness.py` — the same default-mode entrypoint already used locally, with no separate CI-only code path.
 - Do not enforce strict-mode checks in CI: the workflow never passes `--strict`, so the currently-expected strict-mode warnings (reviewed `glm`/`olsmt` HDF5-URI path warnings; two documented historical tracking warnings) have no effect on whether CI passes.
@@ -101,3 +101,12 @@
 - Document CI behavior in `scripts/README.md` (a new CI paragraph, plus updated strict-mode-policy wording reflecting that CI now exists) and `RELEASE_CHECKLIST.md` (a pointer note).
 - Add and evaluate Default CI Guard Integration benchmarks (20.1-20.5) validating every item above.
 - Add no new operational expert, no new routing type, no runtime orchestration, no schema changes, and no strict-mode CI enforcement — this milestone is CI integration for the existing default gate only.
+
+## v0.14.0: Software Engineering Expert Foundation
+
+- Operationalize a third expert, the Software Engineering Expert, which owns maintainability/design correctness (code organization, modularity, refactoring, testability, error handling, safe change management) — distinct from the GAUSS Language Expert's implementation correctness and the Econometrics Expert's methodological correctness.
+- Build the Software Engineering Expert's narrative foundation (`experts/software-engineering/EXPERT.md`, `BODY_OF_KNOWLEDGE.md`, `reasoning.md`, `best_practices.md`, `common_mistakes.md`) from placeholder files, then fill in the operational interface (`experts/software-engineering/OPERATIONAL_PROFILE.md`), following the `v0.9.0` Econometrics Expert precedent.
+- Extend `workflows/expert-routing.md` from four routing types (GAUSS-only, Econometrics-only, Both, Neither) to eight (GAUSS-only, Econometrics-only, Software-engineering-only, GAUSS + Econometrics, GAUSS + Software Engineering, Econometrics + Software Engineering, all three, Neither), each with a documented when-it-applies statement, worked example, evidence/context pattern, and response rule.
+- Integrate the Software Engineering Expert into the Code Assistant's response workflow, all ten task modes, and system prompt.
+- Add and evaluate Software Engineering Expert Foundation benchmarks (21.1-21.8) covering all eight routing types, including the flagship all-three-experts prompt grounded in real local `glm.evidence.json`.
+- Preserve every prior guarantee: GAUSS command evidence requirements are unchanged, econometric methodology requirements are unchanged, and no expert may substitute for another — clean code is not evidence of statistical/causal validity, and valid GAUSS syntax is not evidence of good design.

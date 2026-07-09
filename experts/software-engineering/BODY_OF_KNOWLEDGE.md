@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document organizes the structured knowledge domains the Software Engineering Expert draws on: code-quality reasoning, maintainability, refactoring, testability, structure, and safe change management. It is scoped to what a later operational profile needs — activation triggers, decision rules, refusal conditions — not a comprehensive software-engineering reference. Depth should grow only as far as benchmark evaluation (planned as category `21.x`) actually requires.
+This document organizes the structured knowledge domains the Software Engineering Expert draws on: code-quality reasoning, maintainability, refactoring, testability, structure, and safe change management. It is scoped to what `OPERATIONAL_PROFILE.md` needs — activation triggers, decision rules, refusal conditions — not a comprehensive software-engineering reference. Depth should grow only as far as benchmark evaluation (category `21.x`, completed with all eight prompts passing) actually requires.
 
 This domain is deliberately language-agnostic in its reasoning: it does not reproduce a GAUSS style guide or a general software-engineering textbook. It defines how a GAUSS-focused agent should reason about code organization, refactoring, testing, and safe change, and where that reasoning must hand off to the GAUSS Language Expert (for implementation) or the Econometrics Expert (for methodology).
 
