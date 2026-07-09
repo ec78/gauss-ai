@@ -2,6 +2,8 @@
 
 This file's content below is a historical, `v0.2.0`-specific record and has not been updated since. For current release-health checks, run `python scripts/check_release_readiness.py` (see `scripts/README.md`) and consult the newest `planning/v{X}-readiness-checklist.md` for the milestone in progress.
 
+As of `v0.13.0`, that same default release-readiness check (`validate_all_evidence.py` + `check_evaluation_tracking.py`, both default/non-strict mode) also runs automatically in CI on every push and pull request (`.github/workflows/release-readiness.yml`) — running it locally first is still useful, but no longer the only way it gets checked. The default check is the release gate; `--strict` remains a separate, informational, warning-free check that is not required to pass and is not enforced by CI (see `scripts/README.md`'s "Strict-mode policy and future CI expectations" section for exactly which warnings are currently expected there).
+
 ## v0.2.0 Release Readiness
 
 Target release: `v0.2.0` - Knowledge and Evaluation Foundation.

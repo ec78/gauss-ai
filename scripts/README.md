@@ -119,7 +119,9 @@ By default it runs only the two scripts' default (non-strict) modes, since those
 
 **`--json`** emits a machine-readable summary (`default_checks`, `default_pass`, and, with `--strict`, `strict_checks`/`strict_pass`/`strict_note`) instead of the human-readable listing. `overall_pass` always reflects the default checks only.
 
-This script does not implement CI. It is a local convenience wrapper intended to make it easy to run the same two checks a future CI job would run, without guessing which commands to invoke or what "release-ready" currently means.
+This script does not implement CI itself, but as of `v0.13.0` it is exactly what CI runs. It remains a local convenience wrapper too — the same command works identically whether you run it locally or CI runs it, so there is only one place to look for what "release-ready" currently means.
+
+**CI (added `v0.13.0`).** `.github/workflows/release-readiness.yml` (name: "Release Readiness") runs on every `push` and `pull_request`. It checks out the repository, sets up Python 3.11, installs `jsonschema` (the one external dependency `validate_all_evidence.py` needs, via `validate_lookup_evidence.py`), and runs `python scripts/check_release_readiness.py` — default mode, no flags. Strict mode is **not** enforced by CI in `v0.13.0`: the workflow never passes `--strict`, so a currently-expected strict-mode failure never fails a CI run. The workflow does not filter, quiet, or otherwise post-process the command's output, so every warning either underlying script reports still appears in the CI log exactly as it would locally — nothing is hidden.
 
 ## Strict-mode policy and future CI expectations
 
@@ -127,7 +129,7 @@ This script does not implement CI. It is a local convenience wrapper intended to
 - **Strict checks (`--strict`) are warning-free gates and are currently expected to fail.** This is a known, reviewed, and documented state, not an unresolved bug:
   - Evidence `--strict` fails on exactly `glm.evidence.json` and `olsmt.evidence.json`, both because of reviewed HDF5-URI path-warning false positives in official documentation examples (see `scripts/README.md`'s `validate_all_evidence.py` section above), not real path leaks.
   - Tracking `--strict` fails on exactly the two documented historical warnings in `evaluations/benchmark-coverage.md`'s "Historical Tracking Exceptions" section (a Prompt ID mismatch predating stable IDs, and a legacy smoke-test run file predating the Prompt-ID tracking system).
-- **If CI is added in the future, it should start with default checks only** (`scripts/check_release_readiness.py` with no flags), not `--strict` — running `--strict` in CI today would make every run fail on the same known, already-reviewed warnings, which trains reviewers to ignore CI failures rather than act on them.
+- **CI starts with default checks only** (`scripts/check_release_readiness.py` with no flags), not `--strict` — this is what `.github/workflows/release-readiness.yml` does as of `v0.13.0`. Running `--strict` in CI today would make every run fail on the same known, already-reviewed warnings, which trains reviewers to ignore CI failures rather than act on them.
 - **Do not make CI (or this script) green by hiding warnings.** If a future warning needs to stop blocking `--strict`, the correct fix is to resolve the underlying condition (regenerate evidence so the path warning no longer fires, or actually reconcile a tracking mismatch) or to explicitly document a reviewed, permanent exception (as already done for both current cases) — never to change a validator to stop reporting something true.
 - **A future CI setup could add `--strict` as a second, separate job once the current warnings are resolved or explicitly allowlisted** by name (matching the specific files/messages already documented here), so a *new* undocumented warning would still fail CI rather than being silently absorbed into an ever-growing exception list.
 
