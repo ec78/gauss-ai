@@ -115,6 +115,7 @@ This file records notable changes to the GAUSS AI framework.
 - Integrated Software Engineering Expert references into Code Assistant workflow, task modes, and system prompt.
 - Added Software Engineering Expert Foundation benchmark prompts 21.1-21.8.
 - Completed Software Engineering Expert Foundation benchmark evaluations 21.1-21.8; all passed with 4.0 scores.
+- Added Documentation Expert narrative foundation for v0.15.0.
 
 ## [0.1.0] - 2026-06-26
 
