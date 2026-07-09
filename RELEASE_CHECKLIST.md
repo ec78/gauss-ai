@@ -1,5 +1,7 @@
 # Release Checklist
 
+This file's content below is a historical, `v0.2.0`-specific record and has not been updated since. For current release-health checks, run `python scripts/check_release_readiness.py` (see `scripts/README.md`) and consult the newest `planning/v{X}-readiness-checklist.md` for the milestone in progress.
+
 ## v0.2.0 Release Readiness
 
 Target release: `v0.2.0` - Knowledge and Evaluation Foundation.

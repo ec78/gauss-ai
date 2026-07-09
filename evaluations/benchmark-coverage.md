@@ -77,6 +77,11 @@ Some early runs predate stable Prompt ID assignment. Where a run does not match 
 | 18.4 | Repository Hygiene and Evaluation Policy Cleanup | Econometrics knowledge.md disposition is clear | Passed | [2026-07-05-code-assistant-repository-hygiene-run-005.md](runs/2026-07-05-code-assistant-repository-hygiene-run-005.md) | 4.0 | Quoted the real compatibility-placeholder stub and confirmed BODY_OF_KNOWLEDGE.md is authoritative via a real reference check. |
 | 18.5 | Repository Hygiene and Evaluation Policy Cleanup | Official package source-type classification works | Passed | [2026-07-05-code-assistant-repository-hygiene-run-006.md](runs/2026-07-05-code-assistant-repository-hygiene-run-006.md) | 4.0 | Confirmed the applications.rst-derived classification fix works for tscsfit while leaving glm unaffected, and stated the hardcoded-snapshot limitation. |
 | 18.6 | Repository Hygiene and Evaluation Policy Cleanup | Hygiene changes do not break existing guards | Passed | [2026-07-05-code-assistant-repository-hygiene-run-001.md](runs/2026-07-05-code-assistant-repository-hygiene-run-001.md) | 4.0 | Ran all four validation/tracking commands for real and confirmed strict-mode failures remained limited to the same documented exceptions. |
+| 19.1 | GAUSS Language Knowledge Cleanup and CI Guard Prep | GAUSS Language knowledge.md disposition is clear | Not Run | N/A | N/A | Tests GAUSS Language knowledge.md compatibility-placeholder disposition. |
+| 19.2 | GAUSS Language Knowledge Cleanup and CI Guard Prep | Release readiness check uses default gates | Not Run | N/A | N/A | Tests scripts/check_release_readiness.py default-gate behavior. |
+| 19.3 | GAUSS Language Knowledge Cleanup and CI Guard Prep | Strict-mode CI expectations are documented | Not Run | N/A | N/A | Tests strict-mode/future-CI documentation accuracy. |
+| 19.4 | GAUSS Language Knowledge Cleanup and CI Guard Prep | Package directory refresh process is documented | Not Run | N/A | N/A | Tests PACKAGE_DOC_DIRECTORIES refresh-process documentation. |
+| 19.5 | GAUSS Language Knowledge Cleanup and CI Guard Prep | v0.12 cleanup does not break guards | Not Run | N/A | N/A | Tests validation/tracking guards after v0.12.0 cleanup changes. |
 
 ## Completed Runs Not Directly Covered By Current Stable Prompts
 

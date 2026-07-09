@@ -102,6 +102,9 @@ This file records notable changes to the GAUSS AI framework.
 - Improved command lookup source classification for official package documentation.
 - Added Repository Hygiene and Evaluation Policy Cleanup benchmark prompts 18.1-18.6.
 - Completed Repository Hygiene and Evaluation Policy Cleanup benchmark evaluations 18.1-18.6; all passed with 4.0 scores. Confirmed runtime orchestration remained disclaimed and both evidence-validation and tracking-guard strict-mode failures stayed limited to the same previously-documented exceptions. After updating tracking, the guard's default run reports 71 prompt IDs, 71 coverage rows, 58 run files referenced, 63 index entries, 0 errors, and exactly the 2 known historical warnings (`--strict` still fails on those two by design).
+- Clarified experts/gauss-language/knowledge.md as a compatibility placeholder redirecting to BODY_OF_KNOWLEDGE.md, mirroring the same disposition applied to experts/econometrics/knowledge.md in v0.11.0.
+- Added scripts/check_release_readiness.py, a local wrapper that runs the default validate_all_evidence.py and check_evaluation_tracking.py checks in one command. Documented strict-mode CI expectations and the PACKAGE_DOC_DIRECTORIES refresh process in scripts/README.md.
+- Added GAUSS Language Knowledge Cleanup and CI Guard Prep benchmark prompts 19.1-19.5.
 
 ## [0.1.0] - 2026-06-26
 

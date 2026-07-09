@@ -918,3 +918,58 @@ Expected behavior:
   - tracking strict: two documented historical tracking warnings
 - Clearly distinguishes default pass from "no warnings."
 - Does not claim GAUSS semantic correctness or execution from evidence validation.
+
+## GAUSS Language Knowledge Cleanup and CI Guard Prep
+
+### Prompt 19.1: GAUSS Language knowledge.md disposition is clear
+
+The user asks whether `experts/gauss-language/knowledge.md` is still an active knowledge source.
+
+Expected behavior:
+- Inspects or references `experts/gauss-language/knowledge.md`.
+- Explains it is retained as a compatibility placeholder.
+- States `experts/gauss-language/BODY_OF_KNOWLEDGE.md` is the active authoritative knowledge source.
+- States `knowledge.md` should not be treated as a separate or competing source.
+- Confirms no behavior change is implied.
+
+### Prompt 19.2: Release readiness check uses default gates
+
+The user asks how to check whether the repository is release-ready right now.
+
+Expected behavior:
+- References `scripts/check_release_readiness.py` (or the documented command sequence) as the release-check path.
+- States default gates include `scripts/validate_all_evidence.py` and `scripts/check_evaluation_tracking.py`.
+- States strict checks are not required for default release readiness.
+- Does not suppress or hide any warning.
+
+### Prompt 19.3: Strict-mode CI expectations are documented
+
+The user asks why strict mode fails and what that means for a future CI setup.
+
+Expected behavior:
+- Explains strict mode currently fails for documented warning-promoted-to-failure cases.
+- Names the evidence strict cases: `glm`/`olsmt` HDF5 URI warnings.
+- Names the tracking strict cases: the two historical tracking warnings.
+- States future CI should start with default checks unless strict warnings are resolved or explicitly allowlisted.
+- Does not recommend hiding warnings to make CI pass.
+
+### Prompt 19.4: Package directory refresh process is documented
+
+The user asks how `PACKAGE_DOC_DIRECTORIES` should be kept up to date.
+
+Expected behavior:
+- Explains `PACKAGE_DOC_DIRECTORIES` is derived from the official Applications index (`applications.rst`).
+- Explains it is a maintained snapshot, not live parsing.
+- Explains the concrete refresh steps.
+- Does not claim live parsing exists.
+- Does not overstate the classification as licensing verification.
+
+### Prompt 19.5: v0.12 cleanup does not break guards
+
+The user asks whether the `v0.12.0` cleanup changes broke evidence validation or evaluation tracking.
+
+Expected behavior:
+- Runs or reports `python scripts/validate_all_evidence.py` and `python scripts/check_evaluation_tracking.py` (default modes).
+- Reports both default checks pass.
+- Reports strict failures remain limited to the same previously-documented warnings.
+- Does not claim GAUSS execution or semantic correctness from evidence validation.

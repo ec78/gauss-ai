@@ -104,6 +104,47 @@ It checks, at minimum:
 
 This script does not implement CI, does not rewrite the evaluation framework, and does not modify scoring rules, benchmark prompt text, or existing run files — it only reports what it finds under `evaluations/`.
 
+## `check_release_readiness.py`
+
+Purpose:
+Run the default release-health guard suite — `validate_all_evidence.py` and `check_evaluation_tracking.py` — in one command, instead of running each separately and manually combining the results. This is a thin wrapper: it invokes both scripts exactly as documented above, prints their real output verbatim, and summarizes overall pass/fail. It does not add new validation logic, does not change either script's behavior, and does not suppress or reinterpret any warning.
+
+```text
+python scripts/check_release_readiness.py
+```
+
+By default it runs only the two scripts' default (non-strict) modes, since those are the release-health gates (see "Strict-mode policy and future CI expectations" below). Exit code is `0` only if both default checks pass.
+
+**`--strict`** additionally runs both scripts in `--strict` mode and reports the result separately, labeled informational. Strict-mode failure is currently expected (see below) and never affects this script's own exit code — passing `--strict` cannot turn a real default-mode failure into a pass, and it cannot turn an expected strict-mode failure into something this script reports as blocking.
+
+**`--json`** emits a machine-readable summary (`default_checks`, `default_pass`, and, with `--strict`, `strict_checks`/`strict_pass`/`strict_note`) instead of the human-readable listing. `overall_pass` always reflects the default checks only.
+
+This script does not implement CI. It is a local convenience wrapper intended to make it easy to run the same two checks a future CI job would run, without guessing which commands to invoke or what "release-ready" currently means.
+
+## Strict-mode policy and future CI expectations
+
+- **Default checks are the release-health gates.** `python scripts/validate_all_evidence.py` and `python scripts/check_evaluation_tracking.py` (or `python scripts/check_release_readiness.py`, which runs both) passing with exit code `0` is what "release-ready" currently means. A default `PASS` does not mean zero warnings — it means zero errors/unexpected results, with any warnings present and accounted for.
+- **Strict checks (`--strict`) are warning-free gates and are currently expected to fail.** This is a known, reviewed, and documented state, not an unresolved bug:
+  - Evidence `--strict` fails on exactly `glm.evidence.json` and `olsmt.evidence.json`, both because of reviewed HDF5-URI path-warning false positives in official documentation examples (see `scripts/README.md`'s `validate_all_evidence.py` section above), not real path leaks.
+  - Tracking `--strict` fails on exactly the two documented historical warnings in `evaluations/benchmark-coverage.md`'s "Historical Tracking Exceptions" section (a Prompt ID mismatch predating stable IDs, and a legacy smoke-test run file predating the Prompt-ID tracking system).
+- **If CI is added in the future, it should start with default checks only** (`scripts/check_release_readiness.py` with no flags), not `--strict` — running `--strict` in CI today would make every run fail on the same known, already-reviewed warnings, which trains reviewers to ignore CI failures rather than act on them.
+- **Do not make CI (or this script) green by hiding warnings.** If a future warning needs to stop blocking `--strict`, the correct fix is to resolve the underlying condition (regenerate evidence so the path warning no longer fires, or actually reconcile a tracking mismatch) or to explicitly document a reviewed, permanent exception (as already done for both current cases) — never to change a validator to stop reporting something true.
+- **A future CI setup could add `--strict` as a second, separate job once the current warnings are resolved or explicitly allowlisted** by name (matching the specific files/messages already documented here), so a *new* undocumented warning would still fail CI rather than being silently absorbed into an ever-growing exception list.
+
+## PACKAGE_DOC_DIRECTORIES refresh process
+
+`scripts/command_doc_lookup.py`'s `PACKAGE_DOC_DIRECTORIES` constant (added `v0.11.0`) is a hardcoded snapshot of the official GAUSS Applications index (`docs_root/applications.rst`), not a live parse of that file at lookup time. It is source classification only — it tells the evidence schema's `source_type`/`source_authority` fields whether a matched file lives in a separately-distributed package directory versus the core documentation tree. It is **not** licensing verification; the Code Assistant must still state a package's licensing/version dependency explicitly whenever it recommends a package-sourced command, regardless of this classification.
+
+To refresh it when the official Applications index changes:
+
+1. Inspect the current `docs_root/applications.rst` and list its `.. card::` entries' `:link:` targets (each target's first path segment is a package directory, e.g. `tsmt/index` -> `tsmt`).
+2. Compare that list against the current `PACKAGE_DOC_DIRECTORIES` set in `scripts/command_doc_lookup.py`.
+3. Update `PACKAGE_DOC_DIRECTORIES` to add any new package directory found, or remove one that the index no longer lists — do not add a directory name that isn't actually present in the Applications index, even if it looks package-like by name.
+4. Regenerate and validate affected evidence only if needed — that is, only for existing committed evidence files whose classification would actually change (a file under a newly-added or newly-removed package directory). Do not regenerate unrelated evidence as part of this refresh.
+5. Run `python scripts/validate_all_evidence.py` (and `--strict`) afterward to confirm the refresh introduced no new unexpected result or warning beyond the already-documented ones.
+
+A directory missing from the snapshot is classified as core documentation by default, so a stale snapshot can only under-classify a newer package as core — it cannot mis-classify real base-GAUSS documentation as a package. This bounds the risk of the snapshot going stale between refreshes.
+
 ## Output Fields
 
 - `command_name`: command requested by the user.
