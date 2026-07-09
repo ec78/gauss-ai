@@ -1,6 +1,6 @@
 # Known Limitations
 
-These limitations apply as of the `v0.11.0` Repository Hygiene and Evaluation Policy Cleanup milestone.
+These limitations apply as of the `v0.12.0` GAUSS Language Knowledge Cleanup and CI Guard Prep milestone.
 
 ## Retrieval and Lookup
 

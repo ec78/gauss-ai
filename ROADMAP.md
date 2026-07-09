@@ -74,7 +74,7 @@
 - Add and evaluate Evidence Coverage and Tracking Guards benchmarks (17.1-17.6) covering `glm` evidence validation, a logistic-regression response grounded in local evidence, panel-audit non-invention, and the tracking guard's default/JSON/strict behavior including historical-warning handling.
 - Add no new operational expert, no new routing type, and no runtime orchestration — this milestone hardens the evidence and tracking layers underneath the `v0.9.0` routing system rather than extending routing itself.
 
-## v0.11.0: Repository Hygiene and Evaluation Policy Cleanup
+## v0.11.0: Repository Hygiene and Evaluation Policy Cleanup (Completed)
 
 - Fix stale wording in the Econometrics Expert's operational profile (`experts/econometrics/OPERATIONAL_PROFILE.md`) that still described multi-expert routing as unbuilt, despite `v0.9.0` having completed and evaluated it — a documentation-only fix with no change to expert behavior, decision rules, or activation conditions.
 - Document an explicit, written policy for two long-standing evaluation-tracking warnings (a historical Prompt ID mismatch, and a pre-Prompt-ID-era smoke-test run file) in `evaluations/benchmark-coverage.md`'s "Historical Tracking Exceptions" section: preserve both without rewriting historical run files, since rewriting them would misrepresent what was actually evaluated at the time.
@@ -83,3 +83,12 @@
 - Close a command-evidence source-classification gap: `scripts/command_doc_lookup.py` now distinguishes core GAUSS documentation from separately-licensed package documentation (`official_docs`/`official_local_rst` vs. `official_package_docs`/`official_package_rst`), using a package-directory list derived from the official GAUSS Applications index — the schema already supported this distinction; only the tool's classification logic was missing it.
 - Add and evaluate Repository Hygiene and Evaluation Policy Cleanup benchmarks (18.1-18.6) validating every item above.
 - Add no new operational expert, no new routing type, and no runtime orchestration — this milestone is cleanup and policy clarity only.
+
+## v0.12.0: GAUSS Language Knowledge Cleanup and CI Guard Prep
+
+- Clarify `experts/gauss-language/knowledge.md`, a one-line placeholder superseded by `BODY_OF_KNOWLEDGE.md`, as an explicit compatibility stub — the direct parallel to `v0.11.0`'s Econometrics fix, flagged as a deferred follow-up at the time.
+- Add a local release-readiness check (`scripts/check_release_readiness.py`) that runs the existing default guard suite (`validate_all_evidence.py`, `check_evaluation_tracking.py`) in one command; `--strict` runs both scripts' strict mode as a separate, informational section that never affects the script's own exit code.
+- Document strict-mode policy and future CI expectations in `scripts/README.md`: default checks are the release-health gate; strict checks are warning-free gates currently expected to fail for named, reviewed reasons; future CI should start with default checks only and never hide warnings to appear green.
+- Document the `PACKAGE_DOC_DIRECTORIES` refresh process: concrete steps for updating the hardcoded, `applications.rst`-derived package-directory snapshot when the official Applications index changes.
+- Add and evaluate GAUSS Language Knowledge Cleanup and CI Guard Prep benchmarks (19.1-19.5) validating every item above.
+- Add no new operational expert, no new routing type, no runtime orchestration, and no CI workflow files — this milestone prepares for CI, it does not add it.
