@@ -84,7 +84,7 @@
 - Add and evaluate Repository Hygiene and Evaluation Policy Cleanup benchmarks (18.1-18.6) validating every item above.
 - Add no new operational expert, no new routing type, and no runtime orchestration — this milestone is cleanup and policy clarity only.
 
-## v0.12.0: GAUSS Language Knowledge Cleanup and CI Guard Prep
+## v0.12.0: GAUSS Language Knowledge Cleanup and CI Guard Prep (Completed)
 
 - Clarify `experts/gauss-language/knowledge.md`, a one-line placeholder superseded by `BODY_OF_KNOWLEDGE.md`, as an explicit compatibility stub — the direct parallel to `v0.11.0`'s Econometrics fix, flagged as a deferred follow-up at the time.
 - Add a local release-readiness check (`scripts/check_release_readiness.py`) that runs the existing default guard suite (`validate_all_evidence.py`, `check_evaluation_tracking.py`) in one command; `--strict` runs both scripts' strict mode as a separate, informational section that never affects the script's own exit code.
@@ -92,3 +92,12 @@
 - Document the `PACKAGE_DOC_DIRECTORIES` refresh process: concrete steps for updating the hardcoded, `applications.rst`-derived package-directory snapshot when the official Applications index changes.
 - Add and evaluate GAUSS Language Knowledge Cleanup and CI Guard Prep benchmarks (19.1-19.5) validating every item above.
 - Add no new operational expert, no new routing type, no runtime orchestration, and no CI workflow files — this milestone prepares for CI, it does not add it.
+
+## v0.13.0: Default CI Guard Integration
+
+- Add a minimal GitHub Actions workflow (`.github/workflows/release-readiness.yml`, name "Release Readiness") that runs on every `push` and `pull_request`: checks out the repository, sets up Python `3.11`, installs the one required dependency (`jsonschema`), and runs `python scripts/check_release_readiness.py` — the same default-mode entrypoint already used locally, with no separate CI-only code path.
+- Do not enforce strict-mode checks in CI: the workflow never passes `--strict`, so the currently-expected strict-mode warnings (reviewed `glm`/`olsmt` HDF5-URI path warnings; two documented historical tracking warnings) have no effect on whether CI passes.
+- Do not suppress or filter any warning: the workflow's output is the underlying scripts' real stdout/stderr, unmodified, so every warning stays visible in CI logs exactly as it would locally.
+- Document CI behavior in `scripts/README.md` (a new CI paragraph, plus updated strict-mode-policy wording reflecting that CI now exists) and `RELEASE_CHECKLIST.md` (a pointer note).
+- Add and evaluate Default CI Guard Integration benchmarks (20.1-20.5) validating every item above.
+- Add no new operational expert, no new routing type, no runtime orchestration, no schema changes, and no strict-mode CI enforcement — this milestone is CI integration for the existing default gate only.
