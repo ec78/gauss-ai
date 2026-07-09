@@ -1042,3 +1042,130 @@ Expected behavior:
 - Reports JSON `overall_pass` is true.
 - Explains strict mode remains informational and is not required for CI.
 - Does not claim GAUSS semantic correctness or execution from evidence validation.
+
+## Software Engineering Expert Foundation
+
+Use Prompt IDs 21.1-21.8. These exercise the Software Engineering Expert (`experts/software-engineering/OPERATIONAL_PROFILE.md`) and the eight routing types documented in `workflows/expert-routing.md`, extending the two-expert coverage validated by `16.x` to three experts.
+
+### Prompt 21.1: Software-engineering-only code review
+
+The user asks for a maintainability review of generic pseudocode or non-GAUSS code with no econometric content.
+
+Example prompt: "Can you review this generic pseudocode for maintainability? It loads data, cleans missing values, computes a few summary numbers, and prints a report, all in one long function. I am not asking about GAUSS syntax or statistics — just whether the structure is maintainable."
+
+Expected behavior:
+- Activates Software Engineering Expert only.
+- Does not activate GAUSS Language Expert.
+- Does not activate Econometrics Expert.
+- Identifies maintainability issues such as one long function, mixed responsibilities, hidden assumptions, weak testability, and reporting coupled to data cleaning.
+- Suggests refactoring into smaller responsibilities.
+- Suggests tests or validation checks.
+- Does not invent GAUSS syntax.
+- Does not make statistical claims.
+
+### Prompt 21.2: GAUSS + Software Engineering refactor
+
+The user provides GAUSS-like code with repeated blocks and asks for a cleaner structure.
+
+Example prompt: "I have GAUSS code with the same data-cleaning block copied before three different models. Can you help me refactor it into a cleaner structure without changing behavior?"
+
+Expected behavior:
+- Activates GAUSS Language Expert and Software Engineering Expert.
+- GAUSS Language Expert owns GAUSS syntax and implementation validity.
+- Software Engineering Expert owns refactor strategy, behavior preservation, duplication reduction, and testability.
+- Recommends extracting repeated logic into a helper/procedure only with GAUSS-valid syntax or clearly labeled pseudocode.
+- Explains behavior-preserving refactor principles.
+- Suggests comparing old and new outputs.
+- Does not claim tests were run.
+- Does not invent unverified GAUSS syntax.
+
+### Prompt 21.3: Econometrics + Software Engineering design review
+
+The user describes an econometric workflow that mixes data cleaning, model fitting, diagnostics, and reporting in one script and asks how to improve it.
+
+Example prompt: "I have an econometric analysis script that imports the data, cleans it, estimates the model, runs diagnostics, and writes final tables all in one long file. How should I organize this better so the analysis is easier to maintain and the diagnostics are not forgotten?"
+
+Expected behavior:
+- Activates Econometrics Expert and Software Engineering Expert.
+- Does not require GAUSS Language Expert unless GAUSS-specific syntax is requested.
+- Econometrics Expert owns diagnostics/modeling workflow concerns.
+- Software Engineering Expert owns decomposition, maintainability, and workflow organization.
+- Recommends separating data prep, model estimation, diagnostics, and reporting.
+- Suggests validation/checkpoints.
+- Does not invent GAUSS syntax.
+- Does not claim causal/statistical validity from clean organization alone.
+
+### Prompt 21.4: All three experts activate
+
+The user asks for GAUSS code to estimate logistic regression, structure the code cleanly, and explain whether logistic regression is appropriate.
+
+Example prompt: "Can you show me how to run a logistic regression in GAUSS for a binary outcome, structure the code cleanly so I can reuse it, and tell me whether logistic regression is automatically the right model?"
+
+Expected behavior:
+- Activates GAUSS Language Expert, Econometrics Expert, and Software Engineering Expert.
+- Uses local `glm.evidence.json` (`examples/retrieval/schema-aligned/glm.evidence.json`) for GAUSS implementation facts.
+- GAUSS Language Expert owns `glm` syntax/family/link implementation facts.
+- Econometrics Expert explains binary outcome makes logistic regression plausible but not automatically right; appropriateness depends on goal, sampling, repeated observations, separation, omitted variables, and interpretation needs.
+- Software Engineering Expert recommends reusable structure, separation of setup/modeling/output, and tests/checks.
+- Keeps implementation, methodology, and maintainability claims separate.
+- Does not claim execution.
+- Does not let clean code imply model validity.
+
+### Prompt 21.5: Software Engineering does not override GAUSS evidence
+
+The user asks to refactor GAUSS code using Python-like constructs because they look cleaner.
+
+Example prompt: "Can you refactor my GAUSS code to use Python-style list comprehensions and dictionary syntax? It would look cleaner that way."
+
+Expected behavior:
+- Activates GAUSS Language Expert and Software Engineering Expert.
+- Software Engineering Expert may support the goal of cleaner structure.
+- GAUSS Language Expert prevents invalid or unverified GAUSS syntax.
+- Response prioritizes valid GAUSS over aesthetic Python-like constructs.
+- Suggests GAUSS-appropriate or pseudocode-labeled alternatives.
+- Does not invent GAUSS syntax.
+- Does not claim Python-like constructs are valid GAUSS without evidence.
+
+### Prompt 21.6: Software Engineering does not make causal claims
+
+The user asks whether cleaner code organization makes regression results more causal or reliable.
+
+Example prompt: "If I refactor my regression code and make it cleaner, does that make my results more causal or statistically reliable?"
+
+Expected behavior:
+- Activates Software Engineering Expert and Econometrics Expert.
+- Software Engineering Expert explains cleaner code can improve reproducibility, reviewability, and reduce implementation mistakes.
+- Econometrics Expert explains causal validity/statistical reliability depend on research design, assumptions, data quality, estimator choice, diagnostics, and identification, not code cleanliness alone.
+- Does not overclaim.
+- Does not require GAUSS Language Expert unless syntax is discussed.
+- Separates maintainability/reproducibility from causal/statistical validity.
+
+### Prompt 21.7: Testing and validation advice without execution claim
+
+The user asks how to test a refactored GAUSS procedure.
+
+Example prompt: "I refactored a GAUSS procedure into smaller helper procedures. How should I test that I did not change the behavior?"
+
+Expected behavior:
+- Activates Software Engineering Expert.
+- Activates GAUSS Language Expert if GAUSS-specific testing or syntax advice is given.
+- Suggests comparing old vs new outputs on representative inputs.
+- Suggests edge cases, missing/empty data checks, dimension/shape checks, and regression checks.
+- Suggests keeping expected outputs for known examples.
+- Does not claim tests were run.
+- Does not require new tooling unless clearly optional.
+- Labels any unverified syntax or pseudocode clearly.
+
+### Prompt 21.8: Neither expert activation for general writing task
+
+The user asks for a short release-note blurb unrelated to code, GAUSS, or econometrics.
+
+Example prompt: "Can you write a short release-note blurb saying this update improves the user experience and fixes several small issues?"
+
+Expected behavior:
+- Does not activate Software Engineering Expert.
+- Does not activate GAUSS Language Expert.
+- Does not activate Econometrics Expert.
+- Gives normal writing help.
+- Does not impose expert routing unnecessarily.
+- Does not mention GAUSS, econometrics, code quality, or operational experts unless the user asks.

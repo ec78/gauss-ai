@@ -87,6 +87,14 @@ Some early runs predate stable Prompt ID assignment. Where a run does not match 
 | 20.3 | Default CI Guard Integration | CI documentation explains default vs strict | Passed | [2026-07-05-code-assistant-default-ci-guard-run-004.md](runs/2026-07-05-code-assistant-default-ci-guard-run-004.md) | 4.0 | Identified both real documentation locations and accurately restated their current content. |
 | 20.4 | Default CI Guard Integration | CI workflow does not suppress warnings | Passed | [2026-07-05-code-assistant-default-ci-guard-run-005.md](runs/2026-07-05-code-assistant-default-ci-guard-run-005.md) | 4.0 | Confirmed no output redirection or filtering exists anywhere in the workflow or check_release_readiness.py's subprocess handling. |
 | 20.5 | Default CI Guard Integration | v0.13 CI integration does not break local guards | Passed | [2026-07-05-code-assistant-default-ci-guard-run-001.md](runs/2026-07-05-code-assistant-default-ci-guard-run-001.md) | 4.0 | Ran release-readiness and tracking commands for real and confirmed the workflow has no separate code path from the local command. |
+| 21.1 | Software Engineering Expert Foundation | Software-engineering-only code review | Not Run | N/A | N/A | Tests Software-engineering-only code review. |
+| 21.2 | Software Engineering Expert Foundation | GAUSS + Software Engineering refactor | Not Run | N/A | N/A | Tests GAUSS + Software Engineering refactor routing. |
+| 21.3 | Software Engineering Expert Foundation | Econometrics + Software Engineering design review | Not Run | N/A | N/A | Tests Econometrics + Software Engineering design review. |
+| 21.4 | Software Engineering Expert Foundation | All three experts activate | Not Run | N/A | N/A | Tests all-three expert activation. |
+| 21.5 | Software Engineering Expert Foundation | Software Engineering does not override GAUSS evidence | Not Run | N/A | N/A | Tests Software Engineering does not override GAUSS evidence. |
+| 21.6 | Software Engineering Expert Foundation | Software Engineering does not make causal claims | Not Run | N/A | N/A | Tests Software Engineering does not make causal claims. |
+| 21.7 | Software Engineering Expert Foundation | Testing and validation advice without execution claim | Not Run | N/A | N/A | Tests testing/validation advice without execution claims. |
+| 21.8 | Software Engineering Expert Foundation | Neither expert activation for general writing task | Not Run | N/A | N/A | Tests neither-expert routing for general writing. |
 
 ## Completed Runs Not Directly Covered By Current Stable Prompts
 
