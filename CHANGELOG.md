@@ -112,6 +112,7 @@ This file records notable changes to the GAUSS AI framework.
 - Added Software Engineering Expert narrative foundation for v0.14.0.
 - Added Software Engineering Expert operational profile for v0.14.0.
 - Extended expert-routing workflow for three operational experts: GAUSS Language, Econometrics, and Software Engineering.
+- Integrated Software Engineering Expert references into Code Assistant workflow, task modes, and system prompt.
 
 ## [0.1.0] - 2026-06-26
 

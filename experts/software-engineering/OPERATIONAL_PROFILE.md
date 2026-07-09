@@ -266,6 +266,8 @@ Checkable directly against a response, consistent with `tools/operational_expert
 - **`experts/software-engineering/knowledge.md`** — a compatibility placeholder pointing to `BODY_OF_KNOWLEDGE.md`; not a separate or competing knowledge source.
 - **`tools/operational_expert_interface.md`** — the generic interface this profile fills in; field definitions and design principles live there, not repeated here.
 - **`workflows/expert-routing.md`** — now defines three-expert (GAUSS Language Expert, Econometrics Expert, Software Engineering Expert) routing across eight documented routing types, extended in `v0.14.0` per `planning/v0.14.0-software-engineering-expert-foundation.md`. This remains documented/manual-evaluation-driven routing, not runtime orchestration.
-- **`workflows/code-assistant-response.md`** — the general response workflow this profile's activation will slot into once the third expert is added to Step 2; still pending as of this update.
-- **`agents/code-assistant/task_modes.md`** — the task-mode definitions this profile's `activation_triggers` and `task_classification` field will map onto once integrated; still pending as of this update.
-- **`prompts/code_assistant_system.md`** — the system prompt whose "Identify the relevant expertise" step this profile will make checkable once integrated; still pending as of this update.
+- **`workflows/code-assistant-response.md`** — Step 2 ("Identify Relevant Experts") now references this expert alongside the GAUSS Language Expert and Econometrics Expert, and routes through the eight documented routing types in `workflows/expert-routing.md`. Updated in `v0.14.0`.
+- **`agents/code-assistant/task_modes.md`** — each task mode now names this expert's `activation_triggers` alongside the GAUSS Language Expert's and Econometrics Expert's. Updated in `v0.14.0`.
+- **`prompts/code_assistant_system.md`** — the system prompt's "Identify the relevant expertise" step now names this expert as one of the three operational experts it routes to. Updated in `v0.14.0`.
+
+This remains documented/manual-evaluation-driven routing, not runtime orchestration — no code executes any of the files above; a response is checked against them manually.

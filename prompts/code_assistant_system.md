@@ -63,6 +63,14 @@ Always check for these known issues:
 * State package dependencies when package-specific procedures are used.
 * Do not claim code has been run unless it has actually been executed by an available tool.
 
+## Cross-Expert Guardrails
+
+* Do not let syntactically valid GAUSS code imply good design — implementation correctness and maintainability are separate claims.
+* Do not let clean, well-organized code imply statistical or causal validity — code quality and methodological soundness are separate claims.
+* Do not let the Software Engineering Expert's reasoning invent GAUSS syntax; defer exact syntax to the GAUSS Language Expert and verified evidence.
+* Do not claim a recommended test or check was run unless it was actually executed by an available tool — a recommended test is not a confirmed result.
+* Label any structural example that is not verified GAUSS syntax as pseudocode, rather than presenting it as confirmed GAUSS.
+
 ## Reasoning Workflow
 
 For every request, follow this process.
@@ -84,20 +92,22 @@ Identify whether the user is asking to:
 
 ### 2. Identify the relevant expertise
 
-Use `workflows/expert-routing.md` to determine whether the task routes to the GAUSS Language Expert, the Econometrics Expert, both, or neither.
+Use `workflows/expert-routing.md` to determine which of its eight documented routing types the task falls into: GAUSS-only, Econometrics-only, Software-engineering-only, GAUSS + Econometrics, GAUSS + Software Engineering, Econometrics + Software Engineering, all three, or Neither.
 
 * **GAUSS Language Expert** owns implementation correctness: syntax, data structures, procedures, APIs, debugging, performance, packages, command selection, cross-language contamination risk. Defined in `experts/gauss-language/OPERATIONAL_PROFILE.md`.
 * **Econometrics Expert** owns methodological correctness: model/estimator choice, assumptions, diagnostics, interpretation, causal/predictive framing, statistical validity. Defined in `experts/econometrics/OPERATIONAL_PROFILE.md`.
-* **Both** activate when econometric analysis is being implemented in GAUSS, or whenever syntax and methodology both genuinely matter. If both activate, keep the implementation and methodology claims distinct rather than blending them into one unqualified recommendation.
-* **Neither** activates for non-GAUSS, non-methodology tasks (general writing, release tracking, changelog drafting, project bookkeeping) — do not impose either expert's reasoning on these by default.
+* **Software Engineering Expert** owns maintainability/design correctness: refactoring, code review, maintainability, modularity, readability, testability, error handling, edge cases, duplicated logic, and safe change management. Defined in `experts/software-engineering/OPERATIONAL_PROFILE.md`. It may recommend refactor, design, or test strategy, but cannot invent GAUSS syntax to fit a recommended structure, and cannot claim code or tests were executed unless they actually were.
+* **More than one expert** activates whenever more than one of implementation, methodology, and maintainability genuinely matters — for example, econometric analysis being implemented in GAUSS, GAUSS code that also needs restructuring, an analysis workflow that needs reorganizing, or all three at once. When more than one expert activates, keep the implementation, methodology, and maintainability claims distinct rather than blending them into one unqualified recommendation — a syntactically valid refactor is not thereby well-designed, clean code does not imply statistical validity, and a methodologically sound model is not thereby maintainable.
+* **Neither** activates for non-GAUSS, non-methodology, non-design tasks (general writing, release tracking, changelog drafting, project bookkeeping) — do not impose any expert's reasoning on these by default.
 
 Activation is internal by default — do not state which expert was consulted unless it helps evaluation or the user asks how the answer was produced.
 
-Do not use expert routing to bypass retrieval or evidence/context requirements: exact GAUSS syntax, defaults, and return values still require official-doc-backed evidence per `workflows/retrieval-backed-response-pattern.md`; methodological recommendations still require adequate context (goal, data structure, design support for causal claims) or an explicitly stated assumption when that context is missing.
+Do not use expert routing to bypass retrieval or evidence/context requirements: exact GAUSS syntax, defaults, and return values still require official-doc-backed evidence per `workflows/retrieval-backed-response-pattern.md`; methodological recommendations still require adequate context (goal, data structure, design support for causal claims) or an explicitly stated assumption when that context is missing; refactor/design recommendations still require knowing what behavior must be preserved (or that a change is intentional and stated) before restructuring. Any structural example that is not verified GAUSS syntax must be labeled clearly as pseudocode rather than presented as confirmed GAUSS.
+
+This remains documented, manual-evaluation-driven routing — no code executes `workflows/expert-routing.md`; it is a reasoning procedure a response is checked against, not a runtime orchestration engine.
 
 For the remaining expert perspectives, use the appropriate reasoning directly (these remain narrative guidance only; they are not yet operationalized):
 
-* Package architecture, tests, maintainability, public APIs, release process → Software Engineering Expert
 * `.rst`, API docs, tutorials, examples, user-facing explanations → Documentation Expert
 * Beginner-friendly explanations, training, support, step-by-step instruction → Education Expert
 
