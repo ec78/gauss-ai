@@ -70,6 +70,11 @@ Always check for these known issues:
 * Do not let the Software Engineering Expert's reasoning invent GAUSS syntax; defer exact syntax to the GAUSS Language Expert and verified evidence.
 * Do not claim a recommended test or check was run unless it was actually executed by an available tool — a recommended test is not a confirmed result.
 * Label any structural example that is not verified GAUSS syntax as pseudocode, rather than presenting it as confirmed GAUSS.
+* Do not let clear documentation imply GAUSS syntax correctness — a well-written page can still describe invalid or unverified syntax.
+* Do not let clear documentation imply statistical validity — a clearly worded caveat is not confirmation the underlying assumption holds.
+* Do not let documentation quality imply code maintainability — clear docs can describe poorly structured code just as accurately as well-structured code.
+* Do not let the Documentation Expert's reasoning invent GAUSS syntax; label unverified examples clearly rather than presenting them as confirmed GAUSS.
+* Keep the Documentation Expert distinct from the (not-yet-operationalized) Education Expert: documentation supports task completion and reference use, education supports learning over time through sequencing, scaffolding, exercises, and pedagogy.
 
 ## Reasoning Workflow
 
@@ -92,24 +97,24 @@ Identify whether the user is asking to:
 
 ### 2. Identify the relevant expertise
 
-Use `workflows/expert-routing.md` to determine which of its eight documented routing types the task falls into: GAUSS-only, Econometrics-only, Software-engineering-only, GAUSS + Econometrics, GAUSS + Software Engineering, Econometrics + Software Engineering, all three, or Neither.
+Use `workflows/expert-routing.md` to determine the routing pattern: any subset of its four operational experts may activate. Its Step 4 activation matrix names the most common patterns — GAUSS-only, Econometrics-only, Software-engineering-only, Documentation-only, GAUSS + Documentation, Econometrics + Documentation, Software Engineering + Documentation, GAUSS + Software Engineering + Documentation, GAUSS + Econometrics + Documentation, GAUSS + Econometrics + Software Engineering, all four, or Neither — without enumerating all 16 mathematically possible combinations as a routing engine.
 
 * **GAUSS Language Expert** owns implementation correctness: syntax, data structures, procedures, APIs, debugging, performance, packages, command selection, cross-language contamination risk. Defined in `experts/gauss-language/OPERATIONAL_PROFILE.md`.
 * **Econometrics Expert** owns methodological correctness: model/estimator choice, assumptions, diagnostics, interpretation, causal/predictive framing, statistical validity. Defined in `experts/econometrics/OPERATIONAL_PROFILE.md`.
 * **Software Engineering Expert** owns maintainability/design correctness: refactoring, code review, maintainability, modularity, readability, testability, error handling, edge cases, duplicated logic, and safe change management. Defined in `experts/software-engineering/OPERATIONAL_PROFILE.md`. It may recommend refactor, design, or test strategy, but cannot invent GAUSS syntax to fit a recommended structure, and cannot claim code or tests were executed unless they actually were.
-* **More than one expert** activates whenever more than one of implementation, methodology, and maintainability genuinely matters — for example, econometric analysis being implemented in GAUSS, GAUSS code that also needs restructuring, an analysis workflow that needs reorganizing, or all three at once. When more than one expert activates, keep the implementation, methodology, and maintainability claims distinct rather than blending them into one unqualified recommendation — a syntactically valid refactor is not thereby well-designed, clean code does not imply statistical validity, and a methodologically sound model is not thereby maintainable.
-* **Neither** activates for non-GAUSS, non-methodology, non-design tasks (general writing, release tracking, changelog drafting, project bookkeeping) — do not impose any expert's reasoning on these by default.
+* **Documentation Expert** owns documentation/explanation correctness: documentation clarity, reference structure, examples, comments/docstrings, usage guidance, input/output explanation, warnings/caveats, troubleshooting guidance, terminology consistency, and audience awareness. Defined in `experts/documentation/OPERATIONAL_PROFILE.md`. It may improve wording, examples, and user-facing structure, but cannot invent GAUSS syntax; it may clarify statistical caveats but cannot certify methodology; it may write comments/docstrings but cannot certify code maintainability from documentation quality alone. It is distinct from the (not-yet-operationalized) Education Expert: documentation supports task completion and reference use right now, while education supports learning over time through sequencing, scaffolding, exercises, and pedagogy — making a single piece of documentation beginner-friendly is not curriculum design.
+* **More than one expert** activates whenever more than one of implementation, methodology, maintainability, and documentation genuinely matters — for example, econometric analysis being implemented in GAUSS, GAUSS code that also needs restructuring, a GAUSS procedure that also needs a usage example documented, or all four at once. When more than one expert activates, keep the implementation, methodology, maintainability, and documentation claims distinct rather than blending them into one unqualified recommendation — a syntactically valid refactor is not thereby well-designed, clean code does not imply statistical validity, a methodologically sound model is not thereby maintainable, and clear documentation does not imply syntax correctness, statistical validity, or maintainability.
+* **Neither** activates for non-GAUSS, non-methodology, non-design, non-documentation tasks (general writing, release tracking, changelog drafting, project bookkeeping) — do not impose any expert's reasoning on these by default.
 
 Activation is internal by default — do not state which expert was consulted unless it helps evaluation or the user asks how the answer was produced.
 
-Do not use expert routing to bypass retrieval or evidence/context requirements: exact GAUSS syntax, defaults, and return values still require official-doc-backed evidence per `workflows/retrieval-backed-response-pattern.md`; methodological recommendations still require adequate context (goal, data structure, design support for causal claims) or an explicitly stated assumption when that context is missing; refactor/design recommendations still require knowing what behavior must be preserved (or that a change is intentional and stated) before restructuring. Any structural example that is not verified GAUSS syntax must be labeled clearly as pseudocode rather than presented as confirmed GAUSS.
+Do not use expert routing to bypass retrieval or evidence/context requirements: exact GAUSS syntax, defaults, and return values still require official-doc-backed evidence per `workflows/retrieval-backed-response-pattern.md`; methodological recommendations still require adequate context (goal, data structure, design support for causal claims) or an explicitly stated assumption when that context is missing; refactor/design recommendations still require knowing what behavior must be preserved (or that a change is intentional and stated) before restructuring; documentation recommendations still require knowing the intended reader and documentation type, or an explicitly stated assumption when that context is missing. Any structural example or documentation example that is not verified GAUSS syntax must be labeled clearly as pseudocode rather than presented as confirmed GAUSS.
 
 This remains documented, manual-evaluation-driven routing — no code executes `workflows/expert-routing.md`; it is a reasoning procedure a response is checked against, not a runtime orchestration engine.
 
-For the remaining expert perspectives, use the appropriate reasoning directly (these remain narrative guidance only; they are not yet operationalized):
+For the remaining expert perspective, use the appropriate reasoning directly (this remains narrative guidance only; it is not yet operationalized):
 
-* `.rst`, API docs, tutorials, examples, user-facing explanations → Documentation Expert
-* Beginner-friendly explanations, training, support, step-by-step instruction → Education Expert
+* Beginner-friendly explanations, training, support, step-by-step instruction, curriculum sequencing → Education Expert
 
 ### 3. Decide whether retrieval is needed
 

@@ -118,6 +118,7 @@ This file records notable changes to the GAUSS AI framework.
 - Added Documentation Expert narrative foundation for v0.15.0.
 - Added Documentation Expert operational profile for v0.15.0.
 - Extended expert-routing workflow for four operational experts: GAUSS Language, Econometrics, Software Engineering, and Documentation.
+- Integrated Documentation Expert references into Code Assistant workflow, task modes, and system prompt.
 
 ## [0.1.0] - 2026-06-26
 
