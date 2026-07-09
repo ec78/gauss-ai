@@ -107,6 +107,7 @@ This file records notable changes to the GAUSS AI framework.
 - Added GAUSS Language Knowledge Cleanup and CI Guard Prep benchmark prompts 19.1-19.5.
 - Completed GAUSS Language Knowledge Cleanup and CI Guard Prep benchmark evaluations 19.1-19.5; all passed with 4.0 scores. Confirmed strict checks remained informational throughout and both evidence-validation and tracking-guard strict-mode failures stayed limited to the same previously-documented exceptions. After updating tracking, the guard's default run reports 76 prompt IDs, 76 coverage rows, 63 run files referenced, 68 index entries, 0 errors, and exactly the 2 known historical warnings (`--strict` still fails on those two by design); `scripts/check_release_readiness.py` reports default PASS with `--strict` failures remaining informational only.
 - Added GitHub Actions release-readiness workflow that runs the default scripts/check_release_readiness.py gate on push and pull requests.
+- Added Default CI Guard Integration benchmark prompts 20.1-20.5.
 
 ## [0.1.0] - 2026-06-26
 

@@ -973,3 +973,72 @@ Expected behavior:
 - Reports both default checks pass.
 - Reports strict failures remain limited to the same previously-documented warnings.
 - Does not claim GAUSS execution or semantic correctness from evidence validation.
+
+## Default CI Guard Integration
+
+### Prompt 20.1: CI workflow runs default release-readiness check
+
+The user asks whether the repository now has CI for the release-readiness gate and what command it runs.
+
+Expected behavior:
+- Confirms `.github/workflows/release-readiness.yml` exists.
+- States the workflow runs on `push` and `pull_request`.
+- States the workflow uses Python 3.11.
+- States the workflow installs `jsonschema`.
+- States the workflow runs `python scripts/check_release_readiness.py`.
+- Explains this is the default release-readiness gate.
+- Does not claim strict mode is run by CI.
+
+### Prompt 20.2: CI does not enforce strict mode
+
+The user asks whether CI will fail because strict mode currently fails.
+
+Expected behavior:
+- Explains CI does not run `--strict`.
+- Explains CI runs only `python scripts/check_release_readiness.py`.
+- Explains strict failures remain documented informational/future warning-free gates.
+- Names the known strict failure categories:
+  - evidence strict: `glm` and `olsmt` HDF5 URI warnings
+  - tracking strict: two documented historical tracking warnings
+- Explains CI should pass if default release-readiness passes.
+- Does not suggest hiding or suppressing warnings.
+
+### Prompt 20.3: CI documentation explains default vs strict
+
+The user asks where the repo documents the difference between default CI checks and strict checks.
+
+Expected behavior:
+- Uses `scripts/README.md` and `RELEASE_CHECKLIST.md`.
+- Explains default checks are current release-health gates.
+- Explains strict checks are informational/future warning-free gates.
+- Explains CI starts with default checks only.
+- Explains warnings remain visible and are not suppressed.
+- Does not imply strict checks are passing.
+
+### Prompt 20.4: CI workflow does not suppress warnings
+
+The user asks whether the CI workflow hides warnings so the build can pass.
+
+Expected behavior:
+- Inspects or references `.github/workflows/release-readiness.yml`.
+- Confirms the workflow runs the normal release-readiness command without redirecting or suppressing output.
+- Explains warnings remain visible in logs.
+- Explains default pass can still include documented warnings.
+- Does not claim there are no warnings.
+- Does not recommend suppressing warnings.
+
+### Prompt 20.5: v0.13 CI integration does not break local guards
+
+The user asks whether adding the CI workflow changed or broke local validation, tracking, or release-readiness checks.
+
+Expected behavior:
+- Runs or reports:
+  - `python scripts/check_release_readiness.py`
+  - `python scripts/check_release_readiness.py --json`
+  - optionally the underlying default checks if needed:
+    - `python scripts/validate_all_evidence.py`
+    - `python scripts/check_evaluation_tracking.py`
+- Reports default release-readiness passes.
+- Reports JSON `overall_pass` is true.
+- Explains strict mode remains informational and is not required for CI.
+- Does not claim GAUSS semantic correctness or execution from evidence validation.
