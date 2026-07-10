@@ -102,7 +102,7 @@
 - Add and evaluate Default CI Guard Integration benchmarks (20.1-20.5) validating every item above.
 - Add no new operational expert, no new routing type, no runtime orchestration, no schema changes, and no strict-mode CI enforcement — this milestone is CI integration for the existing default gate only.
 
-## v0.14.0: Software Engineering Expert Foundation
+## v0.14.0: Software Engineering Expert Foundation (Completed)
 
 - Operationalize a third expert, the Software Engineering Expert, which owns maintainability/design correctness (code organization, modularity, refactoring, testability, error handling, safe change management) — distinct from the GAUSS Language Expert's implementation correctness and the Econometrics Expert's methodological correctness.
 - Build the Software Engineering Expert's narrative foundation (`experts/software-engineering/EXPERT.md`, `BODY_OF_KNOWLEDGE.md`, `reasoning.md`, `best_practices.md`, `common_mistakes.md`) from placeholder files, then fill in the operational interface (`experts/software-engineering/OPERATIONAL_PROFILE.md`), following the `v0.9.0` Econometrics Expert precedent.
@@ -110,3 +110,12 @@
 - Integrate the Software Engineering Expert into the Code Assistant's response workflow, all ten task modes, and system prompt.
 - Add and evaluate Software Engineering Expert Foundation benchmarks (21.1-21.8) covering all eight routing types, including the flagship all-three-experts prompt grounded in real local `glm.evidence.json`.
 - Preserve every prior guarantee: GAUSS command evidence requirements are unchanged, econometric methodology requirements are unchanged, and no expert may substitute for another — clean code is not evidence of statistical/causal validity, and valid GAUSS syntax is not evidence of good design.
+
+## v0.15.0: Documentation Expert Foundation
+
+- Operationalize a fourth expert, the Documentation Expert, which owns documentation/explanation correctness (documentation clarity, reference structure, examples, comments/docstrings, usage guidance, warnings/caveats, troubleshooting notes, terminology consistency, audience awareness) — distinct from the GAUSS Language Expert's implementation correctness, the Econometrics Expert's methodological correctness, and the Software Engineering Expert's maintainability/design correctness.
+- Build the Documentation Expert's narrative foundation (`experts/documentation/EXPERT.md`, `BODY_OF_KNOWLEDGE.md`, `reasoning.md`, `best_practices.md`, `common_mistakes.md`) from placeholder files, then fill in the operational interface (`experts/documentation/OPERATIONAL_PROFILE.md`), following the `v0.9.0`/`v0.14.0` precedent.
+- Extend `workflows/expert-routing.md` from an eight-type enumeration to a compact activation matrix and common routing patterns covering four experts (Documentation-only, GAUSS + Documentation, Econometrics + Documentation, Software Engineering + Documentation, GAUSS + Software Engineering + Documentation, GAUSS + Econometrics + Documentation, GAUSS + Econometrics + Software Engineering, all four, Neither), deliberately avoiding a full 16-combination routing engine.
+- Integrate the Documentation Expert into the Code Assistant's response workflow, all ten task modes, and system prompt.
+- Add and evaluate Documentation Expert Foundation benchmarks (22.1-22.8) covering the documented routing patterns, including the flagship all-four-experts prompt grounded in real local `glm.evidence.json`.
+- Preserve every prior guarantee: GAUSS command evidence requirements are unchanged, econometric methodology requirements are unchanged, software-engineering maintainability requirements are unchanged, and no expert may substitute for another — clear documentation is not evidence of syntax correctness, statistical validity, or maintainability, and the Documentation Expert remains distinct from the future Education Expert.
