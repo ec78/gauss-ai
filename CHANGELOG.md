@@ -126,6 +126,7 @@ This file records notable changes to the GAUSS AI framework.
 - Extended expert-routing workflow for five operational experts: GAUSS Language, Econometrics, Software Engineering, Documentation, and Education.
 - Integrated Education Expert references into Code Assistant workflow, task modes, and system prompt.
 - Added Education Expert Foundation benchmark prompts 23.1-23.8.
+- Completed Education Expert Foundation benchmark evaluations 23.1-23.8; all passed with 4.0 scores.
 
 ## [0.1.0] - 2026-06-26
 
