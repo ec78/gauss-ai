@@ -123,6 +123,7 @@ This file records notable changes to the GAUSS AI framework.
 - Completed Documentation Expert Foundation benchmark evaluations 22.1-22.8; all passed with 4.0 scores.
 - Added Education Expert narrative foundation for v0.16.0.
 - Added Education Expert operational profile for v0.16.0.
+- Extended expert-routing workflow for five operational experts: GAUSS Language, Econometrics, Software Engineering, Documentation, and Education.
 
 ## [0.1.0] - 2026-06-26
 

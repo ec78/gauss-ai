@@ -4,29 +4,31 @@
 
 This workflow routes Code Assistant tasks through operational experts. It replaces the vague "identify relevant experts" step in `workflows/code-assistant-response.md` and `prompts/code_assistant_system.md` with a checkable routing procedure: when to consult one or more operational experts, what to gather before applying their decision rules, and how to evaluate whether routing actually happened.
 
-It now supports four operational experts:
+It now supports five operational experts:
 
 - **GAUSS Language Expert** — implementation correctness.
 - **Econometrics Expert** — methodological correctness.
 - **Software Engineering Expert** — maintainability/design correctness.
 - **Documentation Expert** — documentation/explanation correctness.
+- **Education Expert** — learning-design correctness.
 
 Clarifications:
 
-- **It is not a runtime orchestration engine.** No code executes this workflow; it is followed the same way `workflows/native-command-selection.md` or `workflows/retrieval-backed-response-pattern.md` are followed today — as a documented reasoning procedure a response can be checked against. Nothing in this update introduces multi-expert *execution* machinery; it extends the documented reasoning procedure from three operational experts to four, the same way `v0.14.0` extended it from two to three.
-- **It is a documented reasoning procedure for the Code Assistant**, not a new evidence system or a new set of decision rules — the rules it applies come from `experts/gauss-language/OPERATIONAL_PROFILE.md`, `experts/econometrics/OPERATIONAL_PROFILE.md`, `experts/software-engineering/OPERATIONAL_PROFILE.md`, `experts/documentation/OPERATIONAL_PROFILE.md`, and the evidence machinery already defined in `schemas/command_lookup_evidence.schema.json` and `workflows/retrieval-backed-response-pattern.md`.
-- **This is deliberately not a full 16-combination routing engine.** With four experts, a fully enumerated activation table would have 2⁴ = 16 rows. Step 4 below documents the most common patterns (a compact activation matrix plus worked examples) rather than exhaustively enumerating every possible subset. Any combination of the four experts may activate; the coordination principles below (claims stay separable, strictest evidence/context requirement wins) govern any combination, including ones without their own named row or worked example.
-- **The Education and Product experts named in `workflows/code-assistant-response.md` remain fully narrative-only for now** — no operational profile exists for either. **The Documentation Expert is operationalized as of `v0.15.0`** (`experts/documentation/OPERATIONAL_PROFILE.md`), documented here, and integrated into `workflows/code-assistant-response.md`, `agents/code-assistant/task_modes.md`, and `prompts/code_assistant_system.md`.
-- **Future experts can be added using the same operational interface** (`tools/operational_expert_interface.md`) — a new expert needs an operational profile filled in against that interface, after which this workflow's activation-trigger and non-activation steps gain one more expert to check against, and Step 4's activation matrix gains one more column, the same way the Documentation Expert's addition here expanded the matrix from an eight-type enumeration to a twelve-pattern compact table over four axes.
+- **It is not a runtime orchestration engine.** No code executes this workflow; it is followed the same way `workflows/native-command-selection.md` or `workflows/retrieval-backed-response-pattern.md` are followed today — as a documented reasoning procedure a response can be checked against. Nothing in this update introduces multi-expert *execution* machinery; it extends the documented reasoning procedure from four operational experts to five, the same way `v0.15.0` extended it from three to four.
+- **It is a documented reasoning procedure for the Code Assistant**, not a new evidence system or a new set of decision rules — the rules it applies come from `experts/gauss-language/OPERATIONAL_PROFILE.md`, `experts/econometrics/OPERATIONAL_PROFILE.md`, `experts/software-engineering/OPERATIONAL_PROFILE.md`, `experts/documentation/OPERATIONAL_PROFILE.md`, `experts/education/OPERATIONAL_PROFILE.md`, and the evidence machinery already defined in `schemas/command_lookup_evidence.schema.json` and `workflows/retrieval-backed-response-pattern.md`.
+- **This is deliberately not a full 32-combination routing engine.** With five experts, a fully enumerated activation table would have 2⁵ = 32 rows. Step 4 below documents the most common patterns (a compact activation matrix plus worked examples) rather than exhaustively enumerating every possible subset. Any combination of the five experts may activate; the coordination principles below (claims stay separable, strictest evidence/context requirement wins) govern any combination, including ones without their own named row or worked example.
+- **The Product expert named in `workflows/code-assistant-response.md` remains fully narrative-only for now** — no operational profile exists for it. **The Education Expert is operationalized as of `v0.16.0`** (`experts/education/OPERATIONAL_PROFILE.md`) and is documented here, but Code Assistant workflow/task-mode/system-prompt integration (`workflows/code-assistant-response.md`, `agents/code-assistant/task_modes.md`, `prompts/code_assistant_system.md`) is still pending as of this update — those files do not yet reference this expert.
+- **Future experts can be added using the same operational interface** (`tools/operational_expert_interface.md`) — a new expert needs an operational profile filled in against that interface, after which this workflow's activation-trigger and non-activation steps gain one more expert to check against, and Step 4's activation matrix gains one more column, the same way the Education Expert's addition here expanded the matrix from a twelve-pattern table over four axes to a fourteen-pattern table over five axes.
 
 ## Operational Experts Currently Supported
 
 | Expert | Owns | Does not own |
 |---|---|---|
-| GAUSS Language Expert | GAUSS syntax, command selection, data structures, package/base distinction, implementation correctness | Econometric methodology or statistical validity; code maintainability/design; documentation clarity |
-| Econometrics Expert | Model choice, assumptions, diagnostics, interpretation, causal/predictive framing, statistical validity | Exact GAUSS syntax, command return fields, package/base distinction; code maintainability/design; documentation clarity |
-| Software Engineering Expert | Code quality, maintainability, modularity, readability, refactoring, testability, error handling, edge-case thinking, safe change management | Exact GAUSS syntax, command evidence, package/base distinction; econometric methodology or statistical validity; documentation clarity |
-| Documentation Expert | Documentation clarity, reference structure, examples, comments/docstrings, usage guidance, input/output explanation, warnings/caveats, troubleshooting guidance, terminology consistency, audience awareness, documentation completeness | Exact GAUSS syntax, command evidence; econometric methodology or statistical validity; code maintainability/design; curriculum/instructional sequencing |
+| GAUSS Language Expert | GAUSS syntax, command selection, data structures, package/base distinction, implementation correctness | Econometric methodology or statistical validity; code maintainability/design; documentation clarity; learning design |
+| Econometrics Expert | Model choice, assumptions, diagnostics, interpretation, causal/predictive framing, statistical validity | Exact GAUSS syntax, command return fields, package/base distinction; code maintainability/design; documentation clarity; learning design |
+| Software Engineering Expert | Code quality, maintainability, modularity, readability, refactoring, testability, error handling, edge-case thinking, safe change management | Exact GAUSS syntax, command evidence, package/base distinction; econometric methodology or statistical validity; documentation clarity; learning design |
+| Documentation Expert | Documentation clarity, reference structure, examples, comments/docstrings, usage guidance, input/output explanation, warnings/caveats, troubleshooting guidance, terminology consistency, audience awareness, documentation completeness | Exact GAUSS syntax, command evidence; econometric methodology or statistical validity; code maintainability/design; instructional sequencing/learning design |
+| Education Expert | Learning objectives, instructional sequencing, scaffolding, practice exercises, feedback design, assessment design, learner progression, prerequisite mapping, misconception handling, cognitive load management, workshop/session structure, training plans, learning paths, onboarding learning flow | Exact GAUSS syntax, command evidence; econometric methodology or statistical validity; code maintainability/design; documentation/reference clarity as its primary domain; product strategy |
 
 ### Software Engineering Expert — Failure Modes Prevented
 
@@ -52,15 +54,29 @@ Clarifications:
 - Confusing reference and tutorial structures.
 - Replacing education/curriculum design with documentation.
 
+### Education Expert — Failure Modes Prevented
+
+- Content lists being treated as learning sequences.
+- Clear documentation being treated as instruction.
+- Lessons without measurable objectives.
+- Exercises that do not match objectives.
+- Missing prerequisites.
+- Missing feedback or assessment.
+- Overloading beginners too early.
+- Unsupported syntax in lessons.
+- Unsupported methodology claims in lessons.
+- Training quality being treated as product value.
+- Education being conflated with product strategy.
+
 ## Routing Principles
 
-- Activate experts based on task/content triggers, not just keyword matching — a task can involve GAUSS, econometrics, code quality, or documentation without any of those words appearing (e.g. "translate this R model" implies GAUSS as the target; "does this coefficient mean X causes Y" implies econometric interpretation; "this script is a mess" implies a maintainability concern; "I can't tell what this function expects" implies a documentation concern).
+- Activate experts based on task/content triggers, not just keyword matching — a task can involve GAUSS, econometrics, code quality, documentation, or learning design without any of those words appearing (e.g. "translate this R model" implies GAUSS as the target; "does this coefficient mean X causes Y" implies econometric interpretation; "this script is a mess" implies a maintainability concern; "I can't tell what this function expects" implies a documentation concern; "how do I get my team up to speed on this" implies a learning-design concern).
 - Expert activation is internal by default; the Code Assistant does not need to announce which expert(s) it consulted.
 - Correct routing is evaluated through response behavior — whether decision rules were applied and evidence/context thresholds were honored — not through a self-reported label.
 - Expert profiles add constraints and decision rules; they do not loosen evidence requirements. An expert can require more evidence than the general workflow demands, never less.
 - Evidence requirements for GAUSS claims remain governed by the evidence schema (`schemas/command_lookup_evidence.schema.json`) and the retrieval-backed response pattern (`workflows/retrieval-backed-response-pattern.md`); this workflow routes *to* those, it does not redefine them.
 - Non-activation cases matter as much as activation cases; do not over-route to any expert for tasks that do not need them. Unnecessary activation is itself a routing failure, not a safe default.
-- Different experts own different kinds of correctness: GAUSS syntax correctness (implementation), econometric validity (methodology), software maintainability (design), and documentation clarity (explanation) are four separate claims, and no expert may answer for another's domain.
+- Different experts own different kinds of correctness: GAUSS syntax correctness (implementation), econometric validity (methodology), software maintainability (design), documentation clarity (explanation), and learning design (education) are five separate claims, and no expert may answer for another's domain.
 - Command availability is not methodological validity — a GAUSS command existing for a method is never evidence the method is the right choice for the user's data.
 - Methodological appropriateness is not implementation evidence — a method being the right statistical choice is never evidence that specific GAUSS syntax exists or works as described.
 - Valid GAUSS code can still be poorly designed — syntactic validity and good design are independent claims.
@@ -68,12 +84,16 @@ Clarifications:
 - A methodologically appropriate analysis can still be poorly implemented or hard to maintain — methodological validity and maintainability are independent claims.
 - Clear documentation does not prove code correctness, statistical validity, or maintainability — documentation clarity is an independent claim from all three.
 - Valid GAUSS code may still be poorly documented; a methodologically correct analysis may still be poorly documented; well-designed code may still need better documentation — documentation quality never follows automatically from the other three.
+- A well-designed lesson does not prove code correctness, statistical validity, maintainability, or documentation quality — learning design is an independent claim from all four.
+- A good training plan does not prove product value, adoption, or prioritization — training quality and product decisions are independent claims.
 - The Software Engineering Expert may recommend structure but cannot invent GAUSS syntax to implement it; unverified structural suggestions must be labeled as pseudocode.
 - The Software Engineering Expert may recommend tests or checks but cannot claim code was executed or a test was run unless it actually was.
 - The Documentation Expert may improve wording, examples, and user-facing structure but cannot invent GAUSS syntax; any example must use verified syntax or be labeled pseudocode/unverified.
 - The Documentation Expert may clarify statistical caveats for a reader but cannot certify methodology; it may write comments/docstrings but cannot certify code design.
-- The Documentation Expert is distinct from the (not-yet-operationalized) Education Expert: documentation supports task completion and reference use right now, while education supports learning over time through sequencing, scaffolding, exercises, and pedagogy. Making a single piece of documentation beginner-friendly is not curriculum design.
-- When multiple experts activate, keep implementation, methodology, maintainability, and documentation claims separate in substance, even when the final response reads as one coherent answer.
+- The Education Expert may sequence, scaffold, and assess learning but cannot invent GAUSS syntax; any example used in a lesson must use verified syntax or be labeled pseudocode/unverified.
+- The Education Expert may teach statistical concepts but cannot certify methodology; it may design code-quality learning exercises but cannot certify code design; it may use documentation as supporting material but does not replace the Documentation Expert.
+- The Education Expert is distinct from the Documentation Expert (documentation supports task completion and reference use right now; education supports learning over time through sequencing, scaffolding, exercises, and pedagogy) and from the future Product Expert (education supports learner development; a future Product Expert would support user problem framing, workflow fit, adoption, positioning, value proposition, and prioritization) — a good training curriculum is never evidence a feature is valuable or should be prioritized.
+- When multiple experts activate, keep implementation, methodology, maintainability, documentation, and education claims separate in substance, even when the final response reads as one coherent answer.
 - If two or more experts' conclusions appear to conflict (for example, a command exists and is syntactically fine, but the recommended model isn't appropriate for the data, or a refactor is well-organized but changes behavior), surface the distinction explicitly rather than silently resolving it in either direction.
 - The strictest applicable evidence/context requirement wins — if a task touches multiple domains, meeting only one expert's bar is not sufficient to answer the whole question.
 
@@ -92,14 +112,15 @@ Use the Code Assistant's existing task modes (`agents/code-assistant/task_modes.
 - Test Generation
 - Design Guidance
 
-Add a second classification pass, independent of task mode, that this workflow's routing decision actually consumes. Answer four independent questions about the task — each is a yes/no judgment, not a single label, since a task can be "yes" on more than one axis at once:
+Add a second classification pass, independent of task mode, that this workflow's routing decision actually consumes. Answer five independent questions about the task — each is a yes/no judgment, not a single label, since a task can be "yes" on more than one axis at once:
 
 1. **GAUSS implementation axis** — does the answer turn on GAUSS syntax, command selection, or language mechanics? Examples: GAUSS syntax, command usage, package/base distinction, DataFrame/matrix/structure usage, GAUSS code generation/debugging.
 2. **Econometric methodology axis** — does the answer turn on model/estimator choice, assumptions, diagnostics, or interpretation? Examples: estimator choice, assumptions, diagnostics, causal interpretation, forecasting/statistical evaluation, panel/time-series/cross-sectional modeling.
 3. **Software engineering/code-quality axis** — does the answer turn on code organization, maintainability, or safe change management? Examples: refactoring, code review, maintainability, readability, modularity, testability, error handling, edge cases, duplication, safe change management.
 4. **Documentation/explanation-quality axis** — does the answer turn on how clearly something is explained, structured, or documented for a reader? Examples: writing or improving docs, reference structure, examples, comments/docstrings, usage notes, parameter/return explanations, troubleshooting guidance, warnings/caveats, README/help text, audience clarity, terminology consistency.
+5. **Education/learning-design axis** — does the answer turn on how a topic is sequenced, scaffolded, practiced, and assessed for a learner over time? Examples: lesson plans, curriculum design, learning paths, training plans, workshop outlines, learning objectives, practice exercises, quizzes or assessments, feedback prompts, scaffolding, concept sequencing, beginner-to-advanced progression, misconception correction, prerequisite mapping, guided practice, worked examples for learning.
 
-The combination of the four yes/no answers determines the routing pattern in Step 4.
+The combination of the five yes/no answers determines the routing pattern in Step 4.
 
 Examples:
 
@@ -107,14 +128,16 @@ Examples:
 - "Is OLS appropriate for this causal question?" → econometric methodology only.
 - "How should I refactor this generic duplicated pseudocode?" → software engineering only.
 - "Rewrite this technical note into clearer user-facing documentation." → documentation only.
+- "Create a three-part learning sequence for a generic technical concept." → education only.
 - "Translate this regression into GAUSS and tell me what diagnostics to run" → GAUSS implementation + econometric methodology.
 - "Document this GAUSS procedure and include a usage example." → GAUSS implementation + documentation.
-- "Document the assumptions and interpretation caveats for this regression output." → econometric methodology + documentation.
+- "Teach beginners how to write a GAUSS procedure." → GAUSS implementation + education.
 - "Add comments/docstrings explaining the design intent of this helper function." → software engineering + documentation.
-- "Write GAUSS logistic regression code, structure it cleanly, explain if logistic is appropriate, and document it for users." → all four axes.
-- "Write a changelog entry" → none of the four axes.
+- "Turn refactoring principles into a practice exercise." → software engineering + education.
+- "Teach logistic regression in GAUSS, structure reusable code, document the workflow, and design practice exercises." → all five axes.
+- "Write a changelog entry" → none of the five axes.
 
-This step is the same task-mode classification already required by `workflows/code-assistant-response.md` Step 1 and `prompts/code_assistant_system.md`'s "Classify the task" step, with the four-axis pass added specifically for this workflow's routing decision — it is not a new classification pass end to end.
+This step is the same task-mode classification already required by `workflows/code-assistant-response.md` Step 1 and `prompts/code_assistant_system.md`'s "Classify the task" step, with the five-axis pass added specifically for this workflow's routing decision — it is not a new classification pass end to end.
 
 ## Step 2 — Match Expert Activation Triggers
 
@@ -200,6 +223,35 @@ Route through the Documentation Expert when the task involves:
 - Improving help text or README sections
 - Reviewing docs for clarity/completeness
 
+### Education Expert triggers
+
+Use `experts/education/OPERATIONAL_PROFILE.md` as the source of truth — the list below mirrors its Activation Triggers section and should not be allowed to drift from it.
+
+Route through the Education Expert when the task involves:
+
+- Lesson plans
+- Curriculum design
+- Learning paths
+- Training plans
+- Onboarding learning sequences
+- Workshop outlines
+- Learning objectives
+- Practice exercises
+- Quizzes or assessments
+- Feedback prompts
+- Scaffolding
+- Concept sequencing
+- Beginner-to-advanced progression
+- Misconception correction
+- Prerequisite mapping
+- Guided practice
+- Worked examples for learning
+- Remediation activities
+- Teaching GAUSS concepts
+- Teaching econometric concepts
+- Teaching coding or workflow concepts
+- Turning a topic into a learning experience over time
+
 ## Step 3 — Check Non-Activation Cases
 
 ### GAUSS Language Expert non-activation
@@ -259,41 +311,59 @@ Do not activate the Documentation Expert for:
 - CI guard questions, unless documentation clarity is involved
 - Simple factual questions unrelated to documentation quality
 
-### None of the four
+### Education Expert non-activation
+
+Do not activate the Education Expert for:
+
+- Simple GAUSS syntax lookup only
+- Exact command documentation retrieval only
+- Pure econometric interpretation without teaching/learning intent
+- Pure code refactoring without teaching/learning intent
+- Pure documentation/reference writing without learning progression
+- Product strategy
+- General prose editing unrelated to learning design
+- Release-note writing
+- CI guard questions, unless learning/evaluation design is involved
+- Simple factual questions unrelated to learning design
+- A one-off explanation when the user does not ask for teaching sequence, practice, scaffolding, or learning progression
+
+### None of the five
 
 Do not activate any expert for tasks such as:
 
 - Changelog entries
 - Release readiness notes
 - General project tracking
-- Repository housekeeping with no GAUSS syntax, no statistical-methodology question, no code-quality question, and no documentation-clarity question
+- Repository housekeeping with no GAUSS syntax, no statistical-methodology question, no code-quality question, no documentation-clarity question, and no learning-design question
 
-Negative routing is part of correctness, not an afterthought, for each expert individually and for the none-of-the-four case. A response that applies GAUSS-specific, econometric, software-engineering, or documentation decision rules and evidence/context requirements to a task that never needed them is a routing failure in the same way a missed activation is — it adds unrequested scope, and evaluation (Step 11) checks for it explicitly.
+Negative routing is part of correctness, not an afterthought, for each expert individually and for the none-of-the-five case. A response that applies GAUSS-specific, econometric, software-engineering, documentation, or education decision rules and evidence/context requirements to a task that never needed them is a routing failure in the same way a missed activation is — it adds unrequested scope, and evaluation (Step 11) checks for it explicitly.
 
 ## Step 4 — Determine the Routing Pattern
 
-Any subset of the four operational experts may activate — this step does not enumerate all 16 mathematically possible combinations as a combinatorial routing engine. Instead, it gives a compact activation matrix covering the most common patterns, plus the coordination principles (above) that govern any combination, including ones without their own named row.
+Any subset of the five operational experts may activate — this step does not enumerate all 32 mathematically possible combinations as a combinatorial routing engine. Instead, it gives a compact activation matrix covering the most common patterns, plus the coordination principles (above) that govern any combination, including ones without their own named row.
 
 ### Activation Matrix
 
-| Pattern | GAUSS Language | Econometrics | Software Engineering | Documentation | Typical request | Response rule |
-|---|:---:|:---:|:---:|:---:|---|---|
-| 1. GAUSS-only | ✓ | | | | "What does `strindx` return when not found?" | Answer from verified evidence only. |
-| 2. Econometrics-only | | ✓ | | | "Does p=0.03 mean the model explains 3%?" | Answer from methodological reasoning only. |
-| 3. Software-engineering-only | | | ✓ | | "How should I refactor this generic duplicated pseudocode?" | Answer from design reasoning only; label unverified structure as pseudocode. |
-| 4. Documentation-only | | | | ✓ | "Rewrite this technical note into clearer user-facing documentation." | Answer from documentation reasoning only; no syntax/methodology/design claims needed. |
-| 5. GAUSS + Documentation | ✓ | | | ✓ | "Document this GAUSS procedure and include a usage example." | GAUSS Language Expert owns syntax/example validity; Documentation Expert owns explanation/structure/clarity. |
-| 6. Econometrics + Documentation | | ✓ | | ✓ | "Document the assumptions and interpretation caveats for this regression output." | Econometrics Expert owns assumption/interpretation correctness; Documentation Expert owns clarity and caveat placement. |
-| 7. Software Engineering + Documentation | | | ✓ | ✓ | "Add comments/docstrings explaining the design intent of this helper function." | Software Engineering Expert owns design intent; Documentation Expert owns comment/docstring clarity. |
-| 8. GAUSS + Software Engineering + Documentation | ✓ | | ✓ | ✓ | "Refactor this GAUSS procedure and document its inputs/outputs." | GAUSS Language Expert verifies syntax; Software Engineering Expert owns refactor strategy; Documentation Expert owns the resulting explanation. |
-| 9. GAUSS + Econometrics + Documentation | ✓ | ✓ | | ✓ | "Show GAUSS logistic regression syntax and document model assumptions for users." | GAUSS Language Expert verifies implementation facts; Econometrics Expert owns assumption correctness; Documentation Expert owns reader-facing structure. |
-| 10. GAUSS + Econometrics + Software Engineering | ✓ | ✓ | ✓ | | "Write GAUSS logistic regression code, structure it cleanly, and explain if logistic is appropriate." | Claims stay separate per `v0.14.0`'s three-expert pattern; no documentation-specific deliverable requested. |
-| 11. All four | ✓ | ✓ | ✓ | ✓ | "Write GAUSS logistic regression code, structure it cleanly, explain appropriateness, and document it for users." | All four claims (implementation, methodology, maintainability, documentation) stay separate and separately attributable. |
-| 12. Neither | | | | | "Write a nontechnical marketing blurb." | Answer normally; do not impose expert routing or decision rules from any of the four. |
+| Pattern | GAUSS Language | Econometrics | Software Engineering | Documentation | Education | Typical request | Response rule |
+|---|:---:|:---:|:---:|:---:|:---:|---|---|
+| 1. GAUSS-only | ✓ | | | | | "What does `strindx` return when not found?" | Answer from verified evidence only. |
+| 2. Econometrics-only | | ✓ | | | | "Does p=0.03 mean the model explains 3%?" | Answer from methodological reasoning only. |
+| 3. Software-engineering-only | | | ✓ | | | "How should I refactor this generic duplicated pseudocode?" | Answer from design reasoning only; label unverified structure as pseudocode. |
+| 4. Documentation-only | | | | ✓ | | "Rewrite this technical note into clearer user-facing documentation." | Answer from documentation reasoning only; no syntax/methodology/design claims needed. |
+| 5. Education-only | | | | | ✓ | "Create a three-part learning sequence for a generic technical concept." | Answer from learning-design reasoning only; define objectives, sequence, practice, and checks for understanding. |
+| 6. GAUSS + Education | ✓ | | | | ✓ | "Teach beginners how to write a GAUSS procedure." | GAUSS Language Expert owns syntax correctness; Education Expert owns sequence, scaffolding, and practice. |
+| 7. Econometrics + Education | | ✓ | | | ✓ | "Build a learning plan for OLS assumptions and diagnostics." | Econometrics Expert owns methodological correctness; Education Expert owns sequence, scaffolding, misconceptions, and assessment. |
+| 8. Documentation + Education | | | | ✓ | ✓ | "Is this reference page enough to teach beginners, or do I need exercises?" | Documentation Expert owns reference clarity; Education Expert explains why learning requires sequencing, practice, and feedback beyond a reference page. |
+| 9. Software Engineering + Education | | | ✓ | | ✓ | "Turn refactoring principles into a practice exercise." | Software Engineering Expert owns the code-quality principles; Education Expert owns exercise design, progression, and feedback. |
+| 10. GAUSS + Documentation + Education | ✓ | | | ✓ | ✓ | "Write a beginner GAUSS tutorial with a reference summary." | GAUSS Language Expert verifies syntax; Documentation Expert owns the reference summary; Education Expert owns the tutorial's sequence and scaffolding. |
+| 11. Econometrics + Documentation + Education | | ✓ | | ✓ | ✓ | "Create learner-facing documentation and exercises for regression interpretation." | Econometrics Expert owns interpretation correctness; Documentation Expert owns the reference content; Education Expert owns the exercise sequence and assessment. |
+| 12. GAUSS + Econometrics + Documentation + Education | ✓ | ✓ | | ✓ | ✓ | "Teach logistic regression in GAUSS with assumptions, examples, and learner checks." | Implementation, methodology, documentation, and education claims stay separate and separately attributable. |
+| 13. All five | ✓ | ✓ | ✓ | ✓ | ✓ | "Teach logistic regression in GAUSS, structure reusable code, document the workflow, and design practice exercises." | All five claims (implementation, methodology, maintainability, documentation, education) stay separate and separately attributable. |
+| 14. Neither | | | | | | "Write a nontechnical announcement." | Answer normally; do not impose expert routing or decision rules from any of the five. |
 
-Two combinations from the prior eight-type enumeration — **GAUSS + Econometrics** (no Software Engineering, no Documentation) and **Econometrics + Software Engineering** (no GAUSS, no Documentation) — are not repeated as their own matrix rows here, since they involve no documentation dimension and are already fully covered by the `v0.14.0` worked examples in Routing Examples below. The matrix's job is to make the *new* fourth axis and its most common interactions readable; it is not a replacement for those existing patterns.
+Several combinations from the prior four-expert matrix — **GAUSS + Econometrics**, **GAUSS + Software Engineering**, **Econometrics + Software Engineering**, **GAUSS + Software Engineering + Documentation**, **GAUSS + Econometrics + Documentation**, and **GAUSS + Econometrics + Software Engineering** — are not repeated as their own matrix rows here, since they involve no education dimension and are already fully covered by the `v0.14.0`/`v0.15.0` worked examples in Routing Examples below. The matrix's job is to make the *new* fifth axis and its most common interactions readable; it is not a replacement for those existing patterns.
 
-For a pattern that matches none of the twelve rows above (for example, Econometrics + Software Engineering + Documentation with no GAUSS involved), apply the general coordination principles: identify which axes are genuinely "yes" per Step 1, activate exactly those experts, gather each one's required evidence/context independently (Step 6), and keep each activated expert's claim separable in the response (Step 10) — the same discipline the twelve named patterns follow, just without a dedicated row.
+For a pattern that matches none of the fourteen rows above (for example, Software Engineering + Documentation + Education with no GAUSS or Econometrics involved), apply the general coordination principles: identify which axes are genuinely "yes" per Step 1, activate exactly those experts, gather each one's required evidence/context independently (Step 6), and keep each activated expert's claim separable in the response (Step 10) — the same discipline the fourteen named patterns follow, just without a dedicated row.
 
 ## Step 5 — Gather Required Inputs
 
@@ -333,11 +403,19 @@ Gather inputs based on the routing pattern determined in Step 4. Do not gather t
 - Documentation type or requested artifact, if known (reference, usage guide, comments/docstrings, troubleshooting, README/help text, conceptual explanation)
 - Source material to document, rewrite, explain, or improve
 
+**For the Education Expert:**
+
+- User goal
+- Learner or audience, if known
+- Learning topic
+- Learning intent: lesson plan, curriculum, workshop, learning path, exercise, assessment, feedback, onboarding sequence, or remediation
+- Time horizon or learning context, if relevant
+
 **When more than one expert activates:**
 
 - Gather each activated expert's input set above, but do not block on every optional detail from any side.
 - Ask a focused clarifying question only when missing information would materially change the answer, per `agents/code-assistant/task_modes.md`'s Clarifying Question Rules.
-- Otherwise, state a clearly stated assumption for whichever side is underspecified (for example, "I'll assume your input is a numeric matrix" for the GAUSS side, "I'll assume this is a predictive, not causal, goal" for the econometrics side, "I'll assume behavior should be preserved unless you say otherwise" for the software-engineering side, or "I'll assume this is for an experienced GAUSS user unless you tell me otherwise" for the documentation side).
+- Otherwise, state a clearly stated assumption for whichever side is underspecified (for example, "I'll assume your input is a numeric matrix" for the GAUSS side, "I'll assume this is a predictive, not causal, goal" for the econometrics side, "I'll assume behavior should be preserved unless you say otherwise" for the software-engineering side, "I'll assume this is for an experienced GAUSS user unless you tell me otherwise" for the documentation side, or "I'll assume the learner has no prior GAUSS experience unless you tell me otherwise" for the education side).
 
 ## Step 6 — Determine Evidence and Context Needed
 
@@ -375,11 +453,22 @@ Gather inputs based on the routing pattern determined in Step 4. Do not gather t
 - Documentation clarity is never evidence of correctness, validity, or maintainability.
 - Context needed: source material to document or rewrite, intended reader/audience, documentation type, documentation intent, terminology/style conventions, verified syntax/evidence for any examples included, known prerequisites/caveats/warnings/assumptions.
 
+**For the Education Expert**, use the Required Evidence / Context by Task Type table in `experts/education/OPERATIONAL_PROFILE.md`. Baseline rules, restated here but governed there:
+
+- The Education Expert usually does not need official command evidence for general learning design, sequencing, practice, feedback, or assessment planning — the stated learner, learning goal, and time horizon are enough.
+- If lessons include GAUSS syntax or examples, route/escalate that claim to the GAUSS Language Expert rather than asserting it on this expert's own authority.
+- If lessons include statistical methodology, assumptions, diagnostics, or interpretation, route/escalate that claim to the Econometrics Expert rather than asserting it on this expert's own authority.
+- If lessons include refactoring/design/testability judgments, route/escalate that claim to the Software Engineering Expert rather than asserting it on this expert's own authority.
+- If lessons include documentation/reference quality claims, route/escalate that claim to the Documentation Expert rather than asserting it on this expert's own authority.
+- If a lesson implies product value, adoption, positioning, or prioritization, route that claim to a future Product Expert or normal product reasoning — never assert it on this expert's own authority.
+- Education quality is never evidence of implementation correctness, statistical validity, maintainability/design quality, documentation quality, or product value.
+- Context needed: learner or audience, learning goal, prior knowledge/prerequisites, learning context and time horizon, delivery format, desired learning outcomes, practice/assessment expectations, common misconceptions, tool/software context, whether examples should be GAUSS-specific or language-agnostic.
+
 **When more than one expert's evidence/context requirement applies:**
 
 - Each expert's evidence/context requirement is separate. Meeting one does not satisfy another, and satisfying none is not offset by high confidence on any single side.
 - If any side is missing, preserve uncertainty for that side only — do not let a fully-satisfied requirement on one side imply another side is also settled.
-- The strictest applicable requirement wins: if a task touches GAUSS syntax, econometric methodology, code quality, and documentation clarity at once, the response must clear all four bars, not just the highest-confidence one.
+- The strictest applicable requirement wins: if a task touches GAUSS syntax, econometric methodology, code quality, documentation clarity, and learning design at once, the response must clear all five bars, not just the highest-confidence one.
 
 ## Step 7 — Route to Retrieval or Clarification
 
@@ -387,6 +476,7 @@ Gather inputs based on the routing pattern determined in Step 4. Do not gather t
 - Ask the user for methodological context when goal, design, outcome type, or data structure is missing and materially affects the recommendation.
 - Ask the user for design context (code/task, goal, behavior-preservation constraints) when it is missing and materially affects a refactor or maintainability recommendation.
 - Ask the user for documentation context (intended reader, documentation type, source material) when it is missing and materially affects the resulting documentation.
+- Ask the user for learning context (learner, prior knowledge, time horizon) when it is missing and materially affects the resulting learning design.
 - Do not ask unnecessary questions when a safe assumption is enough, on any side.
 - In multi-expert cases, it is acceptable to provide guidance on one side with caveats for the others, as long as each missing side is stated explicitly rather than silently glossed over.
 
@@ -445,33 +535,51 @@ Apply the decision rules from `experts/documentation/OPERATIONAL_PROFILE.md`, su
 - Do not claim execution unless code was actually run by an available tool.
 - Do not replace Education Expert or Product Expert work with documentation work.
 
+### Education Expert rules
+
+Apply the decision rules from `experts/education/OPERATIONAL_PROFILE.md`, summarized:
+
+- Identify the learner and learning goal, and prior knowledge/prerequisites, before designing instruction.
+- Separate learning design from implementation correctness, methodological/statistical correctness, maintainability/design correctness, documentation/reference correctness, and product strategy.
+- Do not treat lesson quality as evidence that code is correct, methodology is valid, code is maintainable, documentation is clear, or a product decision is justified.
+- Define measurable learning objectives; sequence concepts before practice; scaffold practice before open-ended tasks; align exercises with objectives.
+- Include checks for understanding or feedback when appropriate; anticipate likely misconceptions; manage cognitive load.
+- Use verified syntax for GAUSS examples, or label examples as pseudocode/unverified.
+- Defer GAUSS syntax to the GAUSS Language Expert, econometric/statistical validity to the Econometrics Expert, code design/refactoring validity to the Software Engineering Expert, and documentation/reference clarity to the Documentation Expert.
+- Do not claim execution unless code was actually run by an available tool.
+
 ### Coordination rules
 
 - The GAUSS Language Expert owns implementation correctness.
 - The Econometrics Expert owns methodological correctness.
 - The Software Engineering Expert owns maintainability/design correctness.
 - The Documentation Expert owns documentation/explanation correctness.
+- The Education Expert owns learning-design correctness.
 - Command availability is not methodological validity.
 - Clean structure is not statistical validity.
 - Syntax validity is not maintainability.
 - Clear documentation is not implementation correctness.
 - Clear documentation is not statistical validity.
 - Clear documentation is not maintainability.
-- Examples used in documentation must use verified syntax or be labeled pseudocode/unverified.
-- Documentation should not replace Education Expert/curriculum design.
-- Documentation should not replace Product Expert/positioning strategy.
-- Refactoring should preserve behavior unless a behavior change is explicitly requested.
+- Good instruction is not implementation correctness.
+- Good instruction is not statistical validity.
+- Good instruction is not maintainability.
+- Good instruction is not documentation quality.
+- Good instruction is not product value.
+- Education should not replace Documentation Expert/reference work.
+- Education should not replace Product Expert/product strategy.
+- Examples must use verified syntax or be labeled pseudocode/unverified.
 - Testing recommendations are not execution claims.
 - Pseudocode or unverified syntax must be labeled.
-- All activated experts' claims must remain separable in substance, even when they do not need separate labeled sections in every response — this holds for two activated experts and continues to hold when three or all four activate.
-- If one expert's side is uncertain (missing evidence, missing context), do not let confidence on another side mask that uncertainty. A verified GAUSS command, a sound methodology, a clean refactor, and clear documentation are four independent claims, not one combined verification.
+- All activated experts' claims must remain separable in substance, even when they do not need separate labeled sections in every response — this holds for two activated experts and continues to hold when three, four, or all five activate.
+- If one expert's side is uncertain (missing evidence, missing context), do not let confidence on another side mask that uncertainty. A verified GAUSS command, a sound methodology, a clean refactor, clear documentation, and a well-designed lesson are five independent claims, not one combined verification.
 
 ## Step 9 — Produce Internal Routing Output
 
-Use the output contract, extended for four experts:
+Use the output contract, extended for five experts:
 
 - `task_classification`
-- `routing_pattern` — the matched pattern from Step 4's activation matrix (e.g. `gauss_only`, `documentation_only`, `gauss_and_documentation`, `all_four`, `neither`), or a description of the active expert subset when it doesn't match a named pattern
+- `routing_pattern` — the matched pattern from Step 4's activation matrix (e.g. `gauss_only`, `education_only`, `gauss_and_education`, `all_five`, `neither`), or a description of the active expert subset when it doesn't match a named pattern
 - `activated_experts`
 - `activation_reason_by_expert`
 - `non_activation_reason_by_expert`, when relevant
@@ -482,11 +590,17 @@ Use the output contract, extended for four experts:
 - `methodology_recommendation`
 - `maintainability_recommendation`
 - `documentation_recommendation`
+- `education_recommendation`
 - `refactor_or_design_recommendations`
 - `testing_or_validation_recommendations`
 - `documentation_structure_recommendations`
 - `example_or_usage_recommendations`
 - `warning_or_caveat_recommendations`
+- `learning_objectives`
+- `sequencing_recommendations`
+- `scaffolding_recommendations`
+- `practice_or_assessment_recommendations`
+- `feedback_or_remediation_recommendations`
 - `conflicts_or_tensions`
 - `response_constraints`
 - `escalation_needed`
@@ -499,11 +613,11 @@ The final response should:
 
 - Answer the user naturally, without a forced expert-routing preamble.
 - Show expert routing through correctness, evidence/context use, and uncertainty handling, not a literal "expert activated" label.
-- Separate implementation, methodology, maintainability, and documentation claims when more than one matters, so none is misread as validating another.
+- Separate implementation, methodology, maintainability, documentation, and education claims when more than one matters, so none is misread as validating another.
 - Cite or name GAUSS evidence when appropriate (a source file, a curated note, an official doc reference).
-- State assumptions and caveats explicitly for methodology, design, and documentation claims, the same way GAUSS-side assumptions are stated.
-- Include validation suggestions (for generated/translated/debugged GAUSS code), diagnostic suggestions (for methodological recommendations), testing/behavior-preservation notes (for refactor/design recommendations), or structure/clarity suggestions (for documentation recommendations) when the task calls for one.
-- Avoid overclaiming: never state or imply that GAUSS code was executed, that schema/structural validity is the same as semantic correctness, that a methodologically sound recommendation has been implementation-verified, that a well-organized refactor has been confirmed to preserve behavior without actually checking, or that clear documentation confirms correctness, validity, or maintainability.
+- State assumptions and caveats explicitly for methodology, design, documentation, and education claims, the same way GAUSS-side assumptions are stated.
+- Include validation suggestions (for generated/translated/debugged GAUSS code), diagnostic suggestions (for methodological recommendations), testing/behavior-preservation notes (for refactor/design recommendations), structure/clarity suggestions (for documentation recommendations), or sequencing/scaffolding/assessment suggestions (for learning-design recommendations) when the task calls for one.
+- Avoid overclaiming: never state or imply that GAUSS code was executed, that schema/structural validity is the same as semantic correctness, that a methodologically sound recommendation has been implementation-verified, that a well-organized refactor has been confirmed to preserve behavior without actually checking, that clear documentation confirms correctness/validity/maintainability, or that a well-designed lesson confirms correctness/validity/maintainability/documentation quality/product value.
 
 ## Step 11 — Evaluate Routing
 
@@ -515,19 +629,21 @@ Manual evaluation should check:
 - Context threshold met for any methodological claim (goal, data structure, design support for causal claims, etc.).
 - Context threshold met for any refactor/maintainability claim (behavior-preservation constraints, stated code/goal).
 - Context threshold met for any documentation claim (intended reader, documentation type, source material).
+- Context threshold met for any learning-design claim (learner, learning goal, time horizon).
 - No invented GAUSS syntax, procedures, or APIs.
 - No unsupported causal or statistical-validity claims.
 - No claim that clean code implies statistical or causal validity, or that valid syntax implies good design.
 - No claim that documentation clarity implies GAUSS syntax correctness, statistical validity, or maintainability.
+- No claim that lesson/learning-design quality implies GAUSS syntax correctness, statistical validity, maintainability, documentation quality, or product value.
 - No execution claims without actual execution.
 - Uncertainty preserved on each activated side independently — one side being resolved does not paper over another being unresolved.
-- No over-routing — the response does not apply GAUSS-specific, econometric, software-engineering, or documentation reasoning to a task from any expert's Non-Activation Cases list.
+- No over-routing — the response does not apply GAUSS-specific, econometric, software-engineering, documentation, or education reasoning to a task from any expert's Non-Activation Cases list.
 - Conflicts or tensions between activated experts' conclusions are surfaced when they exist, not silently resolved.
-- Validation, diagnostic, testing/behavior-preservation, or documentation-structure suggestions included where appropriate.
+- Validation, diagnostic, testing/behavior-preservation, documentation-structure, or learning-design suggestions included where appropriate.
 
 ## Routing Examples
 
-The first eight examples below predate the Documentation Expert (`v0.9.0`-`v0.14.0`) and are kept as concise one-line references. The eight after them are new for `v0.15.0` and use an expanded format (request, activated experts, why, response rule, key boundary) to make the Documentation Expert's boundaries explicit.
+The first sixteen examples below predate the Education Expert (`v0.9.0`-`v0.15.0`). Examples 1-8 are kept as concise one-line references; 9-16 use the expanded format (request, activated experts, why, response rule, key boundary) introduced in `v0.15.0`. Examples 17-26 are new for `v0.16.0` and use the same expanded format to make the Education Expert's boundaries explicit.
 
 1. **GAUSS-only.** "What does `strindx` return when not found?" → GAUSS Language Expert only.
 2. **Econometrics-only.** "Does p=0.03 mean the model explains 3%?" → Econometrics Expert only.
@@ -580,7 +696,7 @@ The first eight examples below predate the Documentation Expert (`v0.9.0`-`v0.14
     - Response rule: keep the implementation, methodology, and documentation contributions separately attributable rather than blended.
     - Key boundary: does not let a verified `glm` call imply the model itself is automatically appropriate.
 
-15. **All four.**
+15. **GAUSS + Econometrics + Software Engineering + Documentation.**
     - Request: "Write GAUSS logistic regression code, structure it cleanly, explain appropriateness, and document it for users."
     - Activated experts: GAUSS Language Expert, Econometrics Expert, Software Engineering Expert, Documentation Expert.
     - Why: implementation, methodology, maintainability, and documentation are all genuinely in play.
@@ -589,29 +705,101 @@ The first eight examples below predate the Documentation Expert (`v0.9.0`-`v0.14
 
 16. **Documentation Expert does not replace Education Expert.**
     - Request: "Give beginners a six-week curriculum to learn econometrics in GAUSS."
-    - Activated experts: none of the four operational experts in their full sense — this is Education Expert territory, and the Education Expert is not yet operationalized.
-    - Why: multi-session sequencing, scaffolding, and pedagogy are explicitly out of the Documentation Expert's scope.
-    - Response rule: handle as general education/planning help, or state explicitly that this is future Education Expert territory; the Documentation Expert may support individual reference-doc clarity within such a plan but must not claim ownership of the curriculum design itself.
-    - Key boundary: does not overclaim Education Expert operationalization, and does not let documentation guidance substitute for a learning design.
+    - Activated experts: Documentation Expert may support individual reference-doc clarity; Education Expert owns the curriculum itself as of `v0.16.0`.
+    - Why: multi-session sequencing, scaffolding, and pedagogy are the Education Expert's territory, not the Documentation Expert's.
+    - Response rule: the Education Expert designs the sequence, objectives, practice, and assessment; the Documentation Expert supports individual reference material within it but does not own the curriculum design itself.
+    - Key boundary: does not let documentation guidance substitute for a learning design.
+
+17. **Education-only.**
+    - Request: "Create a three-part learning sequence for a generic technical concept."
+    - Activated experts: Education Expert only.
+    - Why: the request is purely about sequencing, scaffolding, and practice with no GAUSS syntax, methodology, design, or documentation content.
+    - Response rule: define learner goal, prerequisites, sequence, practice, and checks for understanding; do not turn the result into a reference page only.
+    - Key boundary: does not activate GAUSS, Econometrics, Software Engineering, or Documentation.
+
+18. **GAUSS + Education.**
+    - Request: "Teach beginners how to write a GAUSS procedure."
+    - Activated experts: GAUSS Language Expert, Education Expert.
+    - Why: any GAUSS example in the tutorial needs verified syntax; the teaching sequence, scaffolding, and practice design are a learning-design concern.
+    - Response rule: GAUSS Language Expert owns syntax correctness; Education Expert owns learning sequence, scaffolding, practice, and checks for understanding.
+    - Key boundary: uses verified syntax or labels pseudocode clearly; does not invent GAUSS syntax.
+
+19. **Econometrics + Education.**
+    - Request: "Build a learning plan for OLS assumptions and diagnostics."
+    - Activated experts: Econometrics Expert, Education Expert.
+    - Why: the assumptions/diagnostics content must be methodologically correct; the learning sequence, scaffolding, misconceptions, and assessment design are a learning-design concern.
+    - Response rule: Econometrics Expert owns methodological correctness; Education Expert owns sequence, scaffolding, practice, misconceptions, and assessment.
+    - Key boundary: does not overclaim causal validity; does not require the GAUSS Language Expert unless syntax is discussed.
+
+20. **Documentation + Education.**
+    - Request: "Is this reference page enough to teach beginners, or do I need exercises?"
+    - Activated experts: Documentation Expert, Education Expert.
+    - Why: the reference page's clarity is a documentation concern; whether it's sufficient for durable learning is a learning-design concern.
+    - Response rule: Documentation Expert owns reference clarity; Education Expert explains why learning generally requires sequencing, practice, feedback, and scaffolding beyond a single reference page.
+    - Key boundary: clearly distinguishes documentation from education rather than treating them as interchangeable.
+
+21. **Software Engineering + Education.**
+    - Request: "Turn refactoring principles into a practice exercise."
+    - Activated experts: Software Engineering Expert, Education Expert.
+    - Why: the code-quality/refactoring principles themselves are a maintainability concern; turning them into a practiced, assessed exercise is a learning-design concern.
+    - Response rule: Software Engineering Expert owns the code-quality/refactoring principles; Education Expert owns exercise design, progression, feedback, and assessment.
+    - Key boundary: does not claim tests were run; does not claim maintainability from lesson quality alone.
+
+22. **GAUSS + Documentation + Education.**
+    - Request: "Write a beginner GAUSS tutorial with a reference summary."
+    - Activated experts: GAUSS Language Expert, Documentation Expert, Education Expert.
+    - Why: the tutorial's GAUSS content needs verified syntax; the reference summary is a documentation concern; the tutorial's sequence and scaffolding are a learning-design concern.
+    - Response rule: keep syntax verification, reference-summary structure, and tutorial sequencing separately attributable.
+    - Key boundary: unverified examples are labeled pseudocode; the reference summary is not presented as a substitute for the tutorial's scaffolding, or vice versa.
+
+23. **Econometrics + Documentation + Education.**
+    - Request: "Create learner-facing documentation and exercises for regression interpretation."
+    - Activated experts: Econometrics Expert, Documentation Expert, Education Expert.
+    - Why: interpretation correctness is methodological; the documentation content is a documentation concern; the exercises and their sequencing are a learning-design concern.
+    - Response rule: Econometrics Expert owns interpretation correctness; Documentation Expert owns the reference content; Education Expert owns the exercise sequence, practice, and assessment.
+    - Key boundary: does not overclaim causal validity; does not let clear documentation or well-designed exercises substitute for methodological correctness.
+
+24. **GAUSS + Econometrics + Documentation + Education.**
+    - Request: "Teach logistic regression in GAUSS with assumptions, examples, and learner checks."
+    - Activated experts: GAUSS Language Expert, Econometrics Expert, Documentation Expert, Education Expert.
+    - Why: implementation, methodology, documentation, and learning design are all genuinely in play, with no maintainability/refactor request.
+    - Response rule: keep the implementation, methodology, documentation, and education contributions separately attributable rather than blended.
+    - Key boundary: does not let a verified `glm` call, a clear reference page, or a well-designed learner check imply the model itself is automatically appropriate.
+
+25. **All five.**
+    - Request: "Teach logistic regression in GAUSS, structure reusable code, document the workflow, and design practice exercises."
+    - Activated experts: GAUSS Language Expert, Econometrics Expert, Software Engineering Expert, Documentation Expert, Education Expert.
+    - Why: implementation, methodology, maintainability, documentation, and learning design are all genuinely in play.
+    - Response rule: keep all five claims separate and separately attributable, even within one coherent response; use local evidence (e.g. `glm.evidence.json`) for implementation facts.
+    - Key boundary: does not claim execution; does not invent syntax; does not let clean code, clear documentation, or a well-designed lesson imply model validity or vice versa.
+
+26. **Neither.**
+    - Request: "Write a nontechnical announcement."
+    - Activated experts: none of the five.
+    - Why: the request is general writing unrelated to GAUSS, econometrics, code quality, documentation, or learning design.
+    - Response rule: answer normally; do not impose expert routing or decision rules from any of the five.
+    - Key boundary: negative routing holds even when the request superficially resembles a release note or announcement that other experts' domains sometimes touch.
 
 ## Relationship to Existing Files
 
-- **`tools/operational_expert_interface.md`** — defines the generic interface (activation triggers, evidence/context requirements, decision rules, output contract, evaluation criteria) that this workflow routes against for all four experts. This workflow does not redefine that interface's fields.
+- **`tools/operational_expert_interface.md`** — defines the generic interface (activation triggers, evidence/context requirements, decision rules, output contract, evaluation criteria) that this workflow routes against for all five experts. This workflow does not redefine that interface's fields.
 - **`experts/gauss-language/OPERATIONAL_PROFILE.md`** — the filled-in GAUSS Language Expert profile this workflow's GAUSS-side steps are sourced from. If the profile changes, this workflow's GAUSS-side content should be updated to match rather than allowed to drift.
 - **`experts/econometrics/OPERATIONAL_PROFILE.md`** — the filled-in Econometrics Expert profile this workflow's econometrics-side steps are sourced from, following the same drift-prevention principle.
 - **`experts/software-engineering/OPERATIONAL_PROFILE.md`** — the filled-in Software Engineering Expert profile this workflow's software-engineering-side steps are sourced from, following the same drift-prevention principle. Added in `v0.14.0`.
 - **`experts/documentation/OPERATIONAL_PROFILE.md`** — the filled-in Documentation Expert profile this workflow's documentation-side steps are sourced from, following the same drift-prevention principle. Added in `v0.15.0`.
-- **`workflows/code-assistant-response.md`** — this workflow is the specialization of that document's Step 2 ("Identify Relevant Experts"). Step 2 was updated in `v0.9.0` to reference two-expert routing, again in `v0.14.0` to reference three-expert, eight-pattern routing, and again in `v0.15.0` to reference the Documentation Expert and the four-axis routing pattern added here.
+- **`experts/education/OPERATIONAL_PROFILE.md`** — the filled-in Education Expert profile this workflow's education-side steps are sourced from, following the same drift-prevention principle. Added in `v0.16.0`.
+- **`workflows/code-assistant-response.md`** — this workflow is the specialization of that document's Step 2 ("Identify Relevant Experts"). Step 2 was updated in `v0.9.0` to reference two-expert routing, again in `v0.14.0` for three-expert/eight-pattern routing, and again in `v0.15.0` for the Documentation Expert and four-axis routing; it has not yet been updated for the Education Expert or the five-axis routing added here in `v0.16.0`, and still lists the Education Expert under its narrative-only perspectives. That update is a separate, not-yet-completed task.
 - **`workflows/retrieval-backed-response-pattern.md`** — governs Step 7's GAUSS-side evidence-state handling; this workflow does not redefine states A-H.
 - **`workflows/command-documentation-retrieval.md`** — governs the hybrid discovery/retrieval strategy this workflow routes to in Step 7 for GAUSS command evidence.
 - **`workflows/native-command-selection.md`** — governs the native-vs-manual decision this workflow's Step 8 GAUSS-side rules reference.
-- **`agents/code-assistant/task_modes.md`** — the task-mode definitions consumed in Step 1 and the Clarifying Question Rules referenced in Step 5. Updated for multi-expert routing in `v0.9.0`, again in `v0.14.0` for the Software Engineering Expert, and again in `v0.15.0` so each task mode names the Documentation Expert's activation conditions alongside the other three experts'.
-- **`prompts/code_assistant_system.md`** — the system prompt whose "Identify the relevant expertise" step this workflow operationalizes. Updated for multi-expert routing in `v0.9.0`, again in `v0.14.0` for the Software Engineering Expert, and again in `v0.15.0` to reference the Documentation Expert and the four-axis routing pattern.
+- **`agents/code-assistant/task_modes.md`** — the task-mode definitions consumed in Step 1 and the Clarifying Question Rules referenced in Step 5. Updated for multi-expert routing in `v0.9.0`, again in `v0.14.0` for the Software Engineering Expert, and again in `v0.15.0` for the Documentation Expert; not yet updated for the Education Expert as of `v0.16.0`.
+- **`prompts/code_assistant_system.md`** — the system prompt whose "Identify the relevant expertise" step this workflow operationalizes. Updated for multi-expert routing in `v0.9.0`, again in `v0.14.0` for the Software Engineering Expert, and again in `v0.15.0` for the Documentation Expert; not yet updated for the Education Expert as of `v0.16.0`.
 
 ## Maintenance Notes
 
 - Update this workflow when any `OPERATIONAL_PROFILE.md` changes, or when a new operational expert is added (extending Step 2's trigger lists, Step 3's non-activation lists, and Step 4's activation matrix to cover it).
 - Keep each expert's trigger/non-activation lists in this workflow aligned with its own `OPERATIONAL_PROFILE.md` — this workflow should mirror those profiles, never diverge from them.
 - Benchmark category `16.x` (Multi-Expert Routing) tested GAUSS-only, econometrics-only, both-experts, and neither-expert routing, extending the single-expert coverage validated by `15.x` — completed and evaluated (all eight prompts passed) in `v0.9.0`.
-- Benchmark category `21.x` (Software Engineering Expert Foundation) exercised the eight routing types that existed before this update, including the five combinations involving the Software Engineering Expert — completed and evaluated (all eight prompts passed) in `v0.14.0`.
-- Benchmark category `22.x` (Documentation Expert Foundation), planned in `planning/v0.15.0-documentation-expert-foundation.md`, is intended to exercise the Documentation Expert and the new documentation-related patterns documented here — not yet run as of this workflow update.
+- Benchmark category `21.x` (Software Engineering Expert Foundation) exercised the eight routing types that existed before that update, including the five combinations involving the Software Engineering Expert — completed and evaluated (all eight prompts passed) in `v0.14.0`.
+- Benchmark category `22.x` (Documentation Expert Foundation) exercised the Documentation Expert and the documentation-related routing patterns — completed and evaluated (all eight prompts passed) in `v0.15.0`.
+- Benchmark category `23.x` (Education Expert Foundation), planned in `planning/v0.16.0-education-expert-foundation.md`, is intended to exercise the Education Expert and the new education-related patterns documented here — not yet run as of this workflow update.
