@@ -6,7 +6,7 @@ Guide agents on learning design and learner progression: learning objectives, in
 
 This file is the narrative foundation for the Education Expert. It is intentionally scoped to what a later operational profile needs (activation triggers, decision rules, refusal conditions) rather than a comprehensive instructional-design reference. See `BODY_OF_KNOWLEDGE.md` for the structured knowledge domains this expert draws on.
 
-For operational activation triggers, required inputs, required evidence by task type, refusal/escalation conditions, and the output contract this expert must satisfy, see `OPERATIONAL_PROFILE.md` once it exists. This file remains the narrative specification; the operational profile is the checkable contract.
+For operational activation triggers, required inputs, required evidence by task type, refusal/escalation conditions, and the output contract this expert must satisfy, see [OPERATIONAL_PROFILE.md](OPERATIONAL_PROFILE.md). This file remains the narrative specification; the operational profile is the checkable contract.
 
 ## Scope
 
@@ -149,8 +149,8 @@ This expert is learning-design-focused, not command-syntax-focused, methodology-
 - `experts/econometrics/EXPERT.md` and `experts/econometrics/OPERATIONAL_PROFILE.md` — the expert this file hands off methodological claims to.
 - `experts/software-engineering/EXPERT.md` and `experts/software-engineering/OPERATIONAL_PROFILE.md` — the expert this file hands off maintainability/design claims to.
 - `experts/documentation/EXPERT.md` and `experts/documentation/OPERATIONAL_PROFILE.md` — the expert this file hands off documentation/reference-clarity claims to.
-- `tools/operational_expert_interface.md` — the generic interface a future `OPERATIONAL_PROFILE.md` for this expert will fill in.
+- `tools/operational_expert_interface.md` — the generic interface `OPERATIONAL_PROFILE.md` fills in for this expert.
 
 ## Future Expansion
 
-An `OPERATIONAL_PROFILE.md` has not yet been created for this expert — it is planned as the next task, per the `v0.9.0`/`v0.14.0`/`v0.15.0` precedent of building the narrative foundation first. Once created, it will define this expert's activation triggers, non-activation cases, required inputs, required evidence by task type, decision rules, refusal/escalation conditions, output contract, response-visibility policy, and evaluation criteria, filling in `tools/operational_expert_interface.md` the same way the four existing operational profiles did for their experts. This file and `BODY_OF_KNOWLEDGE.md` remain the narrative foundation those operational decisions will be grounded in. Five-expert routing (activating this expert alongside the GAUSS Language Expert, Econometrics Expert, Software Engineering Expert, and/or Documentation Expert) is planned in `planning/v0.16.0-education-expert-foundation.md` but not yet implemented in `workflows/expert-routing.md`.
+`OPERATIONAL_PROFILE.md` now defines this expert's activation triggers, non-activation cases, required inputs, required evidence by task type, decision rules, refusal/escalation conditions, output contract, response-visibility policy, and evaluation criteria, filling in `tools/operational_expert_interface.md` the same way the four existing operational profiles did for their experts. This file and `BODY_OF_KNOWLEDGE.md` remain the narrative foundation those operational decisions are grounded in. Five-expert routing (activating this expert alongside the GAUSS Language Expert, Econometrics Expert, Software Engineering Expert, and/or Documentation Expert) is planned in `planning/v0.16.0-education-expert-foundation.md` but not yet implemented in `workflows/expert-routing.md`.
