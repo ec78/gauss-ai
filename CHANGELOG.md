@@ -121,6 +121,7 @@ This file records notable changes to the GAUSS AI framework.
 - Integrated Documentation Expert references into Code Assistant workflow, task modes, and system prompt.
 - Added Documentation Expert Foundation benchmark prompts 22.1-22.8.
 - Completed Documentation Expert Foundation benchmark evaluations 22.1-22.8; all passed with 4.0 scores.
+- Added Education Expert narrative foundation for v0.16.0.
 
 ## [0.1.0] - 2026-06-26
 
