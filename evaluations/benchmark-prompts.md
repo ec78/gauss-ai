@@ -1169,3 +1169,126 @@ Expected behavior:
 - Gives normal writing help.
 - Does not impose expert routing unnecessarily.
 - Does not mention GAUSS, econometrics, code quality, or operational experts unless the user asks.
+
+## Documentation Expert Foundation
+
+Use Prompt IDs 22.1-22.8. These exercise the Documentation Expert (`experts/documentation/OPERATIONAL_PROFILE.md`) and the routing patterns added to `workflows/expert-routing.md` for the fourth operational expert, extending the three-expert coverage validated by `21.x` to four experts.
+
+### Prompt 22.1: Documentation-only rewrite
+
+The user asks to rewrite a confusing technical note into clearer user-facing documentation, with no GAUSS syntax or statistics involved.
+
+Example prompt: "Can you rewrite this technical note into clearer user-facing documentation? Current note: 'The file loader takes the thing, checks what is missing, and makes the output available downstream. Users should make sure it worked before continuing.' I am not asking about GAUSS syntax, statistics, or code design — just documentation clarity."
+
+Expected behavior:
+- Activates Documentation Expert only.
+- Does not activate GAUSS Language Expert.
+- Does not activate Econometrics Expert.
+- Does not activate Software Engineering Expert.
+- Improves structure, clarity, assumptions, and reader guidance.
+- Clarifies vague phrases such as "the thing" and "make sure it worked."
+- Does not invent technical details beyond the source material.
+- Does not turn this into curriculum design.
+
+### Prompt 22.2: GAUSS + Documentation
+
+The user asks to document a GAUSS procedure and include a usage example.
+
+Example prompt: "Can you help me document a GAUSS procedure that calculates a z-score? I want a short description, inputs, outputs, and a usage example."
+
+Expected behavior:
+- Activates GAUSS Language Expert and Documentation Expert.
+- GAUSS Language Expert owns GAUSS syntax and example validity.
+- Documentation Expert owns explanation, structure, parameter descriptions, return/output descriptions, and usage clarity.
+- Uses verified GAUSS syntax where possible or labels pseudocode clearly.
+- Does not invent command behavior.
+- Keeps syntax/evidence claims separate from documentation-quality claims.
+
+### Prompt 22.3: Econometrics + Documentation
+
+The user asks to document model assumptions and interpretation caveats for regression output.
+
+Example prompt: "Can you help me write documentation that explains the assumptions and interpretation caveats for an OLS regression output?"
+
+Expected behavior:
+- Activates Econometrics Expert and Documentation Expert.
+- Econometrics Expert owns assumptions and interpretation correctness.
+- Documentation Expert owns clarity, caveats, audience fit, and reader-facing structure.
+- Includes caveats about association vs causation unless identification supports causal claims.
+- Does not overclaim causal validity.
+- Does not require GAUSS Language Expert unless GAUSS-specific syntax is discussed.
+
+### Prompt 22.4: Software Engineering + Documentation
+
+The user asks to add comments/docstrings to a refactored helper function and explain its design intent.
+
+Example prompt: "I refactored a helper function that validates input data before analysis. Can you help me write comments or a docstring that explain its purpose, inputs, outputs, assumptions, and design intent?"
+
+Expected behavior:
+- Activates Software Engineering Expert and Documentation Expert.
+- Software Engineering Expert owns design intent, maintainability, and validation-purpose boundaries.
+- Documentation Expert owns comment/docstring clarity, structure, and audience awareness.
+- Comments explain intent and assumptions, not obvious mechanics.
+- Does not claim tests were run.
+- Does not claim documentation quality proves design quality.
+
+### Prompt 22.5: All four experts activate
+
+The user asks for GAUSS logistic regression code, clean reusable structure, model appropriateness explanation, and user-facing documentation.
+
+Example prompt: "Can you show me how to run logistic regression in GAUSS for a binary outcome, structure the code so I can reuse it, explain whether logistic regression is automatically appropriate, and write a short user-facing documentation section for the workflow?"
+
+Expected behavior:
+- Activates GAUSS Language Expert, Econometrics Expert, Software Engineering Expert, and Documentation Expert.
+- Uses local `glm` evidence (`examples/retrieval/schema-aligned/glm.evidence.json`) for implementation facts if available.
+- GAUSS Language Expert owns `glm` syntax/family/link implementation facts.
+- Econometrics Expert explains binary outcome makes logistic regression plausible but not automatically right.
+- Software Engineering Expert recommends reusable structure, separation of setup/modeling/output, and validation checks.
+- Documentation Expert writes or recommends a clear user-facing documentation section.
+- Keeps implementation, methodology, maintainability, and documentation claims separate.
+- Does not claim execution.
+- Does not invent syntax.
+- Does not let clear documentation imply model validity or maintainability.
+
+### Prompt 22.6: Documentation Expert does not replace Education Expert
+
+The user asks for a six-week curriculum to teach beginners econometrics in GAUSS.
+
+Example prompt: "Can you build a six-week curriculum to teach beginners econometrics in GAUSS, with weekly learning objectives, exercises, and progression?"
+
+Expected behavior:
+- Recognizes this is primarily Education Expert territory, not Documentation Expert.
+- Since the Education Expert is not operationalized, handles it as normal education/planning help or marks future Education routing without claiming Education Expert operationalization.
+- Documentation Expert may be mentioned only as supporting reference-doc clarity, not owning curriculum design.
+- Does not overclaim Documentation Expert scope.
+- Does not overclaim Education Expert operationalization.
+- Uses normal helpful response behavior.
+
+### Prompt 22.7: Documentation Expert does not validate syntax
+
+The user asks whether a beautifully written documentation page proves the GAUSS code example is valid.
+
+Example prompt: "If a documentation page is clear and well written, does that mean the GAUSS code example in it is valid?"
+
+Expected behavior:
+- Activates Documentation Expert and GAUSS Language Expert.
+- Documentation Expert explains clarity and structure do not prove syntax correctness.
+- GAUSS Language Expert/evidence is required for GAUSS syntax validation.
+- Does not validate syntax from prose quality.
+- Explains that examples need verified syntax or must be labeled pseudocode/unverified.
+- Does not claim execution.
+
+### Prompt 22.8: Neither expert activation for nontechnical marketing blurb
+
+The user asks for a nontechnical marketing sentence unrelated to docs, code, GAUSS, or econometrics.
+
+Example prompt: "Can you write a friendly one-sentence marketing blurb saying our update makes the experience smoother and easier to use?"
+
+Expected behavior:
+- Does not activate Documentation Expert.
+- Does not activate GAUSS Language Expert.
+- Does not activate Econometrics Expert.
+- Does not activate Software Engineering Expert.
+- Gives normal writing help.
+- Does not impose expert routing unnecessarily.
+- Does not mention GAUSS, econometrics, code quality, documentation, or operational experts unless the user asks.

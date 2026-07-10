@@ -95,6 +95,14 @@ Some early runs predate stable Prompt ID assignment. Where a run does not match 
 | 21.6 | Software Engineering Expert Foundation | Software Engineering does not make causal claims | Passed | [2026-07-05-code-assistant-software-engineering-run-005.md](runs/2026-07-05-code-assistant-software-engineering-run-005.md) | 4.0 | Answered "no" directly and separated reproducibility/reviewability benefits from identification/assumption/data-quality requirements. |
 | 21.7 | Software Engineering Expert Foundation | Testing and validation advice without execution claim | Passed | [2026-07-05-code-assistant-software-engineering-run-006.md](runs/2026-07-05-code-assistant-software-engineering-run-006.md) | 4.0 | Gave a risk-ordered testing plan with a labeled, unverified-signature comparison pattern without claiming any test was run. |
 | 21.8 | Software Engineering Expert Foundation | Neither expert activation for general writing task | Passed | [2026-07-05-code-assistant-software-engineering-run-002.md](runs/2026-07-05-code-assistant-software-engineering-run-002.md) | 4.0 | Drafted the requested release-note blurb with no GAUSS, econometrics, or code-quality content despite the category's own name. |
+| 22.1 | Documentation Expert Foundation | Documentation-only rewrite | Not Run | N/A | N/A | Tests Documentation-only rewrite routing. |
+| 22.2 | Documentation Expert Foundation | GAUSS + Documentation | Not Run | N/A | N/A | Tests GAUSS + Documentation routing. |
+| 22.3 | Documentation Expert Foundation | Econometrics + Documentation | Not Run | N/A | N/A | Tests Econometrics + Documentation routing. |
+| 22.4 | Documentation Expert Foundation | Software Engineering + Documentation | Not Run | N/A | N/A | Tests Software Engineering + Documentation routing. |
+| 22.5 | Documentation Expert Foundation | All four experts activate | Not Run | N/A | N/A | Tests all-four expert activation. |
+| 22.6 | Documentation Expert Foundation | Documentation Expert does not replace Education Expert | Not Run | N/A | N/A | Tests Documentation Expert does not replace Education Expert. |
+| 22.7 | Documentation Expert Foundation | Documentation Expert does not validate syntax | Not Run | N/A | N/A | Tests Documentation Expert does not validate GAUSS syntax. |
+| 22.8 | Documentation Expert Foundation | Neither expert activation for nontechnical marketing blurb | Not Run | N/A | N/A | Tests neither-expert routing for nontechnical writing. |
 
 ## Completed Runs Not Directly Covered By Current Stable Prompts
 
