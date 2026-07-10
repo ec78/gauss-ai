@@ -1292,3 +1292,127 @@ Expected behavior:
 - Gives normal writing help.
 - Does not impose expert routing unnecessarily.
 - Does not mention GAUSS, econometrics, code quality, documentation, or operational experts unless the user asks.
+
+## Education Expert Foundation
+
+Use Prompt IDs 23.1-23.8. These exercise the Education Expert (`experts/education/OPERATIONAL_PROFILE.md`) and the routing patterns added to `workflows/expert-routing.md` for the fifth operational expert, extending the four-expert coverage validated by `22.x` to five experts.
+
+### Prompt 23.1: Education-only learning sequence
+
+The user asks for a short learning sequence for a generic technical concept with no GAUSS syntax, statistics, code design, or documentation request.
+
+Example prompt: "Can you create a three-part learning sequence to help beginners understand the idea of input, process, and output in a generic technical workflow? I am not asking about GAUSS, statistics, code design, or documentation — just how to teach the concept."
+
+Expected behavior:
+- Activates Education Expert only.
+- Does not activate GAUSS Language Expert.
+- Does not activate Econometrics Expert.
+- Does not activate Software Engineering Expert.
+- Does not activate Documentation Expert.
+- Defines learner goal, prerequisites, sequence, practice, and checks for understanding.
+- Uses scaffolding and beginner-appropriate progression.
+- Does not turn the result into a reference page only.
+- Does not impose Product Expert routing.
+
+### Prompt 23.2: GAUSS + Education tutorial
+
+The user asks for a beginner tutorial to teach a GAUSS programming concept.
+
+Example prompt: "Can you create a beginner-friendly mini lesson that teaches how to write a simple GAUSS procedure? Include the learning objective, a short explanation, a guided example, a practice exercise, and a check for understanding."
+
+Expected behavior:
+- Activates GAUSS Language Expert and Education Expert.
+- GAUSS Language Expert owns GAUSS syntax correctness.
+- Education Expert owns learning objective, sequence, scaffolding, practice, and checks for understanding.
+- Uses verified GAUSS syntax where possible or labels pseudocode clearly.
+- Does not invent GAUSS syntax.
+- Does not claim code was executed.
+- Keeps syntax/evidence claims separate from learning-design claims.
+
+### Prompt 23.3: Econometrics + Education concept progression
+
+The user asks for a learning plan to teach OLS assumptions and diagnostics to beginners.
+
+Example prompt: "Can you design a short learning plan to teach beginners the main OLS assumptions and why diagnostics matter?"
+
+Expected behavior:
+- Activates Econometrics Expert and Education Expert.
+- Econometrics Expert owns methodological correctness.
+- Education Expert owns sequence, scaffolding, practice, misconceptions, and assessment.
+- Includes beginner-friendly progression.
+- Includes checks for understanding or practice prompts.
+- Does not overclaim causal validity.
+- Does not require GAUSS Language Expert unless GAUSS-specific syntax is discussed.
+
+### Prompt 23.4: Documentation + Education distinction
+
+The user asks whether a reference page is enough to teach beginners a complex topic.
+
+Example prompt: "I have a clear reference page that lists the steps for running a regression. Is that enough to teach beginners how regression works, or do I need something more?"
+
+Expected behavior:
+- Activates Documentation Expert and Education Expert.
+- Documentation Expert owns reference clarity.
+- Education Expert explains why learning requires sequencing, scaffolding, practice, feedback, and checks for understanding.
+- Clearly distinguishes documentation from education.
+- Does not claim the reference page is bad merely because it is not a curriculum.
+- Does not require GAUSS Language Expert unless syntax is discussed.
+- Does not overclaim Product Expert operationalization.
+
+### Prompt 23.5: Software Engineering + Education code review learning exercise
+
+The user asks to turn a code review/refactoring topic into a learning exercise.
+
+Example prompt: "Can you turn the idea of reducing duplicated code into a short learning exercise for junior analysts? I want them to practice identifying repeated logic and suggesting a safer refactor."
+
+Expected behavior:
+- Activates Software Engineering Expert and Education Expert.
+- Software Engineering Expert owns code-quality/refactoring principles.
+- Education Expert owns exercise design, progression, feedback, and assessment.
+- Includes practice task and feedback criteria.
+- Does not claim tests were run.
+- Does not claim maintainability from lesson quality alone.
+- Does not require GAUSS Language Expert unless GAUSS-specific syntax is discussed.
+
+### Prompt 23.6: Education Expert does not validate syntax
+
+The user asks whether a well-designed lesson proves the GAUSS code in the lesson is valid.
+
+Example prompt: "If a GAUSS lesson is well sequenced and has good practice exercises, does that mean the code examples in it are valid GAUSS?"
+
+Expected behavior:
+- Activates Education Expert and GAUSS Language Expert.
+- Education Expert explains good pedagogy does not prove syntax correctness.
+- GAUSS Language Expert/evidence is required for GAUSS syntax validation.
+- Does not validate syntax from lesson quality.
+- Explains that GAUSS examples need verified syntax or must be labeled pseudocode/unverified.
+- Does not claim execution.
+
+### Prompt 23.7: Education Expert does not replace Product Expert
+
+The user asks whether a good training curriculum proves the product feature is valuable or should be prioritized.
+
+Example prompt: "If we can build a great training curriculum for a feature, does that prove the feature is valuable and should be prioritized?"
+
+Expected behavior:
+- Activates Education Expert.
+- Recognizes product value, adoption, positioning, and prioritization are future Product Expert territory or normal product reasoning.
+- Education Expert explains training can improve adoption or understanding but does not prove product-market fit, feature value, or prioritization.
+- Does not overclaim Product Expert operationalization.
+- Does not require GAUSS, Econometrics, Software Engineering, or Documentation unless those domains are introduced.
+
+### Prompt 23.8: Neither expert activation for ordinary writing
+
+The user asks for a short nontechnical announcement unrelated to education, docs, code, GAUSS, or econometrics.
+
+Example prompt: "Can you write a short friendly announcement that says we made a few improvements and hope users enjoy the update?"
+
+Expected behavior:
+- Does not activate Education Expert.
+- Does not activate GAUSS Language Expert.
+- Does not activate Econometrics Expert.
+- Does not activate Software Engineering Expert.
+- Does not activate Documentation Expert.
+- Gives normal writing help.
+- Does not impose expert routing unnecessarily.
+- Does not mention GAUSS, econometrics, code quality, documentation, education, or operational experts unless the user asks.

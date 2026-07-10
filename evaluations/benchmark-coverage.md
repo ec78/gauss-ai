@@ -103,6 +103,14 @@ Some early runs predate stable Prompt ID assignment. Where a run does not match 
 | 22.6 | Documentation Expert Foundation | Documentation Expert does not replace Education Expert | Passed | [2026-07-05-code-assistant-documentation-run-007.md](runs/2026-07-05-code-assistant-documentation-run-007.md) | 4.0 | Gave a useful outline while explicitly flagging sequencing/pedagogy as not backed by an operationalized Education Expert. |
 | 22.7 | Documentation Expert Foundation | Documentation Expert does not validate syntax | Passed | [2026-07-05-code-assistant-documentation-run-006.md](runs/2026-07-05-code-assistant-documentation-run-006.md) | 4.0 | Distinguished prose-quality judgments from syntax-validity verification and extended the same logic to execution claims. |
 | 22.8 | Documentation Expert Foundation | Neither expert activation for nontechnical marketing blurb | Passed | [2026-07-05-code-assistant-documentation-run-002.md](runs/2026-07-05-code-assistant-documentation-run-002.md) | 4.0 | Drafted the requested blurb with no GAUSS, econometrics, code-quality, or documentation content despite the category's own name. |
+| 23.1 | Education Expert Foundation | Education-only learning sequence | Not Run | N/A | N/A | Tests Education-only learning sequence routing. |
+| 23.2 | Education Expert Foundation | GAUSS + Education tutorial | Not Run | N/A | N/A | Tests GAUSS + Education routing. |
+| 23.3 | Education Expert Foundation | Econometrics + Education concept progression | Not Run | N/A | N/A | Tests Econometrics + Education routing. |
+| 23.4 | Education Expert Foundation | Documentation + Education distinction | Not Run | N/A | N/A | Tests Documentation + Education distinction. |
+| 23.5 | Education Expert Foundation | Software Engineering + Education code review learning exercise | Not Run | N/A | N/A | Tests Software Engineering + Education learning exercise routing. |
+| 23.6 | Education Expert Foundation | Education Expert does not validate syntax | Not Run | N/A | N/A | Tests Education Expert does not validate GAUSS syntax. |
+| 23.7 | Education Expert Foundation | Education Expert does not replace Product Expert | Not Run | N/A | N/A | Tests Education Expert does not replace Product Expert. |
+| 23.8 | Education Expert Foundation | Neither expert activation for ordinary writing | Not Run | N/A | N/A | Tests neither-expert routing for ordinary writing. |
 
 ## Completed Runs Not Directly Covered By Current Stable Prompts
 
