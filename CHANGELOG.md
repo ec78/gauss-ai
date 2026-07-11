@@ -133,6 +133,7 @@ This file records notable changes to the GAUSS AI framework.
 - Integrated Product Expert references into Code Assistant workflow, task modes, and system prompt.
 - Updated Education Expert profile wording now that Product Expert is operationalized.
 - Added Product Expert Foundation benchmark prompts 24.1-24.8.
+- Completed Product Expert Foundation benchmark evaluations 24.1-24.8; all passed with 4.0 scores.
 
 ## [0.1.0] - 2026-06-26
 

@@ -4,7 +4,7 @@
 
 This profile operationalizes the Software Engineering Expert by defining when it activates, what inputs it needs, what evidence/context it requires before making a claim, what decision rules it applies, and what it contributes to the Code Assistant's response. It fills in the interface defined in `tools/operational_expert_interface.md` with Software-Engineering-Expert-specific content, the same way `experts/gauss-language/OPERATIONAL_PROFILE.md` and `experts/econometrics/OPERATIONAL_PROFILE.md` did for their experts.
 
-This profile operationalizes the Software Engineering Expert as a **reasoning-structure expert, not a runtime engine**: it governs code organization, maintainability, refactoring, testability, and safe change management for a stated task. It does not govern exact GAUSS syntax, and it does not govern econometric or statistical validity. It cannot bypass the GAUSS Language Expert's evidence requirements for implementation claims, and it cannot bypass the Econometrics Expert's methodological reasoning for statistical/causal claims — a maintainability recommendation is never sufficient grounds for asserting unverified GAUSS syntax or unverified statistical validity. This is markdown/YAML-style documentation, not runtime code; no engine parses or executes this file, and it does not implement multi-expert orchestration — `workflows/expert-routing.md` documents three-expert routing across the GAUSS Language Expert, the Econometrics Expert, and this expert, checked by manual evaluation, per the design in `planning/v0.14.0-software-engineering-expert-foundation.md`. Code Assistant workflow/prompt integration (`workflows/code-assistant-response.md`, `agents/code-assistant/task_modes.md`, `prompts/code_assistant_system.md`) is complete as of `v0.14.0`.
+This profile operationalizes the Software Engineering Expert as a **reasoning-structure expert, not a runtime engine**: it governs code organization, maintainability, refactoring, testability, and safe change management for a stated task. It does not govern exact GAUSS syntax, and it does not govern econometric or statistical validity. It cannot bypass the GAUSS Language Expert's evidence requirements for implementation claims, and it cannot bypass the Econometrics Expert's methodological reasoning for statistical/causal claims — a maintainability recommendation is never sufficient grounds for asserting unverified GAUSS syntax or unverified statistical validity. This is markdown/YAML-style documentation, not runtime code; no engine parses or executes this file, and it does not implement multi-expert orchestration — `workflows/expert-routing.md` documents six-expert routing across the GAUSS Language Expert, the Econometrics Expert, this expert, the Documentation Expert (operationalized in `v0.15.0`), the Education Expert (operationalized in `v0.16.0`), and the Product Expert (operationalized in `v0.17.0`), checked by manual evaluation, per the design in `planning/v0.14.0-software-engineering-expert-foundation.md`. Code Assistant workflow/prompt integration (`workflows/code-assistant-response.md`, `agents/code-assistant/task_modes.md`, `prompts/code_assistant_system.md`) is complete as of `v0.14.0`.
 
 ## Interface Summary
 
@@ -99,6 +99,7 @@ This expert does not own:
 - Product strategy
 - Instructional sequencing
 - User-facing documentation quality as its primary domain
+- Product/user-value reasoning as its primary domain
 
 ## Activation Triggers
 
@@ -210,9 +211,9 @@ State uncertainty or decline an exact claim when:
 
 - Route to the GAUSS Language Expert (and retrieval, if evidence has not yet been sought) when exact GAUSS syntax or command behavior is needed.
 - Route to the Econometrics Expert when econometric model appropriateness, causal interpretation, or statistical validity is needed.
-- Route to normal documentation workflow (a future Documentation Expert, once operationalized) when user-facing documentation quality is the primary issue rather than code quality.
-- Route to normal education workflow (a future Education Expert, once operationalized) when instructional sequencing is the primary issue.
-- Route to normal product reasoning (a future Product Expert, once operationalized) when product strategy is the primary issue.
+- Route to the Documentation Expert when user-facing documentation quality is the primary issue rather than code quality.
+- Route to the Education Expert when instructional sequencing is the primary issue.
+- Route to the Product Expert when product strategy is the primary issue.
 - Route to the GAUSS Language Expert and its evidence when a performance question depends on GAUSS-specific internals rather than general design.
 
 ## Output Contract
@@ -265,9 +266,9 @@ Checkable directly against a response, consistent with `tools/operational_expert
 - **`experts/software-engineering/common_mistakes.md`** — the failure-mode list this profile's Refusal Conditions and Decision Rules 2, 3, 8, 9, 10, and 13 directly address.
 - **`experts/software-engineering/knowledge.md`** — a compatibility placeholder pointing to `BODY_OF_KNOWLEDGE.md`; not a separate or competing knowledge source.
 - **`tools/operational_expert_interface.md`** — the generic interface this profile fills in; field definitions and design principles live there, not repeated here.
-- **`workflows/expert-routing.md`** — now defines three-expert (GAUSS Language Expert, Econometrics Expert, Software Engineering Expert) routing across eight documented routing types, extended in `v0.14.0` per `planning/v0.14.0-software-engineering-expert-foundation.md`. This remains documented/manual-evaluation-driven routing, not runtime orchestration.
-- **`workflows/code-assistant-response.md`** — Step 2 ("Identify Relevant Experts") now references this expert alongside the GAUSS Language Expert and Econometrics Expert, and routes through the eight documented routing types in `workflows/expert-routing.md`. Updated in `v0.14.0`.
-- **`agents/code-assistant/task_modes.md`** — each task mode now names this expert's `activation_triggers` alongside the GAUSS Language Expert's and Econometrics Expert's. Updated in `v0.14.0`.
-- **`prompts/code_assistant_system.md`** — the system prompt's "Identify the relevant expertise" step now names this expert as one of the three operational experts it routes to. Updated in `v0.14.0`.
+- **`workflows/expert-routing.md`** — now defines six-expert (GAUSS Language Expert, Econometrics Expert, Software Engineering Expert, Documentation Expert, Education Expert, Product Expert) routing via a compact activation matrix and worked examples, extended in `v0.14.0` per `planning/v0.14.0-software-engineering-expert-foundation.md` and again in `v0.15.0`, `v0.16.0`, and `v0.17.0` for the Documentation, Education, and Product Experts respectively. This remains documented/manual-evaluation-driven routing, not runtime orchestration.
+- **`workflows/code-assistant-response.md`** — Step 2 ("Identify Relevant Experts") now references this expert alongside the GAUSS Language Expert, Econometrics Expert, Documentation Expert, Education Expert, and Product Expert, and routes through the six-axis activation matrix in `workflows/expert-routing.md`. Updated in `v0.14.0`, and again in later milestones as each additional expert was integrated.
+- **`agents/code-assistant/task_modes.md`** — each task mode now names this expert's `activation_triggers` alongside the other five experts'. Updated in `v0.14.0`, and again in later milestones as each additional expert was integrated.
+- **`prompts/code_assistant_system.md`** — the system prompt's "Identify the relevant expertise" step now names this expert as one of the six operational experts it routes to. Updated in `v0.14.0`, and again in later milestones as each additional expert was integrated.
 
 This remains documented/manual-evaluation-driven routing, not runtime orchestration — no code executes any of the files above; a response is checked against them manually.
