@@ -4,7 +4,7 @@
 
 This profile operationalizes the Education Expert by defining when it activates, what inputs it needs, what evidence/context it requires before making a claim, what decision rules it applies, and what it contributes to the Code Assistant's response. It fills in the interface defined in `tools/operational_expert_interface.md` with Education-Expert-specific content, the same way `experts/gauss-language/OPERATIONAL_PROFILE.md`, `experts/econometrics/OPERATIONAL_PROFILE.md`, `experts/software-engineering/OPERATIONAL_PROFILE.md`, and `experts/documentation/OPERATIONAL_PROFILE.md` did for their experts.
 
-This profile operationalizes the Education Expert as a **reasoning-structure expert, not a runtime engine**: it governs learning objectives, instructional sequencing, scaffolding, practice, feedback, assessment, and learner progression for a stated task. It does not govern exact GAUSS syntax, econometric or statistical validity, code maintainability/design, or documentation/reference clarity. It cannot bypass the GAUSS Language Expert's evidence requirements for implementation claims, cannot bypass the Econometrics Expert's methodological reasoning for statistical/causal claims, cannot bypass the Software Engineering Expert's reasoning for maintainability/design claims, and cannot bypass the Documentation Expert's reasoning for reference/task-completion clarity claims — a learning-design recommendation is never sufficient grounds for asserting unverified GAUSS syntax, unverified statistical validity, unverified code quality, or unverified documentation quality. This is markdown/YAML-style documentation, not runtime code; no engine parses or executes this file, and it does not implement multi-expert orchestration — `workflows/expert-routing.md` documents five-expert routing across the GAUSS Language Expert, the Econometrics Expert, the Software Engineering Expert, the Documentation Expert, and this expert, checked by manual evaluation, per the design in `planning/v0.16.0-education-expert-foundation.md`. Code Assistant workflow/prompt integration (`workflows/code-assistant-response.md`, `agents/code-assistant/task_modes.md`, `prompts/code_assistant_system.md`) is complete as of `v0.16.0`.
+This profile operationalizes the Education Expert as a **reasoning-structure expert, not a runtime engine**: it governs learning objectives, instructional sequencing, scaffolding, practice, feedback, assessment, and learner progression for a stated task. It does not govern exact GAUSS syntax, econometric or statistical validity, code maintainability/design, or documentation/reference clarity. It cannot bypass the GAUSS Language Expert's evidence requirements for implementation claims, cannot bypass the Econometrics Expert's methodological reasoning for statistical/causal claims, cannot bypass the Software Engineering Expert's reasoning for maintainability/design claims, and cannot bypass the Documentation Expert's reasoning for reference/task-completion clarity claims — a learning-design recommendation is never sufficient grounds for asserting unverified GAUSS syntax, unverified statistical validity, unverified code quality, or unverified documentation quality. This is markdown/YAML-style documentation, not runtime code; no engine parses or executes this file, and it does not implement multi-expert orchestration — `workflows/expert-routing.md` documents six-expert routing across the GAUSS Language Expert, the Econometrics Expert, the Software Engineering Expert, the Documentation Expert, this expert, and the Product Expert (operationalized in `v0.17.0`), checked by manual evaluation, per the design in `planning/v0.16.0-education-expert-foundation.md`. Code Assistant workflow/prompt integration (`workflows/code-assistant-response.md`, `agents/code-assistant/task_modes.md`, `prompts/code_assistant_system.md`) is complete as of `v0.16.0`.
 
 ## Interface Summary
 
@@ -191,7 +191,7 @@ Do not activate (or activate only incidentally) for:
 
 ## Required Evidence / Context by Task Type
 
-This expert is learning-design-focused, not command-syntax-focused, methodology-focused, design-focused, or reference-clarity-focused — "evidence" here means enough stated or inferable context to support a learning-design claim, not a `schemas/command_lookup_evidence.schema.json` object, econometric methodological context, code-behavior-preservation context, or documentation-type/reader context. This expert does not usually require official command evidence for general learning design, sequencing, practice, feedback, or assessment planning. GAUSS-side syntax claims remain governed entirely by the GAUSS Language Expert; econometric/statistical claims remain governed entirely by the Econometrics Expert; code design/refactoring claims remain governed entirely by the Software Engineering Expert; documentation/reference clarity claims remain governed entirely by the Documentation Expert; product-value/adoption/positioning/prioritization claims belong to the future Product Expert — never by this table.
+This expert is learning-design-focused, not command-syntax-focused, methodology-focused, design-focused, or reference-clarity-focused — "evidence" here means enough stated or inferable context to support a learning-design claim, not a `schemas/command_lookup_evidence.schema.json` object, econometric methodological context, code-behavior-preservation context, or documentation-type/reader context. This expert does not usually require official command evidence for general learning design, sequencing, practice, feedback, or assessment planning. GAUSS-side syntax claims remain governed entirely by the GAUSS Language Expert; econometric/statistical claims remain governed entirely by the Econometrics Expert; code design/refactoring claims remain governed entirely by the Software Engineering Expert; documentation/reference clarity claims remain governed entirely by the Documentation Expert; product-value/adoption/positioning/prioritization claims belong to the Product Expert — never by this table.
 
 | Task type | Context/evidence requirement |
 |---|---|
@@ -202,7 +202,7 @@ This expert is learning-design-focused, not command-syntax-focused, methodology-
 | Code design/refactoring claims taught in a lesson | Out of this expert's evidence authority entirely — requires the Software Engineering Expert's reasoning. |
 | Documentation/reference clarity claims | Out of this expert's evidence authority entirely — requires the Documentation Expert's reasoning. |
 | Claims that code was executed | Requires actual execution evidence (a tool run and its real output) — never asserted from an example appearing plausible. |
-| Product-value, adoption, positioning, or prioritization claims | Out of this expert's evidence authority entirely — belongs to the future Product Expert or normal product reasoning, once operationalized. |
+| Product-value, adoption, positioning, or prioritization claims | Out of this expert's evidence authority entirely — belongs to the Product Expert. |
 
 Key rules, restated from `BODY_OF_KNOWLEDGE.md` and not weakened here:
 
@@ -266,7 +266,7 @@ State uncertainty or decline an exact claim when:
 - Route to the Econometrics Expert when econometric model appropriateness, causal interpretation, or statistical validity is needed.
 - Route to the Software Engineering Expert when refactoring, design, or testability judgment is needed.
 - Route to the Documentation Expert when reference/task-completion clarity is needed.
-- Route to normal product reasoning (a future Product Expert, once operationalized) when product strategy, adoption, positioning, or prioritization is the primary issue.
+- Route to the Product Expert when product strategy, adoption, positioning, prioritization, or user problem framing is the primary issue.
 - Route to retrieval/citation of official GAUSS documentation when official documentation authority is needed — this expert does not substitute its own paraphrase for the source.
 
 ## Output Contract
@@ -311,7 +311,7 @@ Checkable directly against a response, consistent with `tools/operational_expert
 - Correctly activates for lesson plans, learning paths, practice exercises, assessments, feedback, scaffolding, and learner-progression tasks.
 - Correctly does not activate for unrelated tasks.
 - Distinguishes this expert from the Documentation Expert.
-- Distinguishes this expert from the future Product Expert.
+- Distinguishes this expert from the Product Expert.
 - Separates learning design from syntax correctness, methodology, maintainability, and documentation clarity.
 - Does not invent GAUSS syntax.
 - Does not claim statistical validity from lesson quality.
@@ -328,14 +328,14 @@ Checkable directly against a response, consistent with `tools/operational_expert
 
 ## Relationship to Existing Files
 
-- **`experts/education/EXPERT.md`** — the narrative/spec document for this expert (purpose, scope, non-scope, core responsibilities, relationship to the GAUSS Language, Econometrics, Software Engineering, Documentation, and future Product Experts, activation/non-activation examples, evidence expectations, response behavior, limitations), satisfying `EXPERT_SPEC.md`. This profile operationalizes it; it does not replace or restate it.
+- **`experts/education/EXPERT.md`** — the narrative/spec document for this expert (purpose, scope, non-scope, core responsibilities, relationship to the GAUSS Language, Econometrics, Software Engineering, Documentation, and Product Experts, activation/non-activation examples, evidence expectations, response behavior, limitations), satisfying `EXPERT_SPEC.md`. This profile operationalizes it; it does not replace or restate it.
 - **`experts/education/BODY_OF_KNOWLEDGE.md`** — the knowledge base this profile's `learning_objectives`/`sequence_recommendations` fields and Required Evidence / Context table point into. Not duplicated here.
 - **`experts/education/reasoning.md`** — the 14-step workflow this profile's Decision Rules operationalize into checkable form.
 - **`experts/education/best_practices.md`** — the practice guidance this profile's Decision Rules and Evaluation Criteria are consistent with.
 - **`experts/education/common_mistakes.md`** — the failure-mode list this profile's Refusal Conditions and Decision Rules 22-26 directly address.
 - **`experts/education/knowledge.md`** — a compatibility placeholder pointing to `BODY_OF_KNOWLEDGE.md`; not a separate or competing knowledge source.
 - **`tools/operational_expert_interface.md`** — the generic interface this profile fills in; field definitions and design principles live there, not repeated here.
-- **`workflows/expert-routing.md`** — now defines five-expert (GAUSS Language Expert, Econometrics Expert, Software Engineering Expert, Documentation Expert, Education Expert) routing via a compact activation matrix and worked examples, extended in `v0.16.0` per `planning/v0.16.0-education-expert-foundation.md`. This remains documented/manual-evaluation-driven routing, not runtime orchestration.
+- **`workflows/expert-routing.md`** — now defines six-expert (GAUSS Language Expert, Econometrics Expert, Software Engineering Expert, Documentation Expert, Education Expert, Product Expert) routing via a compact activation matrix and worked examples, extended in `v0.16.0` per `planning/v0.16.0-education-expert-foundation.md` and again in `v0.17.0` for the Product Expert. This remains documented/manual-evaluation-driven routing, not runtime orchestration.
 - **`workflows/code-assistant-response.md`** — Step 2 ("Identify Relevant Experts") now references this expert alongside the GAUSS Language Expert, Econometrics Expert, Software Engineering Expert, and Documentation Expert, and routes through the five-axis routing pattern in `workflows/expert-routing.md`. Updated in `v0.16.0`.
 - **`agents/code-assistant/task_modes.md`** — each task mode now names this expert's `activation_triggers` alongside the other four experts'. Updated in `v0.16.0`.
 - **`prompts/code_assistant_system.md`** — the system prompt's "Identify the relevant expertise" step now names this expert as one of the five operational experts it routes to. Updated in `v0.16.0`.
