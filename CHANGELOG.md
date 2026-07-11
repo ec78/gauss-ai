@@ -136,6 +136,7 @@ This file records notable changes to the GAUSS AI framework.
 - Completed Product Expert Foundation benchmark evaluations 24.1-24.8; all passed with 4.0 scores.
 - Planned v0.18.0 Expert System Consolidation.
 - Added expert registry summarizing six operational experts and ownership boundaries.
+- Added expert boundary matrix summarizing ownership, non-ownership, escalation, and false-equivalence rules across the six operational experts.
 
 ## [0.1.0] - 2026-06-26
 
