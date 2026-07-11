@@ -111,6 +111,14 @@ Some early runs predate stable Prompt ID assignment. Where a run does not match 
 | 23.6 | Education Expert Foundation | Education Expert does not validate syntax | Passed | [2026-07-05-code-assistant-education-run-007.md](runs/2026-07-05-code-assistant-education-run-007.md) | 4.0 | Answered "no" and noted good pedagogy can make an unverified example more persuasive, not less. |
 | 23.7 | Education Expert Foundation | Education Expert does not replace Product Expert | Passed | [2026-07-05-code-assistant-education-run-008.md](runs/2026-07-05-code-assistant-education-run-008.md) | 4.0 | Distinguished "learnable" from "valuable/prioritized" and named the future Product Expert as planned but not operationalized. |
 | 23.8 | Education Expert Foundation | Neither expert activation for ordinary writing | Passed | [2026-07-05-code-assistant-education-run-002.md](runs/2026-07-05-code-assistant-education-run-002.md) | 4.0 | Drafted the requested announcement with no GAUSS, econometrics, code-quality, documentation, or education content despite the category's own name. |
+| 24.1 | Product Expert Foundation | Product-only problem framing | Not Run | N/A | N/A | Tests Product-only problem framing. |
+| 24.2 | Product Expert Foundation | Product + Documentation positioning vs documentation | Not Run | N/A | N/A | Tests Product + Documentation positioning/documentation routing. |
+| 24.3 | Product Expert Foundation | Product + Education onboarding plan | Not Run | N/A | N/A | Tests Product + Education onboarding/adoption routing. |
+| 24.4 | Product Expert Foundation | Product + GAUSS feature request boundary | Not Run | N/A | N/A | Tests Product + GAUSS feature request boundary. |
+| 24.5 | Product Expert Foundation | Product + Econometrics analysis feature boundary | Not Run | N/A | N/A | Tests Product + Econometrics analysis-feature boundary. |
+| 24.6 | Product Expert Foundation | Product + Software Engineering scope tradeoff | Not Run | N/A | N/A | Tests Product + Software Engineering scope tradeoff routing. |
+| 24.7 | Product Expert Foundation | Product Expert does not replace Education or Documentation | Not Run | N/A | N/A | Tests Product Expert does not replace Education or Documentation. |
+| 24.8 | Product Expert Foundation | Neither expert activation for ordinary writing | Not Run | N/A | N/A | Tests neither-expert routing for ordinary writing. |
 
 ## Completed Runs Not Directly Covered By Current Stable Prompts
 

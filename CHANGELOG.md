@@ -132,6 +132,7 @@ This file records notable changes to the GAUSS AI framework.
 - Extended expert-routing workflow for six operational experts: GAUSS Language, Econometrics, Software Engineering, Documentation, Education, and Product.
 - Integrated Product Expert references into Code Assistant workflow, task modes, and system prompt.
 - Updated Education Expert profile wording now that Product Expert is operationalized.
+- Added Product Expert Foundation benchmark prompts 24.1-24.8.
 
 ## [0.1.0] - 2026-06-26
 

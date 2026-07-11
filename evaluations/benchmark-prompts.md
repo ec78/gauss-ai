@@ -1416,3 +1416,126 @@ Expected behavior:
 - Gives normal writing help.
 - Does not impose expert routing unnecessarily.
 - Does not mention GAUSS, econometrics, code quality, documentation, education, or operational experts unless the user asks.
+
+## Product Expert Foundation
+
+Use Prompt IDs 24.1-24.8. These exercise the Product Expert (`experts/product/OPERATIONAL_PROFILE.md`) and the routing patterns added to `workflows/expert-routing.md` for the sixth operational expert, extending the five-expert coverage validated by `23.x` to six experts.
+
+### Prompt 24.1: Product-only problem framing
+
+The user asks whether a feature idea solves a real user problem, with no GAUSS syntax, statistics, code, documentation, or education content.
+
+Example prompt: "We are thinking about adding a dashboard that shows users their most recent projects and suggested next actions. Can you help me think through whether this solves a real user problem? I am not asking about GAUSS syntax, statistics, code design, documentation, or training — just product framing."
+
+Expected behavior:
+- Activates Product Expert only.
+- Does not activate GAUSS Language Expert.
+- Does not activate Econometrics Expert.
+- Does not activate Software Engineering Expert.
+- Does not activate Documentation Expert.
+- Does not activate Education Expert.
+- Frames target user, user problem, workflow, assumptions, adoption risk, and validation questions.
+- Does not treat the feature idea as validated without evidence.
+- Labels hypotheses and evidence gaps clearly.
+
+### Prompt 24.2: Product + Documentation positioning vs documentation
+
+The user asks to turn a feature into both product positioning and user-facing documentation.
+
+Example prompt: "We are adding a saved workflow feature. Can you help me write the product positioning for why users should care and also outline the user-facing help section?"
+
+Expected behavior:
+- Activates Product Expert and Documentation Expert.
+- Product Expert owns value proposition, user problem, positioning, user impact, and adoption framing.
+- Documentation Expert owns clarity, reference/usage structure, examples, prerequisites, and caveats.
+- Keeps product claims separate from documentation-quality claims.
+- Does not treat good positioning as proof the documentation is clear.
+- Does not require GAUSS, Econometrics, Software Engineering, or Education unless those domains are introduced.
+
+### Prompt 24.3: Product + Education onboarding plan
+
+The user asks whether onboarding training can improve adoption of a new feature.
+
+Example prompt: "We are launching a new analysis workflow. Could onboarding training improve adoption, and how should we think about the product and learning-design sides separately?"
+
+Expected behavior:
+- Activates Product Expert and Education Expert.
+- Product Expert owns adoption barrier, time-to-value, workflow fit, and product-risk reasoning.
+- Education Expert owns learning sequence, practice, feedback, and onboarding learning flow.
+- Explains that training can support adoption but does not prove product value.
+- Keeps product and education claims separate.
+- Does not overclaim market validation or learning effectiveness without evidence.
+
+### Prompt 24.4: Product + GAUSS feature request boundary
+
+The user asks whether a GAUSS feature should be added and suggests syntax.
+
+Example prompt: "Users have asked for a shortcut syntax to summarize a DataFrame in GAUSS. From a product perspective, should we consider it, and can we just make the syntax `df.summary()`?"
+
+Expected behavior:
+- Activates Product Expert and GAUSS Language Expert.
+- Product Expert owns user problem, workflow fit, prioritization tradeoffs, adoption risk, and validation questions.
+- GAUSS Language Expert owns syntax/evidence boundaries.
+- Does not invent or approve GAUSS syntax without evidence.
+- Treats `df.summary()` as proposed or hypothetical unless verified.
+- Keeps product usefulness separate from implementation correctness.
+
+### Prompt 24.5: Product + Econometrics analysis feature boundary
+
+The user asks whether adding an econometric analysis feature would make results more credible.
+
+Example prompt: "If we add an automatic causal-impact button to the product, will that make users' results more credible and easier to trust?"
+
+Expected behavior:
+- Activates Product Expert and Econometrics Expert.
+- Product Expert owns user value, workflow fit, trust/adoption implications, risk, and discovery questions.
+- Econometrics Expert owns whether the analysis is statistically or causally valid.
+- Explains that product usefulness or user trust does not prove statistical validity.
+- Does not overclaim causal credibility.
+- Suggests guardrails, assumptions, and validation needs.
+
+### Prompt 24.6: Product + Software Engineering scope tradeoff
+
+The user asks whether to ship a feature quickly or refactor first because technical debt may affect future product work.
+
+Example prompt: "We can ship a new reporting feature quickly, but the implementation has duplicated logic that could make future reporting features harder. How should we think about the product tradeoff?"
+
+Expected behavior:
+- Activates Product Expert and Software Engineering Expert.
+- Product Expert owns user value, timing, adoption, scope tradeoff, product risk, and success criteria.
+- Software Engineering Expert owns maintainability/design risk, duplicated logic, and refactor implications.
+- Does not treat product urgency as proof that design risk is acceptable.
+- Recommends framing the tradeoff and possible staged scope.
+- Does not claim tests were run.
+
+### Prompt 24.7: Product Expert does not replace Education or Documentation
+
+The user asks whether strong positioning means users will understand the feature without docs or training.
+
+Example prompt: "If we position the feature really clearly, can we skip documentation and training because users will understand the value right away?"
+
+Expected behavior:
+- Activates Product Expert, Documentation Expert, and Education Expert.
+- Product Expert owns positioning, user-value framing, adoption assumptions, and product risk.
+- Documentation Expert owns user-facing reference/usage clarity.
+- Education Expert owns learning/onboarding needs.
+- Explains that positioning does not eliminate documentation or education needs.
+- Does not claim good positioning proves documentation quality or learning effectiveness.
+- Does not overclaim adoption without evidence.
+
+### Prompt 24.8: Neither expert activation for ordinary writing
+
+The user asks for a short generic friendly announcement unrelated to product strategy, education, docs, code, GAUSS, or econometrics.
+
+Example prompt: "Can you write a short friendly announcement that says we made a few improvements and hope users enjoy the update?"
+
+Expected behavior:
+- Does not activate Product Expert.
+- Does not activate GAUSS Language Expert.
+- Does not activate Econometrics Expert.
+- Does not activate Software Engineering Expert.
+- Does not activate Documentation Expert.
+- Does not activate Education Expert.
+- Gives normal writing help.
+- Does not impose expert routing unnecessarily.
+- Does not mention GAUSS, econometrics, code quality, documentation, education, product strategy, or operational experts unless the user asks.
