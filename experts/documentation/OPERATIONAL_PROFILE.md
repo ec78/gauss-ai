@@ -241,7 +241,7 @@ State uncertainty or decline an exact claim when:
 
 ## Output Contract
 
-These are internal reasoning fields this expert's consultation contributes to the Code Assistant's response. The final answer does not need to label them explicitly — an evaluator should be able to identify where each is satisfied in substance, the same way the other three operational experts' output contracts are checked.
+These are internal reasoning fields this expert's consultation contributes to the Code Assistant's response. The final answer does not need to label them explicitly — an evaluator should be able to identify where each is satisfied in substance, the same way the other five operational experts' output contracts are checked.
 
 - **`task_classification`** — which task mode(s) apply and whether this is a rewrite, new-documentation, example, comment/docstring, or troubleshooting task.
 - **`activated_expert`** — confirmation that the Documentation Expert applied, alongside any other expert(s) also active on the same task.
@@ -274,7 +274,7 @@ These are internal reasoning fields this expert's consultation contributes to th
 
 ## Evaluation Criteria
 
-Checkable directly against a response, consistent with `tools/operational_expert_interface.md`'s Evaluation Guidance and reusable for a future benchmark category (planned as `22.x` in `planning/v0.15.0-documentation-expert-foundation.md`):
+Checkable directly against a response, consistent with `tools/operational_expert_interface.md`'s Evaluation Guidance and exercised by benchmark category `22.x` (`planning/v0.15.0-documentation-expert-foundation.md`; all eight prompts passed at 4.0, see `evaluations/runs/2026-07-05-code-assistant-documentation-run-001.md` through `-008.md`):
 
 - Correctly activates for documentation clarity, example, comment/docstring, reference-structure, and troubleshooting tasks.
 - Correctly does not activate for unrelated tasks.

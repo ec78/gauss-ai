@@ -271,7 +271,7 @@ State uncertainty or decline an exact claim when:
 
 ## Output Contract
 
-These are internal reasoning fields this expert's consultation contributes to the Code Assistant's response. The final answer does not need to label them explicitly — an evaluator should be able to identify where each is satisfied in substance, the same way the other four operational experts' output contracts are checked.
+These are internal reasoning fields this expert's consultation contributes to the Code Assistant's response. The final answer does not need to label them explicitly — an evaluator should be able to identify where each is satisfied in substance, the same way the other five operational experts' output contracts are checked.
 
 - **`task_classification`** — which task mode(s) apply and whether this is a lesson, curriculum, workshop, exercise, assessment, feedback design, or onboarding-sequence task.
 - **`activated_expert`** — confirmation that the Education Expert applied, alongside any other expert(s) also active on the same task.
@@ -306,7 +306,7 @@ These are internal reasoning fields this expert's consultation contributes to th
 
 ## Evaluation Criteria
 
-Checkable directly against a response, consistent with `tools/operational_expert_interface.md`'s Evaluation Guidance and reusable for a future benchmark category (planned as `23.x` in `planning/v0.16.0-education-expert-foundation.md`):
+Checkable directly against a response, consistent with `tools/operational_expert_interface.md`'s Evaluation Guidance and exercised by benchmark category `23.x` (`planning/v0.16.0-education-expert-foundation.md`; all eight prompts passed at 4.0, see `evaluations/runs/2026-07-05-code-assistant-education-run-001.md` through `-008.md`):
 
 - Correctly activates for lesson plans, learning paths, practice exercises, assessments, feedback, scaffolding, and learner-progression tasks.
 - Correctly does not activate for unrelated tasks.
@@ -336,8 +336,8 @@ Checkable directly against a response, consistent with `tools/operational_expert
 - **`experts/education/knowledge.md`** — a compatibility placeholder pointing to `BODY_OF_KNOWLEDGE.md`; not a separate or competing knowledge source.
 - **`tools/operational_expert_interface.md`** — the generic interface this profile fills in; field definitions and design principles live there, not repeated here.
 - **`workflows/expert-routing.md`** — now defines six-expert (GAUSS Language Expert, Econometrics Expert, Software Engineering Expert, Documentation Expert, Education Expert, Product Expert) routing via a compact activation matrix and worked examples, extended in `v0.16.0` per `planning/v0.16.0-education-expert-foundation.md` and again in `v0.17.0` for the Product Expert. This remains documented/manual-evaluation-driven routing, not runtime orchestration.
-- **`workflows/code-assistant-response.md`** — Step 2 ("Identify Relevant Experts") now references this expert alongside the GAUSS Language Expert, Econometrics Expert, Software Engineering Expert, and Documentation Expert, and routes through the five-axis routing pattern in `workflows/expert-routing.md`. Updated in `v0.16.0`.
-- **`agents/code-assistant/task_modes.md`** — each task mode now names this expert's `activation_triggers` alongside the other four experts'. Updated in `v0.16.0`.
-- **`prompts/code_assistant_system.md`** — the system prompt's "Identify the relevant expertise" step now names this expert as one of the five operational experts it routes to. Updated in `v0.16.0`.
+- **`workflows/code-assistant-response.md`** — Step 2 ("Identify Relevant Experts") now references this expert alongside the GAUSS Language Expert, Econometrics Expert, Software Engineering Expert, Documentation Expert, and Product Expert, and routes through the six-axis routing pattern in `workflows/expert-routing.md`. Updated in `v0.16.0`, and again in `v0.17.0` for the Product Expert.
+- **`agents/code-assistant/task_modes.md`** — each task mode now names this expert's `activation_triggers` alongside the other five experts'. Updated in `v0.16.0`, and again in `v0.17.0` for the Product Expert.
+- **`prompts/code_assistant_system.md`** — the system prompt's "Identify the relevant expertise" step now names this expert as one of the six operational experts it routes to. Updated in `v0.16.0`, and again in `v0.17.0` for the Product Expert.
 
 This remains documented/manual-evaluation-driven routing, not runtime orchestration — no code executes any of the files above; a response is checked against them manually.

@@ -328,7 +328,7 @@ These are internal reasoning fields this expert's consultation contributes to th
 
 ## Evaluation Criteria
 
-Checkable directly against a response, consistent with `tools/operational_expert_interface.md`'s Evaluation Guidance and reusable for a future benchmark category (planned as `24.x` in `planning/v0.17.0-product-expert-foundation.md`):
+Checkable directly against a response, consistent with `tools/operational_expert_interface.md`'s Evaluation Guidance and exercised by benchmark category `24.x` (`planning/v0.17.0-product-expert-foundation.md`; all eight prompts passed at 4.0, see `evaluations/runs/2026-07-05-code-assistant-product-run-001.md` through `-008.md`):
 
 - Correctly activates for product strategy, positioning, user problem framing, workflow fit, adoption, prioritization, scope, discovery, value proposition, and product risk tasks.
 - Correctly does not activate for unrelated tasks.

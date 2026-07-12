@@ -138,6 +138,8 @@ This file records notable changes to the GAUSS AI framework.
 - Added expert registry summarizing six operational experts and ownership boundaries.
 - Added expert boundary matrix summarizing ownership, non-ownership, escalation, and false-equivalence rules across the six operational experts.
 - Added expert routing cheat sheet summarizing six-axis routing patterns, evidence/context rules, escalation rules, and anti-overclaiming checks.
+- Added operational profile consistency audit for the six operational experts.
+- Fixed stale operational profile wording identified during the v0.18.0 profile audit.
 
 ## [0.1.0] - 2026-06-26
 

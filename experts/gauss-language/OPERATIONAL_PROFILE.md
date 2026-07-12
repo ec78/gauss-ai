@@ -4,7 +4,7 @@
 
 This profile operationalizes the GAUSS Language Expert by defining when it activates, what evidence it requires before making a claim, what decision rules it applies, and what it contributes to the Code Assistant's response. It fills in the interface defined in `tools/operational_expert_interface.md` with GAUSS-Language-Expert-specific content.
 
-This is markdown/YAML-style documentation, not runtime code. No engine parses or executes this file; a response is checked against it manually, the same way `evaluations/scoring.md` dimensions are checked today. `experts/gauss-language/EXPERT.md` remains the narrative specification (purpose, boundaries, knowledge sources, philosophy) satisfying `EXPERT_SPEC.md`; this file is the checkable operational contract layered on top of it, per the design established in `tools/operational_expert_interface.md`.
+This is markdown/YAML-style documentation, not runtime code. No engine parses or executes this file; a response is checked against it manually, the same way `evaluations/scoring.md` dimensions are checked today. `experts/gauss-language/EXPERT.md` remains the narrative specification (purpose, boundaries, knowledge sources, philosophy) satisfying `EXPERT_SPEC.md`; this file is the checkable operational contract layered on top of it, per the design established in `tools/operational_expert_interface.md`. This expert was the first of what is now a six-expert system — `workflows/expert-routing.md` documents six-expert routing (GAUSS Language Expert, Econometrics Expert, Software Engineering Expert, Documentation Expert, Education Expert, Product Expert), checked by manual evaluation; this profile does not implement multi-expert orchestration itself.
 
 ## Interface Summary
 
@@ -53,6 +53,8 @@ related_files:
   - workflows/retrieval-backed-response-pattern.md
   - workflows/native-command-selection.md
   - workflows/command-documentation-retrieval.md
+  - workflows/expert-routing.md
+  - workflows/code-assistant-response.md
   - tools/operational_expert_interface.md
   - schemas/command_lookup_evidence.schema.json
   - agents/code-assistant/task_modes.md
@@ -195,6 +197,7 @@ State uncertainty and decline to give an exact claim when:
 - Route to the Econometrics Expert when the central issue is methodology (model choice, interpretation, statistical validity) rather than GAUSS syntax or mechanics.
 - Route to the Software Engineering Expert when the central issue is architecture, testing strategy, packaging, or maintainability beyond GAUSS language mechanics.
 - Route to the Documentation or Education Expert when the central issue is primarily explanation structure, tutorial design, or learning pacing rather than GAUSS correctness.
+- Route to the Product Expert when the central issue is user value, adoption, positioning, or prioritization rather than GAUSS correctness.
 - Route back to the user when version constraints or package availability materially affect the answer and are not already known.
 
 ## Output Contract
@@ -220,7 +223,7 @@ These are internal reasoning fields the expert's consultation contributes to the
 
 ## Evaluation Criteria
 
-Checkable directly against a response, consistent with `tools/operational_expert_interface.md`'s Evaluation Guidance and reused for future benchmark category 15.x ("Expert Routing"):
+Checkable directly against a response, consistent with `tools/operational_expert_interface.md`'s Evaluation Guidance and exercised by benchmark category 15.x ("Expert Routing"; all seven prompts passed):
 
 - Correct activation for GAUSS tasks (an Activation Trigger applied and the response reflects it).
 - Correct non-activation for non-GAUSS tasks (a Non-Activation Case applied and the response does not force GAUSS-specific reasoning onto it).
@@ -242,6 +245,8 @@ Checkable directly against a response, consistent with `tools/operational_expert
 - **`workflows/retrieval-backed-response-pattern.md`** — the source of the evidence states (A-H) and response structure this profile's Required Evidence, Refusal Conditions, and Output Contract sections cite by letter.
 - **`workflows/native-command-selection.md`** — the source of the native-vs-manual decision process behind Decision Rules 4-5 and the "Native-vs-manual implementation choice" evidence row.
 - **`workflows/command-documentation-retrieval.md`** — the source of the hybrid retrieval strategy (categories, official docs, curated notes) this profile's escalation-to-retrieval condition points to.
+- **`workflows/expert-routing.md`** — documents six-expert (GAUSS Language Expert, Econometrics Expert, Software Engineering Expert, Documentation Expert, Education Expert, Product Expert) routing via a compact activation matrix and worked examples. This profile's Escalation Conditions describe the GAUSS-side half of every multi-expert pattern that workflow implements; multi-expert routing is a documented, manually-evaluated workflow, not a runtime orchestration engine.
+- **`workflows/code-assistant-response.md`** — the general response workflow this profile's activation slots into via Step 2, which routes through `workflows/expert-routing.md`'s six-axis activation matrix.
 - **`tools/operational_expert_interface.md`** — the generic interface this profile fills in; field definitions and design principles live there, not repeated here.
 - **`schemas/command_lookup_evidence.schema.json`** — the sole source of evidence vocabulary (`retrieval_status`, `source_authority`, `source_type`, `conflicts`, `stale_evidence`) used throughout this profile.
 - **`agents/code-assistant/task_modes.md`** — the task-mode definitions this profile's `activation_triggers` and `task_classification` field map onto.
