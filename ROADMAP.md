@@ -166,21 +166,23 @@ Planning-only milestone. See `planning/v0.19.0-gauss-tooling-strategy-and-execut
 
 ## v0.20.0: GAUSS Environment Detection Tool (Planned)
 
-Planning-only milestone. See `planning/v0.20.0-gauss-environment-detection-tool.md`.
+See `planning/v0.20.0-gauss-environment-detection-tool.md`.
 
 - Plans the first read-only tool capability from `v0.19.0`'s strategy: a `gauss_environment_check` tool that checks whether GAUSS is installed or discoverable, identifies the executable path and version when possible, and returns a structured result the Code Assistant can use to choose Advisory Mode, Verified Knowledge Mode, or (once it exists) Execution Mode safely.
 - Defines detection states: `found`, `not_found`, `ambiguous`, `inaccessible`, `error`, and `unknown`, plus a separate `operating_mode_recommendation` field (`advisory`/`verified_knowledge`/`execution_candidate`) — detection never activates Execution Mode by itself.
 - Defines a read-only permission level: no code execution beyond an optional minimal version query, no file mutation, no package installation.
 - Documents advisory-mode fallback for every non-`found` state, and for `found`-but-inaccessible or `found`-but-ambiguous states, so the assistant never breaks or claims execution based on a partial detection result.
-- Scopes (but does not create) a future tool spec (`tools/gauss_environment_check.md`), result schema (`schemas/gauss_environment_check.schema.json`), example outputs, and a future `26.x` benchmark category (8 proposed prompts covering found/not-found/ambiguous/inaccessible/version-unknown/execution-request-without-GAUSS/syntax-boundary/methodology-boundary cases).
-- Add no implementation, no schema, no examples, no benchmark prompts, no CI changes, and no runtime orchestration — this milestone is planning only, following the same planning-before-implementation pattern already used for `v0.19.0`.
+- Created the tool spec (`tools/gauss_environment_check.md`), result schema (`schemas/gauss_environment_check.schema.json`), and five synthetic example outputs (`examples/tools/gauss-environment-found.json`, `-not-found.json`, `-ambiguous.json`, `-inaccessible.json`, `-version-unknown.json`).
+- Added and evaluated `26.x` benchmark prompts (`26.1`-`26.8`): 8/8 passed at 4.0, validating graceful fallback to Advisory Mode, `execution_candidate` treated as a prerequisite signal rather than active execution, and protection against treating detection as syntax or methodology evidence — against documented expected behavior, since no tool implementation exists to test for real.
+- Status: the planning doc, tool spec, result schema, example outputs, `26.x` benchmark prompts, and `26.x` evaluations are complete; `README.md`/`ROADMAP.md`/`KNOWN_LIMITATIONS.md` have been audited and updated to reference them. Remaining before this milestone is ready to tag: the `v0.20.0` readiness checklist.
+- Add no implementation and no runtime orchestration — this milestone specifies, schemas, exemplifies, and evaluates expected behavior only; the tool itself remains unimplemented.
 
 ## Future (TBD / Possible)
 
 Not yet planned or committed. Candidate directions after `v0.18.0`/`v0.19.0`/`v0.20.0`:
 
 - `v0.21.0`-`v0.24.0` as proposed in `planning/v0.19.0-gauss-tooling-strategy-and-execution-modes.md`'s "Proposed Milestone Breakdown" (package inspection tool, code execution prototype, execution-aware analysis workflow, report generation workflow) — each requiring its own planning task before implementation, the same way `v0.19.0` and `v0.20.0` were planned before any of them.
-- Implementation of the `v0.20.0` environment detection tool itself (tool spec, schema, examples, `26.x` benchmarks, readiness checklist) — proposed as the likely next task after this planning milestone, not yet started.
+- Actual implementation of the `gauss_environment_check` tool (real detection code, wired into the Code Assistant workflow) — the `v0.20.0` deliverables so far are the spec, schema, examples, and benchmark evaluations only; no detection code exists yet, and implementing it is not yet started or scheduled.
 - Expert-system automation/hygiene tooling — for example, a scripted stale-wording check in the spirit of `scripts/check_evaluation_tracking.py`, building on `workflows/expert-system-maintenance.md`'s manual Stale Wording Search Checklist.
 - Retrieval/evidence expansion — broader real command evidence coverage beyond the current seven-command pilot set (`olsmt`, `strindx`, `strsplit`, `dstatmt`, `qnewtonmt`, `pdsummary`, `minimize`).
 - Benchmark dashboard automation — regenerating `evaluations/EVALUATION_DASHBOARD.md` from live guard output instead of a manually maintained snapshot.
