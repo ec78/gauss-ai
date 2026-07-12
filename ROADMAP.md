@@ -152,14 +152,27 @@
 - Optional: add `25.x` consolidation benchmarks testing whether the Code Assistant can correctly use the consolidated registry/boundary matrix/cheat sheet to answer routing and boundary questions, only after the consolidation documents above exist (see `planning/v0.18.0-expert-system-consolidation.md`'s "Benchmark Plan") — not yet decided.
 - Create the `v0.18.0` readiness checklist once the deliverables above are complete and the benchmark decision is made.
 
+## v0.19.0: GAUSS Tooling Strategy and Execution Modes (Planned)
+
+Planning-only milestone. See `planning/v0.19.0-gauss-tooling-strategy-and-execution-modes.md`.
+
+- Begins the transition from a documentation/evaluation-driven Code Assistant toward a tool-enabled GAUSS assistant that can optionally inspect the local GAUSS environment, identify installed GAUSS packages, run GAUSS code, capture results, and help users generate reports. Execution is designed as an optional capability from the outset — advisory mode (the assistant's entire current behavior) remains fully supported whether or not GAUSS is available.
+- Define three operating modes: Advisory Mode (current behavior, no execution), Verified Knowledge Mode (evidence-backed claims, no execution), and Execution Mode (GAUSS installed and detected, tools available, user permits execution).
+- Document the Graceful Fallback Principle: the assistant must not break, must not claim execution, and must remain useful in Advisory or Verified Knowledge Mode whenever GAUSS or an execution tool is unavailable.
+- Scope (but do not implement) three future tools — a GAUSS environment detection tool, a GAUSS package inspection tool, and a GAUSS code execution tool — plus a result-reporting workflow, following `TOOL_SPEC.md`'s structure.
+- Document how future tool availability interacts with the six-expert system: execution changes what evidence is available to an expert, but does not change which expert owns which correctness dimension, and successful execution never substitutes for statistical, maintainability, documentation, education, or product correctness.
+- Propose a five-milestone follow-up breakdown (`v0.20.0` environment detection, `v0.21.0` package inspection, `v0.22.0` execution prototype, `v0.23.0` execution-aware analysis, `v0.24.0` report generation) and a benchmark strategy for each, none of which are implemented or committed by this milestone.
+- Add no execution implementation, no new schemas, no new tools, no CI changes, and no runtime orchestration — this milestone is strategy and boundary-setting only.
+
 ## Future (TBD / Possible)
 
-Not yet planned or committed. Candidate directions after `v0.18.0`:
+Not yet planned or committed. Candidate directions after `v0.18.0`/`v0.19.0`:
 
+- `v0.20.0`-`v0.24.0` as proposed in `planning/v0.19.0-gauss-tooling-strategy-and-execution-modes.md`'s "Proposed Milestone Breakdown" (GAUSS environment detection tool, package inspection tool, code execution prototype, execution-aware analysis workflow, report generation workflow) — each requiring its own planning task before implementation, the same way `v0.19.0` was planned before any of them.
 - Expert-system automation/hygiene tooling — for example, a scripted stale-wording check in the spirit of `scripts/check_evaluation_tracking.py`, building on `workflows/expert-system-maintenance.md`'s manual Stale Wording Search Checklist.
 - Retrieval/evidence expansion — broader real command evidence coverage beyond the current seven-command pilot set (`olsmt`, `strindx`, `strsplit`, `dstatmt`, `qnewtonmt`, `pdsummary`, `minimize`).
 - Benchmark dashboard automation — regenerating `evaluations/EVALUATION_DASHBOARD.md` from live guard output instead of a manually maintained snapshot.
 - Strict-mode warning reduction — improving the evidence validator's path-warning heuristic so it stops flagging the reviewed `glm`/`olsmt` HDF5-URI false positives.
-- Runtime orchestration exploration — only if intentionally planned later; no runtime expert-routing engine is currently planned or implied by any `v0.18.0` consolidation work.
+- Runtime orchestration exploration — only if intentionally planned later; no runtime expert-routing engine or execution orchestration is currently planned or implied by any `v0.18.0`/`v0.19.0` work.
 
-None of these are committed milestones; this list exists so `v0.18.0`'s consolidation work doesn't strand good follow-up ideas without a place to record them.
+None of these are committed milestones; this list exists so `v0.18.0`'s and `v0.19.0`'s planning work doesn't strand good follow-up ideas without a place to record them.

@@ -144,6 +144,7 @@ This file records notable changes to the GAUSS AI framework.
 - Added expert-system maintenance guide covering expert additions, routing updates, stale wording checks, benchmark maintenance, evaluation guards, and release hygiene.
 - Updated README, ROADMAP, and KNOWN_LIMITATIONS to reference v0.18.0 expert-system consolidation artifacts.
 - Added v0.18.0 readiness checklist and recorded decision to defer 25.x consolidation benchmarks.
+- Planned v0.19.0 GAUSS Tooling Strategy and Execution Modes.
 
 ## [0.1.0] - 2026-06-26
 
