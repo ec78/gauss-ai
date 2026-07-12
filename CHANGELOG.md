@@ -141,6 +141,7 @@ This file records notable changes to the GAUSS AI framework.
 - Added operational profile consistency audit for the six operational experts.
 - Fixed stale operational profile wording identified during the v0.18.0 profile audit.
 - Added evaluation dashboard summarizing benchmark categories, guard status, known warnings, and evaluation references.
+- Added expert-system maintenance guide covering expert additions, routing updates, stale wording checks, benchmark maintenance, evaluation guards, and release hygiene.
 
 ## [0.1.0] - 2026-06-26
 
