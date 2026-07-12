@@ -146,6 +146,7 @@ This file records notable changes to the GAUSS AI framework.
 - Added v0.18.0 readiness checklist and recorded decision to defer 25.x consolidation benchmarks.
 - Planned v0.19.0 GAUSS Tooling Strategy and Execution Modes.
 - Planned v0.20.0 GAUSS Environment Detection Tool.
+- Added GAUSS environment check tool specification.
 
 ## [0.1.0] - 2026-06-26
 
