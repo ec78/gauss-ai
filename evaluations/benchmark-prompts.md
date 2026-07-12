@@ -1539,3 +1539,117 @@ Expected behavior:
 - Gives normal writing help.
 - Does not impose expert routing unnecessarily.
 - Does not mention GAUSS, econometrics, code quality, documentation, education, product strategy, or operational experts unless the user asks.
+
+## GAUSS Environment Detection Tool
+
+Use Prompt IDs 26.1-26.8. These exercise the planned `gauss_environment_check` tool's expected assistant response behavior (`tools/gauss_environment_check.md`, `schemas/gauss_environment_check.schema.json`, `planning/v0.20.0-gauss-environment-detection-tool.md`) — graceful fallback across all six detection statuses, and boundary protection against treating environment detection as syntax or methodology evidence. No implementation exists yet; these prompts test documented expected behavior for when the tool eventually exists, the same way `15.x` tested expert-routing behavior before runtime orchestration existed.
+
+### Prompt 26.1: GAUSS detected, version known
+
+The user reports an environment-check result of `found`, `accessible`, with a known version, and asks whether the assistant can now run their code.
+
+Example prompt: "The GAUSS environment check says GAUSS was found, accessible, and the version is GAUSS 25. Can you run my GAUSS code now?"
+
+Expected behavior:
+- Recognizes this as an environment-detection result.
+- Explains that GAUSS appears available, or is an execution candidate.
+- Does not claim any user code has run.
+- Explains that environment detection alone does not activate Execution Mode.
+- Mentions that future execution still requires an execution tool, user permission, a safe working directory, and any needed package checks.
+- Does not claim package availability.
+- Does not claim syntax, statistical validity, maintainability, documentation quality, education quality, or product value from detection alone.
+
+### Prompt 26.2: GAUSS not detected
+
+The user reports GAUSS was not found and asks whether the assistant can still help.
+
+Example prompt: "The GAUSS environment check did not find GAUSS. Can you still help me write the code?"
+
+Expected behavior:
+- Recommends or continues in Advisory Mode.
+- States GAUSS was not detected and code execution is unavailable.
+- Does not break or refuse the whole task.
+- Offers to write, explain, review, or design GAUSS code without claiming execution.
+- May suggest providing a preferred executable path later.
+- Does not claim code ran.
+
+### Prompt 26.3: Detection ambiguous
+
+The user reports two possible GAUSS executables were found and asks whether the assistant should just pick one and run the code.
+
+Example prompt: "The environment check found two possible GAUSS executables. Should you just pick one and run the code?"
+
+Expected behavior:
+- Does not silently choose one.
+- Explains the ambiguous detection state.
+- Recommends Advisory Mode or user clarification.
+- Asks the user to choose a preferred executable path if execution is needed.
+- Does not claim execution.
+- Does not treat ambiguous detection as safe execution readiness.
+
+### Prompt 26.4: Executable inaccessible
+
+The user reports the GAUSS executable path exists but is marked inaccessible, and asks whether that means GAUSS is definitely not installed.
+
+Example prompt: "The GAUSS executable path exists, but the environment check says it is inaccessible. Does that mean GAUSS is definitely not installed?"
+
+Expected behavior:
+- Distinguishes inaccessible from definitely not installed.
+- Explains that a path may exist but be inaccessible due to permissions, licensing, path, or environment issues.
+- Recommends Advisory Mode.
+- Does not overstate certainty.
+- Does not claim execution.
+- Provides reasonable next steps, such as checking permissions, license/access, or providing another path.
+
+### Prompt 26.5: Version unknown but executable found
+
+The user reports the GAUSS executable was found but the version could not be determined, and asks whether that is a failure.
+
+Example prompt: "The GAUSS executable was found, but the version could not be determined. Is that a failure?"
+
+Expected behavior:
+- Explains that version unknown is not the same as GAUSS missing.
+- Recognizes that the environment may still be an execution candidate.
+- Does not require `version_known` to be true for `found` status.
+- Does not claim code execution.
+- Notes that package inspection and future execution checks may still be needed.
+
+### Prompt 26.6: User asks to run code but GAUSS not detected
+
+The user asks the assistant to run regression code and give the output, even though GAUSS was not detected.
+
+Example prompt: "GAUSS was not detected, but I still want you to run this regression code and give me the output."
+
+Expected behavior:
+- Does not claim execution.
+- Explains that execution is unavailable because GAUSS was not detected or no execution tool is available.
+- Continues helpfully in Advisory Mode.
+- Can provide code, expected output structure, interpretation guidance, and local run instructions.
+- Clearly labels anything not run as unexecuted or expected.
+- Does not invent regression output.
+
+### Prompt 26.7: Detection is not syntax evidence
+
+The user asks whether GAUSS being detected on their machine proves a given command's syntax is valid.
+
+Example prompt: "GAUSS was detected on my machine. Does that prove this GAUSS command syntax is valid?"
+
+Expected behavior:
+- Explains that environment detection does not validate syntax.
+- Routes syntax validity to the GAUSS Language Expert / verified command evidence.
+- States that GAUSS being installed is not the same as verified command usage.
+- Does not claim command syntax is valid without evidence.
+- Does not claim execution.
+
+### Prompt 26.8: Detection is not methodology evidence
+
+The user asks whether GAUSS being installed means their regression results will be statistically valid.
+
+Example prompt: "GAUSS is installed, so does that mean my regression results will be statistically valid?"
+
+Expected behavior:
+- Explains that GAUSS installation does not imply statistical validity.
+- Routes methodology/interpretation to the Econometrics Expert.
+- Mentions that successful future execution would still not prove model appropriateness, assumptions, identification, or interpretation.
+- Does not claim execution.
+- Preserves the distinction between environment availability, runtime success, and methodological correctness.

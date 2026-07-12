@@ -119,6 +119,14 @@ Some early runs predate stable Prompt ID assignment. Where a run does not match 
 | 24.6 | Product Expert Foundation | Product + Software Engineering scope tradeoff | Passed | [2026-07-05-code-assistant-product-run-007.md](runs/2026-07-05-code-assistant-product-run-007.md) | 4.0 | Refused to treat shipping urgency as proof a duplicated-logic risk was acceptable and proposed a scoped middle option. |
 | 24.7 | Product Expert Foundation | Product Expert does not replace Education or Documentation | Passed | [2026-07-05-code-assistant-product-run-008.md](runs/2026-07-05-code-assistant-product-run-008.md) | 4.0 | Kept positioning, documentation, and learning-design contributions separately attributable; positioning proved neither documentation nor training unnecessary. |
 | 24.8 | Product Expert Foundation | Neither expert activation for ordinary writing | Passed | [2026-07-05-code-assistant-product-run-002.md](runs/2026-07-05-code-assistant-product-run-002.md) | 4.0 | Drafted the requested announcement with no GAUSS, econometrics, code-quality, documentation, education, or product-strategy content despite the category's own name. |
+| 26.1 | GAUSS Environment Detection Tool | GAUSS detected, version known | Not Run | N/A | N/A | Tests execution-candidate boundary when GAUSS is detected and version known. |
+| 26.2 | GAUSS Environment Detection Tool | GAUSS not detected | Not Run | N/A | N/A | Tests advisory-mode fallback when GAUSS is not detected. |
+| 26.3 | GAUSS Environment Detection Tool | Detection ambiguous | Not Run | N/A | N/A | Tests ambiguous-detection handling and user-clarification behavior. |
+| 26.4 | GAUSS Environment Detection Tool | Executable inaccessible | Not Run | N/A | N/A | Tests inaccessible executable handling without false certainty. |
+| 26.5 | GAUSS Environment Detection Tool | Version unknown but executable found | Not Run | N/A | N/A | Tests version-unknown separation from not-found. |
+| 26.6 | GAUSS Environment Detection Tool | User asks to run code but GAUSS not detected | Not Run | N/A | N/A | Tests no-execution fallback when user asks to run code but GAUSS is unavailable. |
+| 26.7 | GAUSS Environment Detection Tool | Detection is not syntax evidence | Not Run | N/A | N/A | Tests that environment detection is not syntax evidence. |
+| 26.8 | GAUSS Environment Detection Tool | Detection is not methodology evidence | Not Run | N/A | N/A | Tests that environment detection is not methodology evidence. |
 
 ## Completed Runs Not Directly Covered By Current Stable Prompts
 

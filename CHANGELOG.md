@@ -149,6 +149,7 @@ This file records notable changes to the GAUSS AI framework.
 - Added GAUSS environment check tool specification.
 - Added GAUSS environment check result schema.
 - Added GAUSS environment check example outputs.
+- Added GAUSS Environment Detection Tool benchmark prompts 26.1-26.8.
 
 ## [0.1.0] - 2026-06-26
 
