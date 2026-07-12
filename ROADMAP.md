@@ -129,7 +129,7 @@
 - Add and evaluate Education Expert Foundation benchmarks (23.1-23.8) covering the documented routing patterns, including dedicated boundary tests confirming the Education Expert is distinct from the Documentation Expert and from the future Product Expert.
 - Preserve every prior guarantee: GAUSS command evidence requirements are unchanged, econometric methodology requirements are unchanged, software-engineering maintainability requirements are unchanged, documentation requirements are unchanged, and no expert may substitute for another — a well-designed lesson is not evidence of syntax correctness, statistical validity, maintainability, documentation quality, or product value.
 
-## v0.17.0: Product Expert Foundation
+## v0.17.0: Product Expert Foundation (Completed)
 
 - Operationalize a sixth expert, the Product Expert, which owns product/user-value correctness (user problem framing, customer/job-to-be-done framing, workflow fit, user journey, first-use experience, activation and time-to-value, adoption barriers, value proposition, positioning, product requirements framing, prioritization tradeoffs, scope tradeoffs, product discovery questions, product assumptions, product risk identification) — distinct from the GAUSS Language Expert's implementation correctness, the Econometrics Expert's methodological correctness, the Software Engineering Expert's maintainability/design correctness, the Documentation Expert's documentation/explanation correctness, and the Education Expert's education/learning-design correctness.
 - Build the Product Expert's narrative foundation (`experts/product/EXPERT.md`, `BODY_OF_KNOWLEDGE.md`, `reasoning.md`, `best_practices.md`, `common_mistakes.md`) from placeholder files, then fill in the operational interface (`experts/product/OPERATIONAL_PROFILE.md`), following the `v0.9.0`/`v0.14.0`/`v0.15.0`/`v0.16.0` precedent.
@@ -148,3 +148,18 @@
 - Add an evaluation dashboard (`evaluations/EVALUATION_DASHBOARD.md`) summarizing benchmark category status, pass/fail counts, and known warnings as a labeled snapshot pointing back to `evaluations/benchmark-coverage.md` and `evaluations/runs/INDEX.md`.
 - Add an expert-system maintenance guide (`workflows/expert-system-maintenance.md`) documenting how to add a future expert, which files must be checked when routing changes, and a stale-wording checklist grounded in the real drift found during the `v0.16.0` and `v0.17.0` readiness audits.
 - Add no new operational expert, no new routing type, no runtime orchestration, and no schema changes — this milestone consolidates and documents the existing six-expert system rather than extending it.
+- Status: the expert registry, boundary matrix, routing cheat sheet, operational profile audit, evaluation dashboard, and maintenance guide are complete; `README.md`/`ROADMAP.md`/`KNOWN_LIMITATIONS.md` have been audited and updated to reference them. Remaining before this milestone is ready to tag: a decision on whether to add optional `25.x` consolidation benchmarks, and the `v0.18.0` readiness checklist.
+- Optional: add `25.x` consolidation benchmarks testing whether the Code Assistant can correctly use the consolidated registry/boundary matrix/cheat sheet to answer routing and boundary questions, only after the consolidation documents above exist (see `planning/v0.18.0-expert-system-consolidation.md`'s "Benchmark Plan") — not yet decided.
+- Create the `v0.18.0` readiness checklist once the deliverables above are complete and the benchmark decision is made.
+
+## Future (TBD / Possible)
+
+Not yet planned or committed. Candidate directions after `v0.18.0`:
+
+- Expert-system automation/hygiene tooling — for example, a scripted stale-wording check in the spirit of `scripts/check_evaluation_tracking.py`, building on `workflows/expert-system-maintenance.md`'s manual Stale Wording Search Checklist.
+- Retrieval/evidence expansion — broader real command evidence coverage beyond the current seven-command pilot set (`olsmt`, `strindx`, `strsplit`, `dstatmt`, `qnewtonmt`, `pdsummary`, `minimize`).
+- Benchmark dashboard automation — regenerating `evaluations/EVALUATION_DASHBOARD.md` from live guard output instead of a manually maintained snapshot.
+- Strict-mode warning reduction — improving the evidence validator's path-warning heuristic so it stops flagging the reviewed `glm`/`olsmt` HDF5-URI false positives.
+- Runtime orchestration exploration — only if intentionally planned later; no runtime expert-routing engine is currently planned or implied by any `v0.18.0` consolidation work.
+
+None of these are committed milestones; this list exists so `v0.18.0`'s consolidation work doesn't strand good follow-up ideas without a place to record them.
