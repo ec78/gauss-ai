@@ -1,0 +1,35 @@
+{
+  "checked": true,
+  "installed": "unknown",
+  "accessible": false,
+  "executable_path": null,
+  "executable_candidates": [
+    {
+      "path": "C:/example/gauss26/tgauss.exe",
+      "source": "path_lookup",
+      "accessible": false,
+      "notes": [
+        "Path exists but could not be confirmed as accessible in this synthetic example."
+      ]
+    }
+  ],
+  "version": null,
+  "version_known": false,
+  "platform": "windows",
+  "detection_method": "path_lookup",
+  "detection_status": "inaccessible",
+  "operating_mode_recommendation": "advisory",
+  "can_execute_gauss_code": "unknown",
+  "warnings": [
+    "A plausible GAUSS executable path was found but could not be confirmed as accessible.",
+    "Synthetic example output; no real environment was inspected."
+  ],
+  "errors": [
+    "Permission denied when attempting to confirm executable accessibility (example error only; no real access attempt occurred)."
+  ],
+  "next_steps": [
+    "Check file and directory permissions for the candidate path.",
+    "Confirm a GAUSS license is available if permissions appear correct.",
+    "Provide an alternate preferred_executable_path if one is available."
+  ]
+}

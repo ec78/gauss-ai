@@ -31,7 +31,7 @@ State clearly:
 - **Code execution:** not implemented.
 - **Package inspection:** not implemented.
 - **Result schema:** created (`schemas/gauss_environment_check.schema.json`) — see "Result Schema" below.
-- **Example outputs:** planned separately (`examples/tools/gauss-environment-*.json`, not yet created).
+- **Example outputs:** created (`examples/tools/gauss-environment-*.json`) — see "Examples" below.
 
 ## Operating Mode Relationship
 
@@ -294,17 +294,17 @@ The schema now exists and validates the full output contract defined above: `ins
 
 Implementation of the tool itself remains not yet done — the schema validates a future tool's output shape; it does not run any detection code.
 
-## Planned Examples
+## Examples
 
-**Future examples:**
+**Example outputs now exist**, validated against `schemas/gauss_environment_check.schema.json`:
 
-- `examples/tools/gauss-environment-found.json`
-- `examples/tools/gauss-environment-not-found.json`
-- `examples/tools/gauss-environment-ambiguous.json`
-- `examples/tools/gauss-environment-inaccessible.json`
-- `examples/tools/gauss-environment-version-unknown.json`
+- `examples/tools/gauss-environment-found.json` — accessible executable found, version known.
+- `examples/tools/gauss-environment-not-found.json` — no plausible executable found; Advisory Mode.
+- `examples/tools/gauss-environment-ambiguous.json` — two candidates found; Advisory Mode, user clarification needed.
+- `examples/tools/gauss-environment-inaccessible.json` — a path exists but cannot be confirmed accessible; Advisory Mode.
+- `examples/tools/gauss-environment-version-unknown.json` — executable found and accessible, but version not queried; demonstrates that `found` does not require `version_known: true`.
 
-Do not create examples in this task.
+All five are clearly synthetic (example-style paths such as `C:/example/gauss26/tgauss.exe`, explicit "Synthetic example output" warnings) and do not represent any real detected installation. Implementation of the tool itself remains not yet done.
 
 ## Evaluation Plan
 

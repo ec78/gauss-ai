@@ -1,0 +1,40 @@
+{
+  "checked": true,
+  "installed": "unknown",
+  "accessible": "unknown",
+  "executable_path": null,
+  "executable_candidates": [
+    {
+      "path": "C:/example/gauss25/tgauss.exe",
+      "source": "path_lookup",
+      "accessible": "unknown",
+      "notes": [
+        "Synthetic example candidate; not a real detected installation."
+      ]
+    },
+    {
+      "path": "C:/example/gauss26/tgauss.exe",
+      "source": "common_location_scan",
+      "accessible": "unknown",
+      "notes": [
+        "Synthetic example candidate; not a real detected installation."
+      ]
+    }
+  ],
+  "version": null,
+  "version_known": false,
+  "platform": "windows",
+  "detection_method": "mixed",
+  "detection_status": "ambiguous",
+  "operating_mode_recommendation": "advisory",
+  "can_execute_gauss_code": "unknown",
+  "warnings": [
+    "Multiple plausible GAUSS executables were found; the correct one could not be determined automatically.",
+    "Synthetic example output; no real environment was inspected."
+  ],
+  "errors": [],
+  "next_steps": [
+    "Ask the user to choose one candidate or provide preferred_executable_path.",
+    "Continue in Advisory Mode until the ambiguity is resolved."
+  ]
+}

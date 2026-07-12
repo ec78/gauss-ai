@@ -1,0 +1,23 @@
+{
+  "checked": true,
+  "installed": false,
+  "accessible": "unknown",
+  "executable_path": null,
+  "executable_candidates": [],
+  "version": null,
+  "version_known": false,
+  "platform": "windows",
+  "detection_method": "path_lookup",
+  "detection_status": "not_found",
+  "operating_mode_recommendation": "advisory",
+  "can_execute_gauss_code": false,
+  "warnings": [
+    "GAUSS was not detected on PATH or in common installation locations.",
+    "Synthetic example output; no real environment was inspected."
+  ],
+  "errors": [],
+  "next_steps": [
+    "Provide preferred_executable_path if GAUSS is installed in a nonstandard location.",
+    "Continue in Advisory Mode; code generation, explanation, and review remain fully available."
+  ]
+}

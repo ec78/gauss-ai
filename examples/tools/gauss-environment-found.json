@@ -1,0 +1,36 @@
+{
+  "checked": true,
+  "installed": true,
+  "accessible": true,
+  "executable_path": "C:/example/gauss26/tgauss.exe",
+  "executable_candidates": [
+    {
+      "path": "C:/example/gauss26/tgauss.exe",
+      "source": "path_lookup",
+      "accessible": true,
+      "notes": [
+        "Synthetic example candidate; not a real detected installation."
+      ]
+    }
+  ],
+  "version": "GAUSS 25",
+  "version_known": true,
+  "platform": "windows",
+  "detection_method": "path_lookup",
+  "detection_status": "found",
+  "operating_mode_recommendation": "execution_candidate",
+  "can_execute_gauss_code": "unknown",
+  "warnings": [
+    "No GAUSS code was executed by this detection result.",
+    "Synthetic example output; no real environment was inspected."
+  ],
+  "errors": [],
+  "next_steps": [
+    "Run package inspection to determine which GAUSS packages are installed before recommending package-specific commands.",
+    "Confirm a future execution tool is available and the user permits execution before entering Execution Mode."
+  ],
+  "raw_detection_details": {
+    "example_only": true,
+    "note": "Synthetic example output; illustrates output shape only, not a real repository or machine detection result."
+  }
+}

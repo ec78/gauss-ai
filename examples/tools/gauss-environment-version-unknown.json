@@ -1,0 +1,33 @@
+{
+  "checked": true,
+  "installed": true,
+  "accessible": true,
+  "executable_path": "C:/example/gauss26/tgauss.exe",
+  "executable_candidates": [
+    {
+      "path": "C:/example/gauss26/tgauss.exe",
+      "source": "path_lookup",
+      "accessible": true,
+      "notes": [
+        "Synthetic example candidate; not a real detected installation."
+      ]
+    }
+  ],
+  "version": null,
+  "version_known": false,
+  "platform": "windows",
+  "detection_method": "path_lookup",
+  "detection_status": "found",
+  "operating_mode_recommendation": "execution_candidate",
+  "can_execute_gauss_code": "unknown",
+  "warnings": [
+    "Version could not be determined because the version query was not attempted (allow_version_query was false) in this synthetic example.",
+    "Synthetic example output; no real environment was inspected."
+  ],
+  "errors": [],
+  "next_steps": [
+    "Set allow_version_query to true if a version check is desired and considered safe.",
+    "Run package inspection once a package inspection tool is available.",
+    "Confirm a future execution tool is available before entering Execution Mode."
+  ]
+}
