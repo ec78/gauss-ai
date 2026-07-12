@@ -164,15 +164,27 @@ Planning-only milestone. See `planning/v0.19.0-gauss-tooling-strategy-and-execut
 - Propose a five-milestone follow-up breakdown (`v0.20.0` environment detection, `v0.21.0` package inspection, `v0.22.0` execution prototype, `v0.23.0` execution-aware analysis, `v0.24.0` report generation) and a benchmark strategy for each, none of which are implemented or committed by this milestone.
 - Add no execution implementation, no new schemas, no new tools, no CI changes, and no runtime orchestration — this milestone is strategy and boundary-setting only.
 
+## v0.20.0: GAUSS Environment Detection Tool (Planned)
+
+Planning-only milestone. See `planning/v0.20.0-gauss-environment-detection-tool.md`.
+
+- Plans the first read-only tool capability from `v0.19.0`'s strategy: a `gauss_environment_check` tool that checks whether GAUSS is installed or discoverable, identifies the executable path and version when possible, and returns a structured result the Code Assistant can use to choose Advisory Mode, Verified Knowledge Mode, or (once it exists) Execution Mode safely.
+- Defines detection states: `found`, `not_found`, `ambiguous`, `inaccessible`, `error`, and `unknown`, plus a separate `operating_mode_recommendation` field (`advisory`/`verified_knowledge`/`execution_candidate`) — detection never activates Execution Mode by itself.
+- Defines a read-only permission level: no code execution beyond an optional minimal version query, no file mutation, no package installation.
+- Documents advisory-mode fallback for every non-`found` state, and for `found`-but-inaccessible or `found`-but-ambiguous states, so the assistant never breaks or claims execution based on a partial detection result.
+- Scopes (but does not create) a future tool spec (`tools/gauss_environment_check.md`), result schema (`schemas/gauss_environment_check.schema.json`), example outputs, and a future `26.x` benchmark category (8 proposed prompts covering found/not-found/ambiguous/inaccessible/version-unknown/execution-request-without-GAUSS/syntax-boundary/methodology-boundary cases).
+- Add no implementation, no schema, no examples, no benchmark prompts, no CI changes, and no runtime orchestration — this milestone is planning only, following the same planning-before-implementation pattern already used for `v0.19.0`.
+
 ## Future (TBD / Possible)
 
-Not yet planned or committed. Candidate directions after `v0.18.0`/`v0.19.0`:
+Not yet planned or committed. Candidate directions after `v0.18.0`/`v0.19.0`/`v0.20.0`:
 
-- `v0.20.0`-`v0.24.0` as proposed in `planning/v0.19.0-gauss-tooling-strategy-and-execution-modes.md`'s "Proposed Milestone Breakdown" (GAUSS environment detection tool, package inspection tool, code execution prototype, execution-aware analysis workflow, report generation workflow) — each requiring its own planning task before implementation, the same way `v0.19.0` was planned before any of them.
+- `v0.21.0`-`v0.24.0` as proposed in `planning/v0.19.0-gauss-tooling-strategy-and-execution-modes.md`'s "Proposed Milestone Breakdown" (package inspection tool, code execution prototype, execution-aware analysis workflow, report generation workflow) — each requiring its own planning task before implementation, the same way `v0.19.0` and `v0.20.0` were planned before any of them.
+- Implementation of the `v0.20.0` environment detection tool itself (tool spec, schema, examples, `26.x` benchmarks, readiness checklist) — proposed as the likely next task after this planning milestone, not yet started.
 - Expert-system automation/hygiene tooling — for example, a scripted stale-wording check in the spirit of `scripts/check_evaluation_tracking.py`, building on `workflows/expert-system-maintenance.md`'s manual Stale Wording Search Checklist.
 - Retrieval/evidence expansion — broader real command evidence coverage beyond the current seven-command pilot set (`olsmt`, `strindx`, `strsplit`, `dstatmt`, `qnewtonmt`, `pdsummary`, `minimize`).
 - Benchmark dashboard automation — regenerating `evaluations/EVALUATION_DASHBOARD.md` from live guard output instead of a manually maintained snapshot.
 - Strict-mode warning reduction — improving the evidence validator's path-warning heuristic so it stops flagging the reviewed `glm`/`olsmt` HDF5-URI false positives.
-- Runtime orchestration exploration — only if intentionally planned later; no runtime expert-routing engine or execution orchestration is currently planned or implied by any `v0.18.0`/`v0.19.0` work.
+- Runtime orchestration exploration — only if intentionally planned later; no runtime expert-routing engine or execution orchestration is currently planned or implied by any `v0.18.0`/`v0.19.0`/`v0.20.0` work.
 
-None of these are committed milestones; this list exists so `v0.18.0`'s and `v0.19.0`'s planning work doesn't strand good follow-up ideas without a place to record them.
+None of these are committed milestones; this list exists so `v0.18.0`'s, `v0.19.0`'s, and `v0.20.0`'s planning work doesn't strand good follow-up ideas without a place to record them.
