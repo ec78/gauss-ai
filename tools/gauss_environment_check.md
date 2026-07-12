@@ -30,7 +30,7 @@ State clearly:
 - **Runtime orchestration:** not implemented.
 - **Code execution:** not implemented.
 - **Package inspection:** not implemented.
-- **Result schema:** planned separately (`schemas/gauss_environment_check.schema.json`, not yet created).
+- **Result schema:** created (`schemas/gauss_environment_check.schema.json`) — see "Result Schema" below.
 - **Example outputs:** planned separately (`examples/tools/gauss-environment-*.json`, not yet created).
 
 ## Operating Mode Relationship
@@ -286,21 +286,13 @@ Exact executable names and path patterns should be verified during implementatio
 - Include next steps when possible.
 - Do not ask for unnecessary clarification if Advisory Mode can answer the user's underlying request.
 
-## Planned Schema
+## Result Schema
 
-**Future schema file:** `schemas/gauss_environment_check.schema.json`
+**Schema file:** `schemas/gauss_environment_check.schema.json`
 
-Likely schema constraints:
+The schema now exists and validates the full output contract defined above: `installed`, `accessible`, and `can_execute_gauss_code` use a shared `tri_state` definition (`true`/`false`/`"unknown"`); `detection_status` and `operating_mode_recommendation` are controlled enums; `warnings`, `errors`, and `next_steps` are string arrays; `executable_candidates` is an array of candidate objects (`path`, `source`, `accessible`, `notes`); `raw_detection_details` is optional with `additionalProperties: true`; `checked` and the other fifteen top-level fields are required. The schema also encodes the consistency constraints between `detection_status` and the recommended fields (for example, `detection_status: found` requires `installed: true`, `accessible: true`, `operating_mode_recommendation: execution_candidate`, and a non-null `executable_path`).
 
-- `installed`, `accessible`, and `can_execute_gauss_code` should support true/false/unknown semantics.
-- `detection_status` should be an enum.
-- `operating_mode_recommendation` should be an enum.
-- `warnings`, `errors`, and `next_steps` should be arrays.
-- `executable_candidates` should be an array.
-- `raw_detection_details` should be optional.
-- `checked` should be required.
-
-Do not create the schema in this task.
+Implementation of the tool itself remains not yet done — the schema validates a future tool's output shape; it does not run any detection code.
 
 ## Planned Examples
 

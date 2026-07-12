@@ -147,6 +147,7 @@ This file records notable changes to the GAUSS AI framework.
 - Planned v0.19.0 GAUSS Tooling Strategy and Execution Modes.
 - Planned v0.20.0 GAUSS Environment Detection Tool.
 - Added GAUSS environment check tool specification.
+- Added GAUSS environment check result schema.
 
 ## [0.1.0] - 2026-06-26
 

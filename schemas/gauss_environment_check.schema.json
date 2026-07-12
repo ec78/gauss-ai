@@ -1,0 +1,304 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gauss-ai.local/schemas/gauss_environment_check.schema.json",
+  "title": "GAUSS Environment Check Result",
+  "description": "A structured result object for the future gauss_environment_check tool (see tools/gauss_environment_check.md and planning/v0.20.0-gauss-environment-detection-tool.md). This schema validates environment detection results only. It does not validate GAUSS code execution results. It does not validate package inspection results. It does not prove GAUSS syntax, statistical validity, maintainability, documentation quality, education quality, or product value. A schema-valid object confirms structure only; it is not evidence that GAUSS is actually installed, accessible, or executable on any given machine.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "checked",
+    "installed",
+    "accessible",
+    "executable_path",
+    "executable_candidates",
+    "version",
+    "version_known",
+    "platform",
+    "detection_method",
+    "detection_status",
+    "operating_mode_recommendation",
+    "can_execute_gauss_code",
+    "warnings",
+    "errors",
+    "next_steps"
+  ],
+  "properties": {
+    "checked": {
+      "type": "boolean",
+      "description": "True means detection was attempted, not that GAUSS was found."
+    },
+    "installed": {
+      "$ref": "#/$defs/tri_state",
+      "description": "Whether GAUSS appears installed. True does not mean code was executed."
+    },
+    "accessible": {
+      "$ref": "#/$defs/tri_state",
+      "description": "Whether the detected executable (if any) appears accessible. True does not mean package availability or execution has been confirmed."
+    },
+    "executable_path": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Selected executable path when one unambiguous, accessible candidate is available; null otherwise."
+    },
+    "executable_candidates": {
+      "type": "array",
+      "description": "All plausible GAUSS executable candidates found during detection, if any.",
+      "items": {
+        "$ref": "#/$defs/executable_candidate"
+      }
+    },
+    "version": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Detected GAUSS version if known; null otherwise."
+    },
+    "version_known": {
+      "type": "boolean",
+      "description": "False means version was not detected; it does not mean GAUSS is missing."
+    },
+    "platform": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Detected or hinted platform (for example windows, macos, linux, wsl), if known."
+    },
+    "detection_method": {
+      "type": "string",
+      "description": "How detection was performed. Examples may include user_provided_path, path_lookup, common_location_scan, version_query, not_checked, mixed. This field is intentionally not an enum, since future implementations may combine or extend detection methods."
+    },
+    "detection_status": {
+      "$ref": "#/$defs/detection_status"
+    },
+    "operating_mode_recommendation": {
+      "$ref": "#/$defs/operating_mode_recommendation"
+    },
+    "can_execute_gauss_code": {
+      "$ref": "#/$defs/tri_state",
+      "description": "True means future execution may be possible, not that execution occurred. This field never indicates that GAUSS code has actually been run."
+    },
+    "warnings": {
+      "$ref": "#/$defs/string_array"
+    },
+    "errors": {
+      "$ref": "#/$defs/string_array"
+    },
+    "next_steps": {
+      "$ref": "#/$defs/string_array"
+    },
+    "raw_detection_details": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Optional implementation-specific diagnostic detail. Should avoid exposing unnecessary sensitive path information beyond what is needed to explain the detection result."
+    }
+  },
+  "$defs": {
+    "tri_state": {
+      "enum": [
+        true,
+        false,
+        "unknown"
+      ]
+    },
+    "string_array": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "detection_status": {
+      "type": "string",
+      "enum": [
+        "found",
+        "not_found",
+        "ambiguous",
+        "inaccessible",
+        "error",
+        "unknown"
+      ]
+    },
+    "operating_mode_recommendation": {
+      "type": "string",
+      "enum": [
+        "advisory",
+        "verified_knowledge",
+        "execution_candidate"
+      ]
+    },
+    "executable_candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "source",
+        "accessible",
+        "notes"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string",
+          "description": "Where this candidate came from, for example user_provided_path, path_lookup, or common_location_scan."
+        },
+        "accessible": {
+          "$ref": "#/$defs/tri_state"
+        },
+        "notes": {
+          "$ref": "#/$defs/string_array"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "detection_status"
+        ],
+        "properties": {
+          "detection_status": {
+            "const": "found"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "installed": {
+            "const": true
+          },
+          "accessible": {
+            "const": true
+          },
+          "operating_mode_recommendation": {
+            "const": "execution_candidate"
+          },
+          "executable_path": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "detection_status"
+        ],
+        "properties": {
+          "detection_status": {
+            "const": "not_found"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "installed": {
+            "const": false
+          },
+          "operating_mode_recommendation": {
+            "const": "advisory"
+          },
+          "executable_path": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "detection_status"
+        ],
+        "properties": {
+          "detection_status": {
+            "const": "ambiguous"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "operating_mode_recommendation": {
+            "const": "advisory"
+          },
+          "executable_candidates": {
+            "minItems": 2
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "detection_status"
+        ],
+        "properties": {
+          "detection_status": {
+            "const": "inaccessible"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "operating_mode_recommendation": {
+            "const": "advisory"
+          },
+          "accessible": {
+            "enum": [
+              false,
+              "unknown"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "detection_status"
+        ],
+        "properties": {
+          "detection_status": {
+            "const": "error"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "operating_mode_recommendation": {
+            "const": "advisory"
+          },
+          "errors": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "detection_status"
+        ],
+        "properties": {
+          "detection_status": {
+            "const": "unknown"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "operating_mode_recommendation": {
+            "enum": [
+              "advisory",
+              "verified_knowledge"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}
