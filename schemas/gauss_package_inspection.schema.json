@@ -1,0 +1,364 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gauss-ai.local/schemas/gauss_package_inspection.schema.json",
+  "title": "GAUSS Package Inspection Result",
+  "description": "A structured result object for the future gauss_package_inspection tool (see tools/gauss_package_inspection.md and planning/v0.22.0-gauss-package-inspection-tool.md). This schema validates package inspection results only. It does not validate GAUSS code execution results. It does not validate package installation actions. It does not prove GAUSS syntax, statistical validity, maintainability, documentation quality, education quality, or product value. Package availability may differ by GAUSS version. Package inspection should use the selected GAUSS environment from environment detection (schemas/gauss_environment_check.schema.json) rather than re-detecting GAUSS itself.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "checked",
+    "environment_status",
+    "executable_path",
+    "gauss_version",
+    "package_inspection_status",
+    "packages",
+    "requested_packages",
+    "missing_packages",
+    "unknown_packages",
+    "package_search_paths",
+    "inspection_method",
+    "operating_mode_recommendation",
+    "can_assume_package_availability",
+    "warnings",
+    "errors",
+    "next_steps"
+  ],
+  "properties": {
+    "checked": {
+      "type": "boolean",
+      "description": "True means package inspection was attempted, not that packages were found."
+    },
+    "environment_status": {
+      "$ref": "#/$defs/environment_status",
+      "description": "The gauss_environment_check detection_status of the GAUSS environment package inspection used as context, aligned with schemas/gauss_environment_check.schema.json's detection_status enum."
+    },
+    "executable_path": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Selected GAUSS executable path for the inspected environment; null if unavailable or unknown."
+    },
+    "gauss_version": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "GAUSS version associated with the inspected environment; null if unknown or unavailable."
+    },
+    "package_inspection_status": {
+      "$ref": "#/$defs/package_inspection_status"
+    },
+    "packages": {
+      "type": "array",
+      "description": "All packages actually inspected, whether or not they were specifically requested.",
+      "items": {
+        "$ref": "#/$defs/package"
+      }
+    },
+    "requested_packages": {
+      "$ref": "#/$defs/string_array",
+      "description": "Package names the caller asked about, if any."
+    },
+    "missing_packages": {
+      "$ref": "#/$defs/string_array",
+      "description": "Requested package names confirmed not installed. Does not imply GAUSS itself is missing."
+    },
+    "unknown_packages": {
+      "$ref": "#/$defs/string_array",
+      "description": "Requested package names whose status could not be determined. Not the same as missing."
+    },
+    "package_search_paths": {
+      "$ref": "#/$defs/string_array",
+      "description": "Read-only paths that were checked or considered during inspection."
+    },
+    "inspection_method": {
+      "type": "string",
+      "description": "How inspection was performed. Examples may include filesystem_scan, requested_only, metadata_query, manual_path, not_checked, mixed. This field is intentionally not an enum, since future implementations may combine or extend inspection methods."
+    },
+    "operating_mode_recommendation": {
+      "$ref": "#/$defs/operating_mode_recommendation"
+    },
+    "can_assume_package_availability": {
+      "$ref": "#/$defs/tri_state",
+      "description": "Whether the caller may generally assume package availability. True should be used conservatively and never implies execution occurred."
+    },
+    "warnings": {
+      "$ref": "#/$defs/string_array"
+    },
+    "errors": {
+      "$ref": "#/$defs/string_array"
+    },
+    "next_steps": {
+      "$ref": "#/$defs/string_array"
+    },
+    "raw_inspection_details": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Optional implementation-specific diagnostic detail. Should avoid exposing unnecessary sensitive path information beyond what is needed to explain the inspection result."
+    }
+  },
+  "$defs": {
+    "tri_state": {
+      "enum": [
+        true,
+        false,
+        "unknown"
+      ]
+    },
+    "string_array": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "environment_status": {
+      "type": "string",
+      "enum": [
+        "found",
+        "not_found",
+        "ambiguous",
+        "inaccessible",
+        "error",
+        "unknown"
+      ]
+    },
+    "package_inspection_status": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "partial",
+        "unavailable",
+        "error",
+        "unknown"
+      ]
+    },
+    "operating_mode_recommendation": {
+      "type": "string",
+      "enum": [
+        "advisory",
+        "verified_knowledge",
+        "execution_candidate"
+      ]
+    },
+    "package_type": {
+      "type": "string",
+      "enum": [
+        "base",
+        "application_module",
+        "package",
+        "unknown"
+      ]
+    },
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "installed",
+        "version",
+        "version_known",
+        "source",
+        "path",
+        "package_type",
+        "notes"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Package/module name as detected or requested."
+        },
+        "installed": {
+          "$ref": "#/$defs/tri_state",
+          "description": "True does not mean code was executed. False does not mean GAUSS is missing. \"unknown\" is not the same as missing."
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Null when unknown."
+        },
+        "version_known": {
+          "type": "boolean",
+          "description": "False does not mean the package is missing."
+        },
+        "source": {
+          "type": "string",
+          "description": "Where this package's status came from, for example filesystem_scan, requested_only, metadata_query, manual_path, base_reference, unknown."
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Included only when useful and safe."
+        },
+        "package_type": {
+          "$ref": "#/$defs/package_type",
+          "description": "base should be used cautiously and does not replace command evidence from the GAUSS Language Expert. Package availability, of any package_type, does not prove syntax validity, statistical validity, maintainability, documentation quality, education quality, or product value."
+        },
+        "notes": {
+          "$ref": "#/$defs/string_array",
+          "description": "Uncertainty, warnings, or mapping caveats for this package."
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "package_inspection_status"
+        ],
+        "properties": {
+          "package_inspection_status": {
+            "const": "complete"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "checked": {
+            "const": true
+          },
+          "errors": {
+            "maxItems": 0
+          },
+          "operating_mode_recommendation": {
+            "enum": [
+              "verified_knowledge",
+              "execution_candidate"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "package_inspection_status"
+        ],
+        "properties": {
+          "package_inspection_status": {
+            "const": "partial"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "checked": {
+            "const": true
+          },
+          "warnings": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "package_inspection_status"
+        ],
+        "properties": {
+          "package_inspection_status": {
+            "const": "unavailable"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "operating_mode_recommendation": {
+            "const": "advisory"
+          },
+          "can_assume_package_availability": {
+            "enum": [
+              false,
+              "unknown"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "package_inspection_status"
+        ],
+        "properties": {
+          "package_inspection_status": {
+            "const": "error"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "operating_mode_recommendation": {
+            "const": "advisory"
+          },
+          "errors": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "environment_status"
+        ],
+        "properties": {
+          "environment_status": {
+            "enum": [
+              "not_found",
+              "ambiguous",
+              "inaccessible",
+              "error",
+              "unknown"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "package_inspection_status": {
+            "enum": [
+              "unavailable",
+              "error",
+              "unknown"
+            ]
+          },
+          "operating_mode_recommendation": {
+            "enum": [
+              "advisory",
+              "verified_knowledge"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "missing_packages"
+        ],
+        "properties": {
+          "missing_packages": {
+            "minItems": 1
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "can_assume_package_availability": {
+            "enum": [
+              false,
+              "unknown"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

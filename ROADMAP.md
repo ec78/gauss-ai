@@ -189,15 +189,28 @@ See `planning/v0.21.0-gauss-environment-detection-implementation.md`.
 - Status: the planning doc, helper implementation, CLI/importable module, schema-validation support, and self-test suite are complete. The newest-version default and both preferred-path/preferred-version overrides are implemented and verified — including manual verification against this development machine's real GAUSS 24/25/26 installations (default selects GAUSS 26; `--preferred-version 25` selects GAUSS 25; a nonexistent preferred path returns `not_found` without fallback; `--strict` behaves as documented). `README.md`/`ROADMAP.md`/`KNOWN_LIMITATIONS.md` have been audited and updated to reference the implementation. Remaining before this milestone is ready to tag: the `v0.21.0` readiness checklist.
 - Add no package inspection, no code execution, no runtime orchestration, and no CI changes — this milestone implements environment detection only.
 
+## v0.22.0: GAUSS Package Inspection Tool (Planned)
+
+See `planning/v0.22.0-gauss-package-inspection-tool.md`.
+
+- Plans the second read-only GAUSS tooling capability, following `v0.21.0`'s environment detection: a `gauss_package_inspection` tool that identifies which GAUSS packages/application modules appear available in a detected GAUSS environment, distinguishing base GAUSS availability from package-dependent functionality where possible.
+- Package inspection uses the selected GAUSS environment from `v0.21.0`'s `gauss_environment_check` (executable path, version, platform, detection status) as primary context — it does not re-detect GAUSS itself, and gracefully returns `unavailable`/`unknown` with Advisory Mode fallback whenever environment detection was not `found`.
+- Respects `v0.21.0`'s newest-version default rule: if GAUSS 24/25/26 are all installed and environment detection selected GAUSS 26, package inspection inspects the GAUSS 26 package context by default; an explicit user version selection carries through to package inspection as well. Package availability may differ by GAUSS version.
+- Defines five proposed package-inspection statuses (`complete`/`partial`/`unavailable`/`error`/`unknown`) and per-package fields (`name`, `installed`, `version`, `source`, `path`, `package_type`, `notes`), plus explicit independence rules (package availability does not validate syntax, methodology, maintainability, documentation, education, or product value, and does not imply execution occurred).
+- Scopes (but does not create) a future tool spec (`tools/gauss_package_inspection.md`), result schema (`schemas/gauss_package_inspection.schema.json`), five example outputs, and a future `27.x` benchmark category.
+- Leaves open whether `v0.22.0` should include implementation (following `v0.20.0`+`v0.21.0`'s two-milestone spec/implementation split) or bundle spec-through-implementation into one milestone — to be decided once the tool spec and schema clarify real scope.
+- Add no implementation, no schema, no examples, no benchmark prompts, no GAUSS code execution, no CI changes, and no runtime orchestration in the planning task itself.
+
 ## Future (TBD / Possible)
 
-Not yet planned or committed. Candidate directions after `v0.18.0`/`v0.19.0`/`v0.20.0`/`v0.21.0`:
+Not yet planned or committed. Candidate directions after `v0.18.0`/`v0.19.0`/`v0.20.0`/`v0.21.0`/`v0.22.0`:
 
-- `v0.22.0` - GAUSS Package Inspection Tool, `v0.23.0` - GAUSS Code Execution Prototype, `v0.24.0` - Execution-Aware Analysis Workflow, `v0.25.0` - Report Generation Workflow — as originally proposed in `planning/v0.19.0-gauss-tooling-strategy-and-execution-modes.md`'s "Proposed Milestone Breakdown," each shifted one milestone later than that doc's original numbering now that `v0.20.0` (specification) and `v0.21.0` (implementation) were split into two milestones for environment detection alone. Each of these four still requires its own planning task before implementation, the same way `v0.19.0`, `v0.20.0`, and `v0.21.0` were planned before any of them.
+- `v0.23.0` - GAUSS Code Execution Prototype, `v0.24.0` - Execution-Aware Analysis Workflow, `v0.25.0` - Report Generation Workflow — as originally proposed in `planning/v0.19.0-gauss-tooling-strategy-and-execution-modes.md`'s "Proposed Milestone Breakdown," each requiring its own planning task before implementation, the same way `v0.19.0`-`v0.22.0` were planned before any of them.
+- Implementation of the `v0.22.0` package inspection tool itself (tool spec, schema, examples, `27.x` benchmarks, and possibly the helper implementation) — proposed as the likely next task after this planning milestone, not yet started.
 - Expert-system automation/hygiene tooling — for example, a scripted stale-wording check in the spirit of `scripts/check_evaluation_tracking.py`, building on `workflows/expert-system-maintenance.md`'s manual Stale Wording Search Checklist.
 - Retrieval/evidence expansion — broader real command evidence coverage beyond the current seven-command pilot set (`olsmt`, `strindx`, `strsplit`, `dstatmt`, `qnewtonmt`, `pdsummary`, `minimize`).
 - Benchmark dashboard automation — regenerating `evaluations/EVALUATION_DASHBOARD.md` from live guard output instead of a manually maintained snapshot.
 - Strict-mode warning reduction — improving the evidence validator's path-warning heuristic so it stops flagging the reviewed `glm`/`olsmt` HDF5-URI false positives.
-- Runtime orchestration exploration — only if intentionally planned later; no runtime expert-routing engine or execution orchestration is currently planned or implied by any `v0.18.0`/`v0.19.0`/`v0.20.0`/`v0.21.0` work.
+- Runtime orchestration exploration — only if intentionally planned later; no runtime expert-routing engine or execution orchestration is currently planned or implied by any `v0.18.0`-`v0.22.0` work.
 
-None of these are committed milestones; this list exists so `v0.18.0`'s, `v0.19.0`'s, `v0.20.0`'s, and `v0.21.0`'s planning work doesn't strand good follow-up ideas without a place to record them.
+None of these are committed milestones; this list exists so `v0.18.0`-`v0.22.0`'s planning work doesn't strand good follow-up ideas without a place to record them.
