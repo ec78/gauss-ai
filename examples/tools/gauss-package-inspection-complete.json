@@ -1,0 +1,41 @@
+{
+  "checked": true,
+  "environment_status": "found",
+  "executable_path": "C:/example/gauss26/tgauss.exe",
+  "gauss_version": "GAUSS 26",
+  "package_inspection_status": "complete",
+  "packages": [
+    {
+      "name": "tsmt",
+      "installed": true,
+      "version": "TSMT 1.0",
+      "version_known": true,
+      "source": "filesystem_scan",
+      "path": "C:/example/gauss26/pkgs/tsmt",
+      "package_type": "application_module",
+      "notes": [
+        "Synthetic example candidate; not a real detected installation."
+      ]
+    }
+  ],
+  "requested_packages": [
+    "tsmt"
+  ],
+  "missing_packages": [],
+  "unknown_packages": [],
+  "package_search_paths": [
+    "C:/example/gauss26/pkgs"
+  ],
+  "inspection_method": "filesystem_scan",
+  "operating_mode_recommendation": "execution_candidate",
+  "can_assume_package_availability": true,
+  "warnings": [
+    "No GAUSS code was executed by this detection result.",
+    "Synthetic example output; no real environment was inspected."
+  ],
+  "errors": [],
+  "next_steps": [
+    "Verify exact command syntax against GAUSS Language Expert evidence before treating any tsmt command as confirmed usable.",
+    "Confirm a future execution tool is available and the user permits execution before entering Execution Mode."
+  ]
+}

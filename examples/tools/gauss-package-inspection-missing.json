@@ -1,0 +1,45 @@
+{
+  "checked": true,
+  "environment_status": "found",
+  "executable_path": "C:/example/gauss26/tgauss.exe",
+  "gauss_version": "GAUSS 26",
+  "package_inspection_status": "complete",
+  "packages": [
+    {
+      "name": "tsmt",
+      "installed": false,
+      "version": null,
+      "version_known": false,
+      "source": "filesystem_scan",
+      "path": null,
+      "package_type": "application_module",
+      "notes": [
+        "Synthetic example; package directory not found in the scanned search paths."
+      ]
+    }
+  ],
+  "requested_packages": [
+    "tsmt"
+  ],
+  "missing_packages": [
+    "tsmt"
+  ],
+  "unknown_packages": [],
+  "package_search_paths": [
+    "C:/example/gauss26/pkgs"
+  ],
+  "inspection_method": "filesystem_scan",
+  "operating_mode_recommendation": "verified_knowledge",
+  "can_assume_package_availability": false,
+  "warnings": [
+    "Requested package 'tsmt' was not detected in the scanned search paths.",
+    "No GAUSS code was executed by this detection result.",
+    "Synthetic example output; no real environment was inspected."
+  ],
+  "errors": [],
+  "next_steps": [
+    "Continue in Advisory Mode; tsmt-dependent commands should be treated as unavailable until confirmed otherwise.",
+    "Verify whether tsmt is actually required, and check licensing/installation status if it is.",
+    "Provide package_search_paths directly if tsmt is installed in a nonstandard location."
+  ]
+}

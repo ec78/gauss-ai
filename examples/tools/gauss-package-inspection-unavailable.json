@@ -1,0 +1,29 @@
+{
+  "checked": true,
+  "environment_status": "not_found",
+  "executable_path": null,
+  "gauss_version": null,
+  "package_inspection_status": "unavailable",
+  "packages": [],
+  "requested_packages": [
+    "tsmt"
+  ],
+  "missing_packages": [],
+  "unknown_packages": [
+    "tsmt"
+  ],
+  "package_search_paths": [],
+  "inspection_method": "not_checked",
+  "operating_mode_recommendation": "advisory",
+  "can_assume_package_availability": "unknown",
+  "warnings": [
+    "Package inspection could not be performed because GAUSS was not detected.",
+    "Synthetic example output; no real environment was inspected."
+  ],
+  "errors": [],
+  "next_steps": [
+    "Run GAUSS environment detection (gauss_environment_check) and confirm a found result before requesting package inspection.",
+    "Provide executable_path directly if GAUSS is installed in a nonstandard location.",
+    "Continue in Advisory Mode; code generation, explanation, and review remain fully available."
+  ]
+}

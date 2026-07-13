@@ -160,6 +160,7 @@ This file records notable changes to the GAUSS AI framework.
 - Planned v0.22.0 GAUSS Package Inspection Tool.
 - Added GAUSS package inspection tool specification.
 - Added GAUSS package inspection result schema.
+- Added GAUSS package inspection example outputs.
 
 ## [0.1.0] - 2026-06-26
 

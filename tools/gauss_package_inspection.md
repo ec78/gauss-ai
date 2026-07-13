@@ -33,7 +33,7 @@ State clearly:
 - **Code execution:** not implemented.
 - **Package installation:** not implemented.
 - **Result schema:** created (`schemas/gauss_package_inspection.schema.json`) — see "Result Schema" below.
-- **Example outputs:** planned separately (`examples/tools/gauss-package-inspection-*.json`, not yet created).
+- **Example outputs:** created (`examples/tools/gauss-package-inspection-*.json`) — see "Examples" below.
 
 ## Relationship to Environment Detection
 
@@ -326,17 +326,17 @@ The schema now exists and validates the full output contract defined above: `env
 
 Implementation of the tool itself remains not yet done — the schema validates a future tool's output shape; it does not run any inspection code.
 
-## Planned Examples
+## Examples
 
-**Future examples:**
+**Example outputs now exist**, validated against `schemas/gauss_package_inspection.schema.json`:
 
-- `examples/tools/gauss-package-inspection-complete.json`
-- `examples/tools/gauss-package-inspection-missing.json`
-- `examples/tools/gauss-package-inspection-partial.json`
-- `examples/tools/gauss-package-inspection-unavailable.json`
-- `examples/tools/gauss-package-inspection-unknown.json`
+- `examples/tools/gauss-package-inspection-complete.json` — requested package found and installed; execution-candidate signal.
+- `examples/tools/gauss-package-inspection-missing.json` — requested package found to be missing; no availability assumed.
+- `examples/tools/gauss-package-inspection-partial.json` — one package installed, one package's status unresolved; incomplete inspection.
+- `examples/tools/gauss-package-inspection-unavailable.json` — environment not found; inspection could not proceed; Advisory Mode.
+- `examples/tools/gauss-package-inspection-unknown.json` — environment found but package status inconclusive.
 
-Do not create examples in this task.
+All five are clearly synthetic (example-style paths such as `C:/example/gauss26/pkgs/tsmt`, explicit "Synthetic example output" warnings) and do not represent any real detected installation or inspection. Implementation of the tool itself remains not yet done.
 
 ## Evaluation Plan
 

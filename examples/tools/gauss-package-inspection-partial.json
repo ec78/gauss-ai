@@ -1,0 +1,56 @@
+{
+  "checked": true,
+  "environment_status": "found",
+  "executable_path": "C:/example/gauss26/tgauss.exe",
+  "gauss_version": "GAUSS 26",
+  "package_inspection_status": "partial",
+  "packages": [
+    {
+      "name": "tsmt",
+      "installed": true,
+      "version": "TSMT 1.0",
+      "version_known": true,
+      "source": "filesystem_scan",
+      "path": "C:/example/gauss26/pkgs/tsmt",
+      "package_type": "application_module",
+      "notes": [
+        "Synthetic example candidate; not a real detected installation."
+      ]
+    },
+    {
+      "name": "some_other_addon",
+      "installed": "unknown",
+      "version": null,
+      "version_known": false,
+      "source": "requested_only",
+      "path": null,
+      "package_type": "unknown",
+      "notes": [
+        "Search path for this package was not confirmed; status could not be determined."
+      ]
+    }
+  ],
+  "requested_packages": [
+    "tsmt",
+    "some_other_addon"
+  ],
+  "missing_packages": [],
+  "unknown_packages": [
+    "some_other_addon"
+  ],
+  "package_search_paths": [
+    "C:/example/gauss26/pkgs"
+  ],
+  "inspection_method": "filesystem_scan",
+  "operating_mode_recommendation": "verified_knowledge",
+  "can_assume_package_availability": "unknown",
+  "warnings": [
+    "Inspection covered only the default search paths; some_other_addon's location is unconfirmed, so its status remains uncertain.",
+    "Synthetic example output; no real environment was inspected."
+  ],
+  "errors": [],
+  "next_steps": [
+    "Provide additional package_search_paths to resolve some_other_addon's status.",
+    "Inspect some_other_addon manually if its availability is important before proceeding."
+  ]
+}

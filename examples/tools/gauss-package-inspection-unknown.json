@@ -1,0 +1,42 @@
+{
+  "checked": true,
+  "environment_status": "found",
+  "executable_path": "C:/example/gauss26/tgauss.exe",
+  "gauss_version": "GAUSS 26",
+  "package_inspection_status": "unknown",
+  "packages": [
+    {
+      "name": "tsmt",
+      "installed": "unknown",
+      "version": null,
+      "version_known": false,
+      "source": "unknown",
+      "path": null,
+      "package_type": "unknown",
+      "notes": [
+        "Inspection method could not conclusively determine status for this package."
+      ]
+    }
+  ],
+  "requested_packages": [
+    "tsmt"
+  ],
+  "missing_packages": [],
+  "unknown_packages": [
+    "tsmt"
+  ],
+  "package_search_paths": [],
+  "inspection_method": "unknown",
+  "operating_mode_recommendation": "advisory",
+  "can_assume_package_availability": "unknown",
+  "warnings": [
+    "Package inspection was inconclusive; tsmt's status could not be determined by the methods attempted.",
+    "Synthetic example output; no real environment was inspected."
+  ],
+  "errors": [],
+  "next_steps": [
+    "Provide a package path directly for tsmt if known.",
+    "Use official/verified GAUSS documentation to check tsmt's package requirements while status remains unresolved.",
+    "Continue in Advisory Mode until inspection can be retried or refined."
+  ]
+}
