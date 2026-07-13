@@ -155,6 +155,7 @@ This file records notable changes to the GAUSS AI framework.
 - Added v0.20.0 readiness checklist.
 - Planned v0.21.0 GAUSS Environment Detection Implementation, including newest-version default selection when multiple GAUSS versions are detected.
 - Implemented GAUSS environment detection helper with newest-version default selection and advisory-mode fallback.
+- Updated project docs for v0.21.0 GAUSS Environment Detection Implementation.
 
 ## [0.1.0] - 2026-06-26
 
