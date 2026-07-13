@@ -153,6 +153,7 @@ This file records notable changes to the GAUSS AI framework.
 - Evaluated GAUSS Environment Detection Tool benchmarks 26.1-26.8.
 - Updated project docs for v0.20.0 GAUSS Environment Detection Tool progress.
 - Added v0.20.0 readiness checklist.
+- Planned v0.21.0 GAUSS Environment Detection Implementation, including newest-version default selection when multiple GAUSS versions are detected.
 
 ## [0.1.0] - 2026-06-26
 
