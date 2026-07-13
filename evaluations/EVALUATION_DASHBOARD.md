@@ -29,18 +29,18 @@ Use this dashboard to understand coverage by milestone, prompt range, expert cat
 
 ## Current Evaluation State
 
-Captured by running `scripts/check_evaluation_tracking.py`, `scripts/check_release_readiness.py`, and `scripts/validate_all_evidence.py` (default and `--json`) against the repository state after `v0.20.0`'s `26.x` benchmark evaluations were completed:
+Captured by running `scripts/check_evaluation_tracking.py`, `scripts/check_release_readiness.py`, and `scripts/validate_all_evidence.py` (default and `--json`) against the repository state after `v0.22.0`'s `27.x` benchmark prompts and coverage rows were added (not yet evaluated):
 
-- Prompt IDs: 121.
-- Coverage rows: 121.
+- Prompt IDs: 129.
+- Coverage rows: 129.
 - Run files referenced: 108.
 - Index entries: 113.
 - Tracking errors: 0.
 - Documented (historical) tracking warnings: 2.
-- Current active-category ("Not Run" in the highest-numbered active category) warnings: 0 — all eight `26.x` prompts (GAUSS Environment Detection Tool) are now `Passed` at 4.0, so the tracking guard's "current active category" check has nothing to flag.
+- Current active-category ("Not Run" in the highest-numbered active category) warnings: 8 — all eight `27.x` prompts (`27.1`-`27.8`, GAUSS Package Inspection Tool) are `Not Run` and belong to the current active category (`27.x`, added `v0.22.0`). These are expected, transient warnings for a category that has been authored but not yet evaluated, distinct from the two permanent historical warnings above. Default mode still passes with 0 errors and 10 total warnings (2 historical + 8 transient).
 - Default tracking guard (`check_evaluation_tracking.py`): PASS.
 - JSON tracking guard (`check_evaluation_tracking.py --json`): `overall_pass: true`.
-- Strict tracking guard (`check_evaluation_tracking.py --strict`): FAIL — expected, both current warnings are the two documented historical ones (see "Known Warnings and Historical Exceptions" below).
+- Strict tracking guard (`check_evaluation_tracking.py --strict`): FAIL — expected; promotes all 10 current warnings (2 documented historical, 8 transient `27.x` "Not Run in current active category," see "Known Warnings and Historical Exceptions" below).
 - Release-readiness default (`check_release_readiness.py`): PASS.
 - Release-readiness JSON (`check_release_readiness.py --json`): `overall_pass: true`.
 - Release-readiness strict (`check_release_readiness.py --strict`): informational FAIL — `strict_pass: false`, but `overall_pass` remains `true` because strict results never affect this script's own exit code.
@@ -50,7 +50,7 @@ Captured by running `scripts/check_evaluation_tracking.py`, `scripts/check_relea
 
 Important:
 
-- A default PASS does not mean zero warnings. The tracking guard's default PASS above still carries 2 documented historical warnings; the evidence validator's default PASS still carries warnings from the `glm`/`olsmt` HDF5-URI false positives.
+- A default PASS does not mean zero warnings. The tracking guard's default PASS above still carries 10 warnings (2 documented historical, 8 transient from the newly-added, not-yet-evaluated `27.x` category); the evidence validator's default PASS still carries warnings from the `glm`/`olsmt` HDF5-URI false positives.
 - Strict-mode failures are expected and are limited to the documented warning-promoted-to-failure cases named in this file. They are not a signal of new defects.
 - Evidence validation is structural (schema conformance, required fields, path-warning heuristics), not semantic or execution validation. It does not confirm that any documented GAUSS syntax is correct or that any example runs.
 - GAUSS code is not executed by any of these checks. All checks here operate on markdown files, JSON evidence files, and schema definitions only.
@@ -85,6 +85,7 @@ Important:
 | 24.x | Product Expert Foundation (`v0.17.0`) | Product Expert routing and boundaries | 8 | 8 | 8/8 Passed (4.0) | All prompts run and passed; see `planning/v0.17.0-readiness-checklist.md`. |
 | 25.x | Expert System Consolidation (`v0.18.0`) | Consolidated-artifact routing/boundary checks | 0 | 0 | Not added | Optional; proposed in `planning/v0.18.0-expert-system-consolidation.md`'s "Benchmark Plan" section but not yet added. Would only be added after the consolidation documents (registry, boundary matrix, cheat sheet, maintenance guide) exist. |
 | 26.x | GAUSS Environment Detection Tool (`v0.20.0`) | Environment-detection response behavior, graceful fallback, and boundary protection | 8 | 8 | 8/8 Passed (4.0) | All prompts run and passed for the planned `gauss_environment_check` tool (`tools/gauss_environment_check.md`, `schemas/gauss_environment_check.schema.json`, `planning/v0.20.0-gauss-environment-detection-tool.md`). Validates graceful fallback across all six detection statuses, `execution_candidate` treated as a prerequisite signal only, and boundary protection against treating detection as syntax or methodology evidence. No tool implementation exists yet and no execution behavior exists yet — every response is a documented expected-behavior evaluation, not a real detection run. |
+| 27.x | GAUSS Package Inspection Tool (`v0.22.0`) | Package-inspection response behavior, package-status uncertainty, graceful fallback, and boundary protection | 8 | 0 | Not Run | Prompts added for the planned `gauss_package_inspection` tool (`tools/gauss_package_inspection.md`, `schemas/gauss_package_inspection.schema.json`, `planning/v0.22.0-gauss-package-inspection-tool.md`). No package-inspection implementation exists yet and no code execution behavior exists yet. These are the current active category's `Not Run` prompts — see "Current Evaluation State" above. Should be run before `v0.22.0` readiness if the milestone is intended to include benchmark validation. |
 
 Counts above are taken directly from `evaluations/benchmark-coverage.md` and `evaluations/runs/INDEX.md`. Categories `1.x` through `10.x` predate stable Prompt ID conventions in places and are summarized as "early baseline" or historical where a prompt has never been run; these were not invented to force full coverage, and their `Not Run` prompts remain genuinely not run today.
 

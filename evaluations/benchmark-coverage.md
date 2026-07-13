@@ -127,6 +127,14 @@ Some early runs predate stable Prompt ID assignment. Where a run does not match 
 | 26.6 | GAUSS Environment Detection Tool | User asks to run code but GAUSS not detected | Passed | [2026-07-12-code-assistant-gauss-environment-run-006.md](runs/2026-07-12-code-assistant-gauss-environment-run-006.md) | 4.0 | Declined to fabricate regression output, provided verified `olsmt` syntax and a clearly-labeled expected output structure instead of invented numbers, and gave local run instructions. |
 | 26.7 | GAUSS Environment Detection Tool | Detection is not syntax evidence | Passed | [2026-07-12-code-assistant-gauss-environment-run-007.md](runs/2026-07-12-code-assistant-gauss-environment-run-007.md) | 4.0 | Explained that environment detection does not validate any specific command's syntax and routed syntax verification to the GAUSS Language Expert's evidence requirements. |
 | 26.8 | GAUSS Environment Detection Tool | Detection is not methodology evidence | Passed | [2026-07-12-code-assistant-gauss-environment-run-008.md](runs/2026-07-12-code-assistant-gauss-environment-run-008.md) | 4.0 | Explained that installation (and even a hypothetical successful future execution) does not prove statistical validity, and preserved the three-way distinction between environment availability, runtime success, and methodological correctness. |
+| 27.1 | GAUSS Package Inspection Tool | Package installed but no execution | Not Run | N/A | N/A | Tests installed-package boundary without execution. |
+| 27.2 | GAUSS Package Inspection Tool | Package missing with advisory fallback | Not Run | N/A | N/A | Tests advisory fallback when required package is missing. |
+| 27.3 | GAUSS Package Inspection Tool | Package unknown without overclaiming | Not Run | N/A | N/A | Tests unknown package status without overclaiming. |
+| 27.4 | GAUSS Package Inspection Tool | Package inspection unavailable because GAUSS not found | Not Run | N/A | N/A | Tests package-inspection unavailable when GAUSS is not found. |
+| 27.5 | GAUSS Package Inspection Tool | Base command vs package command distinction | Not Run | N/A | N/A | Tests base GAUSS vs package command distinction. |
+| 27.6 | GAUSS Package Inspection Tool | Package installed is not syntax evidence | Not Run | N/A | N/A | Tests that package availability is not syntax evidence. |
+| 27.7 | GAUSS Package Inspection Tool | Package installed is not methodology evidence | Not Run | N/A | N/A | Tests that package availability is not methodology evidence. |
+| 27.8 | GAUSS Package Inspection Tool | User requests execution but only package inspection exists | Not Run | N/A | N/A | Tests no-execution fallback when environment and package context exist but execution does not. |
 
 ## Completed Runs Not Directly Covered By Current Stable Prompts
 

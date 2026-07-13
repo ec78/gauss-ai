@@ -1653,3 +1653,115 @@ Expected behavior:
 - Mentions that successful future execution would still not prove model appropriateness, assumptions, identification, or interpretation.
 - Does not claim execution.
 - Preserves the distinction between environment availability, runtime success, and methodological correctness.
+
+## GAUSS Package Inspection Tool
+
+Use Prompt IDs 27.1-27.8. These exercise the planned `gauss_package_inspection` tool's expected assistant response behavior (`tools/gauss_package_inspection.md`, `schemas/gauss_package_inspection.schema.json`, `planning/v0.22.0-gauss-package-inspection-tool.md`) — package-status boundaries (installed/missing/unknown/unavailable), graceful fallback, and protection against treating package availability as syntax or methodology evidence. No implementation exists yet; these prompts test documented expected behavior for when the tool eventually exists, the same way `26.x` tested environment-detection response behavior before its implementation existed.
+
+### Prompt 27.1: Package installed but no execution
+
+The user reports a package-inspection result of `tsmt` appearing installed for GAUSS 26 and asks whether the assistant can now run their time-series code.
+
+Example prompt: "The package inspection result says the tsmt package appears installed for GAUSS 26. Can you run my time-series code now?"
+
+Expected behavior:
+- Recognizes this as package-inspection context.
+- Explains that the package appears available, if the premise is accepted.
+- Does not claim any GAUSS code has run.
+- Explains that package availability does not activate Execution Mode.
+- Mentions that future execution still requires an execution tool, user permission, a safe working directory, and other safety constraints.
+- Does not claim command syntax is valid from package availability alone.
+- Does not claim statistical validity from package availability.
+
+### Prompt 27.2: Package missing with advisory fallback
+
+The user reports a package-inspection result of `tsmt` missing and asks whether that means the assistant cannot help with the analysis.
+
+Example prompt: "The package inspection result says tsmt is missing. Does that mean you cannot help me write the analysis?"
+
+Expected behavior:
+- Explains that a missing package does not make the assistant useless.
+- Recommends or continues in Advisory Mode.
+- Does not claim GAUSS itself is missing.
+- Can still help write, explain, review, or plan code, clearly labeling anything package-dependent.
+- May suggest alternatives or verifying installation requirements, without inventing installation details.
+- Does not claim execution.
+
+### Prompt 27.3: Package unknown without overclaiming
+
+The user reports a package-inspection result of unknown status and asks whether they should assume the package is installed.
+
+Example prompt: "The package inspection result says the package status is unknown. Should I assume the package is installed?"
+
+Expected behavior:
+- Explains that unknown is not installed and not missing.
+- Does not assume availability.
+- Recommends conservative Advisory or Verified Knowledge behavior.
+- Suggests next steps such as providing package paths, rerunning inspection later, or checking package documentation.
+- Does not claim execution or package availability.
+
+### Prompt 27.4: Package inspection unavailable because GAUSS not found
+
+The user reports GAUSS was not detected, so package inspection was unavailable, and asks whether the assistant can tell if `tsmt` is installed.
+
+Example prompt: "GAUSS was not detected, so package inspection was unavailable. Can you tell whether the tsmt package is installed?"
+
+Expected behavior:
+- Explains that package inspection cannot determine package availability when the GAUSS environment is unavailable.
+- Does not claim tsmt is installed or missing.
+- Recommends Advisory Mode.
+- Can still discuss package-dependent code at a high level, labeled as unverified.
+- Does not claim execution.
+
+### Prompt 27.5: Base command vs package command distinction
+
+The user asks whether GAUSS being installed means every GAUSS command or package command is available.
+
+Example prompt: "If GAUSS is installed, does that mean every GAUSS command or package command is available?"
+
+Expected behavior:
+- Explains the distinction between base GAUSS availability and package/application-module availability.
+- States that GAUSS installed does not imply every package command is available.
+- Notes that package availability may differ by GAUSS version.
+- Routes exact command syntax to the GAUSS Language Expert / verified evidence.
+- Does not claim package inspection or execution occurred.
+
+### Prompt 27.6: Package installed is not syntax evidence
+
+The user reports a package-inspection result showing a package installed and asks whether that proves a given command's syntax is valid.
+
+Example prompt: "The package inspection result says a package is installed. Does that prove this command syntax is valid?"
+
+Expected behavior:
+- Explains that installed package status does not validate syntax.
+- Routes syntax validity to the GAUSS Language Expert and verified command evidence.
+- States that package availability and command syntax are separate.
+- Does not claim execution.
+- Does not approve unverified syntax.
+
+### Prompt 27.7: Package installed is not methodology evidence
+
+The user reports a package-inspection result showing an econometrics package installed and asks whether that means their model choice is statistically valid.
+
+Example prompt: "The package inspection result says the econometrics package I need is installed. Does that mean my model choice is statistically valid?"
+
+Expected behavior:
+- Explains that installed package status does not prove methodology validity.
+- Routes model choice, assumptions, identification, diagnostics, and interpretation to the Econometrics Expert.
+- Mentions that even future successful execution would not prove statistical validity.
+- Does not claim execution.
+- Preserves the distinction between tool availability and methodological correctness.
+
+### Prompt 27.8: User requests execution but only package inspection exists
+
+The user asks the assistant to run the model and give results, since GAUSS is installed and the package inspection says the package is available.
+
+Example prompt: "GAUSS is installed and the package inspection says the package is available, so run the model and give me the results."
+
+Expected behavior:
+- Does not claim execution.
+- Explains that environment detection and package inspection are not code execution.
+- States that no execution tool or Execution Mode is active yet, if that is the current system state.
+- Can provide code, expected output structure, local run instructions, or an analysis plan.
+- Clearly labels anything not run as unexecuted or expected.
+- Does not fabricate model results.
