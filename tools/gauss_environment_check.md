@@ -24,14 +24,15 @@ State clearly:
 
 ## Tool Status
 
-- **Status:** planned / specified.
-- **Implementation:** not yet implemented.
+- **Status:** specified and implemented as a read-only helper.
+- **Implementation:** `scripts/gauss_environment_check.py` — usable from the command line (`python scripts/gauss_environment_check.py`) and importable for tests (`detect_environment(...)`).
 - **Permission level:** read-only environment inspection.
 - **Runtime orchestration:** not implemented.
-- **Code execution:** not implemented.
+- **Code execution:** not implemented — the implementation does not run user GAUSS code.
 - **Package inspection:** not implemented.
 - **Result schema:** created (`schemas/gauss_environment_check.schema.json`) — see "Result Schema" below.
 - **Example outputs:** created (`examples/tools/gauss-environment-*.json`) — see "Examples" below.
+- **Newest-version default rule:** implemented — when multiple GAUSS versions are detected, the helper defaults to the highest version unless the caller provides a preferred executable path, a preferred version, or requests strict mode. See `planning/v0.21.0-gauss-environment-detection-implementation.md`'s "Default Version Selection Rule."
 
 ## Operating Mode Relationship
 
@@ -84,7 +85,8 @@ This tool is classified as low-risk read-only inspection per `TOOL_SPEC.md`'s Pe
 | Input | Optional | Purpose | Safety considerations | Default if omitted |
 |---|---|---|---|---|
 | `preferred_executable_path` | Yes | Lets the user or a prior detection point directly at a specific GAUSS executable. | Must be validated for existence/accessibility before use; must not be assumed valid. | No preferred path — the tool falls back to discovery. |
-| `working_directory` | Yes | Scopes any filesystem checks to a specific directory context. | Must not be modified by the tool. | The tool's own invocation directory, used read-only. |
+| `preferred_version` | Yes | Added in `v0.21.0`. Lets the caller request a specific GAUSS version (e.g. `25`) and overrides the newest-version default when a matching, accessible candidate exists. | Must not be silently overridden by a newer detected version; if the requested version is not found or is inaccessible, the tool must say so rather than substituting another version. | No preferred version — the tool defaults to the newest detected version. |
+| `working_directory` | Yes | Scopes any filesystem checks to a specific directory context. | Must not be modified by the tool. | The tool's own invocation directory, used read-only. Not yet used to alter detection in the `v0.21.0` implementation. |
 | `platform_hint` | Yes | Lets a caller state a known platform when it cannot be reliably auto-detected. | Should not override an actual detected platform if one is available. | Detected platform, or `unknown` if undetectable. |
 | `allow_version_query` | Yes | Permits the tool to attempt a minimal version check. | Governs the one input that could invoke the executable; should be conservative by default. | `false`, or implementation-defined, until the safety of the version-query mechanism is established. |
 | `detection_timeout_seconds` | Yes | Bounds how long detection (including any version query) may run. | Prevents a hung or slow check from blocking the assistant. | A short, safe default (exact value is an implementation decision, not fixed by this spec). |
@@ -95,10 +97,13 @@ Important input rules:
 
 - The tool should work with no inputs.
 - A user-provided path should take precedence over discovery.
+- A user-specified `preferred_version` overrides the newest-version default, but never the higher-priority `preferred_executable_path`.
 - `allow_version_query` should default to `false` or implementation-defined until safety is established.
 - `detection_timeout_seconds` should have a safe default.
 - Environment overrides must not mutate the real environment.
 - `working_directory` must not be modified.
+
+**Implementation note (`v0.21.0`):** `environment_overrides` is implemented as documented above — deferred. `scripts/gauss_environment_check.py` does not accept it; safely simulating an alternate environment without risking a misleading result was judged nontrivial for this milestone. `allow_version_query` is accepted but does not currently invoke any executable, since no safe, confirmed GAUSS version-query flag is documented — passing it only adds an explanatory warning (see "Optional version query" below).
 
 ## Outputs
 
@@ -187,7 +192,7 @@ Important input rules:
 
 ## Detection Strategy
 
-Planned strategy, described without implementation code.
+Implemented in `scripts/gauss_environment_check.py` as follows.
 
 ### User-provided path
 
@@ -214,7 +219,7 @@ List categories, not overly specific hardcoded promises:
 - **Linux:** `PATH` / `opt` or local application directories / user-provided path.
 - **WSL/container environments** may require special handling.
 
-Exact executable names and path patterns should be verified during implementation. This planning-adjacent spec does not claim these paths are exhaustive.
+Exact executable names and path patterns should be verified against real installations over time. This spec does not claim the implemented candidate list is exhaustive — `PLAUSIBLE_EXECUTABLE_NAMES` and `COMMON_LOCATION_TEMPLATES` in `scripts/gauss_environment_check.py` are a conservative starting set, not a confirmed-complete list.
 
 ### Optional version query
 
@@ -286,6 +291,17 @@ Exact executable names and path patterns should be verified during implementatio
 - Include next steps when possible.
 - Do not ask for unnecessary clarification if Advisory Mode can answer the user's underlying request.
 
+## Command-Line Interface and Testing
+
+`scripts/gauss_environment_check.py` exposes:
+
+- `--preferred-executable-path`, `--preferred-version`, `--working-directory`, `--platform-hint`, `--allow-version-query`, `--detection-timeout-seconds`, `--strict` — map directly to the Inputs above.
+- `--json` — print the full structured JSON result (default output is a short human-readable summary).
+- `--validate-schema` — validate the result against `schemas/gauss_environment_check.schema.json` before printing; fails with a nonzero exit code only on a genuine schema mismatch, not when the optional `jsonschema` dependency is simply unavailable (a warning is added to the result instead).
+- `--self-test` — runs a built-in test suite (`_run_self_tests`) covering version parsing, newest-version selection, `preferred_version`/`preferred_executable_path` overrides, ambiguous/not-found/inaccessible handling, and schema validation of representative outputs. All cases use injected synthetic candidates; none depend on a real GAUSS installation. No separate `tests/` directory exists in this repository yet, so this is the current test entry point.
+
+`detect_environment(...)` is also directly importable for future integration or additional tests, and accepts `path_exists_fn`/`accessibility_fn`/`discovery_fn` injection points for testing without touching the real filesystem.
+
 ## Result Schema
 
 **Schema file:** `schemas/gauss_environment_check.schema.json`
@@ -323,6 +339,8 @@ Do not add these benchmarks yet. They should be added after the schema and examp
 
 ## Related Files
 
+- `scripts/gauss_environment_check.py`
+- `planning/v0.21.0-gauss-environment-detection-implementation.md`
 - `planning/v0.20.0-gauss-environment-detection-tool.md`
 - `planning/v0.19.0-gauss-tooling-strategy-and-execution-modes.md`
 - `TOOL_SPEC.md`
@@ -342,4 +360,5 @@ Do not add these benchmarks yet. They should be added after the schema and examp
 - Update `KNOWN_LIMITATIONS.md` when implementation status changes.
 - Update `workflows/code-assistant-response.md` only after behavior is integrated.
 - Add benchmarks only after behavior is testable.
-- Do not claim the tool is implemented until implementation exists.
+- Update this tool spec if real GAUSS executable names or install locations are confirmed to differ from `scripts/gauss_environment_check.py`'s current conservative candidate lists.
+- Do not claim package inspection, code execution, or runtime orchestration are implemented — only environment detection is implemented as of `v0.21.0`.
