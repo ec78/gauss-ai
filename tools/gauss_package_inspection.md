@@ -26,12 +26,13 @@ State clearly:
 
 ## Tool Status
 
-- **Status:** planned / specified.
-- **Implementation:** not yet implemented.
+- **Status:** specified and implemented as a read-only helper.
+- **Implementation:** `scripts/gauss_package_inspection.py` — usable from the command line (`python scripts/gauss_package_inspection.py`) and importable for tests (`inspect_packages(...)`).
 - **Permission level:** read-only package/environment inspection.
 - **Runtime orchestration:** not implemented.
-- **Code execution:** not implemented.
+- **Code execution:** not implemented — the implementation does not run user GAUSS code.
 - **Package installation:** not implemented.
+- **Metadata query:** not implemented — `--allow-metadata-query` is accepted but does not invoke GAUSS, since no safe metadata-query command is confirmed yet.
 - **Result schema:** created (`schemas/gauss_package_inspection.schema.json`) — see "Result Schema" below.
 - **Example outputs:** created (`examples/tools/gauss-package-inspection-*.json`) — see "Examples" below.
 
@@ -220,7 +221,7 @@ Important input rules:
 
 ## Inspection Strategy
 
-Planned strategy, described without implementation code.
+Implemented in `scripts/gauss_package_inspection.py` as follows.
 
 ### Environment-check context
 
@@ -242,6 +243,8 @@ Planned strategy, described without implementation code.
 - Do not overclaim exact paths before implementation verifies them.
 - Handle system-installed and user-installed locations.
 - Respect version-specific package contexts.
+
+**Implementation note (`v0.23.0`):** `scripts/gauss_package_inspection.py` derives two conservative, documented-non-exhaustive candidate directories (`pkgs`, `packages`) as siblings of the selected GAUSS executable, mirroring the same conservative-starting-set discipline `scripts/gauss_environment_check.py` already applies to `PLAUSIBLE_EXECUTABLE_NAMES`/`COMMON_LOCATION_TEMPLATES`. A missing derived candidate is skipped silently (it is a best-effort guess, not a confirmed real location); a caller-supplied `package_search_paths` entry that is missing or inaccessible is treated as authoritative and reduces inspection confidence toward `partial`/`unknown` instead. Callers should supply `package_search_paths` directly for reliable results.
 
 ### Configuration/path inspection
 
@@ -318,13 +321,26 @@ Planned strategy, described without implementation code.
 - Include next steps when possible.
 - Do not ask for unnecessary clarification if Advisory Mode can answer the user's underlying request.
 
+## Command-Line Interface and Testing
+
+`scripts/gauss_package_inspection.py` exposes:
+
+- `--environment-result`, `--executable-path`, `--gauss-version`, `--platform-hint`, `--requested-package` (repeatable), `--requested-packages` (comma-separated), `--package-search-path` (repeatable), `--allow-metadata-query`, `--inspection-timeout-seconds`, `--strict` — map directly to the Inputs above. `--environment-result` accepts a JSON file path containing a prior `gauss_environment_check` result.
+- `--json` — print the full structured JSON result (default output is a short human-readable summary).
+- `--validate-schema` — validate the result against `schemas/gauss_package_inspection.schema.json` before printing; fails with a nonzero exit code only on a genuine schema mismatch, not when the optional `jsonschema` dependency is simply unavailable (a warning is added to the result instead).
+- `--self-test` — runs a built-in test suite (`_run_self_tests`) covering environment-not-found/strict-fallback handling, requested-package found/missing/unknown classification, partial results from a mixed-availability search scope, GAUSS 26/25 version-context carry-through, no-cross-version-mixing, the missing-does-not-imply-GAUSS-missing and installed-does-not-imply-execution distinctions, the metadata-query no-op, and schema validation of representative outputs. All cases use injected synthetic fixtures; none depend on a real GAUSS installation.
+
+`inspect_packages(...)` is also directly importable for future integration or additional tests, and accepts `path_exists_fn`/`accessibility_fn`/`list_dir_fn`/`env_detect_fn` injection points for testing without touching the real filesystem or calling real environment detection.
+
+Input precedence, as implemented: (1) explicit `executable_path`/`gauss_version` arguments, (2) `environment_check_result`, (3) automatic environment detection via `scripts/gauss_environment_check.py`'s `detect_environment(...)` (skipped entirely if `strict` is set), (4) `unavailable`/advisory fallback.
+
 ## Result Schema
 
 **Schema file:** `schemas/gauss_package_inspection.schema.json`
 
 The schema now exists and validates the full output contract defined above: `environment_status` matches `gauss_environment_check.schema.json`'s `detection_status` enum; `package_inspection_status` and `operating_mode_recommendation` are controlled enums; `installed` and `can_assume_package_availability` use a shared `tri_state` definition (`true`/`false`/`"unknown"`); `packages`, `requested_packages`, `missing_packages`, `unknown_packages`, `package_search_paths`, `warnings`, `errors`, and `next_steps` are arrays; each `packages` item is a fully-specified package object (`name`, `installed`, `version`, `version_known`, `source`, `path`, `package_type`, `notes`); `raw_inspection_details` is optional with `additionalProperties: true`; `checked` and the other fifteen top-level fields are required. The schema also encodes cross-field consistency constraints — for example, `package_inspection_status: complete` requires `checked: true` and zero `errors`; a non-`found` `environment_status` forbids `package_inspection_status: complete` and forbids `operating_mode_recommendation: execution_candidate`; and any non-empty `missing_packages` forbids `can_assume_package_availability: true`.
 
-Implementation of the tool itself remains not yet done — the schema validates a future tool's output shape; it does not run any inspection code.
+The implementation, `scripts/gauss_package_inspection.py`, populates this output shape directly; every branch of `inspect_packages(...)` is exercised against the schema by `--self-test`'s representative-output checks.
 
 ## Examples
 
@@ -336,7 +352,7 @@ Implementation of the tool itself remains not yet done — the schema validates 
 - `examples/tools/gauss-package-inspection-unavailable.json` — environment not found; inspection could not proceed; Advisory Mode.
 - `examples/tools/gauss-package-inspection-unknown.json` — environment found but package status inconclusive.
 
-All five are clearly synthetic (example-style paths such as `C:/example/gauss26/pkgs/tsmt`, explicit "Synthetic example output" warnings) and do not represent any real detected installation or inspection. Implementation of the tool itself remains not yet done.
+All five are clearly synthetic (example-style paths such as `C:/example/gauss26/pkgs/tsmt`, explicit "Synthetic example output" warnings) and do not represent any real detected installation or inspection. They remain schema-valid illustrations of each `package_inspection_status`; the `v0.23.0` implementation is conservative about fields it cannot verify (for example, it does not report a package `version` from a filesystem scan alone, since no metadata query is implemented), so a real result may leave more fields `null`/`unknown` than these examples show.
 
 ## Evaluation Plan
 
@@ -373,6 +389,8 @@ But it cannot answer:
 
 ## Related Files
 
+- `scripts/gauss_package_inspection.py`
+- `planning/v0.23.0-gauss-package-inspection-implementation.md`
 - `planning/v0.22.0-gauss-package-inspection-tool.md`
 - `planning/v0.21.0-gauss-environment-detection-implementation.md`
 - `scripts/gauss_environment_check.py`
@@ -389,11 +407,10 @@ But it cannot answer:
 
 ## Maintenance Notes
 
-- Update this tool spec when the schema is created.
-- Update this tool spec when examples are created.
-- Update this tool spec when implementation exists.
+- Update this tool spec if the actual inspection strategy differs from the plan.
 - Update `KNOWN_LIMITATIONS.md` when implementation status changes.
 - Update `workflows/code-assistant-response.md` only after behavior is integrated.
-- Add benchmarks only after behavior is testable.
-- Do not claim package inspection is implemented until implementation exists.
-- Do not weaken environment detection fallback rules when package inspection is added.
+- Add benchmarks only after behavior changes beyond what `27.x` already covers.
+- Update this tool spec if real GAUSS package/application-module directory layouts are confirmed to differ from `scripts/gauss_package_inspection.py`'s current conservative `pkgs`/`packages` heuristic.
+- Do not claim metadata query, runtime orchestration, code execution, or package installation are implemented — only read-only filesystem-based package inspection is implemented as of `v0.23.0`.
+- Do not weaken environment detection fallback rules when package inspection behavior changes.

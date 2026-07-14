@@ -203,15 +203,26 @@ See `planning/v0.22.0-gauss-package-inspection-tool.md`.
 - Status: the planning doc, tool spec, result schema, example outputs, `27.x` benchmark prompts, and `27.x` evaluations are complete; `README.md`/`ROADMAP.md`/`KNOWN_LIMITATIONS.md` have been audited and updated to reference them. Remaining before this milestone is ready to tag: the `v0.22.0` readiness checklist.
 - Add no implementation, no GAUSS code execution, no CI changes, and no runtime orchestration — this milestone specifies, schemas, exemplifies, and evaluates expected behavior only; the tool itself remains unimplemented.
 
+## v0.23.0: GAUSS Package Inspection Implementation (Planned)
+
+See `planning/v0.23.0-gauss-package-inspection-implementation.md`.
+
+- Implements the already-specified `gauss_package_inspection` tool from `v0.22.0` (`tools/gauss_package_inspection.md`, `schemas/gauss_package_inspection.schema.json`) — moves from specification to real package-inspection code, mirroring the same spec/implementation split already used for environment detection (`v0.20.0` spec / `v0.21.0` implementation).
+- Uses the selected GAUSS environment from `v0.21.0`'s `gauss_environment_check` as primary context (executable path, version, platform, detection status), rather than re-detecting GAUSS itself.
+- Respects a version-specific package context rule: if environment detection selected GAUSS 26 (per `v0.21.0`'s newest-version default), package inspection inspects the GAUSS 26 package context by default; an explicit user-selected version or executable path carries through. Package results must never be mixed across GAUSS versions unless explicitly requested.
+- Plans a package discovery strategy (requested-package-first matching, conservative read-only filesystem inspection, deferred metadata query) and a proposed CLI/importable API (`scripts/gauss_package_inspection.py`, `inspect_packages(...)`) mirroring `v0.21.0`'s `gauss_environment_check.py`/`detect_environment(...)` design.
+- Add no GAUSS code execution, no package installation, no report generation, no runtime orchestration, and no Code Assistant workflow integration — this milestone implements package inspection only.
+
 ## Future (TBD / Possible)
 
-Not yet planned or committed. Candidate directions after `v0.18.0`/`v0.19.0`/`v0.20.0`/`v0.21.0`/`v0.22.0`:
+Not yet planned or committed. Candidate directions after `v0.18.0`/`v0.19.0`/`v0.20.0`/`v0.21.0`/`v0.22.0`/`v0.23.0`:
 
-- `v0.23.0` - GAUSS Package Inspection Implementation, `v0.24.0` - GAUSS Code Execution Prototype, `v0.25.0` - Execution-Aware Analysis Workflow, `v0.26.0` - Report Generation Workflow. Each shifted one milestone later than `planning/v0.19.0-gauss-tooling-strategy-and-execution-modes.md`'s original numbering, now that `v0.22.0` (specification) and its implementation were split into two milestones for package inspection, mirroring the same split already used for environment detection (`v0.20.0` spec / `v0.21.0` implementation). `v0.23.0` is the most immediate: implement the `gauss_package_inspection` tool already specified, schemad, exemplified, and evaluated in `v0.22.0`, resolving the open risks around real package/application-module locations, version-specific package contexts, licensing, and safe metadata-only inspection. Each of these four still requires its own planning task before implementation, the same way `v0.19.0`-`v0.22.0` were planned before any of them.
+- `v0.24.0` - GAUSS Code Execution Prototype, `v0.25.0` - Execution-Aware Analysis Workflow, `v0.26.0` - Report Generation Workflow — as proposed in `planning/v0.19.0-gauss-tooling-strategy-and-execution-modes.md`'s "Proposed Milestone Breakdown," each requiring its own planning task before implementation, the same way `v0.19.0`-`v0.23.0` were planned before any of them.
+- Actual implementation of the `v0.23.0` package-inspection plan (real code, self-tests, project-doc updates, readiness checklist) — proposed as the likely next task after this planning milestone, not yet started.
 - Expert-system automation/hygiene tooling — for example, a scripted stale-wording check in the spirit of `scripts/check_evaluation_tracking.py`, building on `workflows/expert-system-maintenance.md`'s manual Stale Wording Search Checklist.
 - Retrieval/evidence expansion — broader real command evidence coverage beyond the current seven-command pilot set (`olsmt`, `strindx`, `strsplit`, `dstatmt`, `qnewtonmt`, `pdsummary`, `minimize`).
 - Benchmark dashboard automation — regenerating `evaluations/EVALUATION_DASHBOARD.md` from live guard output instead of a manually maintained snapshot.
 - Strict-mode warning reduction — improving the evidence validator's path-warning heuristic so it stops flagging the reviewed `glm`/`olsmt` HDF5-URI false positives.
-- Runtime orchestration exploration — only if intentionally planned later; no runtime expert-routing engine or execution orchestration is currently planned or implied by any `v0.18.0`-`v0.22.0` work.
+- Runtime orchestration exploration — only if intentionally planned later; no runtime expert-routing engine or execution orchestration is currently planned or implied by any `v0.18.0`-`v0.23.0` work.
 
-None of these are committed milestones; this list exists so `v0.18.0`-`v0.22.0`'s planning work doesn't strand good follow-up ideas without a place to record them.
+None of these are committed milestones; this list exists so `v0.18.0`-`v0.23.0`'s planning work doesn't strand good follow-up ideas without a place to record them.
