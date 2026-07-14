@@ -169,6 +169,7 @@ This file records notable changes to the GAUSS AI framework.
 - Implemented GAUSS package inspection helper with read-only package context inspection and schema-valid advisory fallback, including a CLI, an importable `inspect_packages(...)` API, a built-in self-test suite, and schema validation support.
 - Updated project docs for v0.23.0 GAUSS Package Inspection Implementation.
 - Added v0.23.0 readiness checklist.
+- Planned v0.24.0 GAUSS Code Execution Prototype.
 
 ## [0.1.0] - 2026-06-26
 

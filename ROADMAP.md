@@ -215,16 +215,27 @@ See `planning/v0.23.0-gauss-package-inspection-implementation.md`.
 - Status: the planning doc and helper implementation (CLI, importable module, schema-validation support, self-test suite) are complete and passing, including manual verification against this development machine's real GAUSS 26 installation. `README.md`/`ROADMAP.md`/`KNOWN_LIMITATIONS.md` have been audited and updated to reference the implementation. Remaining before this milestone is ready to tag: the `v0.23.0` readiness checklist and final release/tag (handled externally).
 - Add no GAUSS code execution, no package installation, no report generation, no runtime orchestration, and no Code Assistant workflow integration — this milestone implements package inspection only.
 
+## v0.24.0: GAUSS Code Execution Prototype (Planned)
+
+See `planning/v0.24.0-gauss-code-execution-prototype.md`.
+
+- Begins planning for the first narrow, controlled GAUSS code execution capability — the third tool-enabled capability after environment detection (`v0.21.0`) and package inspection (`v0.23.0`), and the first that would actually run GAUSS code rather than only inspect the local environment.
+- Plans a future helper (`scripts/gauss_code_execution.py`, importable as `execute_gauss_code(...)`) that would consume selected GAUSS environment context (and optionally package inspection context), require an explicit safe working directory and timeout, capture stdout/stderr/exit code, and return schema-shaped output distinguishing actual execution from interpretation.
+- Defines a Permission and Safety Model requiring explicit execution intent: no silent execution, no execution without a safe working directory or timeout, no package installation, no license activation, and no network access.
+- Documents that successful execution would still not prove statistical validity, methodological appropriateness, maintainability, documentation quality, education quality, or product value — routing interpretation to the relevant operational expert(s) instead.
+- **This task only plans execution; no execution helper, schema, tool spec, or benchmark prompts are created yet.** The Suggested Task Order proposes tool spec → schema → examples → `28.x` benchmarks → evaluation → implementation → self-tests → project docs → readiness checklist → release, mirroring the same sequencing already used for environment detection and package inspection.
+- Add no execution implementation, no new schema, no new tool spec, no benchmark prompts, no Code Assistant workflow integration, and no runtime orchestration — this milestone is planning and boundary-setting only, the same scope `v0.19.0` used for the original three-tool strategy.
+
 ## Future (TBD / Possible)
 
-Not yet planned or committed. Candidate directions after `v0.18.0`/`v0.19.0`/`v0.20.0`/`v0.21.0`/`v0.22.0`/`v0.23.0`:
+Not yet planned or committed. Candidate directions after `v0.18.0`/`v0.19.0`/`v0.20.0`/`v0.21.0`/`v0.22.0`/`v0.23.0`/`v0.24.0`:
 
-- `v0.24.0` - GAUSS Code Execution Prototype, `v0.25.0` - Execution-Aware Analysis Workflow, `v0.26.0` - Report Generation Workflow — as proposed in `planning/v0.19.0-gauss-tooling-strategy-and-execution-modes.md`'s "Proposed Milestone Breakdown," each requiring its own planning task before implementation, the same way `v0.19.0`-`v0.23.0` were planned before any of them.
-- The `v0.23.0` readiness checklist and pre-release audit — the remaining task before `v0.23.0` can be tagged, now that the package inspection helper itself is implemented.
+- `v0.25.0` - Execution-Aware Analysis Workflow, `v0.26.0` - Report Generation Workflow — as proposed in `planning/v0.19.0-gauss-tooling-strategy-and-execution-modes.md`'s "Proposed Milestone Breakdown," each requiring its own planning task before implementation, the same way `v0.19.0`-`v0.24.0` were planned before any of them.
+- The actual GAUSS code execution implementation (tool spec, schema, examples, `28.x` benchmarks, helper implementation, self-tests, readiness checklist) — proposed as the likely next several tasks after `v0.24.0`'s planning milestone, not yet started, per `planning/v0.24.0-gauss-code-execution-prototype.md`'s Suggested Task Order.
 - Expert-system automation/hygiene tooling — for example, a scripted stale-wording check in the spirit of `scripts/check_evaluation_tracking.py`, building on `workflows/expert-system-maintenance.md`'s manual Stale Wording Search Checklist.
 - Retrieval/evidence expansion — broader real command evidence coverage beyond the current seven-command pilot set (`olsmt`, `strindx`, `strsplit`, `dstatmt`, `qnewtonmt`, `pdsummary`, `minimize`).
 - Benchmark dashboard automation — regenerating `evaluations/EVALUATION_DASHBOARD.md` from live guard output instead of a manually maintained snapshot.
 - Strict-mode warning reduction — improving the evidence validator's path-warning heuristic so it stops flagging the reviewed `glm`/`olsmt` HDF5-URI false positives.
-- Runtime orchestration exploration — only if intentionally planned later; no runtime expert-routing engine or execution orchestration is currently planned or implied by any `v0.18.0`-`v0.23.0` work.
+- Runtime orchestration exploration — only if intentionally planned later; no runtime expert-routing engine or execution orchestration is currently planned or implied by any `v0.18.0`-`v0.24.0` work.
 
-None of these are committed milestones; this list exists so `v0.18.0`-`v0.23.0`'s planning work doesn't strand good follow-up ideas without a place to record them.
+None of these are committed milestones; this list exists so `v0.18.0`-`v0.24.0`'s planning work doesn't strand good follow-up ideas without a place to record them.
