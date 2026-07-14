@@ -162,6 +162,7 @@ This file records notable changes to the GAUSS AI framework.
 - Added GAUSS package inspection result schema.
 - Added GAUSS package inspection example outputs.
 - Added GAUSS Package Inspection Tool benchmark prompts 27.1-27.8.
+- Evaluated GAUSS Package Inspection Tool benchmarks 27.1-27.8.
 
 ## [0.1.0] - 2026-06-26
 
