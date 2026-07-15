@@ -171,6 +171,7 @@ This file records notable changes to the GAUSS AI framework.
 - Added v0.23.0 readiness checklist.
 - Planned v0.24.0 GAUSS Code Execution Prototype.
 - Added GAUSS code execution tool specification.
+- Added GAUSS code execution result schema.
 
 ## [0.1.0] - 2026-06-26
 

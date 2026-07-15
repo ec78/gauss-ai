@@ -26,7 +26,7 @@ State clearly:
 - **Status:** planned / specified.
 - **Implementation:** not yet implemented.
 - **Planned implementation file:** `scripts/gauss_code_execution.py`.
-- **Planned result schema:** `schemas/gauss_code_execution.schema.json`.
+- **Result schema:** created (`schemas/gauss_code_execution.schema.json`) — see "Planned Schema" below.
 - **Planned examples:** `examples/tools/gauss-code-execution-*.json`.
 
 Execution Mode remains inactive until implementation and explicit orchestration policies exist. This spec does not authorize silent execution — it defines the contract a future implementation must satisfy, following the same specify-before-implement discipline already used for `gauss_environment_check` (`v0.20.0` spec / `v0.21.0` implementation) and `gauss_package_inspection` (`v0.22.0` spec / `v0.23.0` implementation).
@@ -303,18 +303,11 @@ This extends the same independence principles `experts/EXPERT_BOUNDARY_MATRIX.md
 
 ## Planned Schema
 
-**Planned schema path:** `schemas/gauss_code_execution.schema.json`
+**Schema file:** `schemas/gauss_code_execution.schema.json`
 
-The schema should validate:
+The schema now exists and validates the full output contract defined above: `execution_status`, `operating_mode`, and `code_source` are controlled enums; `output_files` is an array of output-file objects (`path`, `size_bytes`, `file_type`, `created_by_execution` as a tri-state `true`/`false`/`"unknown"`, `notes`); `warnings`, `errors`, and `next_steps` are string arrays; `raw_execution_details` is optional with `additionalProperties: true`; `checked` and the other eighteen top-level fields are required. The schema also encodes cross-field consistency constraints via `allOf`/`if`/`then` blocks: `executed: false` restricts `execution_status` away from `completed` and restricts `operating_mode` to `advisory`/`verified_knowledge`; `executed: true` requires `operating_mode: execution`; `execution_status: completed` requires `executed: true`; `execution_status: timed_out` requires `executed: true` plus at least one warning or error; `execution_status: blocked` requires `executed: false` and `operating_mode: advisory`; `execution_status: error` requires at least one error; `code_source: inline` requires a null `script_path`; `code_source: script_path` requires a string `script_path`; and `code_source: none` requires `executed: false` and a null `script_path`.
 
-- `execution_status` semantics.
-- `executed` boolean semantics.
-- Working-directory/output-file structure.
-- `stdout`/`stderr` fields.
-- `warnings`/`errors`/`next_steps` arrays.
-- Invariants such as `executed: false` cannot coexist with `execution_status: completed`.
-
-**This task does not create the schema.** It is scoped to a future task, per `planning/v0.24.0-gauss-code-execution-prototype.md`'s Suggested Task Order.
+Implementation of the tool itself remains not yet done — the schema validates a future tool's output shape; it does not run any execution code.
 
 ## Planned Examples
 
@@ -365,7 +358,7 @@ Future `28.x` benchmarks should validate response behavior before implementation
 - `scripts/gauss_package_inspection.py`
 - `schemas/gauss_environment_check.schema.json`
 - `schemas/gauss_package_inspection.schema.json`
-- Future `schemas/gauss_code_execution.schema.json`
+- `schemas/gauss_code_execution.schema.json`
 - Future `scripts/gauss_code_execution.py`
 - `TOOL_SPEC.md`
 - `tools/operational_expert_interface.md`

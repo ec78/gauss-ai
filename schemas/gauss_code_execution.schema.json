@@ -1,0 +1,429 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gauss-ai.local/schemas/gauss_code_execution.schema.json",
+  "title": "GAUSS Code Execution Result",
+  "description": "A structured result object for the future gauss_code_execution tool (see tools/gauss_code_execution.md and planning/v0.24.0-gauss-code-execution-prototype.md). This schema validates code execution results only. It does not validate GAUSS syntax generality, statistical validity, methodology, maintainability, documentation quality, education quality, or product value. A schema-valid object confirms structure only; it is not evidence that GAUSS code actually ran, ran safely, or produced meaningful output. Code execution should use the selected GAUSS environment from environment detection (schemas/gauss_environment_check.schema.json) and may use context from package inspection (schemas/gauss_package_inspection.schema.json) rather than re-detecting GAUSS or packages itself.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "checked",
+    "executed",
+    "execution_status",
+    "operating_mode",
+    "executable_path",
+    "gauss_version",
+    "working_directory",
+    "command",
+    "code_source",
+    "script_path",
+    "timeout_seconds",
+    "elapsed_seconds",
+    "exit_code",
+    "stdout",
+    "stderr",
+    "output_files",
+    "warnings",
+    "errors",
+    "next_steps"
+  ],
+  "properties": {
+    "checked": {
+      "type": "boolean",
+      "description": "True means an execution attempt was evaluated, not that GAUSS code actually ran."
+    },
+    "executed": {
+      "type": "boolean",
+      "description": "True only when GAUSS was actually invoked as a subprocess. Never true based on intent, request validity, or a successful pre-flight check alone."
+    },
+    "execution_status": {
+      "$ref": "#/$defs/execution_status"
+    },
+    "operating_mode": {
+      "$ref": "#/$defs/operating_mode"
+    },
+    "executable_path": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Selected GAUSS executable path used for this execution attempt; null if unavailable or unknown."
+    },
+    "gauss_version": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "GAUSS version associated with the selected executable; null if unknown or unavailable."
+    },
+    "working_directory": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The safe working directory execution was scoped to; null if execution did not proceed far enough to have one."
+    },
+    "command": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The literal command/invocation used, if execution was attempted; null otherwise. Should avoid exposing unnecessary sensitive path information."
+    },
+    "code_source": {
+      "$ref": "#/$defs/code_source"
+    },
+    "script_path": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Path to the executed script file when code_source is script_path; null otherwise."
+    },
+    "timeout_seconds": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "The timeout enforced for this execution attempt; null if execution did not proceed far enough to have one."
+    },
+    "elapsed_seconds": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "Measured wall-clock duration of the execution attempt; null when GAUSS was never invoked."
+    },
+    "exit_code": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "Process exit code when GAUSS was invoked; null otherwise. 0 does not imply statistical validity or correctness."
+    },
+    "stdout": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Captured standard output, possibly truncated; null when not captured or not applicable. Truncation must be recorded in warnings."
+    },
+    "stderr": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Captured standard error, possibly truncated; null when not captured or not applicable. Truncation must be recorded in warnings."
+    },
+    "output_files": {
+      "type": "array",
+      "description": "Generated output files discovered inside the safe working directory only.",
+      "items": {
+        "$ref": "#/$defs/output_file"
+      }
+    },
+    "warnings": {
+      "$ref": "#/$defs/string_array"
+    },
+    "errors": {
+      "$ref": "#/$defs/string_array"
+    },
+    "next_steps": {
+      "$ref": "#/$defs/string_array"
+    },
+    "raw_execution_details": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Optional implementation-specific diagnostic detail. Should avoid exposing unnecessary sensitive path or environment information beyond what is needed to explain the execution result."
+    }
+  },
+  "$defs": {
+    "tri_state": {
+      "enum": [
+        true,
+        false,
+        "unknown"
+      ]
+    },
+    "string_array": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "execution_status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "failed",
+        "timed_out",
+        "skipped",
+        "blocked",
+        "error",
+        "unknown"
+      ]
+    },
+    "operating_mode": {
+      "type": "string",
+      "enum": [
+        "advisory",
+        "verified_knowledge",
+        "execution"
+      ]
+    },
+    "code_source": {
+      "type": "string",
+      "enum": [
+        "inline",
+        "script_path",
+        "none",
+        "unknown"
+      ]
+    },
+    "output_file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "size_bytes",
+        "file_type",
+        "created_by_execution",
+        "notes"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Path to the discovered output file. Must resolve inside the safe working directory."
+        },
+        "size_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "File size in bytes; null when unknown."
+        },
+        "file_type": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "MIME type or extension-derived type hint, when safely available; null when unknown."
+        },
+        "created_by_execution": {
+          "$ref": "#/$defs/tri_state",
+          "description": "Whether this file was newly created by this execution attempt, as opposed to already present in the working directory. \"unknown\" when no reliable before/after comparison was made."
+        },
+        "notes": {
+          "$ref": "#/$defs/string_array"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "executed"
+        ],
+        "properties": {
+          "executed": {
+            "const": false
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "execution_status": {
+            "enum": [
+              "failed",
+              "timed_out",
+              "skipped",
+              "blocked",
+              "error",
+              "unknown"
+            ]
+          },
+          "operating_mode": {
+            "enum": [
+              "advisory",
+              "verified_knowledge"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "executed"
+        ],
+        "properties": {
+          "executed": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "operating_mode": {
+            "const": "execution"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "execution_status"
+        ],
+        "properties": {
+          "execution_status": {
+            "const": "completed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "executed": {
+            "const": true
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "execution_status"
+        ],
+        "properties": {
+          "execution_status": {
+            "const": "timed_out"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "executed": {
+            "const": true
+          }
+        },
+        "anyOf": [
+          {
+            "properties": {
+              "warnings": {
+                "minItems": 1
+              }
+            }
+          },
+          {
+            "properties": {
+              "errors": {
+                "minItems": 1
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "execution_status"
+        ],
+        "properties": {
+          "execution_status": {
+            "const": "blocked"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "executed": {
+            "const": false
+          },
+          "operating_mode": {
+            "const": "advisory"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "execution_status"
+        ],
+        "properties": {
+          "execution_status": {
+            "const": "error"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "errors": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "code_source"
+        ],
+        "properties": {
+          "code_source": {
+            "const": "inline"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "script_path": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "code_source"
+        ],
+        "properties": {
+          "code_source": {
+            "const": "script_path"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "script_path": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "code_source"
+        ],
+        "properties": {
+          "code_source": {
+            "const": "none"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "executed": {
+            "const": false
+          },
+          "script_path": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ]
+}
