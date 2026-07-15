@@ -29,18 +29,19 @@ Use this dashboard to understand coverage by milestone, prompt range, expert cat
 
 ## Current Evaluation State
 
-Captured by running `scripts/check_evaluation_tracking.py`, `scripts/check_release_readiness.py`, and `scripts/validate_all_evidence.py` (default and `--json`) against the repository state after `v0.22.0`'s `27.x` benchmark evaluations were completed:
+Captured by running `scripts/check_evaluation_tracking.py`, `scripts/check_release_readiness.py`, and `scripts/validate_all_evidence.py` (default and `--json`) against the repository state after `v0.24.0`'s `28.x` benchmark prompts and coverage rows were added (not yet evaluated):
 
-- Prompt IDs: 129.
-- Coverage rows: 129.
+- Prompt IDs: 137.
+- Coverage rows: 137.
 - Run files referenced: 116.
 - Index entries: 121.
 - Tracking errors: 0.
 - Documented (historical) tracking warnings: 2.
-- Current active-category ("Not Run" in the highest-numbered active category) warnings: 0 — all eight `27.x` prompts (GAUSS Package Inspection Tool) are now `Passed` at 4.0, so the tracking guard's "current active category" check has nothing to flag.
+- Current active-category ("Not Run" in the highest-numbered active category) warnings: 8 — all eight `28.x` prompts (GAUSS Code Execution Prototype) are newly added and `Not Run`, so the tracking guard's "current active category" check flags all eight. These are expected, transient warnings that will disappear once `28.x` is evaluated, the same way `26.x`'s and `27.x`'s did.
+- Total warnings: 10 (2 documented historical + 8 transient `28.x` Not Run).
 - Default tracking guard (`check_evaluation_tracking.py`): PASS.
 - JSON tracking guard (`check_evaluation_tracking.py --json`): `overall_pass: true`.
-- Strict tracking guard (`check_evaluation_tracking.py --strict`): FAIL — expected, both current warnings are the two documented historical ones (see "Known Warnings and Historical Exceptions" below).
+- Strict tracking guard (`check_evaluation_tracking.py --strict`): FAIL — expected; all 10 current warnings (2 documented historical + 8 transient `28.x` Not Run) are promoted to failures under `--strict`.
 - Release-readiness default (`check_release_readiness.py`): PASS.
 - Release-readiness JSON (`check_release_readiness.py --json`): `overall_pass: true`.
 - Release-readiness strict (`check_release_readiness.py --strict`): informational FAIL — `strict_pass: false`, but `overall_pass` remains `true` because strict results never affect this script's own exit code.
@@ -86,6 +87,7 @@ Important:
 | 25.x | Expert System Consolidation (`v0.18.0`) | Consolidated-artifact routing/boundary checks | 0 | 0 | Not added | Optional; proposed in `planning/v0.18.0-expert-system-consolidation.md`'s "Benchmark Plan" section but not yet added. Would only be added after the consolidation documents (registry, boundary matrix, cheat sheet, maintenance guide) exist. |
 | 26.x | GAUSS Environment Detection Tool (`v0.20.0`) | Environment-detection response behavior, graceful fallback, and boundary protection | 8 | 8 | 8/8 Passed (4.0) | All prompts run and passed for the planned `gauss_environment_check` tool (`tools/gauss_environment_check.md`, `schemas/gauss_environment_check.schema.json`, `planning/v0.20.0-gauss-environment-detection-tool.md`). Validates graceful fallback across all six detection statuses, `execution_candidate` treated as a prerequisite signal only, and boundary protection against treating detection as syntax or methodology evidence. No tool implementation exists yet and no execution behavior exists yet — every response is a documented expected-behavior evaluation, not a real detection run. |
 | 27.x | GAUSS Package Inspection Tool (`v0.22.0`) | Package-inspection response behavior, package-status uncertainty, graceful fallback, and boundary protection | 8 | 8 | 8/8 Passed (4.0) | All prompts run and passed for the planned `gauss_package_inspection` tool (`tools/gauss_package_inspection.md`, `schemas/gauss_package_inspection.schema.json`, `planning/v0.22.0-gauss-package-inspection-tool.md`). Validates package-status uncertainty (installed/missing/unknown/unavailable), base-vs-package/application-module separation, graceful fallback, and boundary protection against treating package availability as syntax or methodology evidence. No package-inspection implementation exists yet and no code execution behavior exists yet — every response is a documented expected-behavior evaluation, not a real inspection run. |
+| 28.x | GAUSS Code Execution Prototype (`v0.24.0`) | Execution-boundary response behavior, failure/timeout fallback, no false execution claims, and separation between execution output and expert interpretation | 8 | 0 | Not Run | Prompts added for the planned `gauss_code_execution` tool (`tools/gauss_code_execution.md`, `schemas/gauss_code_execution.schema.json`, `planning/v0.24.0-gauss-code-execution-prototype.md`); not yet evaluated. Tests execution-request refusal when environment is missing/ambiguous, that successful/failed/timed-out execution results are not overclaimed, package-missing-before-execution handling without auto-install, and separation between captured execution output and Econometrics Expert interpretation. No code execution implementation exists yet. Execution Mode remains inactive. These benchmarks should be run before `v0.24.0` readiness if this milestone is intended to include response-behavior validation. |
 
 Counts above are taken directly from `evaluations/benchmark-coverage.md` and `evaluations/runs/INDEX.md`. Categories `1.x` through `10.x` predate stable Prompt ID conventions in places and are summarized as "early baseline" or historical where a prompt has never been run; these were not invented to force full coverage, and their `Not Run` prompts remain genuinely not run today.
 
@@ -106,7 +108,7 @@ Counts above are taken directly from `evaluations/benchmark-coverage.md` and `ev
 - **Historical tracking warning — 2.2 / 2.3 Prompt ID mismatch:** the `2.2` coverage row (`evaluations/benchmark-coverage.md`) links to `evaluations/runs/2026-06-30-code-assistant-manual-run-001.md`, but that run file's own `Prompt ID:` field states `2.3`. This predates stable Prompt ID assignment and is documented in `evaluations/benchmark-coverage.md`'s "Historical Tracking Exceptions" section. It is a warning, not an error, and `--strict` promotes it to a failure by design.
 - **Historical tracking warning — `v0.3.0` smoke-test file:** `evaluations/runs/2026-07-01-code-assistant-smoke-test-v0.3.0.md` predates Prompt-ID-based tracking entirely and is intentionally not indexed in `benchmark-coverage.md` or `runs/INDEX.md`. It is preserved as legitimate repository history, documented in the same "Historical Tracking Exceptions" section. It is a warning, not an error, and `--strict` promotes it to a failure by design.
 - **Evidence warnings — `glm`/`olsmt` HDF5 URI false positives:** `examples/retrieval/schema-aligned/glm.evidence.json` and `olsmt.evidence.json` contain path-shaped strings from official documentation examples (an HDF5 URI) that the path-warning heuristic flags. These are reviewed false positives, not real local-path leaks, documented in `scripts/README.md`'s strict-mode policy notes. `--strict` promotes them to failures by design.
-- **Current active-category "Not Run" warnings:** none. After the `v0.17.0` evaluation of `24.x`, the tracking guard's "current active category" check (which flags `Not Run` prompts in the highest-numbered category) has nothing to report, because every prompt in `24.x` is `Passed`.
+- **Current active-category "Not Run" warnings:** 8. `28.x` (GAUSS Code Execution Prototype) was just added and none of its eight prompts have been evaluated yet, so the tracking guard's "current active category" check flags all eight. These are expected and transient — they will disappear once `28.x` evaluations are completed, the same way `26.x`'s and `27.x`'s did.
 - **Strict-mode policy:** default gates (`check_evaluation_tracking.py`, `validate_all_evidence.py`, `check_release_readiness.py`) pass. Strict modes are informational and fail only because the warnings above are promoted to failures. Strict failures should not block a release unless the project explicitly changes this policy — see `scripts/README.md` and prior readiness checklists (`v0.12.0` onward) for the policy's history.
 
 ## Guard Command Reference
@@ -132,7 +134,7 @@ Expected current results (captured at the same time as "Current Evaluation State
 - `validate_all_evidence.py --strict`: expected FAIL, due to the known `glm`/`olsmt` HDF5-URI warnings.
 - `check_evaluation_tracking.py` default: PASS.
 - `check_evaluation_tracking.py --json`: `overall_pass: true`.
-- `check_evaluation_tracking.py --strict`: expected FAIL, due to the two historical warnings.
+- `check_evaluation_tracking.py --strict`: expected FAIL, due to the two historical warnings plus the eight transient `28.x` Not Run warnings (10 total, all promoted to failures under `--strict`).
 - `check_release_readiness.py` default: PASS.
 - `check_release_readiness.py --json`: `overall_pass: true`.
 - `check_release_readiness.py --strict`: expected informational FAIL (`strict_pass: false`); default readiness (`overall_pass`) is unaffected, since strict results never change this script's own exit code.
