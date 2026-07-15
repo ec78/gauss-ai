@@ -1,0 +1,29 @@
+{
+  "checked": true,
+  "executed": false,
+  "execution_status": "blocked",
+  "operating_mode": "advisory",
+  "executable_path": null,
+  "gauss_version": null,
+  "working_directory": null,
+  "command": null,
+  "code_source": "unknown",
+  "script_path": null,
+  "timeout_seconds": null,
+  "elapsed_seconds": 0,
+  "exit_code": null,
+  "stdout": "",
+  "stderr": "",
+  "output_files": [],
+  "warnings": [
+    "Synthetic example output; no real GAUSS code was executed."
+  ],
+  "errors": [
+    "Execution was blocked because no usable GAUSS environment context was available (environment detection did not return a found environment)."
+  ],
+  "next_steps": [
+    "Run GAUSS environment detection (gauss_environment_check) and confirm a found result before requesting execution.",
+    "Provide executable_path directly if GAUSS is installed in a nonstandard location.",
+    "Continue in Advisory Mode; code generation, explanation, and review remain fully available."
+  ]
+}

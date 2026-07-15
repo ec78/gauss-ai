@@ -1,0 +1,37 @@
+{
+  "checked": true,
+  "executed": true,
+  "execution_status": "completed",
+  "operating_mode": "execution",
+  "executable_path": "C:/example/gauss26/tgauss.exe",
+  "gauss_version": "GAUSS 26",
+  "working_directory": "C:/example/work/project1",
+  "command": "tgauss.exe C:/example/work/project1/analysis.gss",
+  "code_source": "script_path",
+  "script_path": "C:/example/work/project1/analysis.gss",
+  "timeout_seconds": 30,
+  "elapsed_seconds": 2.4,
+  "exit_code": 0,
+  "stdout": "Synthetic stdout: analysis.gss completed. Coefficient estimates printed to console.",
+  "stderr": "",
+  "output_files": [
+    {
+      "path": "C:/example/work/project1/results.csv",
+      "size_bytes": 512,
+      "file_type": "text/csv",
+      "created_by_execution": true,
+      "notes": [
+        "Synthetic example output file; not a real generated file."
+      ]
+    }
+  ],
+  "warnings": [
+    "Execution completing successfully does not mean the underlying model or estimates are statistically valid.",
+    "Synthetic example output; no real GAUSS code was executed."
+  ],
+  "errors": [],
+  "next_steps": [
+    "Interpret the results separately using the relevant expert (for example, the Econometrics Expert for methodology and diagnostics).",
+    "Review methodology and diagnostics before treating any estimate as meaningful."
+  ]
+}

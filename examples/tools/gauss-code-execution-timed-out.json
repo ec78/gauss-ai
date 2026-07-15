@@ -1,0 +1,28 @@
+{
+  "checked": true,
+  "executed": true,
+  "execution_status": "timed_out",
+  "operating_mode": "execution",
+  "executable_path": "C:/example/gauss26/tgauss.exe",
+  "gauss_version": "GAUSS 26",
+  "working_directory": "C:/example/work/project3",
+  "command": "tgauss.exe C:/example/work/project3/long_loop.gss",
+  "code_source": "script_path",
+  "script_path": "C:/example/work/project3/long_loop.gss",
+  "timeout_seconds": 30,
+  "elapsed_seconds": 30.0,
+  "exit_code": null,
+  "stdout": "Synthetic partial stdout captured before the process was terminated.",
+  "stderr": "",
+  "output_files": [],
+  "warnings": [
+    "Execution exceeded the 30-second timeout and was forcibly terminated.",
+    "Synthetic example output; no real GAUSS code was executed."
+  ],
+  "errors": [],
+  "next_steps": [
+    "Review the script for unbounded loops or long-running operations.",
+    "Reduce the runtime of the executed code if possible.",
+    "Increase timeout_seconds only if a longer run is genuinely safe and expected."
+  ]
+}

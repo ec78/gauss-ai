@@ -27,7 +27,7 @@ State clearly:
 - **Implementation:** not yet implemented.
 - **Planned implementation file:** `scripts/gauss_code_execution.py`.
 - **Result schema:** created (`schemas/gauss_code_execution.schema.json`) — see "Planned Schema" below.
-- **Planned examples:** `examples/tools/gauss-code-execution-*.json`.
+- **Example outputs:** created (`examples/tools/gauss-code-execution-*.json`) — see "Examples" below.
 
 Execution Mode remains inactive until implementation and explicit orchestration policies exist. This spec does not authorize silent execution — it defines the contract a future implementation must satisfy, following the same specify-before-implement discipline already used for `gauss_environment_check` (`v0.20.0` spec / `v0.21.0` implementation) and `gauss_package_inspection` (`v0.22.0` spec / `v0.23.0` implementation).
 
@@ -309,20 +309,20 @@ The schema now exists and validates the full output contract defined above: `exe
 
 Implementation of the tool itself remains not yet done — the schema validates a future tool's output shape; it does not run any execution code.
 
-## Planned Examples
+## Examples
 
-Planned examples may include:
+**Example outputs now exist**, validated against `schemas/gauss_code_execution.schema.json`:
 
-- `completed`
-- `failed`
-- `timed_out`
-- `blocked_missing_environment`
-- `blocked_missing_working_directory`
-- `skipped_no_code`
-- `blocked_unsafe_path`
-- `package_missing_before_execution`
+- `examples/tools/gauss-code-execution-completed.json` — successful execution; `execution_candidate`-style signal via `operating_mode: execution`.
+- `examples/tools/gauss-code-execution-failed.json` — GAUSS invoked but returned a nonzero exit status.
+- `examples/tools/gauss-code-execution-timed-out.json` — GAUSS invoked but exceeded the timeout and was terminated.
+- `examples/tools/gauss-code-execution-blocked-missing-environment.json` — no usable GAUSS environment context; execution never proceeded.
+- `examples/tools/gauss-code-execution-blocked-missing-working-directory.json` — execution refused for lacking an explicit safe working directory.
+- `examples/tools/gauss-code-execution-skipped-no-code.json` — neither `code` nor `script_path` was supplied; execution was not requested.
+- `examples/tools/gauss-code-execution-blocked-unsafe-path.json` — `script_path` resolves outside the safe working directory via path traversal; refused.
+- `examples/tools/gauss-code-execution-package-missing-before-execution.json` — a package the script depends on was confirmed missing before execution; blocked by dependency policy rather than auto-installed.
 
-**This task does not create examples.**
+All eight are clearly synthetic (example-style paths such as `C:/example/gauss26/tgauss.exe` and `C:/example/work/project1`, explicit "Synthetic example output; no real GAUSS code was executed" warnings) and do not represent any real execution. **Implementation of the tool itself remains not yet done** — these examples illustrate a future tool's output shape only; no execution code exists, and Execution Mode remains inactive.
 
 ## Evaluation Plan
 

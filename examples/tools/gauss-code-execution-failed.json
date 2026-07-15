@@ -1,0 +1,29 @@
+{
+  "checked": true,
+  "executed": true,
+  "execution_status": "failed",
+  "operating_mode": "execution",
+  "executable_path": "C:/example/gauss26/tgauss.exe",
+  "gauss_version": "GAUSS 26",
+  "working_directory": "C:/example/work/project2",
+  "command": "tgauss.exe C:/example/work/project2/analysis.gss",
+  "code_source": "script_path",
+  "script_path": "C:/example/work/project2/analysis.gss",
+  "timeout_seconds": 30,
+  "elapsed_seconds": 0.8,
+  "exit_code": 1,
+  "stdout": "Synthetic partial stdout captured before the process failed.",
+  "stderr": "Synthetic error: undefined symbol 'foo' at line 12 of analysis.gss.",
+  "output_files": [],
+  "warnings": [
+    "Synthetic example output; no real GAUSS code was executed."
+  ],
+  "errors": [
+    "GAUSS process exited with nonzero status (1); execution failed."
+  ],
+  "next_steps": [
+    "Inspect stderr for the specific failure cause.",
+    "Verify command syntax against GAUSS Language Expert evidence before retrying.",
+    "Check whether a required package dependency is missing."
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "checked": true,
+  "executed": false,
+  "execution_status": "blocked",
+  "operating_mode": "advisory",
+  "executable_path": "C:/example/gauss26/tgauss.exe",
+  "gauss_version": "GAUSS 26",
+  "working_directory": "C:/example/work/project6",
+  "command": null,
+  "code_source": "script_path",
+  "script_path": "C:/example/work/project6/panel_model.gss",
+  "timeout_seconds": 30,
+  "elapsed_seconds": 0,
+  "exit_code": null,
+  "stdout": "",
+  "stderr": "",
+  "output_files": [],
+  "warnings": [
+    "Package inspection reported the requested package 'tsmt' as missing in the checked search paths.",
+    "Synthetic example output; no real GAUSS code was executed."
+  ],
+  "errors": [
+    "Execution was blocked because a package the script depends on ('tsmt') was confirmed missing before execution, per dependency policy."
+  ],
+  "next_steps": [
+    "Install or enable the missing package outside this helper; the helper does not install packages.",
+    "Choose an alternative approach that does not require the missing package.",
+    "Continue in Advisory Mode; code generation, explanation, and review remain fully available."
+  ]
+}

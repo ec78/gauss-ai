@@ -1,0 +1,27 @@
+{
+  "checked": true,
+  "executed": false,
+  "execution_status": "skipped",
+  "operating_mode": "advisory",
+  "executable_path": "C:/example/gauss26/tgauss.exe",
+  "gauss_version": "GAUSS 26",
+  "working_directory": "C:/example/work/project4",
+  "command": null,
+  "code_source": "none",
+  "script_path": null,
+  "timeout_seconds": null,
+  "elapsed_seconds": null,
+  "exit_code": null,
+  "stdout": "",
+  "stderr": "",
+  "output_files": [],
+  "warnings": [
+    "No code or script_path was supplied; execution was not attempted.",
+    "Synthetic example output; no real GAUSS code was executed."
+  ],
+  "errors": [],
+  "next_steps": [
+    "Provide exactly one of code or script_path to request explicit execution.",
+    "Continue in Advisory Mode; code generation, explanation, and review remain fully available."
+  ]
+}

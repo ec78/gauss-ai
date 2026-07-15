@@ -1,0 +1,29 @@
+{
+  "checked": true,
+  "executed": false,
+  "execution_status": "blocked",
+  "operating_mode": "advisory",
+  "executable_path": "C:/example/gauss26/tgauss.exe",
+  "gauss_version": "GAUSS 26",
+  "working_directory": "C:/example/work/project5",
+  "command": null,
+  "code_source": "script_path",
+  "script_path": "C:/example/work/project5/../../outside/script.gss",
+  "timeout_seconds": 30,
+  "elapsed_seconds": 0,
+  "exit_code": null,
+  "stdout": "",
+  "stderr": "",
+  "output_files": [],
+  "warnings": [
+    "Synthetic example output; no real GAUSS code was executed."
+  ],
+  "errors": [
+    "Execution was blocked because script_path resolves outside the safe working_directory via path traversal; this is not permitted."
+  ],
+  "next_steps": [
+    "Place the script file directly under the safe working_directory.",
+    "Provide a script_path that resolves inside working_directory without traversal.",
+    "Continue in Advisory Mode; code generation, explanation, and review remain fully available."
+  ]
+}
