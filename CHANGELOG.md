@@ -174,6 +174,7 @@ This file records notable changes to the GAUSS AI framework.
 - Added GAUSS code execution result schema.
 - Added GAUSS code execution synthetic example outputs.
 - Added GAUSS Code Execution Prototype benchmark prompts 28.1-28.8.
+- Evaluated GAUSS Code Execution Prototype benchmarks 28.1-28.8.
 
 ## [0.1.0] - 2026-06-26
 
