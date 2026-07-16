@@ -92,11 +92,52 @@ Before responding, check:
 - Dimensions, transposes, missing values, scope, and package loading are considered when relevant.
 - The answer does not claim execution unless code was actually run by an available tool.
 
-## 9. Step 7: Produce the Final Response
+## 9. Execution-Aware Responses
 
-The final response should be concise, actionable, and honest about uncertainty. It should give the user enough to move forward immediately without requiring them to repair invalid GAUSS syntax. State assumptions and dependencies when they matter, and match detail level to the user's experience.
+Use `workflows/execution-aware-analysis.md` when:
 
-## 10. Response Templates
+- The assistant receives a structured `gauss_code_execution` result object.
+- The user asks what an execution result means.
+- stdout/stderr/output_files/warnings/errors need interpretation.
+- The assistant needs to distinguish execution evidence from expert interpretation.
+
+State clearly:
+
+- Do not invoke execution automatically.
+- Do not claim execution occurred unless the execution result has `executed: true`.
+- Do not claim code ran when `execution_status` is `blocked`, `skipped`, `error`, or `unknown`.
+- Do not treat `completed` or `exit_code: 0` as proof of methodology validity.
+- Do not treat failure or timeout as proof that the model or method is invalid.
+- Do not treat output file metadata as file contents.
+- Do not ignore stderr, warnings, truncation messages, package warnings, or real-invocation limitations.
+- Do not describe real GAUSS execution as production-ready while non-interactive invocation remains unresolved — a real GAUSS 26 smoke test during `v0.25.0` implementation showed the naive `[executable_path, script_path]` command form entered the interactive GAUSS prompt and timed out rather than exiting non-interactively.
+
+When an execution result is present, apply this response pattern before composing Step 7's final response:
+
+1. Execution status summary.
+2. What was captured.
+3. What this does and does not prove.
+4. Expert-routed interpretation.
+5. Safe next steps.
+
+Route interpretation using the same six experts Step 2 identifies:
+
+- **GAUSS Language Expert** for syntax/runtime/debugging.
+- **Econometrics Expert** for methodology, assumptions, diagnostics, estimates.
+- **Software Engineering Expert** for timeouts, performance, maintainability.
+- **Documentation Expert** for clear output explanation.
+- **Education Expert** for teaching/explanation.
+- **Product Expert** for workflow/user-value implications.
+
+Execution results are evidence, not conclusions. They should be routed through the expert system before being interpreted — see `workflows/execution-aware-analysis.md` for the full status-by-status handling (`completed`, `failed`, `timed_out`, `blocked`, `skipped`, `error`, `unknown`), interpretation boundaries, and response templates.
+
+This step applies only when an execution result object is actually present; it does not change any other step for requests that do not involve execution. Advisory Mode remains fully available whenever no execution result exists, execution did not occur, or execution results cannot be trusted. This workflow does not itself run GAUSS code, activate Execution Mode, implement runtime orchestration, fabricate execution output, create automatic rerun/repair loops, or install packages/activate licenses — those boundaries belong to `scripts/gauss_code_execution.py` and `workflows/execution-aware-analysis.md`, not to this integration point.
+
+## 10. Step 7: Produce the Final Response
+
+The final response should be concise, actionable, and honest about uncertainty. It should give the user enough to move forward immediately without requiring them to repair invalid GAUSS syntax. State assumptions and dependencies when they matter, and match detail level to the user's experience. When an execution result was present, incorporate Step 9's execution-aware response pattern into the final answer rather than presenting it as a separate, disconnected block.
+
+## 11. Response Templates
 
 ### Code generation
 
@@ -138,7 +179,7 @@ The final response should be concise, actionable, and honest about uncertainty. 
 4. Common mistake.
 5. Next useful step.
 
-## 11. Escalation Rules
+## 12. Escalation Rules
 
 Escalate or combine modes only when it helps the user's main goal:
 
@@ -150,6 +191,6 @@ Escalate or combine modes only when it helps the user's main goal:
 
 Ask one focused clarifying question only when missing information materially changes the answer. Otherwise, state a safe assumption and proceed.
 
-## 12. Maintenance Notes
+## 13. Maintenance Notes
 
-Keep this workflow aligned with `agents/code-assistant/AGENT.md`, `prompts/code_assistant_system.md`, `agents/code-assistant/task_modes.md`, `tools/knowledge_search.md`, `workflows/retrieval-backed-response-pattern.md`, `workflows/expert-routing.md`, `experts/gauss-language/OPERATIONAL_PROFILE.md`, `experts/econometrics/OPERATIONAL_PROFILE.md`, `experts/software-engineering/OPERATIONAL_PROFILE.md`, `experts/documentation/OPERATIONAL_PROFILE.md`, `experts/education/OPERATIONAL_PROFILE.md`, and `experts/product/OPERATIONAL_PROFILE.md`. Update it when task modes, expert modules, retrieval behavior, source hierarchy, tool capabilities, or recurring benchmark failures change.
+Keep this workflow aligned with `agents/code-assistant/AGENT.md`, `prompts/code_assistant_system.md`, `agents/code-assistant/task_modes.md`, `tools/knowledge_search.md`, `workflows/retrieval-backed-response-pattern.md`, `workflows/expert-routing.md`, `workflows/execution-aware-analysis.md`, `experts/gauss-language/OPERATIONAL_PROFILE.md`, `experts/econometrics/OPERATIONAL_PROFILE.md`, `experts/software-engineering/OPERATIONAL_PROFILE.md`, `experts/documentation/OPERATIONAL_PROFILE.md`, `experts/education/OPERATIONAL_PROFILE.md`, and `experts/product/OPERATIONAL_PROFILE.md`. Update it when task modes, expert modules, retrieval behavior, source hierarchy, tool capabilities, or recurring benchmark failures change.
