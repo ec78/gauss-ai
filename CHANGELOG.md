@@ -182,6 +182,7 @@ This file records notable changes to the GAUSS AI framework.
 - Documented confirmed real-GAUSS invocation limitation: the naive `[executable_path, script_path]` command form entered the interactive GAUSS prompt and timed out rather than exiting non-interactively.
 - Updated project docs for v0.25.0 GAUSS Code Execution Implementation.
 - Added v0.25.0 readiness checklist.
+- Planned v0.26.0 Execution-Aware Analysis Workflow.
 
 ## [0.1.0] - 2026-06-26
 

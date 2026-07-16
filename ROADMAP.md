@@ -240,17 +240,33 @@ See `planning/v0.25.0-gauss-code-execution-implementation.md`.
 - Status: the planning doc and helper implementation (CLI, importable module, runner abstraction, schema-validation support, self-test suite) are complete and passing. `README.md`/`ROADMAP.md`/`KNOWN_LIMITATIONS.md` have been audited and updated to reference the implementation and the confirmed non-interactive-invocation limitation. Remaining before this milestone is ready to tag: the `v0.25.0` readiness checklist and final release/tag (handled externally).
 - Add no package installation, no license activation, no network access, no global configuration mutation, no runtime orchestration, and no Code Assistant workflow integration — this milestone implements code execution only, and does not claim real non-interactive invocation is confirmed safe.
 
+## v0.26.0: Execution-Aware Analysis Workflow (Planned)
+
+See `planning/v0.26.0-execution-aware-analysis-workflow.md`.
+
+- Plans the workflow layer for safely interpreting structured `gauss_code_execution` results — how the Code Assistant should read an execution-result object, distinguish captured output from interpretation, and route interpretation to the correct expert dimensions, the same way `workflows/expert-routing.md` sits on top of the six operationalized experts without being part of any single expert's own profile.
+- Defines assistant behavior for all seven `execution_status` values (`completed`, `failed`, `timed_out`, `blocked`, `skipped`, `error`, `unknown`): what the assistant may say, what it must not say, and the required next step for each.
+- Documents interpretation boundaries: an execution result can support claims about whether execution happened, its status, exit code, elapsed time, and captured output — it cannot prove methodology validity, statistical correctness, code maintainability, documentation quality, learner understanding, or product value.
+- Explicitly carries forward `v0.25.0`'s confirmed limitation: real non-interactive GAUSS invocation remains unresolved, fake-runner self-test success is not proof of real GAUSS invocation success, and execution-aware responses must not overstate real execution reliability while this remains open.
+- **This task only plans the workflow; no workflow file, Code Assistant workflow change, or benchmark prompts are created yet.** The Suggested Task Order proposes workflow file → Code Assistant workflow reference → `29.x` benchmarks → evaluation → project docs → readiness checklist → release, mirroring the same sequencing already used for the three prior tool-capability milestones.
+- Add no execution helper changes, no GAUSS invocation fixes, no runtime orchestration, no automatic execution, no report generation, and no benchmark prompts — this milestone is planning and boundary-setting only.
+
+## v0.27.0: Report Generation Workflow (Proposed)
+
+Not yet planned. As proposed in `planning/v0.19.0-gauss-tooling-strategy-and-execution-modes.md`'s "Proposed Milestone Breakdown."
+
+- Would define how execution-aware analysis output (once `v0.26.0` exists) can be assembled into a polished, user-facing report — requires its own planning task before implementation, the same way every prior tool/workflow milestone was planned before its own implementation.
+
 ## Future (TBD / Possible)
 
-Not yet planned or committed. Candidate directions after `v0.18.0`/`v0.19.0`/`v0.20.0`/`v0.21.0`/`v0.22.0`/`v0.23.0`/`v0.24.0`/`v0.25.0`:
+Not yet planned or committed. Candidate directions after `v0.18.0`/`v0.19.0`/`v0.20.0`/`v0.21.0`/`v0.22.0`/`v0.23.0`/`v0.24.0`/`v0.25.0`/`v0.26.0`:
 
-- `v0.26.0` - Execution-Aware Analysis Workflow, `v0.27.0` - Report Generation Workflow — as proposed in `planning/v0.19.0-gauss-tooling-strategy-and-execution-modes.md`'s "Proposed Milestone Breakdown" (renumbered to follow `v0.25.0`'s execution-implementation milestone), each requiring its own planning task before implementation, the same way `v0.19.0`-`v0.25.0` were planned before any of them.
-- The `v0.25.0` readiness checklist and pre-release audit — the remaining task before `v0.25.0` can be tagged, now that the code-execution helper itself is implemented.
+- The actual execution-aware analysis workflow implementation (`workflows/execution-aware-analysis.md`, `29.x` benchmark prompts and evaluations, `workflows/code-assistant-response.md` integration if scoped, project-doc updates, readiness checklist) — proposed as the likely next task after `v0.26.0`'s planning milestone, not yet started, per `planning/v0.26.0-execution-aware-analysis-workflow.md`'s Suggested Task Order.
 - Confirming a safe, non-interactive GAUSS invocation command form — the primary blocker before real GAUSS execution (as opposed to the fake-runner self-tests) can be trusted; not yet resolved, tracked in `planning/v0.25.0-gauss-code-execution-implementation.md`'s "Key Implementation Risk."
 - Expert-system automation/hygiene tooling — for example, a scripted stale-wording check in the spirit of `scripts/check_evaluation_tracking.py`, building on `workflows/expert-system-maintenance.md`'s manual Stale Wording Search Checklist.
 - Retrieval/evidence expansion — broader real command evidence coverage beyond the current seven-command pilot set (`olsmt`, `strindx`, `strsplit`, `dstatmt`, `qnewtonmt`, `pdsummary`, `minimize`).
 - Benchmark dashboard automation — regenerating `evaluations/EVALUATION_DASHBOARD.md` from live guard output instead of a manually maintained snapshot.
 - Strict-mode warning reduction — improving the evidence validator's path-warning heuristic so it stops flagging the reviewed `glm`/`olsmt` HDF5-URI false positives.
-- Runtime orchestration exploration — only if intentionally planned later; no runtime expert-routing engine or execution orchestration is currently planned or implied by any `v0.18.0`-`v0.25.0` work.
+- Runtime orchestration exploration — only if intentionally planned later; no runtime expert-routing engine or execution orchestration is currently planned or implied by any `v0.18.0`-`v0.26.0` work.
 
-None of these are committed milestones; this list exists so `v0.18.0`-`v0.25.0`'s planning work doesn't strand good follow-up ideas without a place to record them.
+None of these are committed milestones; this list exists so `v0.18.0`-`v0.26.0`'s planning work doesn't strand good follow-up ideas without a place to record them.
