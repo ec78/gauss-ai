@@ -183,6 +183,7 @@ This file records notable changes to the GAUSS AI framework.
 - Updated project docs for v0.25.0 GAUSS Code Execution Implementation.
 - Added v0.25.0 readiness checklist.
 - Planned v0.26.0 Execution-Aware Analysis Workflow.
+- Added execution-aware analysis workflow.
 
 ## [0.1.0] - 2026-06-26
 
