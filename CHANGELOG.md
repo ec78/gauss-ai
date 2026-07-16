@@ -178,7 +178,9 @@ This file records notable changes to the GAUSS AI framework.
 - Updated project docs for v0.24.0 GAUSS Code Execution Prototype progress and deferred implementation to v0.25.0.
 - Added v0.24.0 readiness checklist.
 - Planned v0.25.0 GAUSS Code Execution Implementation.
-- Implemented GAUSS code execution helper with controlled runner abstraction, safe working-directory validation, timeout handling, output capture, and fake-runner self-tests.
+- Implemented GAUSS code execution helper with controlled runner abstraction, safe working-directory validation, timeout handling, output capture, output-file metadata discovery, and fake-runner self-tests.
+- Documented confirmed real-GAUSS invocation limitation: the naive `[executable_path, script_path]` command form entered the interactive GAUSS prompt and timed out rather than exiting non-interactively.
+- Updated project docs for v0.25.0 GAUSS Code Execution Implementation.
 
 ## [0.1.0] - 2026-06-26
 
