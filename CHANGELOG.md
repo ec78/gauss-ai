@@ -177,6 +177,7 @@ This file records notable changes to the GAUSS AI framework.
 - Evaluated GAUSS Code Execution Prototype benchmarks 28.1-28.8.
 - Updated project docs for v0.24.0 GAUSS Code Execution Prototype progress and deferred implementation to v0.25.0.
 - Added v0.24.0 readiness checklist.
+- Planned v0.25.0 GAUSS Code Execution Implementation.
 
 ## [0.1.0] - 2026-06-26
 
