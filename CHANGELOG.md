@@ -185,6 +185,7 @@ This file records notable changes to the GAUSS AI framework.
 - Planned v0.26.0 Execution-Aware Analysis Workflow.
 - Added execution-aware analysis workflow.
 - Integrated execution-aware analysis guidance into the Code Assistant response workflow.
+- Added 29.x execution-aware analysis benchmark prompts and coverage rows.
 
 ## [0.1.0] - 2026-06-26
 

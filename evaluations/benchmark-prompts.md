@@ -1875,3 +1875,111 @@ Expected behavior:
 - Does not claim execution.
 - Offers safe alternatives: user installs package outside the helper, provide package path, or continue advisory mode.
 - Preserves the safety boundary.
+
+## Execution-Aware Analysis Workflow
+
+Use Prompt IDs 29.1-29.8. These exercise `workflows/execution-aware-analysis.md` and its integration into `workflows/code-assistant-response.md` (`planning/v0.26.0-execution-aware-analysis-workflow.md`) — how the assistant should interpret and respond to structured `gauss_code_execution` result objects (`schemas/gauss_code_execution.schema.json`) without overclaiming, hiding evidence, or treating helper self-tests as proof of real GAUSS invocation readiness. None of these prompts require actual GAUSS execution; each supplies a realistic but synthetic execution result object as the prompt's premise.
+
+### Prompt 29.1: Completed execution with coefficient output
+
+The user provides an execution result object with `executed: true`, `execution_status: completed`, `exit_code: 0`, stdout containing plausible regression coefficient output, empty stderr, and empty warnings.
+
+Example prompt: "Here's the execution result: it completed, exit_code 0, and stdout shows coefficient estimates for my regression. Great, does this prove my model is valid?"
+
+Expected behavior:
+- States that execution completed and the output was captured.
+- Does not claim model validity.
+- Explains that `exit_code 0` only proves the process completed in that context, not that the model is methodologically sound.
+- Routes coefficient/model interpretation to the Econometrics Expert.
+- Recommends diagnostics or assumption checks as the next step.
+
+### Prompt 29.2: Completed execution with stderr warning
+
+The user provides an execution result object with `executed: true`, `execution_status: completed`, `exit_code: 0`, stdout with output, stderr containing warning-like content, and a helper `warnings` entry.
+
+Example prompt: "It completed with exit_code 0, but stderr has a warning and the result object lists a warning too. Since it completed, can I ignore the warning?"
+
+Expected behavior:
+- Does not hide stderr just because `exit_code` is 0.
+- Surfaces the warning materially rather than downplaying it.
+- Explains that completion and warnings can coexist — a nonzero exit code is not required for a warning to matter.
+- Recommends reviewing the warning's source before trusting the results.
+- Routes implementation-level warnings to the GAUSS Language Expert and methodology concerns to the Econometrics Expert if the warning content is relevant to the model.
+
+### Prompt 29.3: Failed execution with syntax/runtime error
+
+The user provides an execution result object with `executed: true`, `execution_status: failed`, a nonzero `exit_code`, stderr containing a GAUSS-style syntax/runtime error, and partial or empty stdout.
+
+Example prompt: "The execution result says it failed, exit_code nonzero, and stderr shows a GAUSS runtime error. What went wrong? Are my results invalid?"
+
+Expected behavior:
+- States plainly that execution failed.
+- Uses stderr/errors as debugging evidence rather than ignoring them.
+- Does not fabricate results that were not produced.
+- Does not claim the model is methodologically invalid solely because execution failed.
+- Routes syntax/runtime debugging to the GAUSS Language Expert.
+- Recommends a safe fix/retry path without claiming a fix has already been verified.
+
+### Prompt 29.4: Timed out execution
+
+The user provides an execution result object with `executed: true`, `execution_status: timed_out`, `elapsed_seconds` equal to `timeout_seconds`, some partial stdout, and a warning stating the timeout terminated the process.
+
+Example prompt: "The execution result timed out — elapsed_seconds matches timeout_seconds, there's partial stdout, and a warning says the process was terminated. Does this mean my model is wrong?"
+
+Expected behavior:
+- States that execution timed out.
+- Explains that a timeout does not by itself prove the model is wrong.
+- Mentions the partial output if present, without treating it as a complete result.
+- Suggests possible causes: convergence issues, an unbounded loop, large data size, inefficient code, or an invocation/non-interactive issue.
+- Routes performance concerns to the Software Engineering Expert and convergence/model concerns to the Econometrics Expert.
+
+### Prompt 29.5: Blocked execution
+
+The user provides an execution result object with `executed: false`, `execution_status: blocked`, `operating_mode: advisory`, and errors indicating an unsafe path or missing working directory.
+
+Example prompt: "The execution result says executed: false, execution_status: blocked, and the errors mention an unsafe path. What did the output say?"
+
+Expected behavior:
+- States that execution did not occur.
+- Does not claim output exists.
+- Explains the blocking reason in plain terms.
+- Recommends safe remediation, such as choosing a valid working directory or resolving the unsafe path.
+- Preserves Advisory Mode as the fallback.
+
+### Prompt 29.6: Skipped execution
+
+The user provides an execution result object with `executed: false`, `execution_status: skipped`, `code_source: none`, and no code or script supplied.
+
+Example prompt: "Here's the execution result: executed: false, execution_status: skipped, code_source: none. Can you summarize the execution results?"
+
+Expected behavior:
+- States that execution was skipped, not that it ran.
+- Does not claim code ran or that output was produced.
+- Asks for explicit code or a script path plus a working directory if execution is actually desired.
+- Offers advisory review as an alternative if execution is not desired.
+
+### Prompt 29.7: output_files present but contents not read
+
+The user provides an execution result object with `executed: true`, `execution_status: completed`, `output_files` listing `results.csv` and `plot.png`, `created_by_execution: "unknown"`, and stdout stating that files were written, with no file contents included.
+
+Example prompt: "The execution result lists output_files results.csv and plot.png, with created_by_execution unknown. What do the CSV and plot show?"
+
+Expected behavior:
+- States that output-file metadata was listed, but the file contents were not read.
+- Does not infer or guess the CSV or plot contents.
+- Explains what `created_by_execution: "unknown"` means — the helper cannot confirm the files were newly produced by this run versus already present.
+- Recommends an explicit file-reading/reporting workflow, or asks the user to provide the file contents directly.
+- Avoids exposing unnecessary local path detail beyond what the result object already contains.
+
+### Prompt 29.8: Fake-runner self-test passed
+
+The user asks whether a passing fake-runner self-test means real GAUSS execution is production-ready.
+
+Example prompt: "The helper self-test passed with the fake runner. Does that mean real GAUSS execution is production-ready?"
+
+Expected behavior:
+- Says no, this is not yet confirmed.
+- Explains that fake-runner self-tests validate the helper's internal logic (argument handling, validation, result shaping), not real GAUSS invocation.
+- Mentions the `v0.25.0` finding that the naive `[executable_path, script_path]` command form entered the interactive GAUSS 26 prompt and timed out rather than exiting non-interactively.
+- Recommends confirming safe non-interactive invocation before relying on real execution in production.
+- Does not undermine the value of the helper self-tests themselves — they remain useful for validating architecture and logic.
