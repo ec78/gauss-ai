@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`gauss_code_execution` is a planned helper for controlled execution of explicitly provided GAUSS code or an explicitly specified GAUSS script file.
+`gauss_code_execution` is a controlled execution helper for explicitly provided GAUSS code or an explicitly specified GAUSS script file.
 
 It is intended to:
 
@@ -23,13 +23,24 @@ State clearly:
 
 ## Tool Status
 
-- **Status:** planned / specified.
-- **Implementation:** not yet implemented.
-- **Planned implementation file:** `scripts/gauss_code_execution.py`.
+- **Status:** specified and implemented as a controlled, safety-constrained helper.
+- **Implementation:** `scripts/gauss_code_execution.py` — usable from the command line (`python scripts/gauss_code_execution.py`) and importable for tests (`execute_gauss_code(...)`).
+- **Permission level:** explicit, bounded code execution — the highest-risk helper in this repository, per the Permission and Safety Model below.
+- **Runtime orchestration:** not implemented.
+- **Code Assistant workflow integration:** not implemented.
+- **Package installation:** not implemented.
+- **License activation:** not implemented.
+- **Metadata/dependency commands:** never run automatically.
+- **Automatic rerun/repair loops:** not implemented.
+- **Real GAUSS non-interactive invocation:** unconfirmed — see "Command Construction Status" below. Self-tests use an injectable fake runner and require no real GAUSS installation.
 - **Result schema:** created (`schemas/gauss_code_execution.schema.json`) — see "Planned Schema" below.
 - **Example outputs:** created (`examples/tools/gauss-code-execution-*.json`) — see "Examples" below.
 
-Execution Mode remains inactive until implementation and explicit orchestration policies exist. This spec does not authorize silent execution — it defines the contract a future implementation must satisfy, following the same specify-before-implement discipline already used for `gauss_environment_check` (`v0.20.0` spec / `v0.21.0` implementation) and `gauss_package_inspection` (`v0.22.0` spec / `v0.23.0` implementation).
+Execution Mode is only ever a real, momentary state — `operating_mode: execution` is set solely when the runner actually invoked a subprocess for that specific call, never as a standing mode the assistant enters. This spec does not authorize silent execution. Implementation follows the same specify-before-implement discipline already used for `gauss_environment_check` (`v0.20.0` spec / `v0.21.0` implementation) and `gauss_package_inspection` (`v0.22.0` spec / `v0.23.0` implementation) — `v0.24.0` specified this tool, `v0.25.0` implemented it.
+
+### Command Construction Status
+
+`scripts/gauss_code_execution.py`'s default command builder constructs `[executable_path, script_path]` and documents this as a best-effort assumption, not a confirmed invocation form (see the module's `_default_command_builder`). Manual verification against this development machine's real GAUSS 26 installation during implementation confirmed this naive form does **not** run non-interactively: GAUSS launched, printed its startup banner and the script's `print` output, then dropped into an interactive `(gauss)` prompt awaiting further input rather than exiting — the process only terminated because the helper's timeout killed it. Real non-interactive invocation therefore remains unresolved and is tracked as an explicit open question (see `planning/v0.25.0-gauss-code-execution-implementation.md`'s "Key Implementation Risk"), not a resolved implementation detail. Command construction is isolated behind an injectable `command_builder` specifically so this can be revised without touching the rest of the helper once a safe non-interactive form is confirmed.
 
 ## Relationship to Environment Detection
 
@@ -39,7 +50,7 @@ Execution Mode remains inactive until implementation and explicit orchestration 
 - If the user provides an explicit executable path, that path controls.
 - The tool must not silently switch GAUSS versions.
 - The tool must not execute when environment detection is `not_found`, `ambiguous`, `inaccessible`, or `error`.
-- If version is unknown but the executable is accessible (`detection_status: found`, `version_known: false`), execution may only proceed if prototype policy explicitly permits it — this remains an open decision, not resolved by this spec (see `planning/v0.24.0-gauss-code-execution-prototype.md`'s "Risks and Open Questions").
+- If version is unknown but the executable is accessible (`detection_status: found`, `version_known: false`), the implementation proceeds conservatively: it does not block, but it adds an explicit warning that command construction cannot verify version-specific invocation behavior. This was the policy `v0.25.0` chose among the options `planning/v0.24.0-gauss-code-execution-prototype.md`'s "Risks and Open Questions" left open.
 
 ## Relationship to Package Inspection
 
@@ -301,13 +312,24 @@ This extends the same independence principles `experts/EXPERT_BOUNDARY_MATRIX.md
 - Structured errors.
 - No automatic rerun loops.
 
+## Command-Line Interface and Testing
+
+`scripts/gauss_code_execution.py` exposes:
+
+- `--environment-result`, `--package-inspection-result`, `--executable-path`, `--gauss-version`, `--code`, `--script-path`, `--working-directory`, `--input-file` (repeatable), `--output-directory`, `--timeout-seconds`, `--allow-file-write`, `--allow-output-files`, `--allow-network`, `--strict` — map directly to the Inputs above. `--environment-result`/`--package-inspection-result` accept JSON file paths containing prior `gauss_environment_check`/`gauss_package_inspection` results.
+- `--json` — print the full structured JSON result (default output is a short human-readable summary).
+- `--validate-schema` — validate the result against `schemas/gauss_code_execution.schema.json` when `jsonschema` is available; fails with a nonzero exit code only on a genuine schema mismatch, not when the optional dependency is simply unavailable (a warning is added to the result instead).
+- `--self-test` — runs a built-in test suite (`_run_self_tests`) covering environment-missing/ambiguous blocking, code/script exclusivity, missing-working-directory blocking, successful/failed/timed-out execution via an injected fake runner, stdout/stderr capture and truncation, output-file discovery scoped to the working directory, path-traversal rejection, `--allow-network` rejection, package-missing blocking without auto-install, and schema validation of representative outputs. Every case uses an injected fake runner (and, where filesystem behavior matters, a real disposable `tempfile.TemporaryDirectory()`); none depend on a real GAUSS installation or spawn a real subprocess.
+
+`execute_gauss_code(...)` is also directly importable, and accepts `runner`/`command_builder`/`env_detect_fn`/`path_exists_fn`/`is_dir_fn`/`accessibility_fn`/`list_files_fn`/`monotonic_fn` injection points for testing without touching a real filesystem, calling real environment detection, or invoking a real subprocess. The default runner (used whenever `runner` is not supplied) is a real `subprocess.run`-based runner with `cwd=working_directory`, a timeout, no `shell=True`, and no detached/background process — calling the CLI or `execute_gauss_code(...)` without an injected `runner` and with a `found` environment context **will** attempt real GAUSS invocation.
+
 ## Planned Schema
 
 **Schema file:** `schemas/gauss_code_execution.schema.json`
 
 The schema now exists and validates the full output contract defined above: `execution_status`, `operating_mode`, and `code_source` are controlled enums; `output_files` is an array of output-file objects (`path`, `size_bytes`, `file_type`, `created_by_execution` as a tri-state `true`/`false`/`"unknown"`, `notes`); `warnings`, `errors`, and `next_steps` are string arrays; `raw_execution_details` is optional with `additionalProperties: true`; `checked` and the other eighteen top-level fields are required. The schema also encodes cross-field consistency constraints via `allOf`/`if`/`then` blocks: `executed: false` restricts `execution_status` away from `completed` and restricts `operating_mode` to `advisory`/`verified_knowledge`; `executed: true` requires `operating_mode: execution`; `execution_status: completed` requires `executed: true`; `execution_status: timed_out` requires `executed: true` plus at least one warning or error; `execution_status: blocked` requires `executed: false` and `operating_mode: advisory`; `execution_status: error` requires at least one error; `code_source: inline` requires a null `script_path`; `code_source: script_path` requires a string `script_path`; and `code_source: none` requires `executed: false` and a null `script_path`.
 
-Implementation of the tool itself remains not yet done — the schema validates a future tool's output shape; it does not run any execution code.
+The implementation, `scripts/gauss_code_execution.py`, populates this output shape directly; every branch of `execute_gauss_code(...)` is exercised against the schema by `--self-test`'s representative-output checks.
 
 ## Examples
 
@@ -322,7 +344,7 @@ Implementation of the tool itself remains not yet done — the schema validates 
 - `examples/tools/gauss-code-execution-blocked-unsafe-path.json` — `script_path` resolves outside the safe working directory via path traversal; refused.
 - `examples/tools/gauss-code-execution-package-missing-before-execution.json` — a package the script depends on was confirmed missing before execution; blocked by dependency policy rather than auto-installed.
 
-All eight are clearly synthetic (example-style paths such as `C:/example/gauss26/tgauss.exe` and `C:/example/work/project1`, explicit "Synthetic example output; no real GAUSS code was executed" warnings) and do not represent any real execution. **Implementation of the tool itself remains not yet done** — these examples illustrate a future tool's output shape only; no execution code exists, and Execution Mode remains inactive.
+All eight are clearly synthetic (example-style paths such as `C:/example/gauss26/tgauss.exe` and `C:/example/work/project1`, explicit "Synthetic example output; no real GAUSS code was executed" warnings) and do not represent any real execution. The implementation now exists (`scripts/gauss_code_execution.py`), but these examples remain hand-authored illustrations, not implementation output — some fields (for example, the exact command form) may differ from what the real implementation currently produces, since real non-interactive GAUSS invocation remains unconfirmed (see "Command Construction Status" above).
 
 ## Evaluation Plan
 
@@ -343,14 +365,16 @@ Future `28.x` benchmarks should validate response behavior before implementation
 
 ## Relationship to Future Execution Workflow
 
-- This tool spec is not runtime orchestration.
+- This tool spec is not runtime orchestration, and the implementation does not add any.
 - Code Assistant workflow integration is future work.
-- Execution-aware analysis workflow is future `v0.25.0` work.
-- Report generation from execution output is future `v0.26.0` work.
-- The execution helper should produce structured results that later workflows can consume, the same way `gauss_environment_check` and `gauss_package_inspection` already produce structured results without themselves implementing any workflow.
+- Execution-aware analysis workflow is future `v0.26.0` work (renumbered after `v0.25.0` became the code-execution implementation milestone).
+- Report generation from execution output is future `v0.27.0` work.
+- The execution helper produces structured results that later workflows can consume, the same way `gauss_environment_check` and `gauss_package_inspection` already produce structured results without themselves implementing any workflow.
 
 ## Related Files
 
+- `scripts/gauss_code_execution.py`
+- `planning/v0.25.0-gauss-code-execution-implementation.md`
 - `planning/v0.24.0-gauss-code-execution-prototype.md`
 - `tools/gauss_environment_check.md`
 - `tools/gauss_package_inspection.md`
@@ -359,7 +383,6 @@ Future `28.x` benchmarks should validate response behavior before implementation
 - `schemas/gauss_environment_check.schema.json`
 - `schemas/gauss_package_inspection.schema.json`
 - `schemas/gauss_code_execution.schema.json`
-- Future `scripts/gauss_code_execution.py`
 - `TOOL_SPEC.md`
 - `tools/operational_expert_interface.md`
 - `workflows/code-assistant-response.md`
@@ -369,10 +392,10 @@ Future `28.x` benchmarks should validate response behavior before implementation
 
 ## Maintenance Notes
 
-- Keep execution safety boundaries stricter than advisory tools — this is the highest-risk tool this repository has specified so far, and any relaxation must be a deliberate, documented decision, not an incidental one.
-- Update this spec before implementation if execution policy changes.
+- Keep execution safety boundaries stricter than advisory tools — this is the highest-risk tool this repository has implemented so far, and any relaxation must be a deliberate, documented decision, not an incidental one.
+- Update this spec if execution policy changes.
 - Keep schema/result wording distinct from interpretation claims — an `execution_status` field must never be phrased in a way that could be read as a correctness or validity claim.
-- Re-run response-behavior benchmarks after workflow integration, not just after implementation.
+- Re-run response-behavior benchmarks after workflow integration.
 - Do not add automatic retries/reruns without a separate design milestone.
-- Revisit platform-specific GAUSS invocation behavior (Windows/macOS/Linux differences in process invocation, termination, and timeout enforcement) before implementation.
-- Do not claim execution, schema validation, examples, or benchmarks are implemented until each actually exists.
+- Real, confirmed non-interactive GAUSS invocation remains unresolved (see "Command Construction Status" above) — revisit `_default_command_builder` once a safe command form is confirmed, and update this note and `planning/v0.25.0-gauss-code-execution-implementation.md`'s "Key Implementation Risk" together when that happens.
+- Do not claim runtime orchestration, Code Assistant workflow integration, package installation, license activation, or confirmed real non-interactive invocation exist until each actually does.
