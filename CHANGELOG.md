@@ -188,6 +188,7 @@ This file records notable changes to the GAUSS AI framework.
 - Added 29.x execution-aware analysis benchmark prompts and coverage rows.
 - Evaluated 29.x execution-aware analysis benchmarks; 8/8 passed at 4.0.
 - Updated project docs for v0.26.0 Execution-Aware Analysis Workflow progress.
+- Added v0.26.0 readiness checklist.
 
 ## [0.1.0] - 2026-06-26
 
