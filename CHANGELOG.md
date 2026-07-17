@@ -199,6 +199,9 @@ This file records notable changes to the GAUSS AI framework.
 - Planned v0.28.0 Real GAUSS Invocation Research.
 - Researched candidate GAUSS non-interactive invocation forms.
 - Verified candidate GAUSS batch invocation form through controlled smoke tests.
+- Integrated verified GAUSS batch invocation form into execution helper.
+- Added conservative GAUSS error-output detection for status mapping.
+- Verified helper-level GAUSS smoke tests for completed and failed execution cases on observed Windows GAUSS 26 installation.
 
 ## [0.1.0] - 2026-06-26
 

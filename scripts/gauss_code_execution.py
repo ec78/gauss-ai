@@ -11,16 +11,27 @@ a timeout for every attempt. It never installs packages, never activates
 licenses, never accesses the network, never mutates global GAUSS configuration,
 and never writes outside `working_directory`.
 
-The one deliberately unresolved risk this module does not paper over is real
-GAUSS non-interactive invocation: the exact command-line form to run a `.gss`
-script non-interactively may be platform/version dependent and is not confirmed
-here (see `_default_command_builder`'s warning). To keep this risk isolated,
-actual process invocation goes through an injectable *runner* abstraction
-(`runner=`) and command construction goes through an injectable *command
-builder* (`command_builder=`), so `--self-test` can exercise every branch of
-this module's logic with a fake runner and never depend on a real GAUSS
-installation. See planning/v0.25.0-gauss-code-execution-implementation.md's
-"Runner Abstraction" and "Command Construction" sections.
+The real GAUSS non-interactive invocation risk this module previously left
+entirely unresolved is now partially resolved: v0.28.0 verified through six
+controlled smoke tests that `[executable_path, "-b", script_path]` reliably
+exits non-interactively against the real local GAUSS 26.1.1 installation on
+Windows (see planning/v0.28.0-real-gauss-invocation-research.md's
+"Smoke-Test Log" and "Verification Matrix"). This verification is scoped to
+that one platform/version combination -- cross-platform and cross-version
+behavior remain unconfirmed. A critical caveat was also found: GAUSS
+returned exit_code 0 even for a script with a syntax error, so exit_code
+alone is not sufficient to detect execution failure (see
+`_detect_gauss_error`). GUI executables (for example, `gauss.exe`) are
+conservatively refused by the default command builder, since only the
+terminal executable's batch-mode flag is documented/verified. To keep the
+remaining unverified risk (other platforms, other versions, other error
+shapes) isolated, actual process invocation still goes through an
+injectable *runner* abstraction (`runner=`) and command construction still
+goes through an injectable *command builder* (`command_builder=`), so
+`--self-test` can exercise every branch of this module's logic with a fake
+runner and never depend on a real GAUSS installation. See
+planning/v0.25.0-gauss-code-execution-implementation.md's "Runner
+Abstraction" and "Command Construction" sections.
 
 Package inspection context (`package_inspection_result`) is advisory: a
 non-empty `missing_packages` blocks execution with a clear error (this helper
@@ -37,6 +48,7 @@ import argparse
 import json
 import mimetypes
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -436,21 +448,91 @@ def _prepare_code(
     return tmp_path, []
 
 
-def _default_command_builder(*, executable_path: str, script_path: str) -> tuple[list[str], list[str]]:
-    """Conservative, documented-best-effort command construction.
+_TERMINAL_EXECUTABLE_BASENAMES = {"tgauss", "tgauss.exe"}
 
-    No safe, confirmed non-interactive GAUSS invocation syntax is documented in
-    this repository yet -- see this module's docstring and
-    planning/v0.25.0-gauss-code-execution-implementation.md's "Command
-    Construction" section. This is the single, clearly-labeled extension point
-    a future implementation would revise once a confirmed form is known.
+_GAUSS_GENERIC_FAILURE_TEXT = "program execute failed"
+_GAUSS_ERROR_CODE_RE = re.compile(r"error\s+g\d{4}", re.IGNORECASE)
+
+
+def _detect_gauss_error(stdout: str | None, stderr: str | None) -> bool:
+    """Conservative, evidence-based GAUSS failure detection.
+
+    GAUSS returned exit_code 0 for a script with a syntax error during
+    v0.28.0 real-invocation smoke testing (see
+    planning/v0.28.0-real-gauss-invocation-research.md's "Smoke-Test Log",
+    Test 4), so exit_code alone cannot be trusted to detect execution
+    failure. This heuristic looks only for the two failure signals actually
+    observed during that testing:
+
+    - stdout containing "Program execute failed" (observed verbatim in
+      Test 4).
+    - stderr containing a GAUSS error-code marker matching "error G####"
+      (observed as "error G0105" in Test 4 and "error G0014" in Test 6).
+
+    This is intentionally narrow and may miss other GAUSS failure modes not
+    yet observed -- for example, a runtime error (as opposed to a syntax
+    error) was never separately smoke-tested. It must not be extended with
+    unconfirmed generic terms (such as a bare "error" or "Line") without new
+    observed evidence, since broad substring matches risk false positives on
+    legitimate output (for example, output that happens to contain the word
+    "error" as data, not as a GAUSS diagnostic).
     """
-    warnings = [
-        "GAUSS non-interactive invocation syntax is a best-effort assumption ([executable_path, "
-        "script_path]) and may be platform/version dependent; verify against the actual GAUSS "
-        "installation before relying on this in production."
+    stdout_text = stdout or ""
+    stderr_text = stderr or ""
+    if _GAUSS_GENERIC_FAILURE_TEXT in stdout_text.lower():
+        return True
+    if _GAUSS_ERROR_CODE_RE.search(stderr_text):
+        return True
+    return False
+
+
+def _default_command_builder(*, executable_path: str, script_path: str) -> tuple[list[str], list[str]]:
+    """Command construction using the batch-mode form verified during v0.28.0.
+
+    v0.28.0 (see planning/v0.28.0-real-gauss-invocation-research.md's
+    "Smoke-Test Log" and "Verification Matrix") ran six controlled smoke
+    tests against the real local GAUSS 26.1.1 installation on Windows and
+    confirmed that `[executable_path, "-b", script_path]` -- adding the
+    documented `-b` ("execute in batch mode and exit") flag found in
+    `C:\\gauss26\\README.txt` -- reliably exits non-interactively, unlike the
+    naive `[executable_path, script_path]` form that entered an interactive
+    prompt during v0.25.0 implementation.
+
+    This verification is scoped narrowly: only Windows and GAUSS 26.1.1 were
+    tested. Cross-platform (macOS/Linux) and cross-version (GAUSS 24/25)
+    behavior remain unconfirmed. `-o` (banner suppression) and `-e` (inline
+    expression) were also smoke-tested but are deliberately not used here:
+    `-o` did not visibly suppress the banner as documented, and `-e`'s
+    argument-passing syntax was inconclusive. `-l` (named log file) was
+    confirmed to write job-metadata only, not a stdout/stderr duplicate, so
+    it is not used here either -- this helper already captures stdout/stderr
+    directly via the runner, and a metadata-only log file would add no
+    information this result object doesn't already have.
+
+    GUI executables (for example, `gauss.exe`) are conservatively refused:
+    local documentation only describes batch-mode flags for the terminal
+    executable (`tgauss`/`tgauss.exe`), and no evidence supports
+    non-interactive GUI-executable invocation. An empty command list is
+    returned in that case; the caller treats an empty command list as a
+    block rather than attempting to invoke the GUI executable.
+    """
+    basename = Path(executable_path).name.lower()
+    if basename in _TERMINAL_EXECUTABLE_BASENAMES:
+        warnings = [
+            "GAUSS batch-mode invocation ([executable_path, '-b', script_path]) was verified through "
+            "controlled smoke testing during v0.28.0, but only on Windows against GAUSS 26.1.1; "
+            "cross-platform and cross-version behavior remain unverified. GAUSS returned exit_code 0 even "
+            "for a script with a syntax error during that testing, so exit_code alone is not used to "
+            "detect failure -- see _detect_gauss_error."
+        ]
+        return [executable_path, "-b", script_path], warnings
+    return [], [
+        f"Refusing to construct a default non-interactive command for '{executable_path}': only the GAUSS "
+        "terminal executable (tgauss/tgauss.exe) has a verified, documented batch-mode flag (-b). GUI "
+        "executables (for example, gauss.exe) are not known to support non-interactive batch execution and "
+        "are not attempted by default. Provide a terminal executable path, or supply a custom "
+        "command_builder if non-default invocation is genuinely needed."
     ]
-    return [executable_path, script_path], warnings
 
 
 def _make_default_runner(monotonic_fn: Callable[[], float]) -> Callable[[list[str], str, float], dict[str, Any]]:
@@ -853,6 +935,37 @@ def execute_gauss_code(
 
     command_list, command_warnings = command_builder(executable_path=exec_path, script_path=script_to_run)
     warnings = warnings + command_warnings
+
+    if not command_list:
+        return _build_result(
+            checked=True,
+            executed=False,
+            execution_status="blocked",
+            operating_mode="advisory",
+            executable_path=exec_path,
+            gauss_version=gauss_ver,
+            working_directory=validation["working_directory"],
+            command=None,
+            code_source=validation["code_source"],
+            script_path=validation["script_path_out"],
+            timeout_seconds=validation["timeout_seconds"],
+            elapsed_seconds=None,
+            exit_code=None,
+            stdout=None,
+            stderr=None,
+            output_files=[],
+            warnings=warnings,
+            errors=[
+                "Execution was blocked because a safe, non-interactive command form could not be "
+                "constructed for this executable (see warnings for details)."
+            ],
+            next_steps=[
+                "Provide a terminal GAUSS executable path (for example, tgauss.exe) rather than a GUI "
+                "executable.",
+                "Continue in Advisory Mode; code generation, explanation, and review remain fully available.",
+            ],
+        )
+
     command_str = " ".join(command_list)
 
     try:
@@ -924,6 +1037,20 @@ def execute_gauss_code(
             "Review the script for unbounded loops or long-running operations.",
             "Reduce the runtime of the executed code if possible.",
             "Increase timeout_seconds only if a longer run is genuinely safe and expected.",
+        ]
+    elif _detect_gauss_error(stdout_text, stderr_text):
+        status = "failed"
+        errors = [f"GAUSS reported an error in stdout/stderr; execution failed (exit_code={exit_code})."]
+        if exit_code == 0:
+            warnings.append(
+                "GAUSS returned exit_code 0 despite an error detected in stdout/stderr; exit code alone is "
+                "not a reliable success signal for GAUSS execution (confirmed during v0.28.0 real-invocation "
+                "smoke testing, where a syntax-error script also returned exit_code 0)."
+            )
+        next_steps = [
+            "Inspect stdout/stderr for the specific failure cause.",
+            "Verify command syntax against GAUSS Language Expert evidence before retrying.",
+            "Check whether a required package dependency is missing.",
         ]
     elif exit_code == 0:
         status = "completed"
@@ -1211,6 +1338,138 @@ def _run_self_tests() -> int:
         check(
             "unknown package warns but does not block",
             result["execution_status"] == "completed" and any("unknown" in w.lower() for w in result["warnings"]),
+        )
+
+        # v0.28.0: default command builder now uses the batch-mode form verified via smoke testing.
+        command_list, _ = _default_command_builder(
+            executable_path="/example/gauss26/tgauss", script_path="/example/work/hello.gss"
+        )
+        check(
+            "default command builder uses -b for terminal executable",
+            command_list == ["/example/gauss26/tgauss", "-b", "/example/work/hello.gss"],
+        )
+
+        command_list, _ = _default_command_builder(
+            executable_path="C:\\gauss26\\tgauss.exe", script_path="C:\\work\\hello.gss"
+        )
+        check(
+            "default command builder uses -b for tgauss.exe (Windows)",
+            command_list == ["C:\\gauss26\\tgauss.exe", "-b", "C:\\work\\hello.gss"],
+        )
+
+        gui_command_list, gui_warnings = _default_command_builder(
+            executable_path="/example/gauss26/gauss.exe", script_path="/example/work/hello.gss"
+        )
+        check("GUI executable command builder returns empty command", gui_command_list == [])
+        check("GUI executable command builder explains refusal", len(gui_warnings) >= 1)
+
+        gui_env = {
+            "detection_status": "found",
+            "executable_path": "/example/gauss26/gauss.exe",
+            "version": "GAUSS 26",
+        }
+        result = execute_gauss_code(
+            environment_check_result=gui_env,
+            code='print "hello";',
+            working_directory=tmp_dir,
+            runner=fake_runner_factory(exit_code=0, stdout="hello"),
+        )
+        check(
+            "GUI executable blocks execution via execute_gauss_code",
+            result["execution_status"] == "blocked" and result["executed"] is False,
+        )
+        check("GUI executable block has an error message", len(result["errors"]) >= 1)
+
+        # exit_code 0 with GAUSS error text -> failed (the v0.28.0 exit-code caveat, based on the
+        # actual Test 4 syntax-error smoke-test output recorded in
+        # planning/v0.28.0-real-gauss-invocation-research.md).
+        result = execute_gauss_code(
+            environment_check_result=found_env,
+            code="x = ;",
+            working_directory=tmp_dir,
+            runner=fake_runner_factory(
+                exit_code=0,
+                stdout="Program execute failed",
+                stderr="error G0105 : Bad expression or missing arguments",
+            ),
+        )
+        check("exit_code 0 with GAUSS error text -> failed", result["execution_status"] == "failed")
+        check(
+            "exit_code 0 despite detected error has explanatory warning",
+            any("exit_code 0" in w for w in result["warnings"]),
+        )
+
+        # exit_code 0 with only banner/job-header stderr (no error indicators) -> still completed.
+        result = execute_gauss_code(
+            environment_check_result=found_env,
+            code='print "hello";',
+            working_directory=tmp_dir,
+            runner=fake_runner_factory(
+                exit_code=0,
+                stdout="hello",
+                stderr="GAUSS 26.1.1 (Apr 14 2026, 5516) 64-bit\nJob: hello.gss ( /example/work )",
+            ),
+        )
+        check("exit_code 0 with banner-only stderr -> completed", result["execution_status"] == "completed")
+
+        # nonzero exit still maps to failed even without detected GAUSS error text.
+        result = execute_gauss_code(
+            environment_check_result=found_env,
+            code="print 1;",
+            working_directory=tmp_dir,
+            runner=fake_runner_factory(exit_code=2, stdout="", stderr="unrelated stderr text"),
+        )
+        check("nonzero exit without error text still maps to failed", result["execution_status"] == "failed")
+
+        # Inline code should still route through the generated .gss file, now invoked with -b.
+        captured_commands: list[list[str]] = []
+
+        def _recording_runner(command: list[str], working_directory: str, timeout_seconds: float) -> dict[str, Any]:
+            del working_directory, timeout_seconds
+            captured_commands.append(command)
+            return {
+                "executed": True,
+                "timed_out": False,
+                "exit_code": 0,
+                "stdout": "hello",
+                "stderr": "",
+                "elapsed_seconds": 0.05,
+                "raw_details": {},
+            }
+
+        result = execute_gauss_code(
+            environment_check_result=found_env,
+            code='print "hello";',
+            working_directory=tmp_dir,
+            runner=_recording_runner,
+        )
+        check("inline code execution completes", result["execution_status"] == "completed")
+        check("inline code script_path stays null per schema", result["script_path"] is None)
+        check(
+            "inline code generated script uses -b",
+            len(captured_commands) == 1
+            and captured_commands[0][1] == "-b"
+            and captured_commands[0][2].endswith(".gss"),
+        )
+
+        # command_builder injection still overrides default behavior entirely.
+        def _custom_command_builder(*, executable_path: str, script_path: str) -> tuple[list[str], list[str]]:
+            return [executable_path, "--custom-flag", script_path], ["custom command builder used"]
+
+        result = execute_gauss_code(
+            environment_check_result=found_env,
+            code="print 1;",
+            working_directory=tmp_dir,
+            runner=fake_runner_factory(exit_code=0, stdout="1"),
+            command_builder=_custom_command_builder,
+        )
+        check(
+            "command_builder injection overrides default",
+            result["command"] is not None and "--custom-flag" in result["command"],
+        )
+        check(
+            "command_builder injection warning surfaced",
+            any("custom command builder" in w for w in result["warnings"]),
         )
 
         schema_path = default_schema_path()
