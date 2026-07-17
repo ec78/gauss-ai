@@ -133,11 +133,74 @@ Execution results are evidence, not conclusions. They should be routed through t
 
 This step applies only when an execution result object is actually present; it does not change any other step for requests that do not involve execution. Advisory Mode remains fully available whenever no execution result exists, execution did not occur, or execution results cannot be trusted. This workflow does not itself run GAUSS code, activate Execution Mode, implement runtime orchestration, fabricate execution output, create automatic rerun/repair loops, or install packages/activate licenses — those boundaries belong to `scripts/gauss_code_execution.py` and `workflows/execution-aware-analysis.md`, not to this integration point.
 
-## 10. Step 7: Produce the Final Response
+## 10. Report-Generation Responses
 
-The final response should be concise, actionable, and honest about uncertainty. It should give the user enough to move forward immediately without requiring them to repair invalid GAUSS syntax. State assumptions and dependencies when they matter, and match detail level to the user's experience. When an execution result was present, incorporate Step 9's execution-aware response pattern into the final answer rather than presenting it as a separate, disconnected block.
+Use `workflows/report-generation.md` when:
 
-## 11. Response Templates
+- The user asks for a report, summary, write-up, technical note, diagnostic report, teaching explanation, or product/user workflow summary.
+- The response needs to turn GAUSS code, execution evidence, stdout/stderr, output metadata, user-provided tables/files, or expert interpretation into a structured report.
+- The assistant needs to distinguish evidence from assumptions and interpretation.
+- The assistant needs to produce a report while preserving limitations and caveats.
+
+State clearly:
+
+- Do not invoke execution automatically.
+- Do not read output files automatically.
+- Do not claim output file contents were reviewed unless they were explicitly provided or read.
+- Do not infer CSV, plot, table, image, or dataset contents from `output_files` metadata.
+- Do not fabricate missing results, coefficients, diagnostics, tables, plots, or dataset descriptions.
+- Do not treat `completed` or `exit_code: 0` as proof of methodology validity.
+- Do not turn weak evidence into strong report conclusions.
+- Do not hide material warnings, errors, truncation notices, or real-invocation limitations.
+- Do not describe real GAUSS execution as production-ready while non-interactive invocation remains unresolved — the same confirmed `v0.25.0` GAUSS 26 finding named in Step 9 applies here too.
+- Do not create final publication-ready conclusions without expert review.
+
+When a report is requested, apply this response pattern before composing Step 11's final response:
+
+1. Identify report type and audience.
+2. Inventory evidence.
+3. Apply execution-aware analysis (Step 9) if an execution result exists.
+4. Route technical/statistical/product claims through experts.
+5. Draft report with limitations.
+6. Add safe next steps.
+7. Avoid unsupported claims.
+
+Report types and their primary experts (see `workflows/report-generation.md` for full skeletons):
+
+- **Technical Analysis Summary** — GAUSS Language Expert, Documentation Expert, Econometrics Expert as needed.
+- **Econometric Interpretation Note** — Econometrics Expert, Documentation Expert.
+- **Debugging Report** — GAUSS Language Expert, Software Engineering Expert, Documentation Expert.
+- **Teaching Explanation** — Education Expert, Econometrics Expert or GAUSS Language Expert as needed, Documentation Expert.
+- **Product/User Workflow Summary** — Product Expert, Documentation Expert, Software Engineering Expert as needed.
+
+Apply the evidence hierarchy from `workflows/report-generation.md`:
+
+1. Explicitly read user-provided material.
+2. Structured execution result fields.
+3. Captured stdout/stderr.
+4. Output file metadata, not contents.
+5. Expert interpretation.
+6. General domain knowledge.
+7. Clearly labeled assumptions.
+
+Route claims using the same six experts Step 2 identifies:
+
+- **GAUSS Language Expert** for code behavior, syntax/runtime interpretation, command usage, implementation details, debugging.
+- **Econometrics Expert** for model interpretation, assumptions, diagnostics, coefficient meaning, statistical limitations.
+- **Software Engineering Expert** for maintainability, performance, timeout/root-cause analysis, reproducibility, safe rerun plans.
+- **Documentation Expert** for report structure, clarity, audience framing, caveats, final organization.
+- **Education Expert** for learner-friendly explanation and misconception handling.
+- **Product Expert** for workflow impact, prioritization, user value, and automation opportunities.
+
+Report generation should make the answer more structured, not more certain. Polished prose must not launder unsupported analysis into unsupported conclusions.
+
+This step applies only when a report-style response is actually requested; it does not change any other step for requests that do not involve report generation. Advisory Mode remains fully available regardless of whether a report is generated. This step does not itself run GAUSS code, activate Execution Mode, implement runtime orchestration, read output files automatically, fabricate execution output, create automatic rerun/repair loops, install packages/activate licenses, or export report files — those boundaries belong to `scripts/gauss_code_execution.py`, `workflows/execution-aware-analysis.md`, and `workflows/report-generation.md`, not to this integration point.
+
+## 11. Step 7: Produce the Final Response
+
+The final response should be concise, actionable, and honest about uncertainty. It should give the user enough to move forward immediately without requiring them to repair invalid GAUSS syntax. State assumptions and dependencies when they matter, and match detail level to the user's experience. When an execution result was present, incorporate Step 9's execution-aware response pattern into the final answer rather than presenting it as a separate, disconnected block. When a report-style response was requested, incorporate Step 10's report-generation response pattern into the final answer the same way, rather than presenting it as a separate, disconnected block.
+
+## 12. Response Templates
 
 ### Code generation
 
@@ -179,7 +242,7 @@ The final response should be concise, actionable, and honest about uncertainty. 
 4. Common mistake.
 5. Next useful step.
 
-## 12. Escalation Rules
+## 13. Escalation Rules
 
 Escalate or combine modes only when it helps the user's main goal:
 
@@ -191,6 +254,6 @@ Escalate or combine modes only when it helps the user's main goal:
 
 Ask one focused clarifying question only when missing information materially changes the answer. Otherwise, state a safe assumption and proceed.
 
-## 13. Maintenance Notes
+## 14. Maintenance Notes
 
-Keep this workflow aligned with `agents/code-assistant/AGENT.md`, `prompts/code_assistant_system.md`, `agents/code-assistant/task_modes.md`, `tools/knowledge_search.md`, `workflows/retrieval-backed-response-pattern.md`, `workflows/expert-routing.md`, `workflows/execution-aware-analysis.md`, `experts/gauss-language/OPERATIONAL_PROFILE.md`, `experts/econometrics/OPERATIONAL_PROFILE.md`, `experts/software-engineering/OPERATIONAL_PROFILE.md`, `experts/documentation/OPERATIONAL_PROFILE.md`, `experts/education/OPERATIONAL_PROFILE.md`, and `experts/product/OPERATIONAL_PROFILE.md`. Update it when task modes, expert modules, retrieval behavior, source hierarchy, tool capabilities, or recurring benchmark failures change.
+Keep this workflow aligned with `agents/code-assistant/AGENT.md`, `prompts/code_assistant_system.md`, `agents/code-assistant/task_modes.md`, `tools/knowledge_search.md`, `workflows/retrieval-backed-response-pattern.md`, `workflows/expert-routing.md`, `workflows/execution-aware-analysis.md`, `workflows/report-generation.md`, `experts/gauss-language/OPERATIONAL_PROFILE.md`, `experts/econometrics/OPERATIONAL_PROFILE.md`, `experts/software-engineering/OPERATIONAL_PROFILE.md`, `experts/documentation/OPERATIONAL_PROFILE.md`, `experts/education/OPERATIONAL_PROFILE.md`, and `experts/product/OPERATIONAL_PROFILE.md`. Update it when task modes, expert modules, retrieval behavior, source hierarchy, tool capabilities, or recurring benchmark failures change.

@@ -191,6 +191,7 @@ This file records notable changes to the GAUSS AI framework.
 - Added v0.26.0 readiness checklist.
 - Planned v0.27.0 Report Generation Workflow.
 - Added report-generation workflow.
+- Integrated report-generation guidance into the Code Assistant response workflow.
 
 ## [0.1.0] - 2026-06-26
 
