@@ -254,17 +254,23 @@ See `planning/v0.26.0-execution-aware-analysis-workflow.md`.
 - Status: the planning doc, workflow file, Code Assistant workflow integration, `29.x` benchmark prompts, `29.x` evaluations, and project-doc updates are all complete. Remaining before this milestone is ready to tag: the `v0.26.0` readiness checklist and final release/tag (handled externally), per the Suggested Task Order: workflow file → Code Assistant workflow reference → `29.x` benchmarks → evaluation → project docs → readiness checklist → release, mirroring the same sequencing already used for the three prior tool-capability milestones.
 - Add no execution helper changes, no GAUSS invocation fixes, no runtime orchestration, no automatic execution, and no report generation — this milestone defines and evaluates the interpretation workflow only; it does not resolve real GAUSS non-interactive invocation.
 
-## v0.27.0: Report Generation Workflow (Proposed)
+## v0.27.0: Report Generation Workflow (Planned)
 
-Not yet planned. As proposed in `planning/v0.19.0-gauss-tooling-strategy-and-execution-modes.md`'s "Proposed Milestone Breakdown."
+See `planning/v0.27.0-report-generation-workflow.md`.
 
-- Would define how execution-aware analysis output (once `v0.26.0` exists) can be assembled into a polished, user-facing report — requires its own planning task before implementation, the same way every prior tool/workflow milestone was planned before its own implementation.
+- Plans the workflow layer for turning GAUSS code, execution evidence, captured output, output-file metadata, and expert-routed interpretation into safe, structured reports — the natural successor to `v0.26.0`'s execution-aware analysis workflow, the same way `v0.26.0` sat on top of `v0.25.0`'s execution helper.
+- Defines an evidence hierarchy (explicitly-read user-provided material first, then structured execution result fields, then captured stdout/stderr, then output-file metadata, then expert interpretation, then general domain knowledge, then clearly-labeled assumptions) so a report never treats a lower tier of evidence as if it were a higher one.
+- Plans five report types (Technical Analysis Summary, Econometric Interpretation Note, Debugging Report, Teaching Explanation, Product/User Workflow Report), a default nine-part report structure, and expert-routing responsibilities across all six operational experts, with the Documentation Expert typically shaping structure while technical/statistical claims still route to the relevant expert.
+- Requires reports to apply `workflows/execution-aware-analysis.md` for any execution result they incorporate — execution status summarized first, what was captured stated explicitly, what it does and does not prove stated explicitly, and no claim of execution unless `executed: true`.
+- Explicitly carries forward `v0.25.0`'s confirmed limitation: real non-interactive GAUSS invocation remains unresolved, fake-runner/synthetic execution results must be labeled as such in any generated report, and report generation must not imply real GAUSS execution is production-ready.
+- Created the planning doc only. `workflows/report-generation.md`, `30.x` benchmark prompts, evaluation, project-doc updates, and the readiness checklist remain, per the Suggested Task Order: workflow file → Code Assistant workflow reference (if appropriate) → `30.x` benchmarks → evaluation → project docs → readiness checklist → release, mirroring the same sequencing already used for `v0.26.0`.
+- Add no workflow file, no benchmark prompts, no execution helper changes, no schema changes, no GAUSS code execution, no runtime orchestration, no automatic execution, no report export to files, and no release tag — this milestone is planning and boundary-setting only.
 
 ## Future (TBD / Possible)
 
-Not yet planned or committed. Candidate directions after `v0.18.0`/`v0.19.0`/`v0.20.0`/`v0.21.0`/`v0.22.0`/`v0.23.0`/`v0.24.0`/`v0.25.0`/`v0.26.0`:
+Not yet planned or committed. Candidate directions after `v0.18.0`/`v0.19.0`/`v0.20.0`/`v0.21.0`/`v0.22.0`/`v0.23.0`/`v0.24.0`/`v0.25.0`/`v0.26.0`/`v0.27.0`:
 
-- The actual execution-aware analysis workflow implementation (`workflows/execution-aware-analysis.md`, `29.x` benchmark prompts and evaluations, `workflows/code-assistant-response.md` integration if scoped, project-doc updates, readiness checklist) — proposed as the likely next task after `v0.26.0`'s planning milestone, not yet started, per `planning/v0.26.0-execution-aware-analysis-workflow.md`'s Suggested Task Order.
+- The actual report-generation workflow implementation (`workflows/report-generation.md`, `30.x` benchmark prompts and evaluations, `workflows/code-assistant-response.md` integration if scoped, project-doc updates, readiness checklist) — proposed as the likely next task after `v0.27.0`'s planning milestone, not yet started, per `planning/v0.27.0-report-generation-workflow.md`'s Suggested Task Order.
 - Confirming a safe, non-interactive GAUSS invocation command form — the primary blocker before real GAUSS execution (as opposed to the fake-runner self-tests) can be trusted; not yet resolved, tracked in `planning/v0.25.0-gauss-code-execution-implementation.md`'s "Key Implementation Risk."
 - Expert-system automation/hygiene tooling — for example, a scripted stale-wording check in the spirit of `scripts/check_evaluation_tracking.py`, building on `workflows/expert-system-maintenance.md`'s manual Stale Wording Search Checklist.
 - Retrieval/evidence expansion — broader real command evidence coverage beyond the current seven-command pilot set (`olsmt`, `strindx`, `strsplit`, `dstatmt`, `qnewtonmt`, `pdsummary`, `minimize`).
