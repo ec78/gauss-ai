@@ -285,9 +285,21 @@ See `planning/v0.28.0-real-gauss-invocation-research.md`.
 - **This is not a claim of production-ready execution.** It is a claim that one specific, well-tested command form reliably avoids the `v0.25.0` interactive-prompt failure on the one platform/version combination tested and integrated. Cross-platform (macOS/Linux) and cross-version (GAUSS 24/25) behavior remain unverified — only Windows/GAUSS 26.1.1 was tested.
 - Status: planning doc created and updated with a full Smoke-Test Log, Verification Matrix, Success Criteria Status, and Command-Builder Integration Status; the verified `-b` form and conservative error detection are implemented in `scripts/gauss_code_execution.py`; project docs (README/ROADMAP/KNOWN_LIMITATIONS) are updated. Remaining before this milestone is ready to tag: the `v0.28.0` readiness checklist and final release/tag (handled externally), per the Suggested Task Order.
 
+## v0.29.0: GAUSS Runtime Error and Output File Verification (Planned)
+
+See `planning/v0.29.0-runtime-error-output-file-verification.md`.
+
+- A focused verification/hardening milestone building on `v0.28.0`'s verified `tgauss.exe -b <script_path>` invocation path: tests real GAUSS runtime-error behavior (as opposed to the syntax-error case `v0.28.0` already covered) and real output-file-writing behavior, both left explicitly unverified by `v0.28.0`.
+- Plans fourteen research/verification questions covering runtime-error stdout/stderr/exit-code patterns, whether `_detect_gauss_error` should be conservatively expanded, safe GAUSS file-writing syntax, `output_files` metadata discovery against real (not fake-runner) files, `output_directory` behavior, generated-script exclusion, and self-test/schema-validation regression.
+- Plans conservative runtime-error candidates (undefined symbol, dimension mismatch, with divide-by-zero and file-load-error as lower-priority/uncertain candidates) and an output-file test design that explicitly requires verified GAUSS file-writing syntax before any live test — mirroring `v0.28.0`'s "do not assume flags" research discipline.
+- Defines a nine-row "Planned Test Matrix" (three runtime-error tests, three output-file/metadata tests, generated-script exclusion, and two regression tests confirming the `v0.28.0` completed/failed cases still work).
+- This is explicitly verification/hardening, **not** runtime orchestration — no automatic Code Assistant execution, no new execution-triggering pathway, only deeper verification of the one already-integrated invocation path.
+- Helper code changes are conditional on observed evidence, not assumed upfront — the plan explicitly states `_detect_gauss_error` and `output_files` handling should only change if real GAUSS output actually justifies it.
+- Add no execution helper changes, no schema changes, no benchmark prompts, and no GAUSS code execution within the planning task itself — this milestone is planning only; research, smoke testing, and any resulting helper updates remain.
+
 ## Future (TBD / Possible)
 
-Not yet planned or committed. Candidate directions after `v0.18.0`/`v0.19.0`/`v0.20.0`/`v0.21.0`/`v0.22.0`/`v0.23.0`/`v0.24.0`/`v0.25.0`/`v0.26.0`/`v0.27.0`/`v0.28.0`:
+Not yet planned or committed. Candidate directions after `v0.18.0`/`v0.19.0`/`v0.20.0`/`v0.21.0`/`v0.22.0`/`v0.23.0`/`v0.24.0`/`v0.25.0`/`v0.26.0`/`v0.27.0`/`v0.28.0`/`v0.29.0`:
 
 - Report export/file creation from a generated report — proposed but not yet planned or scoped; would extend `workflows/report-generation.md` rather than replace it.
 - Execution helper CI self-test integration — running `scripts/gauss_code_execution.py --self-test` as part of CI, not just local/manual guard checks.
@@ -295,7 +307,7 @@ Not yet planned or committed. Candidate directions after `v0.18.0`/`v0.19.0`/`v0
 - Retrieval/evidence expansion — broader real command evidence coverage beyond the current seven-command pilot set (`olsmt`, `strindx`, `strsplit`, `dstatmt`, `qnewtonmt`, `pdsummary`, `minimize`).
 - Benchmark dashboard automation — regenerating `evaluations/EVALUATION_DASHBOARD.md` from live guard output instead of a manually maintained snapshot.
 - Strict-mode warning reduction — improving the evidence validator's path-warning heuristic so it stops flagging the reviewed `glm`/`olsmt` HDF5-URI false positives.
-- Runtime orchestration exploration — only if intentionally planned later; no runtime expert-routing engine or execution orchestration is currently planned or implied by any `v0.18.0`-`v0.28.0` work.
-- A command-builder implementation milestone applying `v0.28.0`'s confirmed findings (positive or negative) — not yet planned; scope depends entirely on what `v0.28.0`'s research concludes.
+- Runtime orchestration exploration — only if intentionally planned later; no runtime expert-routing engine or execution orchestration is currently planned or implied by any `v0.18.0`-`v0.29.0` work.
+- Cross-platform/cross-version invocation verification (macOS/Linux; GAUSS 24/25) — not yet planned; would extend `v0.28.0`/`v0.29.0`'s Windows/GAUSS-26.1.1-only verification once other environments are available to test against.
 
-None of these are committed milestones; this list exists so `v0.18.0`-`v0.28.0`'s planning work doesn't strand good follow-up ideas without a place to record them.
+None of these are committed milestones; this list exists so `v0.18.0`-`v0.29.0`'s planning work doesn't strand good follow-up ideas without a place to record them.
