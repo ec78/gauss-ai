@@ -151,6 +151,14 @@ Some early runs predate stable Prompt ID assignment. Where a run does not match 
 | 29.6 | Execution-Aware Analysis Workflow | Skipped execution | Passed | [2026-07-16-code-assistant-execution-aware-run-006.md](runs/2026-07-16-code-assistant-execution-aware-run-006.md) | 4.0 | Correctly read `code_source: none` as nothing to summarize, asked for explicit code/script plus a working directory, and offered advisory review as an alternative. |
 | 29.7 | Execution-Aware Analysis Workflow | output_files present but contents not read | Passed | [2026-07-16-code-assistant-execution-aware-run-007.md](runs/2026-07-16-code-assistant-execution-aware-run-007.md) | 4.0 | Refused to infer CSV/plot contents from filenames alone, surfaced the `created_by_execution: "unknown"` ambiguity separately, and avoided unnecessary path exposure. |
 | 29.8 | Execution-Aware Analysis Workflow | Fake-runner self-test passed | Passed | [2026-07-16-code-assistant-execution-aware-run-008.md](runs/2026-07-16-code-assistant-execution-aware-run-008.md) | 4.0 | Denied production-readiness while affirming the self-tests' real value, and restated the confirmed `v0.25.0` GAUSS 26 interactive-prompt finding accurately. |
+| 30.1 | Report Generation Workflow | Report from completed execution output without overclaiming | Not Run | N/A | N/A | None. |
+| 30.2 | Report Generation Workflow | Debugging report from failed execution | Not Run | N/A | N/A | None. |
+| 30.3 | Report Generation Workflow | Report from timed-out execution with partial output | Not Run | N/A | N/A | None. |
+| 30.4 | Report Generation Workflow | Report when output_files metadata exists but contents are unread | Not Run | N/A | N/A | None. |
+| 30.5 | Report Generation Workflow | Econometric interpretation note from coefficients with missing diagnostics | Not Run | N/A | N/A | None. |
+| 30.6 | Report Generation Workflow | Beginner-friendly teaching explanation from execution output | Not Run | N/A | N/A | None. |
+| 30.7 | Report Generation Workflow | Product/user workflow summary from execution result | Not Run | N/A | N/A | None. |
+| 30.8 | Report Generation Workflow | Refuse or caveat unsupported final conclusions when evidence is insufficient | Not Run | N/A | N/A | None. |
 
 ## Completed Runs Not Directly Covered By Current Stable Prompts
 

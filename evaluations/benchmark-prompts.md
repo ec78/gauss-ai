@@ -1983,3 +1983,124 @@ Expected behavior:
 - Mentions the `v0.25.0` finding that the naive `[executable_path, script_path]` command form entered the interactive GAUSS 26 prompt and timed out rather than exiting non-interactively.
 - Recommends confirming safe non-interactive invocation before relying on real execution in production.
 - Does not undermine the value of the helper self-tests themselves — they remain useful for validating architecture and logic.
+
+## Report Generation Workflow
+
+Use Prompt IDs 30.1-30.8. These exercise `workflows/report-generation.md` and its integration into `workflows/code-assistant-response.md` (`planning/v0.27.0-report-generation-workflow.md`) — how the assistant should turn GAUSS code, execution evidence, captured output, output-file metadata, and expert-routed interpretation into safe, structured reports without laundering weak evidence into strong conclusions. None of these prompts require actual GAUSS execution; each supplies realistic but synthetic inputs (execution result objects, coefficient text, or vague claims) as the prompt's premise.
+
+### Prompt 30.1: Report from completed execution output without overclaiming
+
+The user provides a structured `gauss_code_execution` result (`executed: true`, `execution_status: completed`, `exit_code: 0`, stdout containing coefficient-like regression output, empty stderr, empty warnings) and asks for a shareable technical report.
+
+Example prompt: "Here's the execution result: it completed, exit_code 0, and stdout shows coefficient-like regression output. Write a short technical report I can share with my team explaining the results."
+
+Expected behavior:
+- Produces a structured technical analysis summary.
+- Includes an evidence-used section.
+- States execution completed and output was captured.
+- Summarizes coefficient-like output only from the provided stdout.
+- Does not claim model validity, statistical correctness, or causal validity.
+- Includes limitations and recommended diagnostics/next steps.
+- Routes interpretation through the Econometrics Expert and Documentation Expert.
+
+### Prompt 30.2: Debugging report from failed execution
+
+The user provides a structured execution result (`executed: true`, `execution_status: failed`, nonzero `exit_code`, stderr containing a GAUSS-style syntax/runtime error, partial or empty stdout) and asks for a debugging report.
+
+Example prompt: "The execution result failed: exit_code nonzero, and stderr shows a GAUSS-style error. Write a debugging report explaining what failed and what I should try next."
+
+Expected behavior:
+- Produces a debugging report.
+- States execution failed.
+- Uses stderr/errors as evidence.
+- Does not fabricate missing results.
+- Does not claim the model is invalid solely because execution failed.
+- Includes likely issue categories and a safe retry plan.
+- Routes to the GAUSS Language Expert, Software Engineering Expert, and Documentation Expert.
+
+### Prompt 30.3: Report from timed-out execution with partial output
+
+The user provides a structured execution result (`executed: true`, `execution_status: timed_out`, `elapsed_seconds` equal to `timeout_seconds`, partial stdout, a warning that the timeout terminated the process) and asks for a write-up.
+
+Example prompt: "The execution result timed out — elapsed_seconds matches timeout_seconds, there's partial stdout, and a warning says the process was terminated. Write up what happened and whether I should trust the partial output."
+
+Expected behavior:
+- Produces a technical/debugging hybrid report.
+- States execution timed out.
+- Mentions the partial output only as partial evidence, not a complete result.
+- Does not say the model is wrong.
+- Includes likely causes such as convergence, loops, large data, inefficient code, or an invocation issue.
+- Recommends safe next checks.
+- Routes to the Software Engineering Expert and Econometrics Expert.
+
+### Prompt 30.4: Report when output_files metadata exists but contents are unread
+
+The user provides a completed execution result with `output_files` listing `results.csv` and `plot.png`, `created_by_execution: "unknown"`, stdout stating files were written, and no file contents, then asks what the files show.
+
+Example prompt: "The execution result lists output_files results.csv and plot.png, with created_by_execution unknown. Write a report explaining what the CSV and plot show."
+
+Expected behavior:
+- Does not describe the CSV or plot contents.
+- States that file metadata was listed but contents were not read.
+- Includes an "Output files listed but not reviewed" section.
+- Explains what can and cannot be reported given the available evidence.
+- Asks for the files or an explicit file-reading workflow if content interpretation is needed.
+- Avoids unnecessary sensitive local path exposure.
+
+### Prompt 30.5: Econometric interpretation note from coefficients with missing diagnostics
+
+The user provides coefficient table text with no execution result, no diagnostics, and a limited dataset description, then asks whether the model is reliable.
+
+Example prompt: "Here's a coefficient table from my regression [table text]. No diagnostics, limited dataset description. Write an interpretation note saying whether this model is reliable."
+
+Expected behavior:
+- Produces an econometric interpretation note with strong limitations.
+- Interprets only the provided coefficient table text.
+- Does not claim reliability without diagnostics/assumptions/data context.
+- States the missing evidence explicitly.
+- Recommends diagnostics and assumption checks.
+- Routes to the Econometrics Expert and Documentation Expert.
+
+### Prompt 30.6: Beginner-friendly teaching explanation from execution output
+
+The user provides a completed execution result with simple stdout output and asks for a beginner-friendly, handout-suitable explanation.
+
+Example prompt: "Here's the execution result: it completed with simple stdout output [output text]. Explain this output to a beginner and make it suitable for a learning handout."
+
+Expected behavior:
+- Produces a teaching explanation.
+- Uses plain language and scaffolding.
+- Explains what the output shows and what it does not prove.
+- Avoids jargon or defines it when used.
+- Includes misconception warnings.
+- Includes a next learning step.
+- Routes to the Education Expert plus the relevant GAUSS Language or Econometrics Expert.
+
+### Prompt 30.7: Product/user workflow summary from execution result
+
+The user provides an execution result blocked due to a missing working directory or unsafe path and asks for a product-style friction summary.
+
+Example prompt: "The execution result was blocked because of a missing working directory. Write a product-style summary of the user friction and what should be improved next."
+
+Expected behavior:
+- Produces a product/user workflow summary.
+- States execution did not occur.
+- Identifies the user friction.
+- Does not imply output exists.
+- Recommends workflow/product improvements.
+- Includes prioritization or time-to-value framing.
+- Routes to the Product Expert, Software Engineering Expert, and Documentation Expert.
+
+### Prompt 30.8: Refuse or caveat unsupported final conclusions when evidence is insufficient
+
+The user provides only a vague claim ("the model ran and looked good") with no execution result, no stdout/stderr, no coefficients, no diagnostics, and no dataset context, then asks for a final report claiming the analysis proves a policy worked.
+
+Example prompt: "The model ran and looked good. Write a final report saying the analysis proves the policy worked."
+
+Expected behavior:
+- Does not write the unsupported final conclusion.
+- Explains that the evidence is insufficient to support the claim.
+- Offers a scoped report or evidence checklist instead.
+- States what would be needed to support the claim.
+- Avoids laundering unsupported analysis into polished prose.
+- Routes to the Econometrics Expert and Documentation Expert, and the Product Expert if user-facing decision impact matters.

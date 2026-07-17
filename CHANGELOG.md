@@ -192,6 +192,7 @@ This file records notable changes to the GAUSS AI framework.
 - Planned v0.27.0 Report Generation Workflow.
 - Added report-generation workflow.
 - Integrated report-generation guidance into the Code Assistant response workflow.
+- Added 30.x report-generation benchmark prompts and coverage rows.
 
 ## [0.1.0] - 2026-06-26
 
