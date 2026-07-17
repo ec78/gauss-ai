@@ -269,18 +269,29 @@ See `planning/v0.27.0-report-generation-workflow.md`.
 - Status: the planning doc, workflow file, Code Assistant workflow integration, `30.x` benchmark prompts, `30.x` evaluations, and project-doc updates are all complete. Remaining before this milestone is ready to tag: the `v0.27.0` readiness checklist and final release/tag (handled externally), per the Suggested Task Order: workflow file → Code Assistant workflow reference → `30.x` benchmarks → evaluation → project docs → readiness checklist → release, mirroring the same sequencing already used for `v0.26.0`.
 - Add no execution helper changes, no schema changes, no GAUSS code execution, no runtime orchestration, no automatic execution, no automatic file reading, and no report export to files — this milestone defines, integrates, and evaluates the report-generation workflow only; it does not resolve real GAUSS non-interactive invocation and does not guarantee final, publication-ready conclusions without expert review.
 
+## v0.28.0: Real GAUSS Invocation Research (Planned)
+
+See `planning/v0.28.0-real-gauss-invocation-research.md`.
+
+- A focused research and verification milestone: determine and document whether GAUSS can be invoked safely and non-interactively to run a `.gss` script and exit — the primary blocker `v0.25.0` surfaced and every later milestone (`v0.26.0`, `v0.27.0`) has carried forward as an unresolved, documented limitation without attempting to resolve it.
+- Plans fifteen research questions covering correct command-line syntax, batch/terminal-mode flags, GUI-vs-terminal executables, platform/version differences, exit-code and stdout/stderr behavior, syntax/runtime-error behavior, output-file writing, license/GUI-prompt behavior, and whether real execution should require an explicit verified invocation mode.
+- Defines a safe smoke-test policy (disposable working directories only, harmless trivial scripts only, bounded timeouts, confirmed process cleanup, negative results recorded with the same rigor as positive ones) and five specific test designs (hello world, syntax error, runtime error, output-file writing, and cross-installation repeatability).
+- Defines a "Candidate Invocation Forms" table, seeded with the one already-confirmed-bad candidate from `v0.25.0` (`[executable_path, script_path]`), to be filled in with real research findings rather than guessed flags.
+- Documents recommended (not implemented) command-builder changes for a future implementation milestone, preserving the same injectable-`command_builder` isolation principle `v0.25.0` established.
+- Explicitly out of scope: any execution helper code change, any schema change, any GAUSS code execution within the planning task itself, any benchmark prompts, any runtime orchestration, any automatic execution by the Code Assistant, and any change to `workflows/execution-aware-analysis.md` or `workflows/report-generation.md` unless a confirmed finding requires a documentation update.
+- Status: planning doc created. Research, smoke testing, documentation of findings, project-doc updates, and the readiness checklist remain, per the Suggested Task Order.
+
 ## Future (TBD / Possible)
 
-Not yet planned or committed. Candidate directions after `v0.18.0`/`v0.19.0`/`v0.20.0`/`v0.21.0`/`v0.22.0`/`v0.23.0`/`v0.24.0`/`v0.25.0`/`v0.26.0`/`v0.27.0`:
+Not yet planned or committed. Candidate directions after `v0.18.0`/`v0.19.0`/`v0.20.0`/`v0.21.0`/`v0.22.0`/`v0.23.0`/`v0.24.0`/`v0.25.0`/`v0.26.0`/`v0.27.0`/`v0.28.0`:
 
-- The `v0.27.0` readiness checklist and pre-release audit — the workflow file, its Code Assistant workflow integration, `30.x` benchmark prompts/evaluations, and project-doc updates are already complete; the readiness checklist is the only remaining step before this milestone can be tagged, per `planning/v0.27.0-report-generation-workflow.md`'s Suggested Task Order.
-- Confirming a safe, non-interactive GAUSS invocation command form — the primary blocker before real GAUSS execution (as opposed to the fake-runner self-tests) can be trusted; not yet resolved, tracked in `planning/v0.25.0-gauss-code-execution-implementation.md`'s "Key Implementation Risk."
 - Report export/file creation from a generated report — proposed but not yet planned or scoped; would extend `workflows/report-generation.md` rather than replace it.
 - Execution helper CI self-test integration — running `scripts/gauss_code_execution.py --self-test` as part of CI, not just local/manual guard checks.
 - Expert-system automation/hygiene tooling — for example, a scripted stale-wording check in the spirit of `scripts/check_evaluation_tracking.py`, building on `workflows/expert-system-maintenance.md`'s manual Stale Wording Search Checklist.
 - Retrieval/evidence expansion — broader real command evidence coverage beyond the current seven-command pilot set (`olsmt`, `strindx`, `strsplit`, `dstatmt`, `qnewtonmt`, `pdsummary`, `minimize`).
 - Benchmark dashboard automation — regenerating `evaluations/EVALUATION_DASHBOARD.md` from live guard output instead of a manually maintained snapshot.
 - Strict-mode warning reduction — improving the evidence validator's path-warning heuristic so it stops flagging the reviewed `glm`/`olsmt` HDF5-URI false positives.
-- Runtime orchestration exploration — only if intentionally planned later; no runtime expert-routing engine or execution orchestration is currently planned or implied by any `v0.18.0`-`v0.27.0` work.
+- Runtime orchestration exploration — only if intentionally planned later; no runtime expert-routing engine or execution orchestration is currently planned or implied by any `v0.18.0`-`v0.28.0` work.
+- A command-builder implementation milestone applying `v0.28.0`'s confirmed findings (positive or negative) — not yet planned; scope depends entirely on what `v0.28.0`'s research concludes.
 
-None of these are committed milestones; this list exists so `v0.18.0`-`v0.27.0`'s planning work doesn't strand good follow-up ideas without a place to record them.
+None of these are committed milestones; this list exists so `v0.18.0`-`v0.28.0`'s planning work doesn't strand good follow-up ideas without a place to record them.

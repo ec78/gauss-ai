@@ -196,6 +196,7 @@ This file records notable changes to the GAUSS AI framework.
 - Evaluated 30.x report-generation benchmarks; 8/8 passed at 4.0.
 - Updated project docs for v0.27.0 Report Generation Workflow progress.
 - Added v0.27.0 readiness checklist.
+- Planned v0.28.0 Real GAUSS Invocation Research.
 
 ## [0.1.0] - 2026-06-26
 
