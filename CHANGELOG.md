@@ -198,6 +198,7 @@ This file records notable changes to the GAUSS AI framework.
 - Added v0.27.0 readiness checklist.
 - Planned v0.28.0 Real GAUSS Invocation Research.
 - Researched candidate GAUSS non-interactive invocation forms.
+- Verified candidate GAUSS batch invocation form through controlled smoke tests.
 
 ## [0.1.0] - 2026-06-26
 
