@@ -269,7 +269,7 @@ See `planning/v0.27.0-report-generation-workflow.md`.
 - Status: the planning doc, workflow file, Code Assistant workflow integration, `30.x` benchmark prompts, `30.x` evaluations, and project-doc updates are all complete. Remaining before this milestone is ready to tag: the `v0.27.0` readiness checklist and final release/tag (handled externally), per the Suggested Task Order: workflow file → Code Assistant workflow reference → `30.x` benchmarks → evaluation → project docs → readiness checklist → release, mirroring the same sequencing already used for `v0.26.0`.
 - Add no execution helper changes, no schema changes, no GAUSS code execution, no runtime orchestration, no automatic execution, no automatic file reading, and no report export to files — this milestone defines, integrates, and evaluates the report-generation workflow only; it does not resolve real GAUSS non-interactive invocation and does not guarantee final, publication-ready conclusions without expert review.
 
-## v0.28.0: Real GAUSS Invocation Research (Planned)
+## v0.28.0: Real GAUSS Invocation Research (In Progress)
 
 See `planning/v0.28.0-real-gauss-invocation-research.md`.
 
@@ -279,7 +279,8 @@ See `planning/v0.28.0-real-gauss-invocation-research.md`.
 - Defines a "Candidate Invocation Forms" table, seeded with the one already-confirmed-bad candidate from `v0.25.0` (`[executable_path, script_path]`), to be filled in with real research findings rather than guessed flags.
 - Documents recommended (not implemented) command-builder changes for a future implementation milestone, preserving the same injectable-`command_builder` isolation principle `v0.25.0` established.
 - Explicitly out of scope: any execution helper code change, any schema change, any GAUSS code execution within the planning task itself, any benchmark prompts, any runtime orchestration, any automatic execution by the Code Assistant, and any change to `workflows/execution-aware-analysis.md` or `workflows/report-generation.md` unless a confirmed finding requires a documentation update.
-- Status: planning doc created. Research, smoke testing, documentation of findings, project-doc updates, and the readiness checklist remain, per the Suggested Task Order.
+- **Candidate found, not yet tested:** read-only research of the local GAUSS 26 installation directory (`C:\gauss26\README.txt`, never invoking any executable) surfaced a documented `tgauss -b <program>` batch-mode flag ("Execute in batch mode and exit") directly addressing the `v0.25.0` failure mode, plus complementary `-o`/`-l`/`-e` flags. This is a credible, sourced candidate — not a confirmed fix. No GAUSS executable has been invoked under `v0.28.0`; invocation is still unresolved and must not be described as fixed until an actual smoke test confirms it.
+- Status: planning doc created; candidate-invocation research is in progress. A recommended smoke-test plan exists (`-b`, then `-b -o`) but has not been executed. Smoke testing, documentation of findings, project-doc updates, and the readiness checklist remain, per the Suggested Task Order.
 
 ## Future (TBD / Possible)
 
