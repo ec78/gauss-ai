@@ -202,6 +202,7 @@ This file records notable changes to the GAUSS AI framework.
 - Integrated verified GAUSS batch invocation form into execution helper.
 - Added conservative GAUSS error-output detection for status mapping.
 - Verified helper-level GAUSS smoke tests for completed and failed execution cases on observed Windows GAUSS 26 installation.
+- Added v0.28.0 readiness checklist.
 
 ## [0.1.0] - 2026-06-26
 
