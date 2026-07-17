@@ -285,7 +285,7 @@ See `planning/v0.28.0-real-gauss-invocation-research.md`.
 - **This is not a claim of production-ready execution.** It is a claim that one specific, well-tested command form reliably avoids the `v0.25.0` interactive-prompt failure on the one platform/version combination tested and integrated. Cross-platform (macOS/Linux) and cross-version (GAUSS 24/25) behavior remain unverified — only Windows/GAUSS 26.1.1 was tested.
 - Status: planning doc created and updated with a full Smoke-Test Log, Verification Matrix, Success Criteria Status, and Command-Builder Integration Status; the verified `-b` form and conservative error detection are implemented in `scripts/gauss_code_execution.py`; project docs (README/ROADMAP/KNOWN_LIMITATIONS) are updated. Remaining before this milestone is ready to tag: the `v0.28.0` readiness checklist and final release/tag (handled externally), per the Suggested Task Order.
 
-## v0.29.0: GAUSS Runtime Error and Output File Verification (Planned)
+## v0.29.0: GAUSS Runtime Error and Output File Verification (In Progress)
 
 See `planning/v0.29.0-runtime-error-output-file-verification.md`.
 
@@ -293,9 +293,10 @@ See `planning/v0.29.0-runtime-error-output-file-verification.md`.
 - Plans fourteen research/verification questions covering runtime-error stdout/stderr/exit-code patterns, whether `_detect_gauss_error` should be conservatively expanded, safe GAUSS file-writing syntax, `output_files` metadata discovery against real (not fake-runner) files, `output_directory` behavior, generated-script exclusion, and self-test/schema-validation regression.
 - Plans conservative runtime-error candidates (undefined symbol, dimension mismatch, with divide-by-zero and file-load-error as lower-priority/uncertain candidates) and an output-file test design that explicitly requires verified GAUSS file-writing syntax before any live test — mirroring `v0.28.0`'s "do not assume flags" research discipline.
 - Defines a nine-row "Planned Test Matrix" (three runtime-error tests, three output-file/metadata tests, generated-script exclusion, and two regression tests confirming the `v0.28.0` completed/failed cases still work).
+- **Research complete — all planned candidates are ready for live smoke testing, none still verified as actually run.** Read-only inspection of `experts/gauss-language/COMMAND_CATEGORIES.md` confirmed `print`/`ones`/`output` as real command names; four real official GAUSS example files shipped with this development machine's installation (`ols.e`, `circular.e`, `eqsolve1.e`, `time.e`, all read as plain text, no execution) confirmed the exact, genuine syntax for redirecting output to a file: `output file = <relative_filename> reset; ...; output off;`. This directly unblocks the output-file test the original plan flagged as contingent on verified syntax. Two runtime-error candidates (undefined symbol, dimension mismatch) are proposed using only already-confirmed command names and core language semantics — neither has been executed, and their exact error-message wording remains unconfirmed until a live test runs.
 - This is explicitly verification/hardening, **not** runtime orchestration — no automatic Code Assistant execution, no new execution-triggering pathway, only deeper verification of the one already-integrated invocation path.
 - Helper code changes are conditional on observed evidence, not assumed upfront — the plan explicitly states `_detect_gauss_error` and `output_files` handling should only change if real GAUSS output actually justifies it.
-- Add no execution helper changes, no schema changes, no benchmark prompts, and no GAUSS code execution within the planning task itself — this milestone is planning only; research, smoke testing, and any resulting helper updates remain.
+- Add no execution helper changes, no schema changes, no benchmark prompts, and no GAUSS code execution within this research task — no GAUSS executable was invoked; research relied entirely on read-only file/documentation inspection. Live smoke testing, any resulting helper updates, and the readiness checklist remain, per the Suggested Task Order.
 
 ## Future (TBD / Possible)
 

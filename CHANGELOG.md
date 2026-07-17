@@ -204,6 +204,7 @@ This file records notable changes to the GAUSS AI framework.
 - Verified helper-level GAUSS smoke tests for completed and failed execution cases on observed Windows GAUSS 26 installation.
 - Added v0.28.0 readiness checklist.
 - Planned v0.29.0 GAUSS Runtime Error and Output File Verification.
+- Researched GAUSS runtime-error and output-file smoke-test candidates.
 
 ## [0.1.0] - 2026-06-26
 
