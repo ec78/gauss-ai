@@ -15,8 +15,8 @@ Use this dashboard to understand coverage by milestone, prompt range, expert cat
 
 ## Dashboard Metadata
 
-- Current milestone: `v0.18.0` - Expert System Consolidation.
-- Captures evaluation state through: `v0.17.0` - Product Expert Foundation.
+- Current milestone: `v0.30.0` - Real Execution User Workflow Design.
+- Captures evaluation state through: `v0.30.0`'s `31.x` benchmark prompts and coverage rows (added, not yet evaluated).
 - Evaluation model: manual benchmark evaluation with tracking guard. No runtime scoring engine exists.
 - Runtime scoring engine: Not implemented.
 - Benchmark prompts source: `evaluations/benchmark-prompts.md`.
@@ -29,18 +29,18 @@ Use this dashboard to understand coverage by milestone, prompt range, expert cat
 
 ## Current Evaluation State
 
-Captured by running `scripts/check_evaluation_tracking.py`, `scripts/check_release_readiness.py`, and `scripts/validate_all_evidence.py` (default and `--json`) against the repository state after `v0.27.0`'s `30.x` benchmark evaluations were completed:
+Captured by running `scripts/check_evaluation_tracking.py`, `scripts/check_release_readiness.py`, and `scripts/validate_all_evidence.py` (default and `--json`) against the repository state after `v0.30.0`'s `31.x` benchmark prompts and coverage rows were added (not yet evaluated):
 
-- Prompt IDs: 153.
-- Coverage rows: 153.
+- Prompt IDs: 161.
+- Coverage rows: 161.
 - Run files referenced: 140.
 - Index entries: 145.
 - Tracking errors: 0.
 - Documented (historical) tracking warnings: 2.
-- Current active-category ("Not Run" in the highest-numbered active category) warnings: 0 — all eight `30.x` prompts (Report Generation Workflow) are now `Passed` at 4.0, so the tracking guard's "current active category" check has nothing to flag.
+- Current active-category ("Not Run" in the highest-numbered active category) warnings: 8 — all eight `31.x` prompts (Real Execution User Workflow) are `Not Run`, so the tracking guard's "current active category" check flags each of `31.1`-`31.8`.
 - Default tracking guard (`check_evaluation_tracking.py`): PASS.
 - JSON tracking guard (`check_evaluation_tracking.py --json`): `overall_pass: true`.
-- Strict tracking guard (`check_evaluation_tracking.py --strict`): FAIL — expected, both current warnings are the two documented historical ones (see "Known Warnings and Historical Exceptions" below).
+- Strict tracking guard (`check_evaluation_tracking.py --strict`): FAIL — expected, both current historical warnings plus the 8 new active `31.x` Not Run warnings are all promoted to failures in strict mode (see "Known Warnings and Historical Exceptions" below).
 - Release-readiness default (`check_release_readiness.py`): PASS.
 - Release-readiness JSON (`check_release_readiness.py --json`): `overall_pass: true`.
 - Release-readiness strict (`check_release_readiness.py --strict`): informational FAIL — `strict_pass: false`, but `overall_pass` remains `true` because strict results never affect this script's own exit code.
@@ -50,8 +50,8 @@ Captured by running `scripts/check_evaluation_tracking.py`, `scripts/check_relea
 
 Important:
 
-- A default PASS does not mean zero warnings. The tracking guard's default PASS above still carries 2 documented historical warnings; the evidence validator's default PASS still carries warnings from the `glm`/`olsmt` HDF5-URI false positives.
-- Strict-mode failures are expected and are limited to the documented warning-promoted-to-failure cases named in this file. They are not a signal of new defects.
+- A default PASS does not mean zero warnings. The tracking guard's default PASS above still carries 2 documented historical warnings plus 8 active `31.x` Not Run warnings; the evidence validator's default PASS still carries warnings from the `glm`/`olsmt` HDF5-URI false positives.
+- Strict-mode failures are expected and are limited to the documented warning-promoted-to-failure cases named in this file, plus the currently-active `31.x` Not Run warnings, which are expected to clear once `31.x` is evaluated. They are not a signal of new defects.
 - Evidence validation is structural (schema conformance, required fields, path-warning heuristics), not semantic or execution validation. It does not confirm that any documented GAUSS syntax is correct or that any example runs.
 - GAUSS code is not executed by any of these checks. All checks here operate on markdown files, JSON evidence files, and schema definitions only.
 
@@ -89,6 +89,7 @@ Important:
 | 28.x | GAUSS Code Execution Prototype (`v0.24.0`) | Execution-boundary response behavior, failure/timeout fallback, no false execution claims, and separation between execution output and expert interpretation | 8 | 8 | 8/8 Passed (4.0) | All prompts run and passed for the planned `gauss_code_execution` tool (`tools/gauss_code_execution.md`, `schemas/gauss_code_execution.schema.json`, `planning/v0.24.0-gauss-code-execution-prototype.md`). Validates execution-request refusal when environment is missing/ambiguous, that successful/failed/timed-out execution results are not overclaimed, package-missing-before-execution handling without auto-install, refusal to auto-install packages, and separation between captured execution output and Econometrics Expert interpretation. No code execution implementation exists yet and no code has actually been executed — every response is a documented expected-behavior evaluation, not a real execution run. Execution Mode remains inactive. |
 | 29.x | Execution-Aware Analysis Workflow (`v0.26.0`) | Interpretation of structured `gauss_code_execution` result objects: execution-status handling, expert routing, interpretation boundaries, stdout/stderr/output-file/warning handling, and the real-invocation limitation | 8 | 8 | 8/8 Passed (4.0) | All prompts run and passed for `workflows/execution-aware-analysis.md` and its integration into `workflows/code-assistant-response.md` (`planning/v0.26.0-execution-aware-analysis-workflow.md`). Validates that `completed`/`exit_code: 0` is not overclaimed as model validity, that stderr/warnings are surfaced even when execution completed, that failed/timed-out execution is debugged without fabricating results or claiming model invalidity, that blocked/skipped results make no execution or output claims, that `output_files` metadata is not mistaken for read file contents, and that fake-runner self-test success is not conflated with production-ready real GAUSS invocation — including the confirmed `v0.25.0` GAUSS 26 interactive-prompt finding. |
 | 30.x | Report Generation Workflow (`v0.27.0`) | Structured report generation from GAUSS code, execution evidence, captured output, output-file metadata, and expert-routed interpretation: evidence hierarchy, report type selection, report structure, expert routing, missing/partial evidence handling, and unsupported-claim refusal | 8 | 8 | 8/8 Passed (4.0) | All prompts run and passed for `workflows/report-generation.md` and its integration into `workflows/code-assistant-response.md` (`planning/v0.27.0-report-generation-workflow.md`). Validates correct report-type selection, evidence-hierarchy adherence, no methodology-validity claims from `completed`/`exit_code: 0`, debugging reports built from stderr without fabricating results, timed-out reports treating partial output as partial evidence with the real-invocation limitation named as a plausible cause, `output_files` metadata never mistaken for read contents, econometric notes refusing reliability claims without diagnostics, teaching explanations with genuine misconception warnings, product summaries that don't imply output exists for blocked execution, and outright refusal of unsupported final conclusions in favor of a scoped alternative. |
+| 31.x | Real Execution User Workflow (`v0.30.0`) | User-facing decision to offer, propose, or perform real GAUSS execution: eligibility criteria, consent model, mode selection (Advisory/Proposed/Assisted/Post-Execution Analysis), pre-execution safety review, file-handling boundaries, rerun/repair policy, and evidence/trust boundaries | 8 | 0 | 0/8 Not Run, average N/A | All prompts added for `workflows/real-execution-user-workflow.md` and its integration into `workflows/code-assistant-response.md` (`planning/v0.30.0-real-execution-user-workflow-design.md`). Covers missing-working-directory handling, review-only requests staying Advisory, unsafe-write refusal, package-installation refusal, a fully confirmed Assisted Execution run, refusal of automatic rerun after failure, separating execution success from methodological validity, and treating `output_files` as metadata only. No prompt has been evaluated yet — `31.x` manual evaluations are the next task. |
 
 Counts above are taken directly from `evaluations/benchmark-coverage.md` and `evaluations/runs/INDEX.md`. Categories `1.x` through `10.x` predate stable Prompt ID conventions in places and are summarized as "early baseline" or historical where a prompt has never been run; these were not invented to force full coverage, and their `Not Run` prompts remain genuinely not run today.
 
@@ -109,7 +110,7 @@ Counts above are taken directly from `evaluations/benchmark-coverage.md` and `ev
 - **Historical tracking warning — 2.2 / 2.3 Prompt ID mismatch:** the `2.2` coverage row (`evaluations/benchmark-coverage.md`) links to `evaluations/runs/2026-06-30-code-assistant-manual-run-001.md`, but that run file's own `Prompt ID:` field states `2.3`. This predates stable Prompt ID assignment and is documented in `evaluations/benchmark-coverage.md`'s "Historical Tracking Exceptions" section. It is a warning, not an error, and `--strict` promotes it to a failure by design.
 - **Historical tracking warning — `v0.3.0` smoke-test file:** `evaluations/runs/2026-07-01-code-assistant-smoke-test-v0.3.0.md` predates Prompt-ID-based tracking entirely and is intentionally not indexed in `benchmark-coverage.md` or `runs/INDEX.md`. It is preserved as legitimate repository history, documented in the same "Historical Tracking Exceptions" section. It is a warning, not an error, and `--strict` promotes it to a failure by design.
 - **Evidence warnings — `glm`/`olsmt` HDF5 URI false positives:** `examples/retrieval/schema-aligned/glm.evidence.json` and `olsmt.evidence.json` contain path-shaped strings from official documentation examples (an HDF5 URI) that the path-warning heuristic flags. These are reviewed false positives, not real local-path leaks, documented in `scripts/README.md`'s strict-mode policy notes. `--strict` promotes them to failures by design.
-- **Current active-category "Not Run" warnings:** none. After completing the `30.x` evaluations, the tracking guard's "current active category" check has nothing to report, because every prompt in `30.x` is `Passed`.
+- **Current active-category "Not Run" warnings:** 8. All eight `31.x` prompts (Real Execution User Workflow) are `Not Run`, so the tracking guard's "current active category" check flags `31.1`-`31.8` individually. These are expected to clear as `31.x` manual evaluations are completed.
 - **Strict-mode policy:** default gates (`check_evaluation_tracking.py`, `validate_all_evidence.py`, `check_release_readiness.py`) pass. Strict modes are informational and fail only because the warnings above are promoted to failures. Strict failures should not block a release unless the project explicitly changes this policy — see `scripts/README.md` and prior readiness checklists (`v0.12.0` onward) for the policy's history.
 
 ## Guard Command Reference
@@ -135,7 +136,7 @@ Expected current results (captured at the same time as "Current Evaluation State
 - `validate_all_evidence.py --strict`: expected FAIL, due to the known `glm`/`olsmt` HDF5-URI warnings.
 - `check_evaluation_tracking.py` default: PASS.
 - `check_evaluation_tracking.py --json`: `overall_pass: true`.
-- `check_evaluation_tracking.py --strict`: expected FAIL, due to the two historical warnings.
+- `check_evaluation_tracking.py --strict`: expected FAIL, due to the two historical warnings plus the 8 active `31.x` Not Run warnings.
 - `check_release_readiness.py` default: PASS.
 - `check_release_readiness.py --json`: `overall_pass: true`.
 - `check_release_readiness.py --strict`: expected informational FAIL (`strict_pass: false`); default readiness (`overall_pass`) is unaffected, since strict results never change this script's own exit code.

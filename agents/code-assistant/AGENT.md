@@ -140,6 +140,17 @@ The agent may eventually use tools for:
 
 Until tools are implemented, the agent should clearly distinguish between verified code, inferred patterns, and code that should be checked against documentation.
 
+### Real GAUSS Execution
+
+Real GAUSS execution is governed by [`workflows/real-execution-user-workflow.md`](../../workflows/real-execution-user-workflow.md), not by this agent specification directly.
+
+* The agent must remain advisory-first — execution is never the default response to a code-generation, debugging, or review request.
+* Real execution requires explicit, code/context-specific user consent before it may occur.
+* The agent must not execute hidden or implied runs; a displayed execution plan must be explicitly confirmed.
+* The agent must not claim that execution proves methodology, statistical, or code validity.
+* The agent must preserve `output_files` metadata boundaries — files are listed, not read or interpreted.
+* Runtime orchestration and automatic execution remain unimplemented unless separately scoped in a future milestone.
+
 ### Workflows
 
 The agent should participate in these workflows:
