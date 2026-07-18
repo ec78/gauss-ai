@@ -216,6 +216,8 @@ This file records notable changes to the GAUSS AI framework.
 - Evaluated 31.x real execution user workflow benchmarks; 8/8 passed at 4.0.
 - Updated project docs for v0.30.0 Real Execution User Workflow Design progress.
 - Added v0.30.0 readiness checklist.
+- Began v0.31.0 runtime orchestration design.
+- Refined v0.31.0 runtime orchestration design.
 
 ## [0.1.0] - 2026-06-26
 
