@@ -208,6 +208,7 @@ This file records notable changes to the GAUSS AI framework.
 - Verified GAUSS runtime-error and output-file behavior through controlled smoke tests.
 - Verified execution helper output_files metadata behavior with real GAUSS-created output files.
 - Added v0.29.0 readiness checklist.
+- Planned v0.30.0 Real Execution User Workflow Design.
 
 ## [0.1.0] - 2026-06-26
 

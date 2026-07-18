@@ -298,9 +298,21 @@ See `planning/v0.29.0-runtime-error-output-file-verification.md`.
 - This is explicitly verification/hardening, **not** runtime orchestration — no automatic Code Assistant execution, no new execution-triggering pathway, only deeper verification of the one already-integrated invocation path.
 - Add no execution helper changes (none were justified by observed evidence), no schema changes, no benchmark prompts. Divide-by-zero, explicit `--output-directory` behavior, and cross-platform/cross-version behavior remain untested — not this milestone's scope. Status: planning doc updated with a full Smoke-Test Log, Verification Results, and Success Criteria Status; project docs (README/ROADMAP/KNOWN_LIMITATIONS/tool spec) updated. Remaining before this milestone is ready to tag: the `v0.29.0` readiness checklist and final release/tag (handled externally), per the Suggested Task Order.
 
+## v0.30.0: Real Execution User Workflow Design (Planned)
+
+See `planning/v0.30.0-real-execution-user-workflow-design.md`.
+
+- A workflow-design milestone, not runtime orchestration: defines when and how the Code Assistant should offer, authorize, run, report on, and bound real GAUSS execution now that `v0.28.0`/`v0.29.0` have verified one real invocation path (`tgauss.exe -b <script_path>` on Windows/GAUSS 26.1.1) works for completed, failed, and runtime-error cases, and that `output_files` metadata correctly discovers real created files.
+- Plans an execution eligibility criteria list (explicit user request, known-safe working directory, terminal executable, no package/license/network/global-config actions, enforceable timeout, confined file writes, user consent) and its inverse (missing code/data, destructive/unclear side effects, GUI executable, ambiguous environment, advisory-only requests).
+- Plans a four-level consent model (Advisory Mode → Proposed Execution → Confirmed Execution → Post-Execution Review), a structured execution-request shape, a pre-execution safety-review checklist, and four execution modes (Advisory, Manual, Assisted, Post-Execution Analysis).
+- Plans nine user-facing response patterns (offering execution, requesting missing inputs, declining unsafe execution, running after consent, completed/failed/timed-out/blocked execution, output-files-present) and explicit evidence/trust-boundary and file-handling rules consistent with `workflows/execution-aware-analysis.md` and `workflows/report-generation.md`.
+- Explicitly scopes out any automatic rerun/repair loop for this milestone — rerun always requires fresh user confirmation and a fresh safety review if code changed.
+- Proposes `31.x` benchmark topics (missing working directory, review-not-execution, unsafe-write, package-required, confirmed-safe-run, requested-auto-rerun-refused, methodology-overclaim-refused, output-files-present, GUI-executable-only, production-readiness-claim-refused) for a later task — no benchmark prompts added in this planning task.
+- Add no execution helper changes, no schema changes, no benchmark prompts, and no GAUSS code execution within this planning task — this milestone is planning only; drafting the workflow file, integrating it into `workflows/code-assistant-response.md`, `31.x` benchmarks/evaluation, project-doc updates, and the readiness checklist remain, per the Suggested Task Order.
+
 ## Future (TBD / Possible)
 
-Not yet planned or committed. Candidate directions after `v0.18.0`/`v0.19.0`/`v0.20.0`/`v0.21.0`/`v0.22.0`/`v0.23.0`/`v0.24.0`/`v0.25.0`/`v0.26.0`/`v0.27.0`/`v0.28.0`/`v0.29.0`:
+Not yet planned or committed. Candidate directions after `v0.18.0`/`v0.19.0`/`v0.20.0`/`v0.21.0`/`v0.22.0`/`v0.23.0`/`v0.24.0`/`v0.25.0`/`v0.26.0`/`v0.27.0`/`v0.28.0`/`v0.29.0`/`v0.30.0`:
 
 - Report export/file creation from a generated report — proposed but not yet planned or scoped; would extend `workflows/report-generation.md` rather than replace it.
 - Execution helper CI self-test integration — running `scripts/gauss_code_execution.py --self-test` as part of CI, not just local/manual guard checks.
@@ -308,7 +320,8 @@ Not yet planned or committed. Candidate directions after `v0.18.0`/`v0.19.0`/`v0
 - Retrieval/evidence expansion — broader real command evidence coverage beyond the current seven-command pilot set (`olsmt`, `strindx`, `strsplit`, `dstatmt`, `qnewtonmt`, `pdsummary`, `minimize`).
 - Benchmark dashboard automation — regenerating `evaluations/EVALUATION_DASHBOARD.md` from live guard output instead of a manually maintained snapshot.
 - Strict-mode warning reduction — improving the evidence validator's path-warning heuristic so it stops flagging the reviewed `glm`/`olsmt` HDF5-URI false positives.
-- Runtime orchestration exploration — only if intentionally planned later; no runtime expert-routing engine or execution orchestration is currently planned or implied by any `v0.18.0`-`v0.29.0` work.
+- Runtime orchestration exploration — only if intentionally planned later; no runtime expert-routing engine or execution orchestration is currently planned or implied by any `v0.18.0`-`v0.30.0` work.
 - Cross-platform/cross-version invocation verification (macOS/Linux; GAUSS 24/25) — not yet planned; would extend `v0.28.0`/`v0.29.0`'s Windows/GAUSS-26.1.1-only verification once other environments are available to test against.
+- Divide-by-zero and explicit `--output-directory` behavior testing — deferred from `v0.29.0`, not yet scheduled.
 
-None of these are committed milestones; this list exists so `v0.18.0`-`v0.29.0`'s planning work doesn't strand good follow-up ideas without a place to record them.
+None of these are committed milestones; this list exists so `v0.18.0`-`v0.30.0`'s planning work doesn't strand good follow-up ideas without a place to record them.
