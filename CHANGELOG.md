@@ -218,6 +218,7 @@ This file records notable changes to the GAUSS AI framework.
 - Added v0.30.0 readiness checklist.
 - Began v0.31.0 runtime orchestration design.
 - Refined v0.31.0 runtime orchestration design.
+- Defined the v0.31.0 canonical execution request contract.
 
 ## [0.1.0] - 2026-06-26
 
