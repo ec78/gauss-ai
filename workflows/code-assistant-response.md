@@ -92,7 +92,67 @@ Before responding, check:
 - Dimensions, transposes, missing values, scope, and package loading are considered when relevant.
 - The answer does not claim execution unless code was actually run by an available tool.
 
-## 9. Execution-Aware Responses
+## 9. Real-Execution Responses
+
+Use `workflows/real-execution-user-workflow.md` when:
+
+- The user asks to run, test, execute, or smoke-test GAUSS code.
+- The user asks to validate that code runs.
+- The user asks to rerun code after a fix.
+- The user asks about output files produced by an execution.
+- The user asks whether a real execution result proves correctness or model validity.
+
+State clearly:
+
+- Remain advisory-first: execution is never the default response to a code-generation, debugging, or review request.
+- Distinguish a review/explanation request from an actual execution request — code review, debugging guidance, and explanation do not imply consent to run code.
+- Check execution eligibility (`workflows/real-execution-user-workflow.md`'s Execution Eligibility Decision) before proposing or performing execution.
+- Use Proposed Execution Mode before Assisted Execution Mode — always show the execution plan and obtain explicit confirmation before invoking the execution helper.
+- Require explicit, code/context-specific user consent before real execution; do not treat implied agreement as consent unless it clearly confirms the displayed plan.
+- Perform the pre-execution safety review before any execution, and refuse execution that fails it.
+- Preserve file-handling boundaries: writes confined to the allowed working directory, `output_files` treated as metadata only, generated helper scripts excluded from `output_files`.
+- Apply `workflows/execution-aware-analysis.md` (Step 10) after execution occurs.
+- Apply `workflows/report-generation.md` (Step 11) when the user requests a report, summary, or structured write-up of the result.
+- Never claim that execution proves methodology, statistical, or code validity — execution proves only that a specific run occurred with a specific outcome.
+
+### Real-Execution Decision Checkpoint
+
+Before any execution-related response, classify the request into exactly one of:
+
+1. **Advisory only** — no execution; answer, review, or explain. Use when the user asks for explanation, review, or debugging guidance only, or when execution is not eligible.
+2. **Proposed execution** — execution appears eligible but consent has not yet been given; present the execution plan (code/script, working directory, executable, timeout, expected outputs/files, safety assumptions) and ask for explicit confirmation.
+3. **Assisted execution after confirmation** — the user has explicitly confirmed the displayed plan and the pre-execution safety review passes; execute only the confirmed code/context, never a broadened scope.
+4. **Post-execution analysis** — a structured execution result already exists; interpret it using `workflows/execution-aware-analysis.md` and, if requested, `workflows/report-generation.md`.
+
+### Consent and Safety Requirements
+
+- No hidden execution.
+- No implied consent — a specific, explicit confirmation of the displayed plan is required.
+- Do not execute if code or context changed after consent without renewed confirmation.
+- Do not execute if the working directory is unsafe or unknown.
+- Do not execute if code writes outside the allowed directory.
+- Do not execute if package installation, license activation, network access, or global configuration mutation is required.
+- Do not execute the GUI executable `gauss.exe`.
+- Do not run user project code unless explicitly confirmed and bounded to a safe working directory.
+- Do not automatically rerun after failure — a rerun always requires a fresh confirmation, and a fresh safety review if code changed.
+
+### Response Routing
+
+- If the user asks for advice/review/debugging guidance only, use Advisory Mode — no execution.
+- If the user asks to run code but required details are missing, ask for the smallest missing input (for example, a working directory) rather than proceeding.
+- If the user asks to run code and it appears eligible, propose the execution plan (Proposed Execution Mode) and ask for confirmation.
+- If the user explicitly confirms the displayed execution plan, proceed only within that confirmed scope (Assisted Execution Mode).
+- If execution completes, apply `workflows/execution-aware-analysis.md` (Step 10).
+- If the user requests a report, apply `workflows/report-generation.md` (Step 11).
+- If execution fails, explain the error evidence and ask for confirmation before any rerun.
+- If output files are present, list metadata only and do not infer their contents.
+- If the user asks whether results are valid, separate "code ran" (execution evidence) from methodological/statistical validity, and route the validity question to the Econometrics Expert.
+
+This step applies only when the request involves running, testing, executing, smoke-testing, or rerunning GAUSS code, or interpreting an execution result already present; it does not change any other step for requests that do not involve execution. Advisory Mode remains fully available at every point in this decision. This workflow does not itself run GAUSS code, implement runtime orchestration, or add automatic Code Assistant execution — those boundaries belong to `scripts/gauss_code_execution.py` and `workflows/real-execution-user-workflow.md`, not to this integration point. See `workflows/real-execution-user-workflow.md` for the full eligibility criteria, consent model, execution request structure, safety-review checklist, and response patterns (A-J).
+
+## 10. Execution-Aware Responses
+
+This section governs interpreting an execution result that already exists. For the pre-execution decision — whether to offer, propose, or perform execution in the first place — see Step 9 (`workflows/real-execution-user-workflow.md`).
 
 Use `workflows/execution-aware-analysis.md` when:
 
@@ -133,7 +193,7 @@ Execution results are evidence, not conclusions. They should be routed through t
 
 This step applies only when an execution result object is actually present; it does not change any other step for requests that do not involve execution. Advisory Mode remains fully available whenever no execution result exists, execution did not occur, or execution results cannot be trusted. This workflow does not itself run GAUSS code, activate Execution Mode, implement runtime orchestration, fabricate execution output, create automatic rerun/repair loops, or install packages/activate licenses — those boundaries belong to `scripts/gauss_code_execution.py` and `workflows/execution-aware-analysis.md`, not to this integration point.
 
-## 10. Report-Generation Responses
+## 11. Report-Generation Responses
 
 Use `workflows/report-generation.md` when:
 
@@ -152,14 +212,14 @@ State clearly:
 - Do not treat `completed` or `exit_code: 0` as proof of methodology validity.
 - Do not turn weak evidence into strong report conclusions.
 - Do not hide material warnings, errors, truncation notices, or real-invocation limitations.
-- Do not describe real GAUSS execution as production-ready while non-interactive invocation remains unresolved — the same confirmed `v0.25.0` GAUSS 26 finding named in Step 9 applies here too.
+- Do not describe real GAUSS execution as production-ready while non-interactive invocation remains unresolved — the same confirmed `v0.25.0` GAUSS 26 finding named in Step 10 applies here too.
 - Do not create final publication-ready conclusions without expert review.
 
-When a report is requested, apply this response pattern before composing Step 11's final response:
+When a report is requested, apply this response pattern before composing Step 12's final response:
 
 1. Identify report type and audience.
 2. Inventory evidence.
-3. Apply execution-aware analysis (Step 9) if an execution result exists.
+3. Apply execution-aware analysis (Step 10) if an execution result exists.
 4. Route technical/statistical/product claims through experts.
 5. Draft report with limitations.
 6. Add safe next steps.
@@ -196,11 +256,11 @@ Report generation should make the answer more structured, not more certain. Poli
 
 This step applies only when a report-style response is actually requested; it does not change any other step for requests that do not involve report generation. Advisory Mode remains fully available regardless of whether a report is generated. This step does not itself run GAUSS code, activate Execution Mode, implement runtime orchestration, read output files automatically, fabricate execution output, create automatic rerun/repair loops, install packages/activate licenses, or export report files — those boundaries belong to `scripts/gauss_code_execution.py`, `workflows/execution-aware-analysis.md`, and `workflows/report-generation.md`, not to this integration point.
 
-## 11. Step 7: Produce the Final Response
+## 12. Step 7: Produce the Final Response
 
-The final response should be concise, actionable, and honest about uncertainty. It should give the user enough to move forward immediately without requiring them to repair invalid GAUSS syntax. State assumptions and dependencies when they matter, and match detail level to the user's experience. When an execution result was present, incorporate Step 9's execution-aware response pattern into the final answer rather than presenting it as a separate, disconnected block. When a report-style response was requested, incorporate Step 10's report-generation response pattern into the final answer the same way, rather than presenting it as a separate, disconnected block.
+The final response should be concise, actionable, and honest about uncertainty. It should give the user enough to move forward immediately without requiring them to repair invalid GAUSS syntax. State assumptions and dependencies when they matter, and match detail level to the user's experience. When execution itself was being offered, proposed, or performed, incorporate Step 9's real-execution response pattern into the final answer rather than presenting it as a separate, disconnected block. When an execution result was present, incorporate Step 10's execution-aware response pattern into the final answer the same way. When a report-style response was requested, incorporate Step 11's report-generation response pattern into the final answer the same way, rather than presenting it as a separate, disconnected block.
 
-## 12. Response Templates
+## 13. Response Templates
 
 ### Code generation
 
@@ -242,7 +302,7 @@ The final response should be concise, actionable, and honest about uncertainty. 
 4. Common mistake.
 5. Next useful step.
 
-## 13. Escalation Rules
+## 14. Escalation Rules
 
 Escalate or combine modes only when it helps the user's main goal:
 
@@ -254,6 +314,6 @@ Escalate or combine modes only when it helps the user's main goal:
 
 Ask one focused clarifying question only when missing information materially changes the answer. Otherwise, state a safe assumption and proceed.
 
-## 14. Maintenance Notes
+## 15. Maintenance Notes
 
-Keep this workflow aligned with `agents/code-assistant/AGENT.md`, `prompts/code_assistant_system.md`, `agents/code-assistant/task_modes.md`, `tools/knowledge_search.md`, `workflows/retrieval-backed-response-pattern.md`, `workflows/expert-routing.md`, `workflows/execution-aware-analysis.md`, `workflows/report-generation.md`, `experts/gauss-language/OPERATIONAL_PROFILE.md`, `experts/econometrics/OPERATIONAL_PROFILE.md`, `experts/software-engineering/OPERATIONAL_PROFILE.md`, `experts/documentation/OPERATIONAL_PROFILE.md`, `experts/education/OPERATIONAL_PROFILE.md`, and `experts/product/OPERATIONAL_PROFILE.md`. Update it when task modes, expert modules, retrieval behavior, source hierarchy, tool capabilities, or recurring benchmark failures change.
+Keep this workflow aligned with `agents/code-assistant/AGENT.md`, `prompts/code_assistant_system.md`, `agents/code-assistant/task_modes.md`, `tools/knowledge_search.md`, `workflows/retrieval-backed-response-pattern.md`, `workflows/expert-routing.md`, `workflows/real-execution-user-workflow.md`, `workflows/execution-aware-analysis.md`, `workflows/report-generation.md`, `experts/gauss-language/OPERATIONAL_PROFILE.md`, `experts/econometrics/OPERATIONAL_PROFILE.md`, `experts/software-engineering/OPERATIONAL_PROFILE.md`, `experts/documentation/OPERATIONAL_PROFILE.md`, `experts/education/OPERATIONAL_PROFILE.md`, and `experts/product/OPERATIONAL_PROFILE.md`. Update it when task modes, expert modules, retrieval behavior, source hierarchy, tool capabilities, or recurring benchmark failures change.
