@@ -213,6 +213,7 @@ This file records notable changes to the GAUSS AI framework.
 - Integrated real execution user workflow into Code Assistant response workflow.
 - Updated Code Assistant agent guidance for real execution workflow.
 - Added 31.x real execution user workflow benchmarks.
+- Evaluated 31.x real execution user workflow benchmarks; 8/8 passed at 4.0.
 
 ## [0.1.0] - 2026-06-26
 
