@@ -133,6 +133,51 @@ This script does not implement CI itself, but as of `v0.13.0` it is exactly what
 - **Do not make CI (or this script) green by hiding warnings.** If a future warning needs to stop blocking `--strict`, the correct fix is to resolve the underlying condition (regenerate evidence so the path warning no longer fires, or actually reconcile a tracking mismatch) or to explicitly document a reviewed, permanent exception (as already done for both current cases) — never to change a validator to stop reporting something true.
 - **A future CI setup could add `--strict` as a second, separate job once the current warnings are resolved or explicitly allowlisted** by name (matching the specific files/messages already documented here), so a *new* undocumented warning would still fail CI rather than being silently absorbed into an ever-growing exception list.
 
+## `gauss_runtime_orchestration.py`
+
+Purpose:
+Mock-only, in-memory runtime orchestration controller skeleton (`v0.31.0` Phase 2 of `planning/v0.31.0-runtime-orchestration-design.md`'s Implementation Phases). It implements the canonical execution request (`planning/v0.31.0-canonical-execution-request-contract.md`) and the 13-state runtime state machine (`planning/v0.31.0-runtime-state-machine-contract.md`) well enough for deterministic unit testing, entirely against an injected fake runner. It does not redefine either contract's rules — it implements them, and where implementing them surfaced two genuine inconsistencies in the state-machine contract, those were fixed in the contract document itself, not silently worked around in code.
+
+**This module never touches real GAUSS.** Explicitly and unconditionally:
+
+- It never imports `scripts/gauss_code_execution.py` and never calls `execute_gauss_code(...)`.
+- It never launches a subprocess and never constructs a shell command.
+- It never detects a real GAUSS environment.
+- It never invokes `gauss.exe` or `tgauss.exe`, directly or indirectly.
+- All "execution" happens through an injected `FakeRunner` callable supplied entirely by the caller (in practice, a test).
+- All state is in-memory only, scoped to one Python process — no cross-process coordination, no database, no queue, no file-based persistence.
+- It is **not** production runtime orchestration and is **not** wired into `workflows/code-assistant-response.md` or any agent.
+
+Supported mock behavior:
+
+- `CanonicalExecutionRequest` — an 18-field request object, mutable pre-freeze via `RequestDraft`, immutable after `freeze()` (a custom `__setattr__` blocks further mutation of plan fields), with a deterministic SHA-256 `request_hash` (`compute_request_hash(...)`) computed over exactly the 12 hash-included fields.
+- `OrchestrationState` — the 13-state enum (`advisory` through `completed`/`cancelled`/`blocked`) and `VALID_TRANSITIONS`, the 18-entry valid-transition table; any transition not listed raises `InvalidTransitionError`.
+- `MockOrchestrationInstance` — the transition engine: `submit_for_review()`, `display_plan()`, `confirm(...)`, `reject_confirmation()`, `edit_before_confirmation(...)`, `invalidate_for_session_boundary()`, `check_environment_before_invocation(...)`, `invoke(runner)`, `cancel()`, `begin_analysis(...)`, `block(...)`, `mark_runner_unavailable()`.
+- Confirmation handling — `ConfirmationEvent` binds a confirmation to an exact `request_hash`; confirmation is consumed atomically with invocation authorization inside `invoke(...)`, never merely checked-then-used.
+- Duplicate-invocation prevention — a second `invoke(...)` call for an already-invoked instance raises rather than calling the runner again (`HelperInvocationStatus` tracks at most one invocation per confirmed request).
+- Fake-result validation — `validate_fake_result(...)` schema-checks the dict a `FakeRunner` returns (structural shape only, mirroring — not replacing — `schemas/gauss_code_execution.schema.json`) and flags a malformed result as terminal rather than passing it downstream.
+- Analysis/report hooks — `begin_analysis(...)` accepts an injected callable standing in for `workflows/execution-aware-analysis.md`/`workflows/report-generation.md`; a hook failure never rewrites the already-recorded execution result (`analysis_status`/`report_status` are tracked independently of the execution outcome).
+- Cancellation modeling — `cancel()` covers pre-execution cancellation; the module also models the "cancellation during a synchronous call" case honestly (a `FakeRunner` may call back into the instance to simulate this), without ever implying a real subprocess was actually interrupted.
+- `OrchestrationRecord.to_safe_summary()` — a redacted view excluding raw code/secrets, mirroring the Observability record's "must never contain" rules from the design document.
+
+Self-test:
+
+```text
+python scripts/gauss_runtime_orchestration.py --self-test
+```
+
+This runs a lightweight built-in smoke test (a handful of checks that the module's core entry points work at all), the same `--self-test` convention already used by `scripts/gauss_environment_check.py`, `scripts/gauss_package_inspection.py`, and `scripts/gauss_code_execution.py`.
+
+The focused, comprehensive test suite is a separate file, not part of `--self-test`:
+
+```text
+python scripts/test_gauss_runtime_orchestration.py
+```
+
+This repository has no `pytest` configuration anywhere (no `pyproject.toml`, `setup.py`, `pytest.ini`, or `conftest.py`), so this test file follows the same `check(name, condition)` self-test harness convention as every other `scripts/*.py` tool rather than introducing a new test framework. It runs 40 deterministic unit tests (all currently passing): the 32 scenarios required by `v0.31.0`'s implementation task (every state/transition pair, every consent-invalidation rule, duplicate-invocation prevention, malformed-result handling, cancellation, and analysis/report-hook isolation) plus 8 additional invariant-coverage tests (confirmation not reusable across requests, environment mismatch blocking execution, all failure categories distinct, no methodology-validity claim in the data model, conservative script-identity guard, unsafe-request blocking, execution-record secret exclusion, and monotonic confirmation consumption).
+
+This script does not require GAUSS to be installed, does not access the network, and does not implement production runtime orchestration — it validates that the design's state machine and consent model are internally consistent, against a fake runner only.
+
 ## PACKAGE_DOC_DIRECTORIES refresh process
 
 `scripts/command_doc_lookup.py`'s `PACKAGE_DOC_DIRECTORIES` constant (added `v0.11.0`) is a hardcoded snapshot of the official GAUSS Applications index (`docs_root/applications.rst`), not a live parse of that file at lookup time. It is source classification only — it tells the evidence schema's `source_type`/`source_authority` fields whether a matched file lives in a separately-distributed package directory versus the core documentation tree. It is **not** licensing verification; the Code Assistant must still state a package's licensing/version dependency explicitly whenever it recommends a package-sourced command, regardless of this classification.

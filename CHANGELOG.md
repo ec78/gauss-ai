@@ -222,6 +222,7 @@ This file records notable changes to the GAUSS AI framework.
 - Defined the v0.31.0 runtime state machine contract.
 - Added a mock-only, in-memory v0.31.0 runtime orchestration controller skeleton and 40 passing unit tests.
 - Added 32.x runtime orchestration evaluations; 29/29 passed at 4.0.
+- Updated project documentation (README, scripts README, known limitations, roadmap, evaluation dashboard) to consolidate v0.31.0's planning contracts, mock-only orchestration controller, and 32.x evaluation coverage, making clear that real Helper Adapter integration remains unimplemented.
 
 ## [0.1.0] - 2026-06-26
 
