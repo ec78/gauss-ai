@@ -220,6 +220,7 @@ This file records notable changes to the GAUSS AI framework.
 - Refined v0.31.0 runtime orchestration design.
 - Defined the v0.31.0 canonical execution request contract.
 - Defined the v0.31.0 runtime state machine contract.
+- Added a mock-only, in-memory v0.31.0 runtime orchestration controller skeleton and 40 passing unit tests.
 
 ## [0.1.0] - 2026-06-26
 
