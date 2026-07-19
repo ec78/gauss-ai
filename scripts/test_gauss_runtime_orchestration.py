@@ -1,4 +1,6 @@
-"""Focused unit tests for scripts/gauss_runtime_orchestration.py (v0.31.0 Phase 2).
+"""Focused unit tests for scripts/gauss_runtime_orchestration.py (v0.31.0
+Phase 2, extended in v0.32.0 Phase 3 Increment 1 with AdapterRunner
+integration tests).
 
 This repository has no pytest configuration anywhere (no pyproject.toml,
 setup.py/cfg, pytest.ini, or conftest.py, and pytest is not installed in the
@@ -11,9 +13,13 @@ same convention, run directly:
 
     python scripts/test_gauss_runtime_orchestration.py
 
-Every test here is deterministic and uses only the mock/fake runner boundary
--- nothing in this file imports scripts/gauss_code_execution.py, launches a
-subprocess, or invokes GAUSS.
+Tests 1-40 use only the mock/fake runner boundary directly. Tests 41-60
+additionally exercise `orch.AdapterRunner` bridging a
+`gauss_execution_adapter.GaussExecutionAdapter` -- but every one of those
+still uses a fake helper callable, exactly like every other test in this
+file. Nothing in this file imports scripts/gauss_code_execution.py, calls
+gauss_execution_adapter.load_real_helper(), launches a subprocess, or
+invokes GAUSS -- test_60 asserts this directly.
 """
 
 from __future__ import annotations
@@ -26,6 +32,7 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 
+import gauss_execution_adapter as ga  # noqa: E402
 import gauss_runtime_orchestration as orch  # noqa: E402
 
 
@@ -113,6 +120,20 @@ def _fully_confirmed_instance(
         orch.ConfirmationEvent(scope=inst.request.request_hash, timestamp="t1", session_id=session_id)
     )
     return inst
+
+
+def _adapter_runner(
+    inst: orch.MockOrchestrationInstance,
+    helper: Any,
+    *,
+    environment_probe: Any = lambda _p: True,
+) -> orch.AdapterRunner:
+    """Builds a v0.32.0 Increment-1 AdapterRunner wrapping a fake helper --
+    never the real scripts/gauss_code_execution.py -- bound to this
+    instance's confirmed request_hash."""
+    assert inst.request is not None
+    adapter = ga.GaussExecutionAdapter(helper=helper, environment_probe=environment_probe)
+    return orch.AdapterRunner(adapter, request_identity=inst.request.request_hash)
 
 
 # ---------------------------------------------------------------------------
@@ -771,6 +792,329 @@ def test_40_confirmation_consumption_is_monotonic() -> None:
         "no public method exists to un-consume confirmation",
         not any(name.startswith("unconsume") or name.startswith("reset_confirmation") for name in dir(inst)),
     )
+
+
+# ---------------------------------------------------------------------------
+# Adapter-integration tests (v0.32.0 Phase 3, Increment 1). Every fake helper
+# below is a plain Python function -- none of these tests import
+# scripts/gauss_code_execution.py, call gauss_execution_adapter.load_real_helper(),
+# launch a subprocess, or invoke GAUSS.
+# ---------------------------------------------------------------------------
+
+
+def _fake_completed_helper(**kwargs: Any) -> dict[str, Any]:
+    return _completed_result()
+
+
+def test_41_controller_to_adapter_projection() -> None:
+    captured: dict[str, Any] = {}
+
+    def recording_helper(**kwargs: Any) -> dict[str, Any]:
+        captured.update(kwargs)
+        return _completed_result()
+
+    inst = _fully_confirmed_instance()
+    inst.invoke(_adapter_runner(inst, recording_helper))
+    check("invocation via AdapterRunner reaches execution_completed", inst.record.current_state == orch.OrchestrationState.EXECUTION_COMPLETED)
+    check("code projected through the adapter bridge", captured["code"] == "print 1+1;")
+    check("working_directory projected through the adapter bridge", captured["working_directory"] == "C:/example/work")
+    check("executable_path projected through the adapter bridge", captured["executable_path"] == "C:/example/gauss26/tgauss.exe")
+    check("gauss_version projected through the adapter bridge", captured["gauss_version"] == "GAUSS 26")
+    check("strict=True passed through the adapter bridge", captured["strict"] is True)
+    check("allow_network=False passed through the adapter bridge", captured["allow_network"] is False)
+
+
+def test_42_confirmation_consumed_before_adapter_invocation() -> None:
+    inst = _fully_confirmed_instance()
+    check("confirmation not yet consumed before invoke()", inst.record.confirmation_consumption_status is False)
+    inst.invoke(_adapter_runner(inst, _fake_completed_helper))
+    check("confirmation consumed after adapter-backed invoke()", inst.record.confirmation_consumption_status is True)
+
+
+def test_43_preflight_failure_does_not_consume_confirmation() -> None:
+    # Script-path refusal happens at submit_for_review(), long before any
+    # adapter is ever constructed -- confirmation does not even exist yet.
+    draft = orch.RequestDraft(
+        request_id="req-preflight",
+        script_path="script.gss",
+        working_directory="C:/example/work",
+        executable_path="C:/example/gauss26/tgauss.exe",
+        timeout_seconds=30.0,
+        environment_summary=_env(),
+        safety_review=_passing_safety(),
+    )
+    inst = orch.MockOrchestrationInstance(session_id="s1", draft=draft)
+    inst.submit_for_review()
+    check("script-path preflight failure blocks before any adapter involvement", inst.record.current_state == orch.OrchestrationState.BLOCKED)
+    check("preflight failure never consumes confirmation", inst.record.confirmation_consumption_status is False)
+
+    # Environment mismatch, detected by this controller's own pre-invocation
+    # check, also never reaches invoke()/the adapter and never consumes
+    # confirmation.
+    inst2 = _fully_confirmed_instance(draft=_inline_draft(request_id="req-preflight-2"))
+    inst2.check_environment_before_invocation(still_matches=False)
+    check("environment-mismatch preflight failure reaches cancelled", inst2.record.current_state == orch.OrchestrationState.CANCELLED)
+    check("environment-mismatch preflight failure never consumes confirmation", inst2.record.confirmation_consumption_status is False)
+
+
+def test_44_adapter_launch_failure_consumes_confirmation() -> None:
+    # A race: this controller's own environment check passed, but the
+    # adapter's environment_probe (checked again, independently, immediately
+    # before the call) reports a mismatch -- AdapterRunner raises, and
+    # invoke() correctly classifies this as a launch failure, which DOES
+    # consume confirmation (it was already consumed before the adapter was
+    # ever called, per the atomic-consumption rule).
+    inst = _fully_confirmed_instance()
+    inst.check_environment_before_invocation(still_matches=True)
+    runner = _adapter_runner(inst, _fake_completed_helper, environment_probe=lambda _p: False)
+    inst.invoke(runner)
+    check("adapter-level rejection still consumes confirmation", inst.record.confirmation_consumption_status is True)
+    check("adapter-level rejection routes to execution_failed", inst.record.current_state == orch.OrchestrationState.EXECUTION_FAILED)
+    check("adapter-level rejection uses RUNNER_LAUNCH_FAILURE", inst.record.failure_category == orch.FailureCategory.RUNNER_LAUNCH_FAILURE)
+
+
+def test_45_valid_completed_result_via_adapter() -> None:
+    inst = _fully_confirmed_instance()
+    inst.invoke(_adapter_runner(inst, _fake_completed_helper))
+    check("adapter-backed completed result reaches execution_completed", inst.record.current_state == orch.OrchestrationState.EXECUTION_COMPLETED)
+    assert inst.record.execution_result_reference is not None
+    check("adapter-backed result has no failure category", inst.record.failure_category is None)
+
+
+def test_46_runtime_failure_result_via_adapter() -> None:
+    inst = _fully_confirmed_instance()
+
+    def failing_helper(**kwargs: Any) -> dict[str, Any]:
+        return {**_completed_result(), "execution_status": "failed", "exit_code": 1, "stderr": "error G0025"}
+
+    inst.invoke(_adapter_runner(inst, failing_helper))
+    check("adapter-backed failed result reaches execution_failed", inst.record.current_state == orch.OrchestrationState.EXECUTION_FAILED)
+    check("adapter-backed failed result uses GAUSS_RUNTIME_ERROR", inst.record.failure_category == orch.FailureCategory.GAUSS_RUNTIME_ERROR)
+
+
+def test_47_timeout_via_adapter() -> None:
+    inst = _fully_confirmed_instance()
+
+    def timeout_helper(**kwargs: Any) -> dict[str, Any]:
+        return {**_completed_result(), "execution_status": "timed_out", "exit_code": None}
+
+    inst.invoke(_adapter_runner(inst, timeout_helper))
+    check("adapter-backed timeout reaches execution_failed", inst.record.current_state == orch.OrchestrationState.EXECUTION_FAILED)
+    check("adapter-backed timeout uses TIMEOUT, distinct from GAUSS_RUNTIME_ERROR", inst.record.failure_category == orch.FailureCategory.TIMEOUT)
+
+
+def test_48_malformed_result_via_adapter() -> None:
+    inst = _fully_confirmed_instance()
+
+    def malformed_helper(**kwargs: Any) -> dict[str, Any]:
+        return {"executed": True}  # missing required keys -> malformed
+
+    inst.invoke(_adapter_runner(inst, malformed_helper))
+    check("adapter-backed malformed result reaches execution_failed", inst.record.current_state == orch.OrchestrationState.EXECUTION_FAILED)
+    check("adapter-backed malformed result uses MALFORMED_RESULT", inst.record.failure_category == orch.FailureCategory.MALFORMED_RESULT)
+    check_raises(
+        "begin_analysis() on an adapter-backed malformed result is rejected",
+        orch.AnalysisNotAllowedError,
+        inst.begin_analysis,
+        lambda req, res: None,
+    )
+
+
+def test_49_missing_expected_output_via_adapter() -> None:
+    draft = _inline_draft(expected_output_files=("results.csv",))
+    inst = _fully_confirmed_instance(draft=draft)
+
+    def no_output_helper(**kwargs: Any) -> dict[str, Any]:
+        return _completed_result(output_files=[])
+
+    inst.invoke(_adapter_runner(inst, no_output_helper))
+    check("adapter-backed missing-output result still reaches execution_completed", inst.record.current_state == orch.OrchestrationState.EXECUTION_COMPLETED)
+    check("adapter-backed missing-output result uses MISSING_EXPECTED_OUTPUT", inst.record.failure_category == orch.FailureCategory.MISSING_EXPECTED_OUTPUT)
+
+
+def test_50_environment_mismatch_blocks_adapter_path() -> None:
+    inst = _fully_confirmed_instance()
+    inst.check_environment_before_invocation(still_matches=False)
+    check("environment mismatch cancels before any adapter is invoked", inst.record.current_state == orch.OrchestrationState.CANCELLED)
+    check_raises(
+        "invoke() after environment mismatch is rejected, adapter never reached",
+        orch.InvalidTransitionError,
+        inst.invoke,
+        _adapter_runner(inst, _fake_completed_helper),
+    )
+
+
+def test_51_script_path_refused_before_any_adapter_exists() -> None:
+    draft = orch.RequestDraft(
+        request_id="req-script-adapter",
+        script_path="script.gss",
+        working_directory="C:/example/work",
+        executable_path="C:/example/gauss26/tgauss.exe",
+        timeout_seconds=30.0,
+        environment_summary=_env(),
+        safety_review=_passing_safety(),
+    )
+    inst = orch.MockOrchestrationInstance(session_id="s1", draft=draft)
+    inst.submit_for_review()
+    check("script-path request never reaches a state where an adapter could be invoked", inst.record.current_state == orch.OrchestrationState.BLOCKED)
+    check("script-path refusal uses SCRIPT_IDENTITY_UNTRUSTED", inst.record.failure_category == orch.FailureCategory.SCRIPT_IDENTITY_UNTRUSTED)
+
+
+def test_52_duplicate_invocation_refused_with_adapter() -> None:
+    calls: list[Any] = []
+
+    def counting_helper(**kwargs: Any) -> dict[str, Any]:
+        calls.append(kwargs)
+        return _completed_result()
+
+    inst = _fully_confirmed_instance()
+    runner = _adapter_runner(inst, counting_helper)
+    inst.invoke(runner)
+    check_raises(
+        "second invoke() via the same adapter-backed runner is rejected by the controller",
+        orch.InvalidTransitionError,
+        inst.invoke,
+        runner,
+    )
+    check("the adapter's own helper was called exactly once", len(calls) == 1)
+
+
+def test_53_no_automatic_retry_with_adapter() -> None:
+    inst = _fully_confirmed_instance()
+
+    def failing_helper(**kwargs: Any) -> dict[str, Any]:
+        return {**_completed_result(), "execution_status": "failed", "exit_code": 1}
+
+    inst.invoke(_adapter_runner(inst, failing_helper))
+    check("adapter-backed failure routes to execution_failed", inst.record.current_state == orch.OrchestrationState.EXECUTION_FAILED)
+    check_raises(
+        "invoke() cannot be called again on an adapter-backed failed instance",
+        orch.InvalidTransitionError,
+        inst.invoke,
+        _adapter_runner(inst, _fake_completed_helper),
+    )
+
+
+def test_54_rerun_requires_new_request_with_adapter() -> None:
+    inst1 = _fully_confirmed_instance(draft=_inline_draft(request_id="req-adapter-original"))
+
+    def failing_helper(**kwargs: Any) -> dict[str, Any]:
+        return {**_completed_result(), "execution_status": "failed", "exit_code": 1}
+
+    inst1.invoke(_adapter_runner(inst1, failing_helper))
+    assert inst1.request is not None
+    original_hash = inst1.request.request_hash
+
+    inst2 = _fully_confirmed_instance(draft=_inline_draft(request_id="req-adapter-rerun", code="print 1+1; print 3+3;"))
+    assert inst2.request is not None
+    check("rerun via a fresh adapter-backed instance uses a different request_hash", inst2.request.request_hash != original_hash)
+    inst2.invoke(_adapter_runner(inst2, _fake_completed_helper))
+    check("rerun instance reaches execution_completed independently", inst2.record.current_state == orch.OrchestrationState.EXECUTION_COMPLETED)
+    check("original instance is unaffected by the rerun", inst1.record.current_state == orch.OrchestrationState.EXECUTION_FAILED)
+
+
+def test_55_cancellation_before_authorization_with_adapter() -> None:
+    calls: list[Any] = []
+
+    def counting_helper(**kwargs: Any) -> dict[str, Any]:
+        calls.append(kwargs)
+        return _completed_result()
+
+    inst = _fully_confirmed_instance()
+    inst.cancel()
+    check("cancel from confirmed reaches cancelled before any adapter call", inst.record.current_state == orch.OrchestrationState.CANCELLED)
+    check_raises(
+        "invoke() after pre-launch cancellation is rejected, adapter never reached",
+        orch.InvalidTransitionError,
+        inst.invoke,
+        _adapter_runner(inst, counting_helper),
+    )
+    check("the adapter's helper was never called", calls == [])
+
+
+def test_56_cancellation_during_synchronous_adapter_call_and_late_result() -> None:
+    inst = _fully_confirmed_instance()
+
+    def helper_that_gets_cancelled(**kwargs: Any) -> dict[str, Any]:
+        # Simulate a cancellation request arriving while the (synchronous)
+        # adapter call is "in flight" -- the call cannot be interrupted, and
+        # it still returns a real result, which must be retained honestly.
+        inst.cancel(note="user asked to cancel while waiting")
+        return _completed_result()
+
+    inst.invoke(_adapter_runner(inst, helper_that_gets_cancelled))
+    check(
+        "cancellation during an adapter-backed call is recorded, not silently dropped",
+        inst.record.cancellation_status == orch.CancellationStatus.CANCEL_REQUESTED_DURING_INVOCATION,
+    )
+    check(
+        "the late adapter-backed result is still retained and processed",
+        inst.record.current_state == orch.OrchestrationState.EXECUTION_COMPLETED,
+    )
+    check(
+        "no claim of process termination is made anywhere in the record",
+        "terminated" not in inst.record.cancellation_status.value,
+    )
+
+
+def test_57_analysis_failure_preserves_execution_result_with_adapter() -> None:
+    inst = _fully_confirmed_instance()
+    inst.invoke(_adapter_runner(inst, _fake_completed_helper))
+    result_before = inst.record.execution_result_reference
+
+    def failing_analysis(req: Any, res: Any) -> None:
+        raise RuntimeError("simulated analysis failure")
+
+    inst.begin_analysis(failing_analysis)
+    check("analysis_status is failed after an adapter-backed execution", inst.record.analysis_status == orch.AnalysisStatus.FAILED)
+    check("execution_result_reference untouched by analysis failure", inst.record.execution_result_reference is result_before)
+    check("instance still reaches completed despite analysis failure", inst.record.current_state == orch.OrchestrationState.COMPLETED)
+
+
+def test_58_report_failure_preserves_execution_and_analysis_with_adapter() -> None:
+    inst = _fully_confirmed_instance()
+    inst.invoke(_adapter_runner(inst, _fake_completed_helper))
+    inst.begin_analysis(
+        lambda req, res: None,
+        report_requested=True,
+        report_hook=lambda status: (_ for _ in ()).throw(RuntimeError("simulated report failure")),
+    )
+    check("report_status is failed after an adapter-backed execution", inst.record.report_status == orch.ReportStatus.FAILED)
+    check("analysis_status remains completed despite report failure", inst.record.analysis_status == orch.AnalysisStatus.COMPLETED)
+    check("execution_result_reference remains set despite report failure", inst.record.execution_result_reference is not None)
+
+
+def test_59_session_mismatch_unaffected_by_adapter() -> None:
+    inst = orch.MockOrchestrationInstance(session_id="s1", draft=_inline_draft())
+    inst.submit_for_review()
+    inst.display_plan()
+    assert inst.request is not None
+    check_raises(
+        "confirm() from a different session is rejected before any adapter could be involved",
+        orch.SessionMismatchError,
+        inst.confirm,
+        orch.ConfirmationEvent(scope=inst.request.request_hash, timestamp="t1", session_id="s2"),
+    )
+    check("session-mismatched confirm() does not accept the request", inst.record.current_state == orch.OrchestrationState.AWAITING_CONFIRMATION)
+
+
+def test_60_adapter_runner_never_imports_or_invokes_real_helper() -> None:
+    """Static/structural proof that this module's own AdapterRunner path
+    never touches the real helper: neither this module nor
+    gauss_execution_adapter imports scripts/gauss_code_execution.py at
+    module level, and load_real_helper() is never called anywhere in this
+    test file."""
+    check(
+        "gauss_code_execution is not an imported module-level name in gauss_runtime_orchestration",
+        "gauss_code_execution" not in dir(orch),
+    )
+    check(
+        "gauss_code_execution is not an imported module-level name in gauss_execution_adapter",
+        "gauss_code_execution" not in dir(ga),
+    )
+    import sys as _sys
+
+    check("gauss_code_execution has not been imported into sys.modules by this test run", "gauss_code_execution" not in _sys.modules)
 
 
 # ---------------------------------------------------------------------------

@@ -136,15 +136,15 @@ This script does not implement CI itself, but as of `v0.13.0` it is exactly what
 ## `gauss_runtime_orchestration.py`
 
 Purpose:
-Mock-only, in-memory runtime orchestration controller skeleton (`v0.31.0` Phase 2 of `planning/v0.31.0-runtime-orchestration-design.md`'s Implementation Phases). It implements the canonical execution request (`planning/v0.31.0-canonical-execution-request-contract.md`) and the 13-state runtime state machine (`planning/v0.31.0-runtime-state-machine-contract.md`) well enough for deterministic unit testing, entirely against an injected fake runner. It does not redefine either contract's rules — it implements them, and where implementing them surfaced two genuine inconsistencies in the state-machine contract, those were fixed in the contract document itself, not silently worked around in code.
+Mock-only, in-memory runtime orchestration controller skeleton (`v0.31.0` Phase 2 of `planning/v0.31.0-runtime-orchestration-design.md`'s Implementation Phases, extended in `v0.32.0` Phase 3 Increment 1 with an adapter-bridge). It implements the canonical execution request (`planning/v0.31.0-canonical-execution-request-contract.md`) and the 13-state runtime state machine (`planning/v0.31.0-runtime-state-machine-contract.md`) well enough for deterministic unit testing, against either an injected fake runner or the new `AdapterRunner` bridge to `gauss_execution_adapter.py` (both are fake-helper-only as of this revision). It does not redefine either contract's rules — it implements them, and where implementing them surfaced two genuine inconsistencies in the state-machine contract, those were fixed in the contract document itself, not silently worked around in code.
 
 **This module never touches real GAUSS.** Explicitly and unconditionally:
 
-- It never imports `scripts/gauss_code_execution.py` and never calls `execute_gauss_code(...)`.
+- It never imports `scripts/gauss_code_execution.py` and never calls `execute_gauss_code(...)`, directly or indirectly. The only import this revision adds, `gauss_execution_adapter`, itself never imports the real helper at module import time either.
 - It never launches a subprocess and never constructs a shell command.
 - It never detects a real GAUSS environment.
 - It never invokes `gauss.exe` or `tgauss.exe`, directly or indirectly.
-- All "execution" happens through an injected `FakeRunner` callable supplied entirely by the caller (in practice, a test).
+- All "execution" happens through an injected runner satisfying the `FakeRunner` Protocol — either a fake/stub callable (every test as of this revision), or `AdapterRunner`, a thin bridge to a `gauss_execution_adapter.GaussExecutionAdapter` instance that the *caller* must construct with an explicit helper (fake in every test here; a real one only via a future, separately authorized caller invoking `gauss_execution_adapter.load_real_helper()` — never automatically, and never by this module).
 - All state is in-memory only, scoped to one Python process — no cross-process coordination, no database, no queue, no file-based persistence.
 - It is **not** production runtime orchestration and is **not** wired into `workflows/code-assistant-response.md` or any agent.
 
@@ -152,12 +152,14 @@ Supported mock behavior:
 
 - `CanonicalExecutionRequest` — an 18-field request object, mutable pre-freeze via `RequestDraft`, immutable after `freeze()` (a custom `__setattr__` blocks further mutation of plan fields), with a deterministic SHA-256 `request_hash` (`compute_request_hash(...)`) computed over exactly the 12 hash-included fields.
 - `OrchestrationState` — the 13-state enum (`advisory` through `completed`/`cancelled`/`blocked`) and `VALID_TRANSITIONS`, the 18-entry valid-transition table; any transition not listed raises `InvalidTransitionError`.
+- `RunnerInput` — the narrow request projection passed to any runner; extended in `v0.32.0` with `gauss_version`, `expected_input_files`, and `required_packages` so it can drive `AdapterRunner` as well as a fake runner, without exposing `safety_review`/confirmation internals.
+- `AdapterRunner` — bridges a `gauss_execution_adapter.GaussExecutionAdapter` into the `FakeRunner` boundary (`invoke(runner)`'s `runner` parameter); an adapter-level pre-invocation rejection is raised as an exception, which `invoke()` correctly classifies as `RUNNER_LAUNCH_FAILURE` (confirmation was already consumed by that point, per the atomic-consumption rule).
 - `MockOrchestrationInstance` — the transition engine: `submit_for_review()`, `display_plan()`, `confirm(...)`, `reject_confirmation()`, `edit_before_confirmation(...)`, `invalidate_for_session_boundary()`, `check_environment_before_invocation(...)`, `invoke(runner)`, `cancel()`, `begin_analysis(...)`, `block(...)`, `mark_runner_unavailable()`.
-- Confirmation handling — `ConfirmationEvent` binds a confirmation to an exact `request_hash`; confirmation is consumed atomically with invocation authorization inside `invoke(...)`, never merely checked-then-used.
+- Confirmation handling — `ConfirmationEvent` binds a confirmation to an exact `request_hash`; confirmation is consumed atomically with invocation authorization inside `invoke(...)`, never merely checked-then-used — unchanged whether the runner is a fake or an `AdapterRunner`.
 - Duplicate-invocation prevention — a second `invoke(...)` call for an already-invoked instance raises rather than calling the runner again (`HelperInvocationStatus` tracks at most one invocation per confirmed request).
-- Fake-result validation — `validate_fake_result(...)` schema-checks the dict a `FakeRunner` returns (structural shape only, mirroring — not replacing — `schemas/gauss_code_execution.schema.json`) and flags a malformed result as terminal rather than passing it downstream.
+- Fake-result validation — `validate_fake_result(...)` schema-checks the dict a runner returns (structural shape only, mirroring — not replacing — `schemas/gauss_code_execution.schema.json`) and flags a malformed result as terminal rather than passing it downstream.
 - Analysis/report hooks — `begin_analysis(...)` accepts an injected callable standing in for `workflows/execution-aware-analysis.md`/`workflows/report-generation.md`; a hook failure never rewrites the already-recorded execution result (`analysis_status`/`report_status` are tracked independently of the execution outcome).
-- Cancellation modeling — `cancel()` covers pre-execution cancellation; the module also models the "cancellation during a synchronous call" case honestly (a `FakeRunner` may call back into the instance to simulate this), without ever implying a real subprocess was actually interrupted.
+- Cancellation modeling — `cancel()` covers pre-execution cancellation; the module also models the "cancellation during a synchronous call" case honestly (a runner may call back into the instance to simulate this), without ever implying a real subprocess was actually interrupted.
 - `OrchestrationRecord.to_safe_summary()` — a redacted view excluding raw code/secrets, mirroring the Observability record's "must never contain" rules from the design document.
 
 Self-test:
@@ -174,9 +176,77 @@ The focused, comprehensive test suite is a separate file, not part of `--self-te
 python scripts/test_gauss_runtime_orchestration.py
 ```
 
-This repository has no `pytest` configuration anywhere (no `pyproject.toml`, `setup.py`, `pytest.ini`, or `conftest.py`), so this test file follows the same `check(name, condition)` self-test harness convention as every other `scripts/*.py` tool rather than introducing a new test framework. It runs 40 deterministic unit tests (all currently passing): the 32 scenarios required by `v0.31.0`'s implementation task (every state/transition pair, every consent-invalidation rule, duplicate-invocation prevention, malformed-result handling, cancellation, and analysis/report-hook isolation) plus 8 additional invariant-coverage tests (confirmation not reusable across requests, environment mismatch blocking execution, all failure categories distinct, no methodology-validity claim in the data model, conservative script-identity guard, unsafe-request blocking, execution-record secret exclusion, and monotonic confirmation consumption).
+This repository has no `pytest` configuration anywhere (no `pyproject.toml`, `setup.py`, `pytest.ini`, or `conftest.py`), so this test file follows the same `check(name, condition)` self-test harness convention as every other `scripts/*.py` tool rather than introducing a new test framework. It runs 60 deterministic unit tests (all currently passing): the original 40 from `v0.31.0`'s implementation task (every state/transition pair, every consent-invalidation rule, duplicate-invocation prevention, malformed-result handling, cancellation, analysis/report-hook isolation, and 8 additional invariant-coverage tests), plus 20 new `v0.32.0` Increment-1 tests (41-60) exercising the same scenarios through `AdapterRunner` specifically — controller-to-adapter projection, confirmation-consumption timing through the bridge, adapter-level launch-failure classification, all seven helper statuses, duplicate invocation, no-automatic-retry, rerun-as-new-request, cancellation timing, downstream-failure evidence preservation, and a structural proof that neither this module nor `gauss_execution_adapter` ever imports the real helper.
 
-This script does not require GAUSS to be installed, does not access the network, and does not implement production runtime orchestration — it validates that the design's state machine and consent model are internally consistent, against a fake runner only.
+This script does not require GAUSS to be installed, does not access the network, and does not implement production runtime orchestration — it validates that the design's state machine and consent model are internally consistent, against a fake runner or a fake-helper-backed `AdapterRunner` only.
+
+## `gauss_execution_adapter.py`
+
+Purpose:
+The Helper Adapter (`v0.32.0` Phase 3, Increment 1 of `planning/v0.32.0-real-helper-adapter-scope.md`) — the single controlled boundary between runtime orchestration and the verified execution helper. Implements `planning/v0.32.0-real-helper-adapter-scope.md`'s helper interface audit (§5), request-to-helper projection (§6), script-path policy (§7), and pre-invocation validation (§9).
+
+**This module never touches real GAUSS at import time.** Explicitly:
+
+- It never imports `scripts/gauss_code_execution.py` at module level. `load_real_helper()` performs that import lazily, inside its own function body, and is never called automatically — only an explicit, separate caller invocation constructs the real production path.
+- It never launches a subprocess itself.
+- It never detects a real GAUSS environment (no call into `scripts/gauss_environment_check.py`; `_default_environment_probe(...)` is a plain `Path.exists()` continuity check, not GAUSS detection).
+- It never invokes `gauss.exe` or `tgauss.exe`, directly or indirectly — `GaussExecutionAdapter.invoke(...)` only ever calls the *injected* `helper` callable supplied by its caller (a fake helper in every test as of this revision).
+- Script-path mode is unconditionally rejected before the injected helper is ever called — no content-fingerprinting mechanism is implemented, and a resolved path is never treated as proof of unchanged file contents.
+
+Supported behavior:
+
+- `GaussExecutionAdapter` — constructed with an explicit, required `helper: HelperCallable` (no default; omitting it is a `TypeError`, not a silent fallback) and an optional `environment_probe`. `invoke(request: AdapterRequest) -> AdapterOutcome` validates, projects, and calls the helper at most once per `request_identity`.
+- `HelperCallable` — a `Protocol` matching `execute_gauss_code(...)`'s actual, verified signature (confirmed by direct inspection — no invented parameters).
+- `load_real_helper()` — the one, lazy, explicit factory that imports `scripts/gauss_code_execution.py` and returns its real `execute_gauss_code`; never called by `GaussExecutionAdapter`'s own construction, and never called anywhere in this repository's default test suite.
+- `AdapterRequest` — a narrow, self-contained 13-field projection of the canonical execution request (no import of orchestration types, preserving the `gauss_runtime_orchestration.py → gauss_execution_adapter.py → gauss_code_execution.py` import direction).
+- Pre-invocation validation, in order: duplicate invocation, script-path rejection, missing inline code, structural request validity, unsupported (GUI) executable, environment mismatch, missing package context — each with its own `AdapterFailureCategory`, none collapsed into a generic failure.
+- Explicit constants always passed to the helper: `strict=True`, `allow_network=False`, `allow_file_write=False`.
+- Known helper no-ops preserved and documented: `allow_file_write`, `capture_stdout`, `capture_stderr`, `validate_schema` are confirmed no-ops on `execute_gauss_code(...)` itself (never relied on for any behavior); `allow_network` is a partial no-op (adds a warning if `True`, never actually grants network access).
+- `safe_summary(...)` — an audit-safe view excluding code and any credential/secret-shaped data, keeping only identifiers, statuses, and the helper's own disclosed evidence.
+
+Self-test:
+
+```text
+python scripts/gauss_execution_adapter.py --self-test
+```
+
+The focused, comprehensive test suite:
+
+```text
+python scripts/test_gauss_execution_adapter.py
+```
+
+30 deterministic unit tests (all currently passing), following the same `check(name, condition)` convention: exact field projection, explicit constants, orchestration-only field exclusion, inline-code acceptance, script-path/missing-code/environment-mismatch/unsupported-executable rejection (all before invocation), all seven verified helper statuses recognized distinctly, malformed-result and unrecognized-status handling, output-metadata-is-not-content, exactly-once invocation and duplicate refusal, no automatic retry, helper-exception classification, raw-result preservation, safe-summary redaction, missing-package-context fail-closed handling, and three production-boundary tests (`load_real_helper()` is explicit and returns the real callable without ever calling it; a missing helper dependency raises `ImportError` honestly; constructing an adapter without an explicit helper is a `TypeError`).
+
+This script does not require GAUSS to be installed, does not access the network, and does not implement production execution — it validates the adapter's own projection/validation/mapping logic against fake helpers only.
+
+## `test_gauss_execution_adapter_real.py`
+
+Purpose:
+A doubly-gated **real** GAUSS smoke-test harness for the Helper Adapter (`v0.32.0` Phase 3, Increment 1's resolved smoke-test enablement decision — `planning/v0.32.0-real-helper-adapter-scope.md` §16/§22-23). **This file can invoke real GAUSS** when both of two independent gates are supplied simultaneously; it is not part of any default test path.
+
+Required gates, both simultaneously — either one missing means a clean, explicit skip with no GAUSS touched:
+
+1. The command-line flag `--run-real-gauss`.
+2. The environment variable `GAUSS_AI_ALLOW_REAL_EXECUTION=1`.
+
+```text
+python scripts/test_gauss_execution_adapter_real.py
+```
+
+Run with no arguments (or with only one of the two gates), this always prints a `SKIPPED` notice and exits `0` without touching GAUSS — confirmed by direct, live invocation with no gates, with only `--run-real-gauss`, and with only `GAUSS_AI_ALLOW_REAL_EXECUTION=1` set, each producing a clean skip.
+
+Gating/preflight self-test (never supplies both gates):
+
+```text
+python scripts/test_gauss_execution_adapter_real.py --self-test
+```
+
+Tests only the pure gate-computation logic (`gate_status(...)`/`should_run(...)`) and the zero-gate/one-gate skip paths of `main()` — it explicitly clears `GAUSS_AI_ALLOW_REAL_EXECUTION` from the environment for the duration of those checks, so the self-test's own safety does not depend on the ambient shell never having that variable set.
+
+When both gates are present (not exercised by this repository's own test/CI/release-readiness paths, ever), the harness prints a prominent notice, then verifies the platform matches the one combination this repository has ever verified real invocation against (Windows), then verifies an explicit `--executable-path` argument is a terminal (`tgauss`/`tgauss.exe`, never GUI) executable that actually exists — only after both preflight checks pass does it construct the real helper (via `gauss_execution_adapter.load_real_helper()`) and attempt one minimal, non-destructive, hardcoded inline-code invocation (`print 1+1;`) inside a disposable temporary working directory.
+
+**Release-readiness (`scripts/check_release_readiness.py`) and every default test command never set either gate and never invoke this file.**
 
 ## PACKAGE_DOC_DIRECTORIES refresh process
 

@@ -226,6 +226,9 @@ This file records notable changes to the GAUSS AI framework.
 - Added the v0.31.0 readiness checklist: ready to tag as a design-and-mock milestone, with no release blocker found; Phase 3 (real Helper Adapter integration) remains a separate, unauthorized-by-this-review future decision.
 - Began v0.32.0 (Real Helper Adapter Integration) scoping: a planning-only proposal for Phase 3, covering the helper-interface audit, request-to-helper projection, pre-invocation validation, single-process invocation boundary, failure mapping, cancellation limitations, test strategy, and rollout phases. No implementation, helper, or schema change made.
 - Resolved v0.32.0's four prerequisite decisions (script-path policy, real smoke-test enablement, adapter module location, exactly-once scope/helper-schema posture) and authorized Increment 1 (adapter interface and fake-helper-only tests) to begin. No later rollout increment is authorized; no implementation, helper, or schema change made.
+- Implemented v0.32.0 Increment 1: added the Helper Adapter (`scripts/gauss_execution_adapter.py`, 30 passing tests) and integrated it into the v0.31.0 mock orchestration controller via a new `AdapterRunner` bridge (`scripts/gauss_runtime_orchestration.py`, now 60 passing tests, all 40 original tests unmodified), entirely against fake helpers.
+- Added `scripts/test_gauss_execution_adapter_real.py`, a doubly-gated real-GAUSS smoke-test harness requiring both `--run-real-gauss` and `GAUSS_AI_ALLOW_REAL_EXECUTION=1` simultaneously; confirmed both gates were never supplied simultaneously in this milestone's own work.
+- Added 33.x Real Helper Adapter Integration evaluations; 30/30 passed at 4.0. No GAUSS was run; `scripts/gauss_code_execution.py` and `schemas/gauss_code_execution.schema.json` remain unmodified.
 
 ## [0.1.0] - 2026-06-26
 

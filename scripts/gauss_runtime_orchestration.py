@@ -16,15 +16,28 @@ implements them):
 - planning/v0.31.0-runtime-state-machine-contract.md -- the 13-state machine,
   its transition/guard/failure-routing tables, and its invariants.
 
-This module is explicitly **mock-only**:
+This module is **mock-only by default, with an optional Increment-1 adapter
+bridge** (v0.32.0 Phase 3, Increment 1 -- see
+planning/v0.32.0-real-helper-adapter-scope.md's Section 24 for the exact
+authorized boundary):
 
 - It never imports scripts/gauss_code_execution.py or calls
-  execute_gauss_code(...).
+  execute_gauss_code(...), directly or indirectly. The only new import this
+  revision adds is scripts/gauss_execution_adapter.py -- which itself never
+  imports the real helper at module import time either (see that module's
+  own docstring and `load_real_helper()`).
 - It never launches a subprocess, never constructs a shell command, and
   never detects a real GAUSS environment.
 - It never invokes gauss.exe or tgauss.exe, directly or indirectly.
-- All "execution" happens through an injected fake runner (see FakeRunner),
-  supplied entirely by the caller (in practice, a test).
+- All "execution" happens through an injected runner satisfying the
+  FakeRunner Protocol -- either a fake/stub callable (every test in this
+  module's own test suite), or `AdapterRunner`, a thin bridge to a
+  `gauss_execution_adapter.GaussExecutionAdapter` instance. `AdapterRunner`
+  itself never selects a real helper; the adapter it wraps must be
+  constructed by its *caller* with an explicit helper callable (fake in
+  every test here; a real one only via a future, separately authorized
+  caller invoking `gauss_execution_adapter.load_real_helper()` -- never
+  automatically, and never by this module).
 - All state is in-memory only, scoped to one Python process, with no
   cross-process coordination, no database, no queue, and no file-based
   persistence.
@@ -32,7 +45,11 @@ This module is explicitly **mock-only**:
 Deliberately out of scope for this phase (see the module's Non-Goals in
 planning/v0.31.0-runtime-orchestration-design.md):
 
-- Real Helper Adapter integration (Phase 3).
+- Real, actually-invoked Helper Adapter execution -- Increment 1 authorizes
+  only the adapter's own interface and this bridge, both tested exclusively
+  against fake helpers (planning/v0.32.0-real-helper-adapter-scope.md
+  Section 24). No test in this module's own suite ever constructs a real
+  helper or calls `gauss_execution_adapter.load_real_helper()`.
 - Real execution-aware analysis / report-generation workflow integration
   (Phase 4) -- this module accepts injected fake hooks instead.
 - Real file/session handling beyond what is needed to exercise the contract
@@ -66,7 +83,18 @@ import sys
 import time
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable, Protocol
+
+_SCRIPT_DIR = Path(__file__).resolve().parent
+if str(_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR))
+
+# The only new import this revision adds. gauss_execution_adapter never
+# imports scripts/gauss_code_execution.py at its own import time (see that
+# module's docstring), so this import has no execution side effects: no
+# helper import, no GAUSS detection, no subprocess launch, no code run.
+import gauss_execution_adapter  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Small supporting value types
@@ -652,7 +680,14 @@ def _missing_expected_outputs(
 @dataclass(frozen=True)
 class RunnerInput:
     """A narrow projection of the canonical request -- deliberately does not
-    expose safety_review/confirmation internals to the runner boundary."""
+    expose safety_review/confirmation internals to the runner boundary.
+
+    `gauss_version`, `expected_input_files`, and `required_packages` were
+    added in v0.32.0 Phase 3 (Increment 1) so this same projection can drive
+    either a test fake runner (which may ignore them, as every pre-existing
+    test already does) or `AdapterRunner`'s bridge to
+    gauss_execution_adapter.AdapterRequest, without widening the runner
+    boundary to expose safety_review/confirmation internals."""
 
     code: str | None
     script_path: str | None
@@ -661,6 +696,9 @@ class RunnerInput:
     executable_path: str
     timeout_seconds: float
     allow_output_files: bool
+    gauss_version: str | None = None
+    expected_input_files: tuple[str, ...] = ()
+    required_packages: tuple[str, ...] = ()
 
 
 class FakeRunner(Protocol):
@@ -670,6 +708,69 @@ class FakeRunner(Protocol):
     launches a subprocess itself."""
 
     def __call__(self, runner_input: RunnerInput) -> dict[str, Any]: ...
+
+
+class AdapterRunner:
+    """Bridges a `gauss_execution_adapter.GaussExecutionAdapter` into this
+    controller's FakeRunner boundary (`MockOrchestrationInstance.invoke`'s
+    `runner` parameter). Structurally satisfies FakeRunner -- it can be
+    passed to `invoke(...)` exactly like a test's fake-runner lambda, with
+    zero changes to `invoke`'s own logic.
+
+    This class never selects, imports, or constructs a real helper itself --
+    the `adapter` passed to `__init__` must already be fully constructed by
+    the caller, with whatever helper callable the caller chose (a fake
+    helper in every test in this repository as of this revision; a real one
+    only via a future, separately authorized caller that explicitly invokes
+    `gauss_execution_adapter.load_real_helper()` -- never automatically).
+
+    Any adapter-level pre-invocation rejection (`AdapterOutcome.invoked` is
+    `False` -- e.g. a race where the environment changed between this
+    controller's own `check_environment_before_invocation()` call and the
+    actual attempt) is raised here as an exception, which `invoke()` already
+    treats as a `RUNNER_LAUNCH_FAILURE`. This is the correct classification,
+    not a bug: by the time `invoke()` calls this bridge, confirmation has
+    already been consumed (per the atomic-consumption rule) -- an
+    adapter-level rejection discovered only at the moment of the attempted
+    call is therefore a launch failure, not a pre-authorization guard
+    failure. Callers are expected to have already run this controller's own
+    script-path (`submit_for_review`) and environment-mismatch
+    (`check_environment_before_invocation`) checks before ever reaching
+    `invoke()` -- this bridge's own adapter-level checks are defense in
+    depth for a race or a caller that skipped those steps, not the primary
+    enforcement point.
+    """
+
+    def __init__(
+        self, adapter: "gauss_execution_adapter.GaussExecutionAdapter", *, request_identity: str
+    ) -> None:
+        self._adapter = adapter
+        self._request_identity = request_identity
+
+    def __call__(self, runner_input: RunnerInput) -> dict[str, Any]:
+        adapter_request = gauss_execution_adapter.AdapterRequest(
+            request_identity=self._request_identity,
+            code=runner_input.code,
+            script_path=runner_input.script_path,
+            working_directory=runner_input.working_directory,
+            output_directory=runner_input.output_directory,
+            executable_path=runner_input.executable_path,
+            gauss_version=runner_input.gauss_version,
+            timeout_seconds=runner_input.timeout_seconds,
+            expected_input_files=runner_input.expected_input_files,
+            required_packages=runner_input.required_packages,
+            allow_output_files=runner_input.allow_output_files,
+            package_inspection_result=None,
+        )
+        outcome = self._adapter.invoke(adapter_request)
+        if not outcome.invoked:
+            category = outcome.failure_category.value if outcome.failure_category else "unknown"
+            raise RuntimeError(
+                f"Helper Adapter rejected this invocation before calling the helper "
+                f"({category}): {outcome.rejection_reason}"
+            )
+        assert outcome.raw_result is not None
+        return outcome.raw_result
 
 
 # ---------------------------------------------------------------------------
@@ -1085,6 +1186,9 @@ class MockOrchestrationInstance:
             executable_path=self.request.executable_path,
             timeout_seconds=self.request.timeout_seconds,
             allow_output_files=self.request.allow_output_files,
+            gauss_version=self.request.environment_summary.gauss_version,
+            expected_input_files=self.request.expected_input_files,
+            required_packages=self.request.required_packages,
         )
 
         try:
