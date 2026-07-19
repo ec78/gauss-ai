@@ -15,8 +15,8 @@ Use this dashboard to understand coverage by milestone, prompt range, expert cat
 
 ## Dashboard Metadata
 
-- Current milestone: `v0.30.0` - Real Execution User Workflow Design.
-- Captures evaluation state through: `v0.30.0`'s `31.x` benchmark evaluations (completed, 8/8 Passed at 4.0).
+- Current milestone: `v0.31.0` - Runtime Orchestration Design.
+- Captures evaluation state through: `v0.31.0`'s `32.x` benchmark evaluations (completed, 29/29 Passed at 4.0).
 - Evaluation model: manual benchmark evaluation with tracking guard. No runtime scoring engine exists.
 - Runtime scoring engine: Not implemented.
 - Benchmark prompts source: `evaluations/benchmark-prompts.md`.
@@ -29,15 +29,15 @@ Use this dashboard to understand coverage by milestone, prompt range, expert cat
 
 ## Current Evaluation State
 
-Captured by running `scripts/check_evaluation_tracking.py`, `scripts/check_release_readiness.py`, and `scripts/validate_all_evidence.py` (default and `--json`) against the repository state after `v0.30.0`'s `31.x` benchmark evaluations were completed:
+Captured by running `scripts/check_evaluation_tracking.py`, `scripts/check_release_readiness.py`, and `scripts/validate_all_evidence.py` (default and `--json`) against the repository state after `v0.31.0`'s `32.x` benchmark evaluations were completed:
 
-- Prompt IDs: 161.
-- Coverage rows: 161.
-- Run files referenced: 148.
-- Index entries: 153.
+- Prompt IDs: 190.
+- Coverage rows: 190.
+- Run files referenced: 177.
+- Index entries: 182.
 - Tracking errors: 0.
 - Documented (historical) tracking warnings: 2.
-- Current active-category ("Not Run" in the highest-numbered active category) warnings: 0 — all eight `31.x` prompts (Real Execution User Workflow) are now `Passed` at 4.0, so the tracking guard's "current active category" check has nothing to flag.
+- Current active-category ("Not Run" in the highest-numbered active category) warnings: 0 — all 29 `32.x` prompts (Runtime Orchestration Design) are now `Passed` at 4.0, so the tracking guard's "current active category" check has nothing to flag.
 - Default tracking guard (`check_evaluation_tracking.py`): PASS.
 - JSON tracking guard (`check_evaluation_tracking.py --json`): `overall_pass: true`.
 - Strict tracking guard (`check_evaluation_tracking.py --strict`): FAIL — expected, both current warnings are the two documented historical ones (see "Known Warnings and Historical Exceptions" below).
@@ -90,6 +90,7 @@ Important:
 | 29.x | Execution-Aware Analysis Workflow (`v0.26.0`) | Interpretation of structured `gauss_code_execution` result objects: execution-status handling, expert routing, interpretation boundaries, stdout/stderr/output-file/warning handling, and the real-invocation limitation | 8 | 8 | 8/8 Passed (4.0) | All prompts run and passed for `workflows/execution-aware-analysis.md` and its integration into `workflows/code-assistant-response.md` (`planning/v0.26.0-execution-aware-analysis-workflow.md`). Validates that `completed`/`exit_code: 0` is not overclaimed as model validity, that stderr/warnings are surfaced even when execution completed, that failed/timed-out execution is debugged without fabricating results or claiming model invalidity, that blocked/skipped results make no execution or output claims, that `output_files` metadata is not mistaken for read file contents, and that fake-runner self-test success is not conflated with production-ready real GAUSS invocation — including the confirmed `v0.25.0` GAUSS 26 interactive-prompt finding. |
 | 30.x | Report Generation Workflow (`v0.27.0`) | Structured report generation from GAUSS code, execution evidence, captured output, output-file metadata, and expert-routed interpretation: evidence hierarchy, report type selection, report structure, expert routing, missing/partial evidence handling, and unsupported-claim refusal | 8 | 8 | 8/8 Passed (4.0) | All prompts run and passed for `workflows/report-generation.md` and its integration into `workflows/code-assistant-response.md` (`planning/v0.27.0-report-generation-workflow.md`). Validates correct report-type selection, evidence-hierarchy adherence, no methodology-validity claims from `completed`/`exit_code: 0`, debugging reports built from stderr without fabricating results, timed-out reports treating partial output as partial evidence with the real-invocation limitation named as a plausible cause, `output_files` metadata never mistaken for read contents, econometric notes refusing reliability claims without diagnostics, teaching explanations with genuine misconception warnings, product summaries that don't imply output exists for blocked execution, and outright refusal of unsupported final conclusions in favor of a scoped alternative. |
 | 31.x | Real Execution User Workflow (`v0.30.0`) | User-facing decision to offer, propose, or perform real GAUSS execution: eligibility criteria, consent model, mode selection (Advisory/Proposed/Assisted/Post-Execution Analysis), pre-execution safety review, file-handling boundaries, rerun/repair policy, and evidence/trust boundaries | 8 | 8 | 8/8 Passed (4.0) | All prompts run and passed for `workflows/real-execution-user-workflow.md` and its integration into `workflows/code-assistant-response.md` (`planning/v0.30.0-real-execution-user-workflow-design.md`). Validates missing-working-directory handling via the "Request Missing Inputs" pattern, review-only requests staying in Advisory Mode, unsafe-write refusal with a safe relative-path alternative, package-installation refusal without an install offer, an honest "no live tool connected" disclosure rather than a fabricated execution result for a fully confirmed Assisted Execution request, refusal of automatic rerun after failure requiring fresh confirmation and safety review, separating completed execution from statistical/methodological validity, and treating `output_files` as metadata only without inferring contents. |
+| 32.x | Runtime Orchestration Design (`v0.31.0`) | Mock-only runtime orchestration design and controller behavior: execution-intent recognition, input collection, eligibility/safety boundaries, explicit confirmation (including stale/invalid consent), exactly-once invocation, cancellation, helper/GAUSS runtime failures, result validation, analysis/reporting routing, reruns, session boundaries, and evidence/methodology limits | 29 | 29 | 29/29 Passed (4.0) | All prompts run and passed for the `v0.31.0` runtime orchestration design (`planning/v0.31.0-runtime-orchestration-design.md`, `planning/v0.31.0-canonical-execution-request-contract.md`, `planning/v0.31.0-runtime-state-machine-contract.md`) and its mock controller skeleton (`scripts/gauss_runtime_orchestration.py`). Prompts 32.1-32.25 map one-to-one onto the state-machine contract's own §20 evaluation mapping; 32.26-32.29 cover confirmation-evidence insufficiency, environment mismatch, untrusted script identity, and non-failure terminal-instance resurrection. Validates that execution intent is never inferred from code presence, ineligible/unsafe requests are blocked before confirmation, `user_confirmed: true` alone is never sufficient, stale/modified/cross-session confirmation is always rejected, at most one invocation occurs per confirmed request with no automatic retry, cancellation during a synchronous call is disclosed honestly rather than claimed as termination, helper-launch/GAUSS-runtime/timeout/malformed-result failures stay distinct, missing expected output and output-metadata-vs-content boundaries are preserved, analysis/report failures never rewrite execution evidence, and execution success is never treated as methodological validation. No GAUSS was run, no subprocess was launched, and the real execution helper was neither imported nor invoked by any evaluation. |
 
 Counts above are taken directly from `evaluations/benchmark-coverage.md` and `evaluations/runs/INDEX.md`. Categories `1.x` through `10.x` predate stable Prompt ID conventions in places and are summarized as "early baseline" or historical where a prompt has never been run; these were not invented to force full coverage, and their `Not Run` prompts remain genuinely not run today.
 
