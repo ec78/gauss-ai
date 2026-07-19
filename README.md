@@ -158,6 +158,8 @@ This is the *designed* flow the planning documents specify and the mock controll
 
 Future work, in order, begins with **Phase 3: real Helper Adapter integration** — wiring the proven mock controller to the actual `execute_gauss_code(...)` helper for the first time — followed by analysis/reporting integration, durable file/session handling, and a `v0.31.0`-successor evaluation/hardening pass. See `planning/v0.31.0-runtime-orchestration-design.md`'s "Implementation Phases" section for the full sequence. Real runtime orchestration is **not implemented** by `v0.31.0`, and this documentation should not be read as claiming otherwise.
 
+**Readiness status:** `planning/v0.31.0-readiness-checklist.md` reviews `v0.31.0` as a design-and-mock milestone and finds it **ready to tag**, with no release blocker; that readiness verdict does not itself authorize starting Phase 3.
+
 ## Limitations
 
 See [known limitations](KNOWN_LIMITATIONS.md) for the current constraint list.

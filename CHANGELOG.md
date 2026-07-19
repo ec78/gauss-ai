@@ -223,6 +223,8 @@ This file records notable changes to the GAUSS AI framework.
 - Added a mock-only, in-memory v0.31.0 runtime orchestration controller skeleton and 40 passing unit tests.
 - Added 32.x runtime orchestration evaluations; 29/29 passed at 4.0.
 - Updated project documentation (README, scripts README, known limitations, roadmap, evaluation dashboard) to consolidate v0.31.0's planning contracts, mock-only orchestration controller, and 32.x evaluation coverage, making clear that real Helper Adapter integration remains unimplemented.
+- Added the v0.31.0 readiness checklist: ready to tag as a design-and-mock milestone, with no release blocker found; Phase 3 (real Helper Adapter integration) remains a separate, unauthorized-by-this-review future decision.
+- Began v0.32.0 (Real Helper Adapter Integration) scoping: a planning-only proposal for Phase 3, covering the helper-interface audit, request-to-helper projection, pre-invocation validation, single-process invocation boundary, failure mapping, cancellation limitations, test strategy, and rollout phases. No implementation, helper, or schema change made.
 
 ## [0.1.0] - 2026-06-26
 
