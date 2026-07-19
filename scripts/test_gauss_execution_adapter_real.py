@@ -65,8 +65,18 @@ _SUPPORTED_EXECUTABLE_BASENAMES = frozenset({"tgauss", "tgauss.exe"})
 
 # Minimal, non-destructive, hardcoded inline code -- never user-suppliable
 # through this harness, so no arbitrary code can reach a real GAUSS process
-# through this file.
-_SMOKE_TEST_CODE = "print 1+1;"
+# through this file. This exact script (an assignment followed by print) is
+# not invented -- it is byte-for-byte the script content real-verified as
+# Test 3 ("Scalar calculation") in planning/v0.28.0-real-gauss-invocation-research.md:
+# run via tgauss.exe -b calc.gss, confirmed exit code 0, confirmed stdout
+# "       4.0000000". The previous placeholder here, "print 1+1;", was never
+# itself verified as script-file content -- only the -e inline-expression
+# form of that exact string was attempted, and that attempt was recorded as
+# inconclusive/not confirmed working (v0.28.0 Test 6). This harness never
+# uses -e; it always writes code to a generated script file and invokes it
+# via the verified tgauss.exe -b <script_path> form, so this correction
+# replaces an unverified string with a genuinely verified one.
+_SMOKE_TEST_CODE = "x = 2 + 2;\nprint x;"
 
 
 def gate_status(*, flag_present: bool, env_value: str | None) -> tuple[bool, bool]:
@@ -231,8 +241,18 @@ def _invoke_once(adapter: "ga.GaussExecutionAdapter", executable_path: str, work
 
     print(f"execution_status: {outcome.execution_status}")
     raw = outcome.raw_result or {}
-    print(f"exit_code: {raw.get('exit_code')}")
+    print(f"exit_code (non-authoritative -- see scripts/gauss_code_execution.py's _detect_gauss_error): {raw.get('exit_code')}")
+    print(f"elapsed_seconds: {raw.get('elapsed_seconds')}")
+    print(f"stdout: {raw.get('stdout')!r}")
+    print(f"stderr: {raw.get('stderr')!r}")
+    print(f"warnings: {raw.get('warnings')}")
+    print(f"errors: {raw.get('errors')}")
     print(f"output file count (metadata only, contents never read): {len(raw.get('output_files') or [])}")
+    try:
+        schema_errors = ga.validate_against_real_schema(raw)
+        print(f"schema_validation_errors: {schema_errors if schema_errors else '[] (valid)'}")
+    except ImportError as exc:
+        print(f"schema_validation_errors: could not validate -- {exc}")
     return 0
 
 

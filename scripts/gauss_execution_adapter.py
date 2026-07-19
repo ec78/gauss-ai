@@ -121,6 +121,37 @@ def load_real_helper() -> HelperCallable:
     return _real_helper_module.execute_gauss_code
 
 
+def validate_against_real_schema(raw_result: dict[str, Any]) -> list[str]:
+    """Explicit, lazy real-schema validation against
+    schemas/gauss_code_execution.schema.json -- a separate, optional step,
+    never baked into `GaussExecutionAdapter.invoke(...)` itself, mirroring
+    `scripts/gauss_code_execution.py`'s own convention that
+    `validate_against_schema(...)` is a distinct call from
+    `execute_gauss_code(...)`.
+
+    Like `load_real_helper()`, this imports `scripts/gauss_code_execution.py`
+    lazily, inside this function body -- calling this function does import
+    the real helper module (safe: importing defines functions, it does not
+    run GAUSS), but it never calls `execute_gauss_code(...)` and never
+    invokes GAUSS. Returns the list of jsonschema error strings (empty list
+    means valid); a single explanatory string is returned if `jsonschema`
+    is not installed, matching the real helper's own documented behavior.
+    """
+    _script_dir = Path(__file__).resolve().parent
+    if str(_script_dir) not in sys.path:
+        sys.path.insert(0, str(_script_dir))
+    try:
+        import gauss_code_execution as _real_helper_module  # local import: see load_real_helper()
+    except ImportError as exc:
+        raise ImportError(
+            "validate_against_real_schema() could not import scripts/gauss_code_execution.py: "
+            f"{exc}."
+        ) from exc
+
+    schema_path = _real_helper_module.default_schema_path()
+    return _real_helper_module.validate_against_schema(raw_result, schema_path)
+
+
 # ---------------------------------------------------------------------------
 # Narrow, self-contained request/result types (no import of orchestration
 # types -- this module must not import scripts/gauss_runtime_orchestration.py,

@@ -610,6 +610,54 @@ def test_30_no_implicit_fallback_to_a_real_helper() -> None:
     )
 
 
+def test_31_validate_against_real_schema_is_explicit_and_correct() -> None:
+    """v0.33.0: validate_against_real_schema(...) is a separate, explicit,
+    lazy call -- like load_real_helper(), it is never invoked by
+    GaussExecutionAdapter.invoke(...) itself. This test does call it (it
+    imports scripts/gauss_code_execution.py, safely -- importing defines
+    functions, it does not run GAUSS), following the same precedent as
+    test_28's use of load_real_helper()."""
+    check(
+        "GaussExecutionAdapter.invoke never calls validate_against_real_schema itself",
+        "validate_against_real_schema" not in ga.GaussExecutionAdapter.invoke.__code__.co_names,
+    )
+
+    valid_result = {
+        "checked": True,
+        "executed": True,
+        "execution_status": "completed",
+        "operating_mode": "execution",
+        "executable_path": "C:/gauss26/tgauss.exe",
+        "gauss_version": "GAUSS 26",
+        "working_directory": "C:/example/work",
+        "command": "C:/gauss26/tgauss.exe -b C:/example/work/x.gss",
+        "code_source": "inline",
+        "script_path": None,
+        "timeout_seconds": 30.0,
+        "elapsed_seconds": 0.3,
+        "exit_code": 0,
+        "stdout": "4.0000000",
+        "stderr": "",
+        "output_files": [],
+        "warnings": [],
+        "errors": [],
+        "next_steps": [],
+    }
+    errors = ga.validate_against_real_schema(valid_result)
+    missing_dependency = len(errors) == 1 and errors[0].startswith("jsonschema is not installed")
+    check(
+        "a well-formed result validates cleanly against the real schema (or jsonschema is absent)",
+        not errors or missing_dependency,
+    )
+
+    malformed_result = {"executed": True}
+    errors2 = ga.validate_against_real_schema(malformed_result)
+    check(
+        "a malformed result fails real schema validation (or jsonschema is absent)",
+        bool(errors2),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------

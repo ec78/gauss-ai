@@ -1,11 +1,13 @@
-"""Mock-only, in-memory runtime orchestration controller skeleton (v0.31.0 Phase 2).
+"""Runtime orchestration controller (v0.31.0 Phase 2 skeleton, v0.32.0 Phase 3
+Increment 1 adapter bridge, v0.33.0 Controlled Real Execution Integration).
 
 This module implements the Phase 2 deliverable from
 planning/v0.31.0-runtime-orchestration-design.md's Implementation Phases: a
 small, internal orchestration layer that encodes the canonical execution
 request, the 13-state runtime state machine, the confirmation lifecycle, and
 the "exactly once per confirmed request" invocation invariant well enough for
-deterministic unit testing -- entirely against an injected fake runner.
+deterministic unit testing -- entirely against an injected fake runner by
+default.
 
 Authoritative design sources (this module does not redefine their rules, only
 implements them):
@@ -15,32 +17,36 @@ implements them):
   and its confirmation contract.
 - planning/v0.31.0-runtime-state-machine-contract.md -- the 13-state machine,
   its transition/guard/failure-routing tables, and its invariants.
+- planning/v0.33.0-controlled-real-execution-integration.md -- the real
+  execution path this module can now optionally drive via
+  `build_production_adapter_runner(...)`, and the single, bounded,
+  human-authorized real GAUSS smoke test verified through it.
 
-This module is **mock-only by default, with an optional Increment-1 adapter
-bridge** (v0.32.0 Phase 3, Increment 1 -- see
-planning/v0.32.0-real-helper-adapter-scope.md's Section 24 for the exact
-authorized boundary):
+This module is **mock-only by default, with an explicit, narrow real-path
+factory that must be called by name to activate**:
 
-- It never imports scripts/gauss_code_execution.py or calls
-  execute_gauss_code(...), directly or indirectly. The only new import this
-  revision adds is scripts/gauss_execution_adapter.py -- which itself never
+- It never imports scripts/gauss_code_execution.py directly, and never calls
+  execute_gauss_code(...) itself. The only import this module adds beyond
+  the stdlib is scripts/gauss_execution_adapter.py -- which itself never
   imports the real helper at module import time either (see that module's
   own docstring and `load_real_helper()`).
 - It never launches a subprocess, never constructs a shell command, and
-  never detects a real GAUSS environment.
-- It never invokes gauss.exe or tgauss.exe, directly or indirectly.
+  never detects a real GAUSS environment, anywhere in this module's own code.
+- It never invokes gauss.exe or tgauss.exe directly; `build_production_adapter_runner(...)`
+  is the one function whose *explicit* invocation, by name, results in a
+  real-helper-backed `AdapterRunner` being constructed -- see that
+  function's own docstring for the exact, narrow boundary this implies.
 - All "execution" happens through an injected runner satisfying the
   FakeRunner Protocol -- either a fake/stub callable (every test in this
-  module's own test suite), or `AdapterRunner`, a thin bridge to a
+  module's own default test suite), or `AdapterRunner`, a thin bridge to a
   `gauss_execution_adapter.GaussExecutionAdapter` instance. `AdapterRunner`
-  itself never selects a real helper; the adapter it wraps must be
-  constructed by its *caller* with an explicit helper callable (fake in
-  every test here; a real one only via a future, separately authorized
-  caller invoking `gauss_execution_adapter.load_real_helper()` -- never
-  automatically, and never by this module).
+  itself never selects a real helper; the adapter it wraps is constructed
+  by its *caller* with an explicit helper callable -- fake in every default
+  test, real only when `build_production_adapter_runner(...)` is called
+  explicitly, by name, which no test in this module's default suite does.
 - All state is in-memory only, scoped to one Python process, with no
   cross-process coordination, no database, no queue, and no file-based
-  persistence.
+  persistence -- unchanged by the real-path factory's existence.
 
 Deliberately out of scope for this phase (see the module's Non-Goals in
 planning/v0.31.0-runtime-orchestration-design.md):
@@ -771,6 +777,38 @@ class AdapterRunner:
             )
         assert outcome.raw_result is not None
         return outcome.raw_result
+
+
+def build_production_adapter_runner(
+    *,
+    request_identity: str,
+    environment_probe: Callable[[str], bool] | None = None,
+) -> AdapterRunner:
+    """The ONE narrow, explicit factory in this module that can result in a
+    real GAUSS invocation (v0.33.0, Controlled Real Execution Integration).
+
+    Calling this function is the only way this module's own code can reach
+    the real helper -- it must be called explicitly, by name, by a caller
+    that has already completed its own confirmation/eligibility/safety
+    review. It is never called by `MockOrchestrationInstance`'s own
+    construction, by `invoke(...)`'s default behavior, by any test in this
+    repository's default suite, or merely because GAUSS happens to be
+    installed on the current machine -- installed-ness is not consulted by
+    this function at all; it only constructs the object graph.
+
+    This function calls exactly two things: `gauss_execution_adapter.load_real_helper()`
+    (the adapter's own lazy, explicit real-helper factory -- see that
+    module's docstring) and `gauss_execution_adapter.GaussExecutionAdapter(...)`.
+    It does not call `execute_gauss_code(...)` itself, does not launch a
+    subprocess itself, and does not detect a GAUSS environment itself --
+    every one of those remains the adapter's and the real helper's own
+    responsibility, unchanged by this factory's existence.
+    """
+    real_helper = gauss_execution_adapter.load_real_helper()
+    adapter = gauss_execution_adapter.GaussExecutionAdapter(
+        helper=real_helper, environment_probe=environment_probe
+    )
+    return AdapterRunner(adapter, request_identity=request_identity)
 
 
 # ---------------------------------------------------------------------------

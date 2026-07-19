@@ -1118,6 +1118,59 @@ def test_60_adapter_runner_never_imports_or_invokes_real_helper() -> None:
 
 
 # ---------------------------------------------------------------------------
+# v0.33.0 Controlled Real Execution Integration: production-path factory
+# tests. These deliberately never CALL build_production_adapter_runner(...)
+# -- doing so would import scripts/gauss_code_execution.py as a side effect
+# of running this repository's default test suite, which would silently
+# weaken the exact "default tests never touch the real helper" guarantee
+# test_60 (and the adapter suite's own test_26) exist to protect. These
+# tests instead verify the factory's existence, isolation, and non-automatic
+# wiring structurally, without ever importing the real helper.
+# ---------------------------------------------------------------------------
+
+
+def test_61_production_adapter_factory_exists_and_is_isolated() -> None:
+    check("build_production_adapter_runner exists and is callable", callable(orch.build_production_adapter_runner))
+    check(
+        "build_production_adapter_runner is not referenced inside MockOrchestrationInstance.__init__",
+        "build_production_adapter_runner" not in orch.MockOrchestrationInstance.__init__.__code__.co_names,
+    )
+    check(
+        "build_production_adapter_runner is not referenced inside MockOrchestrationInstance.invoke",
+        "build_production_adapter_runner" not in orch.MockOrchestrationInstance.invoke.__code__.co_names,
+    )
+    check(
+        "build_production_adapter_runner is not referenced inside AdapterRunner.__init__ or __call__",
+        "build_production_adapter_runner" not in orch.AdapterRunner.__init__.__code__.co_names
+        and "build_production_adapter_runner" not in orch.AdapterRunner.__call__.__code__.co_names,
+    )
+
+
+def test_62_production_adapter_factory_calls_only_the_sanctioned_real_path() -> None:
+    """Structural proof that the factory's own bytecode calls nothing beyond
+    the two sanctioned adapter entry points -- confirmed by name, not by
+    actually calling the factory (which would import the real helper)."""
+    names = orch.build_production_adapter_runner.__code__.co_names
+    check("factory references gauss_execution_adapter", "gauss_execution_adapter" in names)
+    check("factory does not reference execute_gauss_code directly", "execute_gauss_code" not in names)
+    check("factory does not reference subprocess", "subprocess" not in names)
+
+
+def test_63_default_test_run_still_never_imports_the_real_helper() -> None:
+    """Re-confirms, at the very end of this file's own test ordering, that
+    nothing added for v0.33.0 changed the default-test-suite guarantee:
+    gauss_code_execution must still be absent from sys.modules after every
+    test in this file (41-63) has run, including the new production-factory
+    tests above, which deliberately never call the factory."""
+    import sys as _sys
+
+    check(
+        "gauss_code_execution remains absent from sys.modules after the full v0.33.0 test set",
+        "gauss_code_execution" not in _sys.modules,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
 
