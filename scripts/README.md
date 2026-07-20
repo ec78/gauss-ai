@@ -177,7 +177,7 @@ The focused, comprehensive test suite is a separate file, not part of `--self-te
 python scripts/test_gauss_runtime_orchestration.py
 ```
 
-This repository has no `pytest` configuration anywhere (no `pyproject.toml`, `setup.py`, `pytest.ini`, or `conftest.py`), so this test file follows the same `check(name, condition)` self-test harness convention as every other `scripts/*.py` tool rather than introducing a new test framework. It runs 63 deterministic unit tests (all currently passing): the original 40 from `v0.31.0`'s implementation task (every state/transition pair, every consent-invalidation rule, duplicate-invocation prevention, malformed-result handling, cancellation, analysis/report-hook isolation, and 8 additional invariant-coverage tests), 20 `v0.32.0` Increment-1 tests (41-60) exercising the same scenarios through `AdapterRunner` specifically (controller-to-adapter projection, confirmation-consumption timing through the bridge, adapter-level launch-failure classification, all seven helper statuses, duplicate invocation, no-automatic-retry, rerun-as-new-request, cancellation timing, downstream-failure evidence preservation, and a structural proof that neither this module nor `gauss_execution_adapter` ever imports the real helper), and 3 new `v0.33.0` tests (61-63) verifying `build_production_adapter_runner`'s existence, structural isolation, and sanctioned-only call surface — deliberately without ever calling it, so running this default suite still never imports the real helper module (re-confirmed at test 63, the last test in file order).
+This repository has no `pytest` configuration anywhere (no `pyproject.toml`, `setup.py`, `pytest.ini`, or `conftest.py`), so this test file follows the same `check(name, condition)` self-test harness convention as every other `scripts/*.py` tool rather than introducing a new test framework. It runs 69 deterministic unit tests (all currently passing): the original 40 from `v0.31.0`'s implementation task (every state/transition pair, every consent-invalidation rule, duplicate-invocation prevention, malformed-result handling, cancellation, analysis/report-hook isolation, and 8 additional invariant-coverage tests), 20 `v0.32.0` Increment-1 tests (41-60) exercising the same scenarios through `AdapterRunner` specifically (controller-to-adapter projection, confirmation-consumption timing through the bridge, adapter-level launch-failure classification, all seven helper statuses, duplicate invocation, no-automatic-retry, rerun-as-new-request, cancellation timing, downstream-failure evidence preservation, and a structural proof that neither this module nor `gauss_execution_adapter` ever imports the real helper), 3 `v0.33.0` tests (61-63) verifying `build_production_adapter_runner`'s existence, structural isolation, and sanctioned-only call surface — deliberately without ever calling it, and 6 new `v0.34.0` tests (numbered 64-69) using "real-shaped fake" fixtures that copy the exact stdout/stderr/exit_code observed during `v0.34.0`'s two real controller-path invocations (`planning/v0.34.0-implementation-report.md`), regression-testing the real transition sequences, result routing, request/confirmation hash matching, and safe-summary redaction without touching real GAUSS. The final test in file order was renumbered from `test_63` to `test_70` (identical logic, unchanged) to remain the file's last test, re-confirming that running this default suite still never imports the real helper module — so the highest test number is 70, but the total count of distinct tests is 69.
 
 This script does not require GAUSS to be installed, does not access the network, and does not implement production runtime orchestration — it validates that the design's state machine and consent model are internally consistent, against a fake runner or a fake-helper-backed `AdapterRunner` only.
 
@@ -249,6 +249,39 @@ python scripts/test_gauss_execution_adapter_real.py --self-test
 Tests only the pure gate-computation logic (`gate_status(...)`/`should_run(...)`) and the zero-gate/one-gate skip paths of `main()` — it explicitly clears `GAUSS_AI_ALLOW_REAL_EXECUTION` from the environment for the duration of those checks, so the self-test's own safety does not depend on the ambient shell never having that variable set.
 
 When both gates are present (exercised exactly once, manually, in `v0.33.0` — never by this repository's own default test/CI/release-readiness paths), the harness prints a prominent notice, then verifies the platform matches the one combination this repository has ever verified real invocation against (Windows), then verifies an explicit `--executable-path` argument is a terminal (`tgauss`/`tgauss.exe`, never GUI) executable that actually exists — only after both preflight checks pass does it construct the real helper (via `gauss_execution_adapter.load_real_helper()`) and attempt one minimal, non-destructive, verified inline-code invocation inside a working directory (an explicit `--working-directory`, or a disposable temporary directory if omitted). On success, it now also prints `elapsed_seconds`, `stdout`, `stderr`, `warnings`, `errors`, and the result of `gauss_execution_adapter.validate_against_real_schema(...)` (added in `v0.33.0` for stronger future evidence capture).
+
+**Release-readiness (`scripts/check_release_readiness.py`) and every default test command never set either gate and never invoke this file.**
+
+## `test_gauss_runtime_orchestration_real.py`
+
+Purpose:
+A doubly-gated **real** GAUSS smoke-test harness for the full orchestration **controller** (`v0.34.0` Confirmed Controller Execution Path). Unlike `test_gauss_execution_adapter_real.py`, which exercises only the standalone `GaussExecutionAdapter` boundary, this harness drives `gauss_runtime_orchestration.MockOrchestrationInstance` through its complete confirmation/state-machine flow — `submit_for_review() → display_plan() → confirm(ConfirmationEvent(...)) → invoke(build_production_adapter_runner(...))` and, on a non-malformed result, `begin_analysis(...)`. **This file can invoke real GAUSS** when both of two independent gates are supplied simultaneously; it is not part of any default test path.
+
+**`v0.34.0` verified this harness against real GAUSS exactly twice**, under explicit human authorization for up to three — see `planning/v0.34.0-implementation-report.md` for the full preflight and execution evidence. Both scenarios are grounded in prior verified evidence, never invented:
+
+- `--scenario success` (default): `"x = 2 + 2;\nprint x;"`, byte-for-byte the script content real-verified as `v0.28.0` Test 3 ("Scalar calculation").
+- `--scenario runtime_error`: `"x = ;"`, byte-for-byte the script content real-verified as `v0.28.0` Test 4 ("Intentional syntax error," producing `error G0105`).
+
+Required gates, both simultaneously — either one missing means a clean, explicit skip with no GAUSS touched:
+
+1. The command-line flag `--run-real-gauss`.
+2. The environment variable `GAUSS_AI_ALLOW_REAL_EXECUTION=1`.
+
+```text
+python scripts/test_gauss_runtime_orchestration_real.py
+```
+
+Run with no arguments (or with only one of the two gates), this always prints a `SKIPPED` notice and exits `0` without touching GAUSS — confirmed by direct, live invocation with no gates, with only `--run-real-gauss`, and with only `GAUSS_AI_ALLOW_REAL_EXECUTION=1` set, each producing a clean skip.
+
+Gating/preflight self-test (never supplies both gates):
+
+```text
+python scripts/test_gauss_runtime_orchestration_real.py --self-test
+```
+
+Tests only the pure gate-computation logic, the preflight helper functions (`_verify_platform()`, `_verify_executable(...)`), scenario-code verification against the two literal strings above, and the zero-gate/one-gate skip paths of `main()` — it explicitly clears `GAUSS_AI_ALLOW_REAL_EXECUTION` from the environment for the duration of those checks and restores it afterward, so the self-test's own safety does not depend on the ambient shell.
+
+When both gates are present (exercised exactly twice, manually, in `v0.34.0` — never by this repository's own default test/CI/release-readiness paths), the harness prints a prominent notice, verifies the platform (Windows) and executable identity (`tgauss`/`tgauss.exe`, terminal only) exactly as `test_gauss_execution_adapter_real.py` does, then builds a real `EnvironmentSummary`/`SafetyReviewOutcome`/`RequestDraft`, drives the full controller sequence above, and prints state, confirmation status/consumption, request hash, helper invocation ID, execution status, exit code, stdout, stderr, output-file count, and structural-validation result at every step, followed by the final state, transition count, full transition sequence, and `instance.record.to_safe_summary()`.
 
 **Release-readiness (`scripts/check_release_readiness.py`) and every default test command never set either gate and never invoke this file.**
 

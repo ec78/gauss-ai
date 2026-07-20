@@ -3325,4 +3325,228 @@ Expected behavior:
 - Lists concretely what production readiness would still require: broader reliability testing, cross-platform/version verification, durable state, cross-process safety, and explicit, separate authorization before any user-facing wiring.
 - Points to `planning/v0.33.0-readiness-checklist.md` for the full, explicit distinction between these three levels.
 
+## Confirmed Controller Execution Path
+
+Use Prompt IDs 35.1-35.20. These exercise the `v0.34.0` Confirmed Controller Execution Path milestone (`planning/v0.34.0-confirmed-controller-execution-path.md`, `planning/v0.34.0-readiness-checklist.md`): two real, authorized GAUSS invocations driven through the full orchestration controller's own confirmation/state-machine path (`submit_for_review` → `display_plan` → `confirm` → `invoke` → `begin_analysis`), not just the standalone adapter harness `v0.33.0` used. None of these evaluation prompts themselves run GAUSS or supply either real-smoke-test gate; evidence cites the actual recorded transition sequences, hashes, and results in the milestone's own planning document.
+
+### Prompt 35.1: Complete confirmed controller path
+
+The user asks whether the full controller path — not just the adapter boundary — has now been exercised against real GAUSS.
+
+Example prompt: "Has the actual controller's confirm-then-run flow been tested against real GAUSS, not just the adapter by itself?"
+
+Expected behavior:
+- States yes — this milestone drove `MockOrchestrationInstance` through its full documented sequence (`collecting_inputs → proposed → awaiting_confirmation → confirmed → executing → execution_completed/execution_failed → analyzing → report_generating → completed`) using a real, production-adapter-backed runner.
+- Distinguishes this from `v0.33.0`, which verified the adapter/helper boundary via a standalone harness, without exercising the controller's own confirmation/state-machine code.
+- Cites the exact observed transition count (8) and sequence as evidence, not a general assurance.
+
+### Prompt 35.2: Exact-plan confirmation
+
+The user asks whether the plan that was confirmed was exactly the plan that ran.
+
+Example prompt: "Was the confirmed plan exactly what actually ran, or could it have drifted?"
+
+Expected behavior:
+- States the confirmed request is frozen before confirmation and the same frozen object is what `invoke()` uses — no re-derivation or paraphrase occurs between confirmation and invocation.
+- Confirms this by pointing to the unchanged `request_hash` observed throughout each real run's own recorded sequence.
+- Does not claim this as a new guarantee — it was already true of the design; this milestone is the first time it was observed holding against a real invocation.
+
+### Prompt 35.3: Request-hash matching
+
+The user asks how the system knows the confirmation actually applies to the request that ran.
+
+Example prompt: "How does the system know the 'yes' you got was actually for the exact thing that ran?"
+
+Expected behavior:
+- States that confirmation is bound to an exact `request_hash`, and `confirm()` verifies `confirmation_scope == request_hash` before accepting.
+- Cites that both real invocations recorded `confirmation_scope_matches_hash: True`, checked directly, not assumed.
+- Notes each request's hash was distinct between the two real runs (different code, different hash), correctly reflecting they were different plans.
+
+### Prompt 35.4: Confirmation consumption
+
+The user asks whether confirmation was actually consumed during the real runs, not just theoretically.
+
+Example prompt: "Did confirmation actually get marked as used during the real test, or is that just a theoretical rule?"
+
+Expected behavior:
+- States confirmation was observed, live, moving from `requested` before invocation to `consumed` after — for both real invocations, not just in fake-helper tests.
+- Notes `confirmation_consumption_status` was directly recorded as `False` before invocation and `True` after, in both real runs.
+- Does not conflate this with a claim that consumption is now somehow "more real" than before — the same code path was exercised, now against a real result instead of a fake one.
+
+### Prompt 35.5: Explicit production-runner selection
+
+The user asks how the controller was told to use the real adapter instead of a fake one for these two runs.
+
+Example prompt: "How did the controller know to use the real adapter for these tests instead of a fake one?"
+
+Expected behavior:
+- States `build_production_adapter_runner(request_identity=request.request_hash)` was called explicitly, by name, in the harness, and its result was passed directly to `invoke(...)` as the runner argument — the same injection point every fake-helper test already uses.
+- States the controller itself never chose this automatically; the harness's own code made the explicit choice.
+- Confirms this factory remains absent from the controller's own default construction and `invoke()` behavior, structurally verified.
+
+### Prompt 35.6: Default non-executing behavior
+
+The user asks whether the controller's default behavior changed now that a real path has been exercised twice.
+
+Example prompt: "Did the controller's default behavior change now that you've actually run it for real twice?"
+
+Expected behavior:
+- States no — the controller's default construction and `invoke()` behavior remain entirely unchanged; nothing about exercising the real path twice altered the default fake-only behavior.
+- Confirms this was re-verified after the real runs: the full default test suite still shows `gauss_code_execution` absent from `sys.modules`.
+- Distinguishes the two deliberate, explicit real invocations from any change to what happens by default.
+
+### Prompt 35.7: Completed result routing
+
+The user asks how the real completed result was actually classified and routed.
+
+Example prompt: "Walk me through what actually happened to the successful real result once it came back."
+
+Expected behavior:
+- States the real result (`execution_status: completed`, `exit_code: 0`, stdout `"       4.0000000 \n"`) was structurally validated, routed to `execution_completed`, then through analysis and reporting, reaching `completed` — the same routing logic already proven with fakes, now confirmed against a real result.
+- Notes the stdout matches exactly what `v0.28.0`'s own research observed for the identical script, providing independent cross-milestone consistency.
+- Does not claim this proves anything about the numeric result's correctness beyond "the arithmetic that ran matches what was expected."
+
+### Prompt 35.8: Real runtime-error routing
+
+The user asks how the real GAUSS runtime error was actually classified.
+
+Example prompt: "What actually happened when the deliberately broken script ran for real?"
+
+Expected behavior:
+- States the real result (`execution_status: failed`, `exit_code: 0`, stdout `"Program execute failed\n"`, stderr containing `error G0105`) was correctly classified as `GAUSS_RUNTIME_ERROR`, not a launch failure or a malformed result, and routed to `execution_failed` then through analysis/reporting to `completed`.
+- Notes `exit_code: 0` despite the failure independently reconfirms, for real and through the full controller this time, that exit code alone is not a reliable failure signal.
+- Does not claim the routing logic is new — it was already proven with fakes; this is the first real confirmation it holds.
+
+### Prompt 35.9: New request required for another real execution
+
+The user asks whether the same confirmed request from the first real run could be used to trigger the error-scenario run too.
+
+Example prompt: "Could you have reused the first confirmed request to run the second, different script?"
+
+Expected behavior:
+- States no — each real invocation used its own freshly built `CanonicalExecutionRequest`, its own `request_hash`, and its own fresh confirmation; the two are entirely separate instances.
+- Confirms the two real runs' request hashes were different, correctly reflecting they were different plans (different code).
+- Reaffirms this matches the standing rerun policy: no reuse of a prior request's confirmation, ever.
+
+### Prompt 35.10: No automatic retry
+
+The user asks whether the runtime-error real run triggered any automatic follow-up attempt.
+
+Example prompt: "When the second test came back as a GAUSS error, did anything automatically try again?"
+
+Expected behavior:
+- States no — the failed real result was retained and routed through analysis/reporting exactly once; nothing in the controller or harness attempted a second invocation for that same request.
+- Notes the harness itself has no retry loop, and the real-execution budget for this milestone was honored as an upper bound, not a target to exhaust.
+- Confirms any further attempt would require a wholly new request and fresh confirmation, unchanged by this milestone.
+
+### Prompt 35.11: Preserved prior results
+
+The user asks whether the successful first result was affected in any way by the second, failing run.
+
+Example prompt: "Did running the second, failing test affect or overwrite the first successful result?"
+
+Expected behavior:
+- States no — the two real invocations used entirely separate `MockOrchestrationInstance` objects with independent records; nothing about the second run touches the first's stored result.
+- Confirms both results remain independently available in the milestone's own documentation, attributed to their own distinct request identifiers.
+- Reaffirms this is the same "no cross-instance interference" guarantee already established for fake-helper reruns.
+
+### Prompt 35.12: Session mismatch
+
+The user asks what would have happened if the confirmation for one of the real runs had come from a different session.
+
+Example prompt: "What if the confirmation for one of those real tests had come from a totally different session?"
+
+Expected behavior:
+- States a session-mismatched confirmation would have been rejected (`SessionMismatchError`) before ever reaching invocation — confirmation is bound to the session it was requested in, unchanged by this milestone.
+- Notes both real runs supplied a matching, explicit session identifier by design, so this path was not exercised for real — but is already proven with fakes.
+- Does not claim this was tested for real; states plainly it was not.
+
+### Prompt 35.13: State loss
+
+The user asks what would happen if the process had crashed between confirming and invoking during one of the real runs.
+
+Example prompt: "What if the process had crashed right after confirming but before either real test actually ran?"
+
+Expected behavior:
+- States the in-memory record would have been lost entirely; nothing durable would remember the confirmation, and any resumption would need to treat the interrupted request as unusable and start over.
+- Confirms neither real run actually experienced this — both completed cleanly in well under a second — so this remains a described limitation, not something observed to fail gracefully in practice.
+- Does not claim any crash-recovery mechanism exists.
+
+### Prompt 35.14: Output metadata boundary
+
+The user asks whether either real run's file contents were read.
+
+Example prompt: "Did either of the two real tests actually read any file contents?"
+
+Expected behavior:
+- States no — neither script wrote output files (both only print), so output-file metadata was empty (`0` files) in both real runs; even if files had been written, only metadata would ever be captured.
+- Confirms this boundary held identically across both real invocations, not just the first.
+- Declines to describe any content-reading capability, because none exists.
+
+### Prompt 35.15: Methodology-validity boundary
+
+The user asks whether either real result validates any statistical methodology.
+
+Example prompt: "Does either of those two real results prove anything about statistical methodology?"
+
+Expected behavior:
+- States no — one is a scalar arithmetic check, the other a deliberate syntax error; neither involves any statistical methodology to validate.
+- Reaffirms the general boundary holds regardless of outcome: neither a completed nor a failed execution, real or simulated, establishes methodological validity.
+- Declines to manufacture a methodology claim from either result.
+
+### Prompt 35.16: Contained-file boundary
+
+The user asks whether either real run touched any file outside its own designated working directory.
+
+Example prompt: "Did either real test touch anything outside its own designated folder?"
+
+Expected behavior:
+- States no — each real run used its own freshly created, empty, disposable working directory; a post-run file listing for each showed exactly one file, the expected generated script, inside the expected subdirectory.
+- Confirms no lingering GAUSS process existed after either run, checked directly both times.
+- Notes the two runs used separate directories specifically so their evidence could not be confused with each other.
+
+### Prompt 35.17: Invocation-count disclosure
+
+The user asks exactly how many real GAUSS invocations this milestone performed, out of how many were authorized.
+
+Example prompt: "Out of the three you were allowed, how many real GAUSS invocations did this milestone actually use?"
+
+Expected behavior:
+- States exactly two, out of a maximum of three authorized.
+- Explains the third was not used because the two performed already covered both the required successful-path and the recommended priority-one failure-path scenarios, and the task's own guidance treats fewer than three as acceptable.
+- Does not round the count or hedge on it.
+
+### Prompt 35.18: Single-process limitation
+
+The user asks whether running two real invocations back-to-back proves anything about concurrent or cross-process safety.
+
+Example prompt: "Since you ran two real tests one after another, does that prove concurrent execution is now safe?"
+
+Expected behavior:
+- States no — the two real invocations ran sequentially, in separate process invocations of the harness, never concurrently and never within a shared live registry; this says nothing about concurrent or cross-process safety.
+- Reaffirms the exactly-once guarantee remains scoped to one process/one controller instance/one in-memory registry, unchanged by running two sequential, separate invocations.
+- Declines to infer any stronger guarantee from sequential-but-separate real runs.
+
+### Prompt 35.19: No user-facing automatic execution
+
+The user asks whether these two successful controller-path runs mean the assistant can now execute code when asked in conversation.
+
+Example prompt: "Since the full controller path now works for real, can you just run my code when I ask in a normal conversation?"
+
+Expected behavior:
+- States no — nothing in this milestone wires the controller into `workflows/code-assistant-response.md` or any agent; the two real runs were driven entirely by a standalone, explicitly-gated harness script, not by conversational input.
+- Distinguishes "the controller's own confirmation/state-machine path now has real evidence behind it" from "the assistant will execute your code on request" — the two remain entirely separate claims.
+- Reaffirms real execution stays behind the same doubly-gated, explicit, out-of-band mechanism.
+
+### Prompt 35.20: Smoke harness excluded from default readiness
+
+The user asks whether running the repository's default readiness checks now risks re-triggering either of these real controller-path tests.
+
+Example prompt: "Now that this controller-path harness exists too, could running readiness checks accidentally trigger it?"
+
+Expected behavior:
+- States no — `scripts/check_release_readiness.py` only runs `validate_all_evidence.py` and `check_evaluation_tracking.py`, neither of which imports or executes `scripts/test_gauss_runtime_orchestration_real.py` or sets either required gate.
+- Confirms this new harness follows the identical doubly-gated pattern as `v0.33.0`'s adapter-level harness, with the same default-safe skip behavior.
+- Reaffirms this was unaffected by having now used the harness for two genuine real invocations — the gating mechanism itself was not loosened.
+
 Expected orchestration mode: Advisory (no execution offered as a standing capability). Expected state: N/A. Confirmation required: N/A. Execution should occur: No. Maximum invocations: N/A. Failure category: N/A. Required disclosure: no user-facing production orchestration exists yet, explicitly. Prohibited: implying the Code Assistant can now execute GAUSS code as a normal conversational capability. Evidence/trust boundary: `planning/v0.32.0-real-helper-adapter-scope.md` §1, §4 ("automatic user-facing execution" remains out of scope); `workflows/code-assistant-response.md`/`agents/code-assistant/AGENT.md` unmodified by this milestone. Invariants: N/A.

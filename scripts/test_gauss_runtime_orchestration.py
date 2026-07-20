@@ -1156,16 +1156,161 @@ def test_62_production_adapter_factory_calls_only_the_sanctioned_real_path() -> 
     check("factory does not reference subprocess", "subprocess" not in names)
 
 
-def test_63_default_test_run_still_never_imports_the_real_helper() -> None:
+# ---------------------------------------------------------------------------
+# v0.34.0 Confirmed Controller Execution Path: fake-helper regression tests
+# capturing lessons from the two real controller-path invocations recorded
+# in planning/v0.34.0-confirmed-controller-execution-path.md. Every fake
+# result shape below is copied verbatim from that document's actual
+# recorded stdout/stderr/exit_code -- not invented -- so these tests lock in
+# regression protection against the exact real behavior observed, using
+# fakes only. None of these tests import scripts/gauss_code_execution.py or
+# call build_production_adapter_runner(...).
+# ---------------------------------------------------------------------------
+
+
+def _real_shaped_success_result() -> dict[str, Any]:
+    """Verbatim shape of the real result observed in this milestone's
+    invocation 1 (the "success" scenario, x = 2 + 2; print x;)."""
+    return {
+        "executed": True,
+        "execution_status": "completed",
+        "exit_code": 0,
+        "stdout": "       4.0000000 \n",
+        "stderr": (
+            "\nGAUSS 26.1.1 (Apr 14 2026, 5516) 64-bit\n"
+            "(C)Copyright 1984-2026 Aptech Systems, Inc.\nAll Rights Reserved Worldwide.\n\n\n"
+            "Job: inline_gau_qf30.gss ( C:\\example\\work )\nSun Jul 19 19:47:00 2026\n\n\n"
+        ),
+        "output_files": [],
+        "warnings": [],
+        "errors": [],
+    }
+
+
+def _real_shaped_runtime_error_result() -> dict[str, Any]:
+    """Verbatim shape of the real result observed in this milestone's
+    invocation 2 (the "runtime_error" scenario, x = ;)."""
+    return {
+        "executed": True,
+        "execution_status": "failed",
+        "exit_code": 0,
+        "stdout": "Program execute failed\n",
+        "stderr": (
+            "\nGAUSS 26.1.1 (Apr 14 2026, 5516) 64-bit\n"
+            "(C)Copyright 1984-2026 Aptech Systems, Inc.\nAll Rights Reserved Worldwide.\n\n\n"
+            "Job: inline_bt49tgfm.gss ( C:\\example\\work )\nSun Jul 19 19:48:23 2026\n\n\n"
+            "error G0105 : Bad expression or missing arguments\n"
+            "\tC:\\example\\work\\.gauss_code_execution_generated\\inline_bt49tgfm.gss, line 1\n"
+        ),
+        "output_files": [],
+        "warnings": [],
+        "errors": [],
+    }
+
+
+def test_64_full_sequence_matches_real_success_transition_log() -> None:
+    """The exact 8-transition sequence observed in the real success
+    invocation: proposed -> awaiting_confirmation -> confirmed -> executing
+    -> execution_completed -> analyzing -> report_generating -> completed."""
+    inst = _fully_confirmed_instance(draft=_inline_draft(request_id="req-v034-success-shape"))
+    inst.invoke(lambda _: _real_shaped_success_result())
+    inst.begin_analysis(lambda req, res: None, report_requested=True, report_hook=lambda status: None)
+
+    observed = [t.to_state.value for t in inst.record.transition_log]
+    expected = [
+        "proposed",
+        "awaiting_confirmation",
+        "confirmed",
+        "executing",
+        "execution_completed",
+        "analyzing",
+        "report_generating",
+        "completed",
+    ]
+    check("fake-driven transition sequence matches the real success sequence exactly", observed == expected)
+    check("final state is completed", inst.record.current_state == orch.OrchestrationState.COMPLETED)
+
+
+def test_65_full_sequence_matches_real_runtime_error_transition_log() -> None:
+    """The exact 8-transition sequence observed in the real runtime-error
+    invocation: proposed -> awaiting_confirmation -> confirmed -> executing
+    -> execution_failed -> analyzing -> report_generating -> completed."""
+    inst = _fully_confirmed_instance(draft=_inline_draft(request_id="req-v034-error-shape"))
+    inst.invoke(lambda _: _real_shaped_runtime_error_result())
+    inst.begin_analysis(lambda req, res: None, report_requested=True, report_hook=lambda status: None)
+
+    observed = [t.to_state.value for t in inst.record.transition_log]
+    expected = [
+        "proposed",
+        "awaiting_confirmation",
+        "confirmed",
+        "executing",
+        "execution_failed",
+        "analyzing",
+        "report_generating",
+        "completed",
+    ]
+    check("fake-driven transition sequence matches the real runtime-error sequence exactly", observed == expected)
+    check("failure_category is GAUSS_RUNTIME_ERROR, matching the real observed classification", inst.record.failure_category == orch.FailureCategory.GAUSS_RUNTIME_ERROR)
+
+
+def test_66_real_shaped_completed_result_routes_correctly() -> None:
+    inst = _fully_confirmed_instance()
+    inst.invoke(lambda _: _real_shaped_success_result())
+    check("real-shaped completed result reaches execution_completed", inst.record.current_state == orch.OrchestrationState.EXECUTION_COMPLETED)
+    check("real-shaped completed result has no failure category", inst.record.failure_category is None)
+    assert inst.record.execution_result_reference is not None
+    check("stdout preserved unmodified", inst.record.execution_result_reference.stdout == "       4.0000000 \n")
+
+
+def test_67_real_shaped_runtime_error_result_routes_correctly() -> None:
+    inst = _fully_confirmed_instance()
+    inst.invoke(lambda _: _real_shaped_runtime_error_result())
+    check("real-shaped runtime-error result reaches execution_failed", inst.record.current_state == orch.OrchestrationState.EXECUTION_FAILED)
+    check("real-shaped runtime-error result uses GAUSS_RUNTIME_ERROR", inst.record.failure_category == orch.FailureCategory.GAUSS_RUNTIME_ERROR)
+    check(
+        "exit_code 0 despite failure is preserved, not silently corrected (exit_code remains non-authoritative)",
+        inst.record.execution_result_reference is not None and inst.record.execution_result_reference.exit_code == 0,
+    )
+
+
+def test_68_request_and_confirmation_hash_match_end_to_end() -> None:
+    """Re-verifies, across the full pre-invocation sequence in one pass
+    (not just isolated pieces), that the confirmed request's confirmation_scope
+    equals its own request_hash -- exactly what was observed live in both
+    real invocations (confirmation_scope_matches_hash: True)."""
+    inst = orch.MockOrchestrationInstance(session_id="s1", draft=_inline_draft(request_id="req-v034-hash-check"))
+    inst.submit_for_review()
+    inst.display_plan()
+    assert inst.request is not None
+    request_hash_before_confirm = inst.request.request_hash
+    inst.confirm(orch.ConfirmationEvent(scope=inst.request.request_hash, timestamp="t1", session_id="s1"))
+    check("confirmation_scope equals request_hash after confirm()", inst.request.confirmation_scope == request_hash_before_confirm)
+    check("request_hash is unchanged by confirmation (frozen)", inst.request.request_hash == request_hash_before_confirm)
+
+
+def test_69_safe_summary_excludes_code_after_full_real_shaped_sequence() -> None:
+    inst = _fully_confirmed_instance(draft=_inline_draft(code="x = 2 + 2;\nprint x;"))
+    inst.invoke(lambda _: _real_shaped_success_result())
+    inst.begin_analysis(lambda req, res: None, report_requested=True, report_hook=lambda status: None)
+    summary = inst.record.to_safe_summary()
+    serialized = str(summary)
+    check("safe summary excludes the real inline code text", "x = 2 + 2" not in serialized)
+    check("safe summary has no 'code' key", "code" not in summary)
+    check("safe summary reflects the completed terminal state", summary["current_state"] == "completed")
+
+
+def test_70_default_test_run_still_never_imports_the_real_helper() -> None:
     """Re-confirms, at the very end of this file's own test ordering, that
-    nothing added for v0.33.0 changed the default-test-suite guarantee:
-    gauss_code_execution must still be absent from sys.modules after every
-    test in this file (41-63) has run, including the new production-factory
-    tests above, which deliberately never call the factory."""
+    nothing added for v0.33.0 or v0.34.0 changed the default-test-suite
+    guarantee: gauss_code_execution must still be absent from sys.modules
+    after every test in this file (41-70) has run, including the new
+    production-factory and real-shaped-fake tests above, none of which call
+    build_production_adapter_runner(...) or import the real helper."""
     import sys as _sys
 
     check(
-        "gauss_code_execution remains absent from sys.modules after the full v0.33.0 test set",
+        "gauss_code_execution remains absent from sys.modules after the full v0.33.0/v0.34.0 test set",
         "gauss_code_execution" not in _sys.modules,
     )
 
