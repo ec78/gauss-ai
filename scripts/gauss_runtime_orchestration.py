@@ -674,8 +674,26 @@ def _to_mock_result(raw: dict[str, Any]) -> MockExecutionResult:
 def _missing_expected_outputs(
     request: CanonicalExecutionRequest, result: MockExecutionResult
 ) -> tuple[str, ...]:
-    actual_paths = {f.path for f in result.output_files}
-    return tuple(f for f in request.expected_output_files if f not in actual_paths)
+    """Compare declared expected_output_files against the result's actual
+    output_files by basename, not by exact string equality.
+
+    expected_output_files is documented (canonical request contract, field 9)
+    as "descriptive, not paths the helper validates" -- a free-form filename
+    the user was told to expect, not a path the caller can be expected to
+    predict exactly. The helper's own output-file discovery
+    (scripts/gauss_code_execution.py's _discover_output_files) always returns
+    absolute filesystem paths. A caller declaring the bare filename it was
+    told to expect (e.g. "results.csv") must still be recognized as present
+    when the actual result reports it at its real, absolute location (e.g.
+    "C:\\...\\results.csv") -- v0.35.0 real-invocation testing found the
+    prior exact-string comparison always misclassified a genuinely-created,
+    correctly-discovered file as missing whenever expected_output_files used
+    a bare filename, which is the documented, expected way to declare one.
+    Basename comparison is tolerant of this without weakening detection: a
+    truly absent file still has no discovered output whose basename matches.
+    """
+    actual_basenames = {Path(f.path).name for f in result.output_files}
+    return tuple(f for f in request.expected_output_files if Path(f).name not in actual_basenames)
 
 
 # ---------------------------------------------------------------------------

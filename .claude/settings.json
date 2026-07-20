@@ -9,7 +9,9 @@
       "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('overall_pass:', d['overall_pass'], 'unexpected_count:', d['unexpected_count'], 'total_warnings:', d['total_warnings']\\)\")",
       "Bash(python scripts/validate_lookup_evidence.py *)",
       "Bash(python scripts/validate_all_evidence.py *)",
-      "Bash(python scripts/check_evaluation_tracking.py *)"
+      "Bash(python scripts/check_evaluation_tracking.py *)",
+      "Bash(awk 'NR==3328,NR==3552' evaluations/benchmark-prompts.md)",
+      "Bash(awk 'NR==2994,NR==3327' evaluations/benchmark-prompts.md)"
     ]
   }
 }

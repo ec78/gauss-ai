@@ -17,9 +17,17 @@ Tests 1-40 use only the mock/fake runner boundary directly. Tests 41-60
 additionally exercise `orch.AdapterRunner` bridging a
 `gauss_execution_adapter.GaussExecutionAdapter` -- but every one of those
 still uses a fake helper callable, exactly like every other test in this
-file. Nothing in this file imports scripts/gauss_code_execution.py, calls
-gauss_execution_adapter.load_real_helper(), launches a subprocess, or
-invokes GAUSS -- test_60 asserts this directly.
+file. Tests 61-63 (v0.33.0) and 64-70/renumbered-87 (v0.34.0, extended
+v0.35.0) structurally verify `build_production_adapter_runner(...)`'s
+isolation and lock in real-observed evidence as fake-shaped regression
+fixtures. Tests 71-86 (v0.35.0) cover reliability across repeated
+independent requests, output-file creation/missing-output handling
+(including a regression test for a real bug found and fixed during v0.35.0's
+own real-invocation testing -- see `_missing_expected_outputs` in
+gauss_runtime_orchestration.py), and duplicate-identity/state-isolation
+guarantees. Nothing in this file imports scripts/gauss_code_execution.py,
+calls gauss_execution_adapter.load_real_helper(), launches a subprocess, or
+invokes GAUSS -- test_87 asserts this directly.
 """
 
 from __future__ import annotations
@@ -1300,17 +1308,382 @@ def test_69_safe_summary_excludes_code_after_full_real_shaped_sequence() -> None
     check("safe summary reflects the completed terminal state", summary["current_state"] == "completed")
 
 
-def test_70_default_test_run_still_never_imports_the_real_helper() -> None:
+# ---------------------------------------------------------------------------
+# v0.35.0 Real Execution Reliability and Output Verification: fake-helper
+# regression tests capturing lessons from the five real controller-path
+# invocations recorded in planning/v0.35.0-implementation-report.md.
+#
+# Invocation 3 ("output-created") surfaced a genuine controller bug during
+# real testing: _missing_expected_outputs previously compared declared
+# expected_output_files (documented, per the canonical request contract, as
+# free-form/descriptive filenames -- never paths a caller is expected to
+# predict exactly) against exact-string equality with the helper's *actual*
+# output_files paths, which are always absolute filesystem paths. A
+# genuinely-created, correctly-discovered file was therefore always
+# misclassified as missing whenever expected_output_files declared a bare
+# filename -- the documented, expected way to declare one. Fixed in
+# _missing_expected_outputs (this file's own module) to compare by
+# basename instead of exact string equality; scripts/gauss_code_execution.py
+# and schemas/gauss_code_execution.schema.json were not touched. The two
+# fixtures below reproduce the exact real result shapes observed in
+# invocations 3 and 4 (paths generalized to a placeholder directory,
+# consistent with this file's existing v0.34.0 fixtures), locking in
+# regression protection for the fix using fakes only.
+# ---------------------------------------------------------------------------
+
+
+def _real_shaped_output_created_result() -> dict[str, Any]:
+    """Verbatim shape of the real result observed in this milestone's
+    invocation 3 (the "output-created" scenario, output file = gauss_output.txt
+    reset; print "hello output test"; output off;), path generalized."""
+    return {
+        "executed": True,
+        "execution_status": "completed",
+        "exit_code": 0,
+        "stdout": "hello output test\n",
+        "stderr": (
+            "\nGAUSS 26.1.1 (Apr 14 2026, 5516) 64-bit\n"
+            "(C)Copyright 1984-2026 Aptech Systems, Inc.\nAll Rights Reserved Worldwide.\n\n\n"
+            "Job: inline_rt_x1mol.gss ( C:\\example\\work )\nMon Jul 20 05:51:36 2026\n\n\n"
+        ),
+        "output_files": [
+            {
+                "path": "C:\\example\\work\\gauss_output.txt",
+                "size_bytes": 19,
+                "file_type": "text/plain",
+                "created_by_execution": "unknown",
+            }
+        ],
+        "warnings": [],
+        "errors": [],
+    }
+
+
+def _real_shaped_output_missing_result() -> dict[str, Any]:
+    """Verbatim shape of the real result observed in this milestone's
+    invocation 4 (the "output-missing" scenario: the verified success-basic
+    script, x = 2 + 2; print x;, with expected_output_files declaring a file
+    the script never writes)."""
+    return {
+        "executed": True,
+        "execution_status": "completed",
+        "exit_code": 0,
+        "stdout": "       4.0000000 \n",
+        "stderr": (
+            "\nGAUSS 26.1.1 (Apr 14 2026, 5516) 64-bit\n"
+            "(C)Copyright 1984-2026 Aptech Systems, Inc.\nAll Rights Reserved Worldwide.\n\n\n"
+            "Job: inline_q32pw3co.gss ( C:\\example\\work )\nMon Jul 20 05:54:07 2026\n\n\n"
+        ),
+        "output_files": [],
+        "warnings": [],
+        "errors": [],
+    }
+
+
+def test_71_two_independent_requests_each_execute_once() -> None:
+    """Reproduces invocations 1-2 (success-basic / success-isolation): two
+    separate, independently-confirmed requests, each invoked exactly once,
+    with distinct helper_invocation_ids -- exactly as observed live. As in
+    the real invocations (which used separate working directories per
+    scenario), the drafts below differ in working_directory -- a
+    hash-included field -- so their request_hashes differ too;
+    request_hash is a pure content fingerprint over 12 hash-included fields
+    (canonical request contract Section 10) and deliberately does NOT
+    include request_id, so identical content with only request_id differing
+    would legitimately hash identically -- see test_84 below."""
+    inst_a = _fully_confirmed_instance(draft=_inline_draft(request_id="req-v035-a", working_directory="C:/example/work-a"))
+    inst_b = _fully_confirmed_instance(draft=_inline_draft(request_id="req-v035-b", working_directory="C:/example/work-b"))
+
+    inst_a.invoke(lambda _: _real_shaped_success_result())
+    inst_b.invoke(lambda _: _real_shaped_success_result())
+
+    check("instance A reaches execution_completed", inst_a.record.current_state == orch.OrchestrationState.EXECUTION_COMPLETED)
+    check("instance B reaches execution_completed", inst_b.record.current_state == orch.OrchestrationState.EXECUTION_COMPLETED)
+    check(
+        "each instance has its own distinct helper_invocation_id",
+        inst_a.record.helper_invocation_id != inst_b.record.helper_invocation_id,
+    )
+    check(
+        "each instance has its own distinct request_hash (distinct working_directory)",
+        inst_a.request is not None and inst_b.request is not None and inst_a.request.request_hash != inst_b.request.request_hash,
+    )
+
+
+def test_72_stale_state_does_not_cross_instances() -> None:
+    """Instance A completes fully; a freshly constructed instance B must
+    start from collecting_inputs with no execution result, no transitions,
+    and no confirmation -- proving no module-level or shared state leaks
+    between MockOrchestrationInstance objects."""
+    inst_a = _fully_confirmed_instance(draft=_inline_draft(request_id="req-v035-stale-a"))
+    inst_a.invoke(lambda _: _real_shaped_success_result())
+    inst_a.begin_analysis(lambda req, res: None, report_requested=True, report_hook=lambda status: None)
+    check("instance A reached completed", inst_a.record.current_state == orch.OrchestrationState.COMPLETED)
+
+    inst_b = orch.MockOrchestrationInstance(session_id="s-stale-b", draft=_inline_draft(request_id="req-v035-stale-b"))
+    check("fresh instance B starts at collecting_inputs, unaffected by A", inst_b.record.current_state == orch.OrchestrationState.COLLECTING_INPUTS)
+    check("fresh instance B has no execution result", inst_b.record.execution_result_reference is None)
+    check("fresh instance B has no transitions yet", len(inst_b.record.transition_log) == 0)
+    check("fresh instance B has no helper_invocation_id", inst_b.record.helper_invocation_id is None)
+    check("fresh instance B's request is not yet built", inst_b.request is None)
+
+
+def test_73_fresh_confirmation_required_per_instance() -> None:
+    """A different, already-confirmed instance's confirmed status must never
+    implicitly satisfy a second, distinct instance's own confirmation
+    requirement -- each instance requires its own confirm() call, scoped to
+    its own request_hash, every time."""
+    inst_a = _fully_confirmed_instance(draft=_inline_draft(request_id="req-v035-fresh-a"))
+    check("instance A is confirmed", inst_a.request is not None and inst_a.request.user_confirmed)
+
+    inst_b = orch.MockOrchestrationInstance(session_id="s-fresh-b", draft=_inline_draft(request_id="req-v035-fresh-b"))
+    inst_b.submit_for_review()
+    inst_b.display_plan()
+    check("instance B is awaiting_confirmation, not implicitly confirmed by A", inst_b.record.current_state == orch.OrchestrationState.AWAITING_CONFIRMATION)
+    check_raises(
+        "invoking instance B before its own confirm() raises (state adjacency alone already refuses it), despite A being confirmed",
+        orch.InvalidTransitionError,
+        inst_b.invoke,
+        lambda _: _real_shaped_success_result(),
+    )
+
+
+def test_74_real_shaped_output_created_result_now_matches_expected_output_post_fix() -> None:
+    """Regression test for the real bug found in invocation 3: a genuinely
+    created, correctly-discovered output file, declared by its bare
+    filename in expected_output_files, must not be misclassified as
+    missing."""
+    draft = _inline_draft(request_id="req-v035-output-created", expected_output_files=("gauss_output.txt",))
+    inst = _fully_confirmed_instance(draft=draft)
+    inst.invoke(lambda _: _real_shaped_output_created_result())
+    check("output-created result reaches execution_completed", inst.record.current_state == orch.OrchestrationState.EXECUTION_COMPLETED)
+    check(
+        "output-created result has NO failure category (fixed: was incorrectly MISSING_EXPECTED_OUTPUT before the basename fix)",
+        inst.record.failure_category is None,
+    )
+    assert inst.record.execution_result_reference is not None
+    check("exactly one output file recorded", len(inst.record.execution_result_reference.output_files) == 1)
+
+
+def test_75_real_shaped_output_missing_result_still_correctly_flagged() -> None:
+    """Regression test for invocation 4: a script that genuinely produces no
+    output must still be correctly flagged as missing its declared expected
+    output -- the basename fix must not cause false negatives."""
+    draft = _inline_draft(request_id="req-v035-output-missing", expected_output_files=("does_not_exist.txt",))
+    inst = _fully_confirmed_instance(draft=draft)
+    inst.invoke(lambda _: _real_shaped_output_missing_result())
+    check("output-missing result still reaches execution_completed", inst.record.current_state == orch.OrchestrationState.EXECUTION_COMPLETED)
+    check("output-missing result correctly sets MISSING_EXPECTED_OUTPUT", inst.record.failure_category == orch.FailureCategory.MISSING_EXPECTED_OUTPUT)
+    assert inst.record.execution_result_reference is not None
+    check("zero output files recorded, matching the real observed evidence", len(inst.record.execution_result_reference.output_files) == 0)
+
+
+def test_76_output_file_metadata_fields_retained_exactly() -> None:
+    """The real output file's discovered metadata (path/size_bytes/file_type/
+    created_by_execution) must survive into execution_result_reference
+    unmodified -- this milestone never rewrites, summarizes, or filters it."""
+    inst = _fully_confirmed_instance(draft=_inline_draft(expected_output_files=("gauss_output.txt",)))
+    inst.invoke(lambda _: _real_shaped_output_created_result())
+    assert inst.record.execution_result_reference is not None
+    meta = inst.record.execution_result_reference.output_files[0]
+    check("path preserved exactly", meta.path == "C:\\example\\work\\gauss_output.txt")
+    check("size_bytes preserved exactly (19, matching the real file's actual size)", meta.size_bytes == 19)
+    check("file_type preserved exactly", meta.file_type == "text/plain")
+    check("created_by_execution preserved exactly", meta.created_by_execution == "unknown")
+
+
+def test_77_output_metadata_never_carries_content() -> None:
+    """OutputFileMeta has no 'content' field at all (structural guarantee),
+    and a raw result whose output_files entry includes a 'content' key is
+    rejected as malformed before it ever reaches execution_result_reference."""
+    check("OutputFileMeta has no content field", not hasattr(orch.OutputFileMeta, "content") and "content" not in orch.OutputFileMeta.__dataclass_fields__)
+    inst = _fully_confirmed_instance()
+    inst.invoke(lambda _: _completed_result(output_files=[{"path": "results.csv", "content": "1,2,3"}]))
+    check("a result whose output_files carries content is rejected as malformed", inst.record.failure_category == orch.FailureCategory.MALFORMED_RESULT)
+    check("malformed content-carrying result never becomes an execution_result_reference", inst.record.execution_result_reference is None)
+
+
+def test_78_blocked_execution_status_is_disclosed_not_silently_accepted() -> None:
+    """An 'blocked' execution_status (the helper's own real, documented
+    response to an output_directory/script_path that resolves outside safe
+    containment, per scripts/gauss_code_execution.py, unmodified by this
+    milestone) must never be silently treated as a successful completion --
+    this locks in the controller's existing (not v0.35.0-introduced) routing
+    of any non-completed/non-timed_out status to a disclosed failure."""
+    inst = _fully_confirmed_instance()
+    inst.invoke(lambda _: _completed_result(execution_status="blocked", executed=False))
+    check("a blocked status never reaches execution_completed", inst.record.current_state != orch.OrchestrationState.EXECUTION_COMPLETED)
+    check("a blocked status is disclosed as a failure, not silently accepted", inst.record.current_state == orch.OrchestrationState.EXECUTION_FAILED)
+    check("a blocked status is not falsely reported as having no failure category", inst.record.failure_category is not None)
+
+
+def test_79_result_records_remain_distinct_across_instances() -> None:
+    """Two instances' execution_result_reference objects must be distinct
+    objects with independently correct content, never aliased or shared."""
+    inst_a = _fully_confirmed_instance(draft=_inline_draft(request_id="req-v035-distinct-a"))
+    inst_b = _fully_confirmed_instance(draft=_inline_draft(request_id="req-v035-distinct-b", expected_output_files=("gauss_output.txt",)))
+    inst_a.invoke(lambda _: _real_shaped_success_result())
+    inst_b.invoke(lambda _: _real_shaped_output_created_result())
+    assert inst_a.record.execution_result_reference is not None
+    assert inst_b.record.execution_result_reference is not None
+    check("result objects are not the same object", inst_a.record.execution_result_reference is not inst_b.record.execution_result_reference)
+    check("instance A's stdout is its own", inst_a.record.execution_result_reference.stdout == "       4.0000000 \n")
+    check("instance B's stdout is its own, not overwritten by A", inst_b.record.execution_result_reference.stdout == "hello output test\n")
+
+
+def test_80_prior_result_remains_immutable_after_a_second_unrelated_invocation() -> None:
+    """Invoking a second, unrelated instance after the first has completed
+    must never mutate the first instance's already-recorded evidence."""
+    inst_a = _fully_confirmed_instance(draft=_inline_draft(request_id="req-v035-immutable-a"))
+    inst_a.invoke(lambda _: _real_shaped_success_result())
+    stdout_before = inst_a.record.execution_result_reference.stdout  # type: ignore[union-attr]
+    failure_before = inst_a.record.failure_category
+    state_before = inst_a.record.current_state
+
+    inst_b = _fully_confirmed_instance(draft=_inline_draft(request_id="req-v035-immutable-b"))
+    inst_b.invoke(lambda _: _real_shaped_runtime_error_result())
+
+    check("instance A's stdout is unchanged after B's unrelated invocation", inst_a.record.execution_result_reference.stdout == stdout_before)  # type: ignore[union-attr]
+    check("instance A's failure_category is unchanged", inst_a.record.failure_category == failure_before)
+    check("instance A's state is unchanged", inst_a.record.current_state == state_before)
+
+
+def test_81_runtime_error_and_missing_output_are_distinct_failure_categories() -> None:
+    """Reproduces the observed distinction between invocation 4 (missing
+    output, execution_completed) and invocation 5 (runtime error,
+    execution_failed) -- these must never be conflated into one category."""
+    inst_missing = _fully_confirmed_instance(draft=_inline_draft(request_id="req-v035-cat-missing", expected_output_files=("does_not_exist.txt",)))
+    inst_error = _fully_confirmed_instance(draft=_inline_draft(request_id="req-v035-cat-error"))
+    inst_missing.invoke(lambda _: _real_shaped_output_missing_result())
+    inst_error.invoke(lambda _: _real_shaped_runtime_error_result())
+
+    check("missing-output failure category differs from runtime-error failure category", inst_missing.record.failure_category != inst_error.record.failure_category)
+    check("missing-output reaches execution_completed", inst_missing.record.current_state == orch.OrchestrationState.EXECUTION_COMPLETED)
+    check("runtime-error reaches execution_failed", inst_error.record.current_state == orch.OrchestrationState.EXECUTION_FAILED)
+
+
+def test_82_missing_expected_output_still_reaches_execution_completed() -> None:
+    """Execution success and expected-output verification are two
+    independently tracked outcomes -- a missing declared output must never
+    downgrade an otherwise-completed execution to execution_failed."""
+    inst = _fully_confirmed_instance(draft=_inline_draft(expected_output_files=("does_not_exist.txt",)))
+    inst.invoke(lambda _: _real_shaped_output_missing_result())
+    check("state is execution_completed, not execution_failed, despite the missing output", inst.record.current_state == orch.OrchestrationState.EXECUTION_COMPLETED)
+    check("failure_category still discloses the missing output", inst.record.failure_category == orch.FailureCategory.MISSING_EXPECTED_OUTPUT)
+
+
+def test_83_duplicate_request_identity_refused_even_via_reused_adapter() -> None:
+    """Defense-in-depth: if a single GaussExecutionAdapter instance were
+    ever reused across two invoke() attempts sharing the same
+    request_identity (a caller-level mistake this controller's own
+    single-invocation-per-instance guard already prevents in the normal
+    case), the adapter's own independent duplicate-invocation tracking must
+    still refuse the second attempt."""
+    shared_identity = "req-v035-shared-identity"
+    calls: list[int] = []
+
+    def counting_helper(**kwargs: Any) -> dict[str, Any]:
+        calls.append(1)
+        return _completed_result()
+
+    adapter = ga.GaussExecutionAdapter(helper=counting_helper, environment_probe=lambda _p: True)
+    runner = orch.AdapterRunner(adapter, request_identity=shared_identity)
+
+    inst_a = _fully_confirmed_instance(draft=_inline_draft(request_id="req-v035-reused-adapter-a"))
+    inst_a.invoke(runner)
+    check("first invocation via the shared adapter succeeds", inst_a.record.current_state == orch.OrchestrationState.EXECUTION_COMPLETED)
+    check("helper was called exactly once so far", len(calls) == 1)
+
+    inst_b = _fully_confirmed_instance(draft=_inline_draft(request_id="req-v035-reused-adapter-b"))
+    inst_b.invoke(runner)  # same adapter, same request_identity as inst_a -- must be refused
+    check(
+        "second invocation via the same adapter/identity is refused as a launch failure",
+        inst_b.record.current_state == orch.OrchestrationState.EXECUTION_FAILED
+        and inst_b.record.failure_category == orch.FailureCategory.RUNNER_LAUNCH_FAILURE,
+    )
+    check("the helper itself was never called a second time", len(calls) == 1)
+
+
+def test_84_same_code_with_new_request_identity_is_permitted_and_isolated() -> None:
+    """Reproduces invocations 1-2's own design intent directly: identical
+    code, submitted as two separate requests, must both be permitted and
+    must never be refused as a false duplicate -- whether or not their
+    request_hashes happen to match. request_hash is a pure content
+    fingerprint (see test_71) that deliberately excludes request_id, so two
+    requests with identical code AND identical working_directory/executable/
+    timeout/etc. legitimately share one request_hash -- this is by design,
+    not a collision bug, and duplicate-invocation refusal is scoped to one
+    request_hash *reused within the same adapter instance* (test_83), never
+    to two independent instances/adapters that happen to hash the same."""
+    identical_code = "x = 2 + 2;\nprint x;"
+    inst_a = _fully_confirmed_instance(draft=_inline_draft(request_id="req-v035-same-code-a", code=identical_code))
+    inst_b = _fully_confirmed_instance(draft=_inline_draft(request_id="req-v035-same-code-b", code=identical_code))
+    inst_a.invoke(lambda _: _real_shaped_success_result())
+    inst_b.invoke(lambda _: _real_shaped_success_result())
+    check("both identical-code, distinct-instance requests succeed", inst_a.record.current_state == orch.OrchestrationState.EXECUTION_COMPLETED and inst_b.record.current_state == orch.OrchestrationState.EXECUTION_COMPLETED)
+    check(
+        "identical draft content legitimately produces the same request_hash (request_id is not hash-included)",
+        inst_a.request is not None and inst_b.request is not None and inst_a.request.request_hash == inst_b.request.request_hash,
+    )
+    check(
+        "yet each instance still has its own distinct helper_invocation_id",
+        inst_a.record.helper_invocation_id != inst_b.record.helper_invocation_id,
+    )
+
+
+def test_85_safe_summary_omits_output_file_content_for_output_created_scenario() -> None:
+    """The real output-created scenario's own literal file content
+    ("hello output test") must never appear anywhere in the safe summary --
+    only metadata (path/size/type) is legitimate execution evidence."""
+    inst = _fully_confirmed_instance(draft=_inline_draft(expected_output_files=("gauss_output.txt",)))
+    inst.invoke(lambda _: _real_shaped_output_created_result())
+    inst.begin_analysis(lambda req, res: None, report_requested=True, report_hook=lambda status: None)
+    summary = inst.record.to_safe_summary()
+    serialized = str(summary)
+    check("safe summary never includes the output file's literal content text", "hello output test" not in serialized)
+    check("safe summary has no 'code' key", "code" not in summary)
+    check("safe summary reflects the completed terminal state", summary["current_state"] == "completed")
+
+
+def test_86_no_automatic_rerun_after_missing_expected_output() -> None:
+    """A missing-expected-output classification must never trigger an
+    automatic second invocation. Natural path: the instance has already
+    moved on from `confirmed`, so a second invoke() attempt is refused by
+    the ordinary state-adjacency check alone -- nothing in this codebase
+    loops back to retry. Defense-in-depth path (mirroring test_19's own
+    established pattern): even if state were artificially reset to
+    `confirmed`, the explicit invocation-identity guard still refuses a
+    second invocation for the same request_hash."""
+    inst = _fully_confirmed_instance(draft=_inline_draft(expected_output_files=("does_not_exist.txt",)))
+    inst.invoke(lambda _: _real_shaped_output_missing_result())
+    check("helper_invocation_id was set exactly once", inst.record.helper_invocation_id is not None)
+    check_raises(
+        "a second invoke() is refused by ordinary state adjacency, not automatically retried",
+        orch.InvalidTransitionError,
+        inst.invoke,
+        lambda _: _real_shaped_output_missing_result(),
+    )
+
+    object.__setattr__(inst.record, "current_state", orch.OrchestrationState.CONFIRMED)
+    check_raises(
+        "even with state artificially reset, the explicit duplicate-invocation-id guard still refuses a rerun",
+        orch.DuplicateInvocationError,
+        inst.invoke,
+        lambda _: _real_shaped_output_missing_result(),
+    )
+
+
+def test_87_default_test_run_still_never_imports_the_real_helper() -> None:
     """Re-confirms, at the very end of this file's own test ordering, that
-    nothing added for v0.33.0 or v0.34.0 changed the default-test-suite
-    guarantee: gauss_code_execution must still be absent from sys.modules
-    after every test in this file (41-70) has run, including the new
-    production-factory and real-shaped-fake tests above, none of which call
-    build_production_adapter_runner(...) or import the real helper."""
+    nothing added for v0.33.0, v0.34.0, or v0.35.0 changed the
+    default-test-suite guarantee: gauss_code_execution must still be absent
+    from sys.modules after every test in this file (41-87) has run,
+    including the new reliability/output-verification tests above, none of
+    which call build_production_adapter_runner(...) or import the real
+    helper."""
     import sys as _sys
 
     check(
-        "gauss_code_execution remains absent from sys.modules after the full v0.33.0/v0.34.0 test set",
+        "gauss_code_execution remains absent from sys.modules after the full v0.33.0/v0.34.0/v0.35.0 test set",
         "gauss_code_execution" not in _sys.modules,
     )
 
