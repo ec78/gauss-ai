@@ -163,6 +163,7 @@ Supported mock behavior:
 - Cancellation modeling — `cancel()` covers pre-execution cancellation; the module also models the "cancellation during a synchronous call" case honestly (a runner may call back into the instance to simulate this), without ever implying a real subprocess was actually interrupted.
 - `OrchestrationRecord.to_safe_summary()` — a redacted view excluding raw code/secrets, mirroring the Observability record's "must never contain" rules from the design document.
 - `build_production_adapter_runner(...)` (`v0.33.0`) — the one, narrow, explicit factory whose invocation, by name, can result in a real GAUSS call: it calls `gauss_execution_adapter.load_real_helper()` and constructs a real-helper-backed `AdapterRunner`. Never called by `MockOrchestrationInstance`'s own construction or `invoke(...)`'s default behavior, and never called by any test in this repository's default suite — confirmed structurally, not just by convention.
+- Durable state store integration (`v0.36.0`) — `MockOrchestrationInstance` gained an optional `state_store: gauss_orchestration_state_store.OrchestrationStateStore | None = None` constructor parameter, defaulting to `None` so every pre-existing test and caller is completely unaffected. When a store IS supplied, `invoke(...)` calls the store's atomic `authorize_invocation(...)` **before** any in-memory mutation or runner call — the durable commit always happens first, never after. `confirm(...)` durably records confirmation via `record_confirmation(...)` before its in-memory mirror. `build_durable_orchestration_instance(...)` is the one, explicit, named "production construction" entry point requiring a non-`None` store (mirroring `build_production_adapter_runner(...)`'s own explicitness convention); `reload_orchestration_instance(...)` reconstructs an in-memory view from durable state after a restart, with `instance.request` always `None` post-reload (raw code was deliberately never durably persisted), which is exactly what makes `begin_analysis()`/`invoke()`'s pre-existing `self.request is None` guards correctly refuse to proceed on a reloaded instance — this reload path can never resurrect execution capability from incomplete state. See `gauss_orchestration_state_store.py` below.
 
 Self-test:
 
@@ -178,9 +179,69 @@ The focused, comprehensive test suite is a separate file, not part of `--self-te
 python scripts/test_gauss_runtime_orchestration.py
 ```
 
-This repository has no `pytest` configuration anywhere (no `pyproject.toml`, `setup.py`, `pytest.ini`, or `conftest.py`), so this test file follows the same `check(name, condition)` self-test harness convention as every other `scripts/*.py` tool rather than introducing a new test framework. It runs 85 deterministic unit tests (all currently passing): the original 40 from `v0.31.0`'s implementation task, 20 `v0.32.0` Increment-1 tests (41-60) exercising the same scenarios through `AdapterRunner`, 3 `v0.33.0` tests (61-63) verifying `build_production_adapter_runner`'s existence and structural isolation, 6 `v0.34.0` tests (64-69) using "real-shaped fake" fixtures copying the exact stdout/stderr/exit_code observed during `v0.34.0`'s two real controller-path invocations, and 16 new `v0.35.0` tests (numbered 71-86) covering repeated independent requests each executing once, no stale state or confirmation crossing instances, real-shaped output-created/output-missing regression fixtures (including the regression test for the real basename-comparison bug found and fixed during `v0.35.0`'s own real testing — see `_missing_expected_outputs` above), output-file metadata field retention and its content-exclusion guarantee, a `blocked` execution status being disclosed rather than silently accepted, distinct and immutable result records across instances, runtime-error-vs-missing-output distinctness, duplicate-request-identity refusal via a deliberately reused adapter, identical code under a new request identity being permitted and isolated, safe-summary content-exclusion for the output-created scenario, and no automatic rerun after a missing-output classification. The final test in file order was renumbered `test_63` → `test_70` → `test_87` across `v0.34.0`/`v0.35.0` (identical "never imports the real helper" logic, unchanged) to remain the file's last test — so the highest test number is 87, but the total count of distinct tests is 85.
+This repository has no `pytest` configuration anywhere (no `pyproject.toml`, `setup.py`, `pytest.ini`, or `conftest.py`), so this test file follows the same `check(name, condition)` self-test harness convention as every other `scripts/*.py` tool rather than introducing a new test framework. It runs 95 deterministic unit tests (all currently passing): the original 40 from `v0.31.0`'s implementation task, 20 `v0.32.0` Increment-1 tests (41-60) exercising the same scenarios through `AdapterRunner`, 3 `v0.33.0` tests (61-63) verifying `build_production_adapter_runner`'s existence and structural isolation, 6 `v0.34.0` tests (64-69) using "real-shaped fake" fixtures copying the exact stdout/stderr/exit_code observed during `v0.34.0`'s two real controller-path invocations, 16 `v0.35.0` tests (71-86) covering repeated independent requests, output-created/output-missing regression fixtures, and duplicate-identity/state-isolation guarantees, and 10 new `v0.36.0` tests (88-97) covering a full durable-store-backed success flow, confirmation persisting across a simulated restart, a reloaded instance correctly refusing to resurrect analysis capability, a cross-process authorization race translating to the correct in-memory exception type, the default in-memory-only mode remaining completely untouched by a store, and durable persistence of the runtime-error/missing-output/launch-failure outcomes. Every `v0.36.0` test uses a disposable temporary SQLite database, never the default repository-relative location. The final test in file order was renumbered `test_63` → `test_70` → `test_87` → `test_98` across `v0.34.0`-`v0.36.0` (identical "never imports the real helper" logic, unchanged) to remain the file's last test — so the highest test number is 98, but the total count of distinct tests is 95.
 
 This script does not require GAUSS to be installed, does not access the network, and does not implement production runtime orchestration — it validates that the design's state machine and consent model are internally consistent, against a fake runner or a fake-helper-backed `AdapterRunner` only.
+
+## `gauss_orchestration_state_store.py`
+
+Purpose:
+A durable, SQLite-backed orchestration state store (`v0.36.0` Durable Execution State and Cross-Process Safety, `planning/v0.36.0-durable-execution-state-and-cross-process-safety.md`). Replaces the controller's in-memory-only safeguards with a transactional layer that survives process restarts and coordinates cooperating local processes. Storage technology is the Python standard library's `sqlite3` module only — no third-party database or ORM.
+
+**This module never imports, invokes, or knows about real GAUSS**, and never imports `gauss_runtime_orchestration.py` (the dependency direction is one-way: the controller may depend on this module, never the reverse). Never persisted: raw inline code (only a SHA-256 digest), `stdout`/`stderr` text, output-file content, secrets/credentials, environment-variable values, raw conversation text — mirroring, not loosening, the two "safe summary" exclusion sets already established by `OrchestrationRecord.to_safe_summary()` and `gauss_execution_adapter.safe_summary(...)`.
+
+Schema (four tables, `SCHEMA_VERSION = 1`): `schema_meta` (one row, version + creation timestamp); `orchestration_records` (one row per orchestration instance, primary key `orchestration_instance_id`); `transition_events` (ordered transition history, `UNIQUE(orchestration_instance_id, sequence_number)`); `invocation_attempts` (`UNIQUE(orchestration_instance_id)` — a second, independent enforcement layer beyond the atomic conditional `UPDATE` in `authorize_invocation(...)`).
+
+Key operations, every write an explicit `BEGIN IMMEDIATE ... COMMIT/ROLLBACK` transaction:
+
+- `initialize()` — idempotent; fails closed with `SchemaVersionError` on any schema-version mismatch, never attempting a silent migration.
+- `create_record(...)`, `load_record(...)` — creation and read access; `RecordNotFoundError`/`DuplicateRecordError` on the obvious misuse cases.
+- `transition(...)` — the generic, optimistic-concurrency-checked state transition, used for every non-authorization mutation; requires the caller's `expected_transition_sequence_number` to match the durable record's own, or raises `StaleTransitionError` (a lost-update guard, not just a duplicate-invocation guard).
+- `record_confirmation(...)` — validates session/hash/scope and atomically records confirmation plus the `awaiting_confirmation → confirmed` transition; computes `confirmation_expires_at` from the store's own wall clock (`time.time()`, 30-minute default TTL), never from the caller-supplied, unparsed `confirmation_timestamp` audit label.
+- `authorize_invocation(...)` — the one atomic transaction this module exists to provide: verifies state/hash/session/confirmation-validity/scope/non-consumption/non-expiry/no-prior-invocation, then, only if every condition holds, atomically consumes confirmation, records the invocation ID, and transitions to `executing` — all before any caller may launch a helper.
+- `record_execution_result(...)` — records the terminal execution outcome (`execution_completed`/`execution_failed`) with `execution_status`/`exit_code`/`output_file_count`/`validation_ok`/`validation_problems`/`failure_category`.
+- Read-only inspection: `list_records(...)`, `get_transition_history(...)`, `list_ambiguous_invocations()` (authorized but no result yet — surfaced for manual review, never auto-resolved), `list_expired_confirmations()`, `list_terminal()`, `list_needs_review()`, `check_integrity()` (detects malformed JSON, unrecognized states, impossible confirmation states, and transition-sequence gaps/mismatches — reports only, never repairs).
+
+Self-test:
+
+```text
+python scripts/gauss_orchestration_state_store.py --self-test
+```
+
+Read-only CLI (explicit, safe default — running with no flags just prints help; every listing/inspection flag is confirmed never to mutate the database):
+
+```text
+python scripts/gauss_orchestration_state_store.py --db-path <path> --list [--state STATE]
+python scripts/gauss_orchestration_state_store.py --db-path <path> --show INSTANCE_ID
+python scripts/gauss_orchestration_state_store.py --db-path <path> --history INSTANCE_ID
+python scripts/gauss_orchestration_state_store.py --db-path <path> --list-ambiguous
+python scripts/gauss_orchestration_state_store.py --db-path <path> --list-expired
+python scripts/gauss_orchestration_state_store.py --db-path <path> --list-terminal
+python scripts/gauss_orchestration_state_store.py --db-path <path> --list-needs-review
+python scripts/gauss_orchestration_state_store.py --db-path <path> --check-integrity
+```
+
+No administrative, state-changing, or repair command exists anywhere in this CLI — no automatic rerun, no automatic repair, no "mark successful" shortcut, no deletion of execution history, no raw-code or secret display.
+
+Default storage location: `<repository_root>/.gauss_orchestration_state/orchestration.db`, created deliberately (parent directory made only when a store is actually constructed, never implicitly) and excluded from version control via `.gitignore`. Never inside a user-provided `working_directory`/`output_directory`, never mixed with `evaluations/` files. Every test in this repository passes an explicit, disposable temporary path instead.
+
+The focused, comprehensive single-process test suite:
+
+```text
+python scripts/test_gauss_orchestration_state_store.py
+```
+
+52 deterministic unit tests: schema initialization and idempotency (1-5), record creation/retrieval and code-digest-not-raw-code (6-10), transitions and optimistic concurrency (11-16), confirmation and expiry including a simulated-restart-does-not-extend-expiry case (17-24), atomic invocation authorization covering every precondition-failure category (25-32, including the same-code-new-request-may-proceed case mirroring `v0.35.0`'s own `test_84` finding), execution-result recording (33-37), seven corruption-detection scenarios (38-44), read-only inspection/safe-summary/redaction (45-50b), and a whole-database-file byte scan confirming no raw code ever appears (51). Every test uses a disposable temporary database file.
+
+Genuine cross-process concurrency and crash-simulation tests, using real `multiprocessing.Process` workers (not threads):
+
+```text
+python scripts/test_gauss_orchestration_state_store_concurrency.py
+```
+
+15 tests (verified stable across repeated runs): persistence across a store reopen (1-5); cross-process duplicate prevention — a five-process race with exactly one winner every time, repeated-delivery refusal, process-restart-does-not-reset-protection, and same-code-new-instance-may-proceed cross-process (6-9); concurrency — a cross-process stale-transition-sequence isolation test and a real held-write-lock contention test (10-11); and all four crash-simulation scenarios from the planning document's Crash-Recovery Model, each verified by inspecting durable state through a fresh connection after the simulated crash (12-15). See `scripts/test_gauss_orchestration_state_store.py` for the seven single-process corruption scenarios, and `scripts/test_gauss_runtime_orchestration.py`'s `v0.36.0` section for controller-level durable-store integration tests.
+
+This module does not require GAUSS to be installed, does not access the network, does not claim distributed exactly-once execution or multi-machine coordination, and does not automatically repair, retry, or rerun anything.
 
 ## `gauss_execution_adapter.py`
 
@@ -285,6 +346,77 @@ python scripts/test_gauss_runtime_orchestration_real.py --self-test
 Tests only the pure gate-computation logic, the preflight helper functions (`_verify_platform()`, `_verify_executable(...)`, `_verify_scenario(...)`, `_verify_invocation_number(...)`, `_verify_output_directory_if_required(...)`), scenario-code verification against the five literal strings above, and the zero-gate/one-gate skip paths of `main()` — it explicitly clears `GAUSS_AI_ALLOW_REAL_EXECUTION` from the environment for the duration of those checks and restores it afterward, so the self-test's own safety does not depend on the ambient shell.
 
 When both gates are present and a valid scenario is selected (exercised twice in `v0.34.0` and five more times in `v0.35.0`, all manually, individually authorized — never by this repository's own default test/CI/release-readiness paths), the harness prints a prominent notice, verifies the platform (Windows), executable identity (`tgauss`/`tgauss.exe`, terminal only), scenario recognition, a caller-declared `--invocation-number` (1-5, audit-only, printed in the evidence output, not persisted anywhere or enforced across separate process invocations), and (for `output-created` only) an existing `--output-directory` — then builds a real `EnvironmentSummary`/`SafetyReviewOutcome`/`RequestDraft`, drives the full controller sequence above, and prints scenario, invocation number, state, confirmation status/consumption, request hash, helper invocation ID, execution status, exit code, stdout, stderr, output-file count and per-file metadata (path/size/type/created_by_execution — never content), and structural-validation result at every step, followed by the final state, transition count, full transition sequence, and `instance.record.to_safe_summary()`.
+
+**Release-readiness (`scripts/check_release_readiness.py`) and every default test command never set either gate and never invoke this file.**
+
+## `gauss_execution_workflow.py`
+
+Purpose:
+The conversational execution-workflow layer (`v0.37.0` Conversational Execution Workflow Integration, `planning/v0.37.0-conversational-execution-workflow-integration.md`) — the single, dedicated boundary between a conversational interaction and `gauss_runtime_orchestration.py`'s durable controller. Enforces the required dependency direction end to end: conversational interaction → intent classification → plan builder → canonical request → durable orchestration controller → Helper Adapter → GAUSS execution helper.
+
+**This module never imports `gauss_execution_adapter` or `gauss_code_execution`, never launches a subprocess, and never detects a real GAUSS environment.** It has no direct binding to either module anywhere in its own namespace (verified directly by `hasattr` inspection in `scripts/test_gauss_execution_workflow.py`). Every execution it can drive still passes through `MockOrchestrationInstance.invoke(runner)` — the `runner` is supplied by this module's own caller, never constructed by this module itself.
+
+Supported behavior:
+
+- `classify_interaction_mode(signal: IntentSignal) -> InteractionMode` — a pure function over explicit, pre-classified booleans/enums, never natural-language parsing. Fails closed to `ADVISORY` for any ambiguous combination; only `execution_explicitly_requested=True` together with `code_present=True` reaches `PREPARE_EXECUTION_PLAN`.
+- `InteractionMode` — `ADVISORY`, `EXPLAIN_CODE`, `REVIEW_CODE`, `REVISE_CODE`, `PREPARE_EXECUTION_PLAN`, `EXECUTE_AFTER_CONFIRMATION`, `CANCEL_PENDING_EXECUTION`, `INSPECT_PRIOR_RESULT`, `REQUEST_RERUN`.
+- `evaluate_eligibility(...)` / `evaluate_safety_review(...)` — structural, non-inventive encodings of `workflows/real-execution-user-workflow.md`'s Execution Eligibility Decision and (13 of 14 items of) the Pre-Execution Safety Review checklists; the 14th safety-review item (user confirmation) is deliberately excluded from the hashed outcome, since confirmation is enforced as its own later, independently validated gate.
+- `ExecutionWorkflow` — the workflow class itself:
+  - `propose_execution(...)` — builds a durable orchestration instance (via `gauss_runtime_orchestration.build_durable_orchestration_instance(...)`, never the bare in-memory constructor), runs eligibility then the controller's own `submit_for_review()`/`display_plan()`, and returns an `ExecutionProposal` bound to a `request_hash`/`plan_digest`.
+  - `confirm_execution(event: WorkflowConfirmationEvent) -> ConfirmationOutcome` — independently validates `plan_digest == request_hash`, decision literal, and `request_id` match before ever consulting the controller; `confirmed=True` alone is never accepted.
+  - `execute(...)` — checks the confirmed environment immediately before invocation, then calls `MockOrchestrationInstance.invoke(runner)`.
+  - `cancel(...)`, `inspect(...)`, `invalidate_for_session_boundary(...)` — pass-through to the underlying controller/durable-record view.
+  - `request_rerun(...)` — always raises `RerunRequiresNewRequestError`; there is no in-place rerun path anywhere in this module.
+  - Falls back transparently to `gauss_runtime_orchestration.reload_orchestration_instance(...)` when an instance is not in its process-local cache — inheriting, not reimplementing, `v0.36.0`'s cross-process/restart behavior.
+- `ResponseReadyResult` — the safe, response-ready projection of an execution outcome: `executed`, final orchestration state, execution status, `exit_code` (always paired with `exit_code_is_authoritative=False`), `runtime_error_detected`, `timed_out`, `missing_expected_output`, `output_files` (path/size/type/created-by only — `OutputFileSummary` has no `content` field), `analysis_status`, `report_status`, `limitations` (`KNOWN_LIMITATIONS`, always non-empty), `methodology_caveat`, and `rerun_requires_new_request=True` (constant).
+
+A discovered architectural finding, not a bug: `reload_orchestration_instance(...)` always leaves `request=None` (raw code is never durably persisted). This means `execute()` against a reloaded instance — i.e., in any process other than the one that built the proposal — always fails closed with `GuardFailedError`, verified directly with three real, separate racing OS processes (all refused, none corrupting the durable record, the original process still able to complete the invocation afterward). See `scripts/test_gauss_execution_workflow.py`'s `test_32`/`test_49` for the full evidence and reasoning.
+
+Self-test:
+
+```text
+python scripts/gauss_execution_workflow.py --self-test
+```
+
+The focused, comprehensive test suite:
+
+```text
+python scripts/test_gauss_execution_workflow.py
+```
+
+60 deterministic unit tests, grouped to match this milestone's own coverage plan: intent and mode (1-8), inputs and proposal (9-21), confirmation (22-33), execution (34-49, including the cross-process finding above and a genuine `multiprocessing.Process`-based race), and response composition (50-59), plus one closing import-boundary check (60). Every test uses a fake runner and a disposable temporary SQLite database.
+
+This script does not require GAUSS to be installed, does not access the network, and does not run GAUSS — it validates the workflow layer's own classification/proposal/confirmation/response-composition logic against fake runners only.
+
+## `test_gauss_execution_workflow_real.py`
+
+Purpose:
+A doubly-gated **real** GAUSS smoke-test harness for the complete conversational workflow layer (`v0.37.0`). Unlike `test_gauss_runtime_orchestration_real.py`, which drives `MockOrchestrationInstance` directly, this harness drives `gauss_execution_workflow.ExecutionWorkflow` end to end: `propose_execution(...) → confirm_execution(...) → execute(..., runner=build_production_adapter_runner(...)) → inspect(...)`, backed by a disposable, temporary `OrchestrationStateStore` (never the default repository-relative location). **This file can invoke real GAUSS** when both of two independent gates are supplied simultaneously; it is not part of any default test path.
+
+**`v0.37.0` verified this harness against real GAUSS exactly three times** — see `planning/v0.37.0-implementation-report.md` for the full preflight and execution evidence. Exactly one named scenario is selected per explicit invocation via `--scenario` (no default, no "run everything" mode); this milestone's own authorized budget is 1-3 (`--invocation-number`). Each scenario's code is reused, byte-for-byte, from the same verified evidence `test_gauss_runtime_orchestration_real.py` already uses — this harness verifies the new conversational-workflow layer relays already-trusted real GAUSS behavior correctly end to end, not new GAUSS syntax:
+
+- `success`: `"x = 2 + 2;\nprint x;"`.
+- `runtime-error`: `"x = ;"` (`error G0105`).
+- `output-created`: `'output file = gauss_output.txt reset;\nprint "hello output test";\noutput off;'`; requires an explicit `--output-directory` (in practice, the same directory as `--working-directory`).
+
+Required gates, both simultaneously — either one missing means a clean, explicit skip with no GAUSS touched:
+
+1. The command-line flag `--run-real-gauss`.
+2. The environment variable `GAUSS_AI_ALLOW_REAL_EXECUTION=1`.
+
+```text
+python scripts/test_gauss_execution_workflow_real.py
+```
+
+Run with no arguments (or with only one of the two gates), this always prints a `SKIPPED` notice and exits `0` without touching GAUSS — confirmed by direct, live invocation.
+
+Gating/preflight self-test (never supplies both gates):
+
+```text
+python scripts/test_gauss_execution_workflow_real.py --self-test
+```
+
+When both gates are present and a valid scenario is selected (exercised exactly three times in `v0.37.0`, all manually, individually authorized — never by this repository's own default test/CI/release-readiness paths), the harness prints the full proposal (request hash, plan digest, code digest — never raw code), confirmation outcome, and every `ResponseReadyResult` field, followed by an `inspect()` readback confirming consistency and the durable record's own safe summary.
 
 **Release-readiness (`scripts/check_release_readiness.py`) and every default test command never set either gate and never invoke this file.**
 

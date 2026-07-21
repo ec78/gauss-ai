@@ -96,11 +96,19 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 
-# The only new import this revision adds. gauss_execution_adapter never
-# imports scripts/gauss_code_execution.py at its own import time (see that
-# module's docstring), so this import has no execution side effects: no
-# helper import, no GAUSS detection, no subprocess launch, no code run.
+# gauss_execution_adapter never imports scripts/gauss_code_execution.py at
+# its own import time (see that module's docstring), so this import has no
+# execution side effects: no helper import, no GAUSS detection, no
+# subprocess launch, no code run.
 import gauss_execution_adapter  # noqa: E402
+
+# v0.36.0: gauss_orchestration_state_store never imports this module (the
+# dependency direction is one-way: this module may depend on the store, the
+# store never depends on this module), never imports the real helper, never
+# launches a subprocess, and never touches GAUSS. Importing it has no
+# execution side effects -- only OrchestrationStateStore.__init__ creates a
+# directory or opens a database file, and this import does not construct one.
+import gauss_orchestration_state_store as state_store_mod  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Small supporting value types
@@ -946,32 +954,64 @@ class MockOrchestrationInstance:
         draft: RequestDraft,
         clock: Callable[[], float] = time.monotonic,
         id_factory: Callable[[], str] = lambda: uuid.uuid4().hex,
+        state_store: "state_store_mod.OrchestrationStateStore | None" = None,
+        orchestration_instance_id: str | None = None,
     ) -> None:
+        """`state_store` is optional and defaults to None, preserving this
+        class's original, fully in-memory-only behavior for every existing
+        caller and test unchanged. When a store IS supplied, every state
+        mutation this instance performs is also durably persisted through
+        that one store -- see `build_durable_orchestration_instance(...)`
+        for the explicit, named "production construction" entry point that
+        requires a store (mirroring `build_production_adapter_runner(...)`'s
+        own explicitness convention).
+
+        `orchestration_instance_id` lets a caller supply a pre-existing ID
+        (used by `reload_orchestration_instance(...)` to reconstruct an
+        in-memory view of an already-durable record after a process
+        restart); when omitted, a fresh ID is generated as before."""
         self._clock = clock
         self._id_factory = id_factory
+        self._state_store = state_store
         self.draft = draft
         self.request: CanonicalExecutionRequest | None = None
         now = self._clock()
         self.record = OrchestrationRecord(
-            orchestration_instance_id=id_factory(),
+            orchestration_instance_id=orchestration_instance_id or id_factory(),
             session_id=session_id,
             current_state=OrchestrationState.COLLECTING_INPUTS,
             canonical_request_id=draft.request_id,
             created_at=now,
             last_transition_at=now,
         )
+        if self._state_store is not None:
+            self._state_store.create_record(
+                orchestration_instance_id=self.record.orchestration_instance_id,
+                session_id=session_id,
+                canonical_request_id=draft.request_id,
+                current_state=OrchestrationState.COLLECTING_INPUTS.value,
+                created_at=now,
+            )
 
     # -- internal transition primitive --------------------------------------
 
-    def _transition(self, target: OrchestrationState, *, note: str = "") -> None:
+    def _transition(
+        self,
+        target: OrchestrationState,
+        *,
+        note: str = "",
+        extra_fields: dict[str, Any] | None = None,
+        sync_to_store: bool = True,
+    ) -> None:
         current = self.record.current_state
         allowed = VALID_TRANSITIONS.get(current, frozenset())
         if target not in allowed:
             raise InvalidTransitionError(f"{current.value} -> {target.value} is not a valid transition.")
+        expected_seq = self.record.transition_sequence_number
         now = self._clock()
         self.record.transition_log.append(
             TransitionEvent(
-                sequence_number=self.record.transition_sequence_number,
+                sequence_number=expected_seq,
                 from_state=current,
                 to_state=target,
                 at=now,
@@ -982,18 +1022,38 @@ class MockOrchestrationInstance:
         self.record.previous_state = current
         self.record.current_state = target
         self.record.last_transition_at = now
+        if sync_to_store and self._state_store is not None:
+            self._state_store.transition(
+                self.record.orchestration_instance_id,
+                to_state=target.value,
+                note=note,
+                expected_transition_sequence_number=expected_seq,
+                extra_fields=extra_fields,
+            )
 
-    def _force_complete(self, *, note: str) -> None:
+    def _sync_extra(self, **fields: Any) -> None:
+        """Pushes a non-transitioning field update (one that does not
+        accompany a state change) to the durable store, when one is
+        present. A no-op in the default, in-memory-only mode."""
+        if self._state_store is not None and fields:
+            self._state_store.update_fields(
+                self.record.orchestration_instance_id,
+                expected_transition_sequence_number=self.record.transition_sequence_number,
+                **fields,
+            )
+
+    def _force_complete(self, *, note: str, extra_fields: dict[str, Any] | None = None) -> None:
         """A cancellation-only shortcut from a post-execution state directly
         to `completed`, bypassing the ordinary adjacency table -- this is a
         deliberate, distinct cancellation path (state-machine contract
         Section 10: "can only stop downstream work"), not a violation of the
         normal transition rules, which govern the non-cancellation flow."""
+        expected_seq = self.record.transition_sequence_number
         now = self._clock()
         current = self.record.current_state
         self.record.transition_log.append(
             TransitionEvent(
-                sequence_number=self.record.transition_sequence_number,
+                sequence_number=expected_seq,
                 from_state=current,
                 to_state=OrchestrationState.COMPLETED,
                 at=now,
@@ -1004,6 +1064,14 @@ class MockOrchestrationInstance:
         self.record.previous_state = current
         self.record.current_state = OrchestrationState.COMPLETED
         self.record.last_transition_at = now
+        if self._state_store is not None:
+            self._state_store.transition(
+                self.record.orchestration_instance_id,
+                to_state="completed",
+                note=f"cancellation shortcut: {note}",
+                expected_transition_sequence_number=expected_seq,
+                extra_fields=extra_fields,
+            )
 
     # -- eligibility / safety / proposal --------------------------------------
 
@@ -1016,7 +1084,7 @@ class MockOrchestrationInstance:
         or indirectly via submit_for_review()'s own structural checks.
         """
         self.record.failure_category = category
-        self._transition(OrchestrationState.BLOCKED, note=reason)
+        self._transition(OrchestrationState.BLOCKED, note=reason, extra_fields={"failure_category": category.value})
 
     def mark_runner_unavailable(self, reason: str) -> None:
         if self.record.current_state != OrchestrationState.COLLECTING_INPUTS:
@@ -1061,7 +1129,14 @@ class MockOrchestrationInstance:
 
         self.request = candidate
         self.record.request_hash = self.request.request_hash
-        self._transition(OrchestrationState.PROPOSED, note="eligibility and safety review passed")
+        self._transition(
+            OrchestrationState.PROPOSED,
+            note="eligibility and safety review passed",
+            extra_fields={
+                "request_hash": self.request.request_hash,
+                "code_digest": state_store_mod.digest_code(self.request.code),
+            },
+        )
 
     # -- confirmation ---------------------------------------------------------
 
@@ -1069,13 +1144,20 @@ class MockOrchestrationInstance:
         if self.record.current_state != OrchestrationState.PROPOSED:
             raise InvalidTransitionError("display_plan is only valid from proposed.")
         self.record.confirmation_status = ConfirmationStatus.REQUESTED
-        self._transition(OrchestrationState.AWAITING_CONFIRMATION, note="plan displayed")
+        self._transition(
+            OrchestrationState.AWAITING_CONFIRMATION, note="plan displayed",
+            extra_fields={"confirmation_status": "requested"},
+        )
 
     def confirm(self, event: ConfirmationEvent) -> None:
         """user_confirmed=true alone is never sufficient: this also requires
         confirmation_scope == request_hash (checked inside
         CanonicalExecutionRequest.attach_confirmation) and a matching
-        session_id (checked here)."""
+        session_id (checked here). When a durable store is present, the
+        store's own atomic `record_confirmation(...)` is the authoritative
+        check and commit -- it happens first, and the in-memory mutation
+        below only mirrors it (`sync_to_store=False` on the transition call
+        below, avoiding a second, redundant durable write)."""
         if self.record.current_state != OrchestrationState.AWAITING_CONFIRMATION:
             raise InvalidTransitionError("confirm is only valid from awaiting_confirmation.")
         if self.request is None:
@@ -1095,19 +1177,36 @@ class MockOrchestrationInstance:
                 "Confirmation scope does not match the current request hash."
             )
 
+        if self._state_store is not None:
+            try:
+                self._state_store.record_confirmation(
+                    self.record.orchestration_instance_id,
+                    scope=event.scope,
+                    timestamp=event.timestamp,
+                    session_id=event.session_id,
+                    expected_request_hash=self.request.request_hash,
+                    expected_transition_sequence_number=self.record.transition_sequence_number,
+                )
+            except state_store_mod.DurableStateError as exc:
+                self.record.confirmation_status = ConfirmationStatus.STALE
+                raise GuardFailedError(f"durable confirmation recording failed, refusing to confirm: {exc}") from exc
+
         self.request.attach_confirmation(
             confirmation_scope=event.scope, confirmation_timestamp=event.timestamp
         )
         self.record.confirmation_status = ConfirmationStatus.ACCEPTED
         self.record.confirmation_event_reference = event.timestamp
-        self._transition(OrchestrationState.CONFIRMED, note="confirmation accepted")
+        self._transition(OrchestrationState.CONFIRMED, note="confirmation accepted", sync_to_store=False)
 
     def reject_confirmation(self) -> None:
         if self.record.current_state != OrchestrationState.AWAITING_CONFIRMATION:
             raise InvalidTransitionError("reject_confirmation is only valid from awaiting_confirmation.")
         self.record.confirmation_status = ConfirmationStatus.REJECTED
         self.record.failure_category = FailureCategory.CONFIRMATION_REJECTED
-        self._transition(OrchestrationState.CANCELLED, note="user declined")
+        self._transition(
+            OrchestrationState.CANCELLED, note="user declined",
+            extra_fields={"confirmation_status": "rejected", "failure_category": "confirmation_rejected"},
+        )
 
     def edit_before_confirmation(self, **changes: Any) -> None:
         """A pre-confirmation edit -- same instance, per the state-machine
@@ -1120,7 +1219,10 @@ class MockOrchestrationInstance:
         self.request = None
         self.record.request_hash = None
         self.record.confirmation_status = ConfirmationStatus.INVALIDATED
-        self._transition(OrchestrationState.COLLECTING_INPUTS, note="pre-confirmation edit")
+        self._transition(
+            OrchestrationState.COLLECTING_INPUTS, note="pre-confirmation edit",
+            extra_fields={"confirmation_status": "invalidated", "request_hash": None},
+        )
 
     def invalidate_for_session_boundary(self) -> None:
         """Represents a resumed session where prior confirmation state must
@@ -1137,6 +1239,7 @@ class MockOrchestrationInstance:
             self._transition(
                 OrchestrationState.COLLECTING_INPUTS,
                 note="session boundary before confirmation; same instance, fresh cycle",
+                extra_fields={"confirmation_status": "expired"},
             )
             return
         if state == OrchestrationState.CONFIRMED:
@@ -1145,6 +1248,7 @@ class MockOrchestrationInstance:
             self._transition(
                 OrchestrationState.CANCELLED,
                 note="session boundary after confirmation; instance abandoned, new request required",
+                extra_fields={"confirmation_status": "expired", "failure_category": "confirmation_expired"},
             )
             return
         raise InvalidTransitionError(
@@ -1161,6 +1265,7 @@ class MockOrchestrationInstance:
             self._transition(
                 OrchestrationState.CANCELLED,
                 note="environment no longer matches the confirmed plan; fail closed",
+                extra_fields={"failure_category": "environment_mismatch"},
             )
 
     # -- cancellation -----------------------------------------------------------
@@ -1175,6 +1280,10 @@ class MockOrchestrationInstance:
             # records intent; it does not stop or claim to stop the call.
             self.record.cancellation_status = CancellationStatus.CANCEL_REQUESTED_DURING_INVOCATION
             self.record.failure_category = FailureCategory.CANCELLATION_DURING_EXECUTION
+            self._sync_extra(
+                cancellation_status="cancel_requested_during_invocation",
+                failure_category="cancellation_during_execution",
+            )
             return
 
         if state in (
@@ -1184,16 +1293,21 @@ class MockOrchestrationInstance:
             OrchestrationState.REPORT_GENERATING,
         ):
             self.record.cancellation_status = CancellationStatus.CANCELLATION_ACKNOWLEDGED
+            extra_fields: dict[str, Any] = {"cancellation_status": "cancellation_acknowledged"}
             if self.record.analysis_status == AnalysisStatus.NOT_STARTED:
                 self.record.analysis_status = AnalysisStatus.SKIPPED
-            self._force_complete(note=note or "cancelled downstream of execution")
+                extra_fields["analysis_status"] = "skipped"
+            self._force_complete(note=note or "cancelled downstream of execution", extra_fields=extra_fields)
             return
 
         # Pre-invocation cancellation: collecting_inputs / proposed /
         # awaiting_confirmation / confirmed (not yet launched).
         self.record.failure_category = FailureCategory.CANCELLATION_BEFORE_EXECUTION
         self.record.cancellation_status = CancellationStatus.CANCELLATION_ACKNOWLEDGED
-        self._transition(OrchestrationState.CANCELLED, note=note or "user cancelled before execution")
+        self._transition(
+            OrchestrationState.CANCELLED, note=note or "user cancelled before execution",
+            extra_fields={"failure_category": "cancellation_before_execution", "cancellation_status": "cancellation_acknowledged"},
+        )
 
     # -- invocation (exactly once) ----------------------------------------------
 
@@ -1206,6 +1320,17 @@ class MockOrchestrationInstance:
         raising) still consumes it; a second call for the same request_hash
         is refused outright (DuplicateInvocationError) without touching the
         original invocation's state.
+
+        When a durable store is present, `state_store.authorize_invocation(
+        ...)` is called FIRST and must durably commit before this method
+        does anything else -- in particular, before the runner is ever
+        called. This is the one hard requirement this milestone exists to
+        satisfy: the controller can never invoke first and persist
+        afterward. If durable authorization fails for any reason (already
+        invoked, expired confirmation, hash/session mismatch, a lost race
+        with a concurrent writer, or lock contention), the corresponding
+        in-memory exception is raised immediately and neither the in-memory
+        state nor the runner is ever touched.
         """
         if self.record.current_state != OrchestrationState.CONFIRMED:
             raise InvalidTransitionError("invoke is only valid from confirmed.")
@@ -1226,13 +1351,45 @@ class MockOrchestrationInstance:
                 f"({self.record.helper_invocation_id}); a second invocation is refused."
             )
 
+        invocation_id = self._id_factory()
+
+        if self._state_store is not None:
+            try:
+                self._state_store.authorize_invocation(
+                    self.record.orchestration_instance_id,
+                    request_hash=self.request.request_hash,
+                    confirmation_scope=self.request.confirmation_scope,
+                    session_id=self.record.session_id,
+                    invocation_id=invocation_id,
+                    expected_transition_sequence_number=self.record.transition_sequence_number,
+                )
+            except state_store_mod.AuthorizationFailedError as exc:
+                if exc.reason_category == "already_invoked":
+                    raise DuplicateInvocationError(f"durable authorization refused: {exc}") from exc
+                if exc.reason_category == "session_mismatch":
+                    raise SessionMismatchError(f"durable authorization refused: {exc}") from exc
+                raise GuardFailedError(f"durable authorization refused: {exc}") from exc
+            except state_store_mod.StaleTransitionError as exc:
+                raise GuardFailedError(f"durable authorization refused (stale durable state): {exc}") from exc
+            except state_store_mod.LockContentionError as exc:
+                raise GuardFailedError(f"durable authorization could not acquire the write lock: {exc}") from exc
+
         # Atomic with authorization: record invocation identity and consume
         # confirmation together, immediately before transitioning/calling.
-        self.record.helper_invocation_id = self._id_factory()
+        # When a store is present, the durable commit above has ALREADY made
+        # this exclusive -- this in-memory mutation only mirrors it.
+        self.record.helper_invocation_id = invocation_id
         self.record.helper_invocation_status = HelperInvocationStatus.IN_PROGRESS
         self.record.confirmation_consumption_status = True
         self.record.confirmation_status = ConfirmationStatus.CONSUMED
-        self._transition(OrchestrationState.EXECUTING, note="invocation authorized")
+        self._transition(OrchestrationState.EXECUTING, note="invocation authorized", sync_to_store=False)
+        # Captured once, immediately after the EXECUTING transition -- this
+        # is the transition_sequence_number the durable store is at right
+        # now (matching authorize_invocation's own single commit), and is
+        # reused below for whichever single record_execution_result call
+        # ends up applying, regardless of how many further in-memory-only
+        # transitions happen first.
+        result_expected_seq = self.record.transition_sequence_number
 
         runner_input = RunnerInput(
             code=self.request.code,
@@ -1254,7 +1411,14 @@ class MockOrchestrationInstance:
             # atomic-consumption rule) -- a retry requires a new request.
             self.record.helper_invocation_status = HelperInvocationStatus.FAILED_TO_LAUNCH
             self.record.failure_category = FailureCategory.RUNNER_LAUNCH_FAILURE
-            self._transition(OrchestrationState.EXECUTION_FAILED, note=f"runner launch failed: {exc}")
+            self._transition(OrchestrationState.EXECUTION_FAILED, note=f"runner launch failed: {exc}", sync_to_store=False)
+            if self._state_store is not None:
+                self._state_store.record_execution_result(
+                    self.record.orchestration_instance_id, to_state="execution_failed", execution_status="unknown",
+                    exit_code=None, output_file_count=None, validation_ok=None, validation_problems=(),
+                    failure_category="runner_launch_failure",
+                    expected_transition_sequence_number=result_expected_seq,
+                )
             return
 
         self.record.helper_invocation_status = HelperInvocationStatus.RETURNED
@@ -1266,22 +1430,51 @@ class MockOrchestrationInstance:
             # enter analysis as valid evidence (Invariant 17).
             self.record.failure_category = FailureCategory.MALFORMED_RESULT
             self.record.execution_result_reference = None
-            self._transition(OrchestrationState.EXECUTION_FAILED, note="malformed result")
+            self._transition(OrchestrationState.EXECUTION_FAILED, note="malformed result", sync_to_store=False)
+            if self._state_store is not None:
+                raw_status = raw_result.get("execution_status") if isinstance(raw_result, dict) else None
+                self._state_store.record_execution_result(
+                    self.record.orchestration_instance_id, to_state="execution_failed",
+                    execution_status=str(raw_status) if raw_status is not None else "unknown",
+                    exit_code=None, output_file_count=None, validation_ok=False, validation_problems=validation.problems,
+                    failure_category="malformed_result",
+                    expected_transition_sequence_number=result_expected_seq,
+                )
             return
 
         result = _to_mock_result(raw_result)
         self.record.execution_result_reference = result
 
+        db_failure_category: str | None
         if result.execution_status == "completed":
-            if _missing_expected_outputs(self.request, result):
+            missing = _missing_expected_outputs(self.request, result)
+            if missing:
                 self.record.failure_category = FailureCategory.MISSING_EXPECTED_OUTPUT
-            self._transition(OrchestrationState.EXECUTION_COMPLETED, note="completed")
+                db_failure_category = "missing_expected_output"
+            else:
+                db_failure_category = None
+            self._transition(OrchestrationState.EXECUTION_COMPLETED, note="completed", sync_to_store=False)
         elif result.execution_status == "timed_out":
             self.record.failure_category = FailureCategory.TIMEOUT
-            self._transition(OrchestrationState.EXECUTION_FAILED, note="timed out")
+            db_failure_category = "timeout"
+            self._transition(OrchestrationState.EXECUTION_FAILED, note="timed out", sync_to_store=False)
         else:
             self.record.failure_category = FailureCategory.GAUSS_RUNTIME_ERROR
-            self._transition(OrchestrationState.EXECUTION_FAILED, note=f"status={result.execution_status}")
+            db_failure_category = "gauss_runtime_error"
+            self._transition(OrchestrationState.EXECUTION_FAILED, note=f"status={result.execution_status}", sync_to_store=False)
+
+        if self._state_store is not None:
+            self._state_store.record_execution_result(
+                self.record.orchestration_instance_id,
+                to_state=self.record.current_state.value,
+                execution_status=result.execution_status,
+                exit_code=result.exit_code,
+                output_file_count=len(result.output_files),
+                validation_ok=True,
+                validation_problems=(),
+                failure_category=db_failure_category,
+                expected_transition_sequence_number=result_expected_seq,
+            )
 
     # -- analysis / reporting ----------------------------------------------------
 
@@ -1313,16 +1506,20 @@ class MockOrchestrationInstance:
             # Fail closed: recovered/incomplete state must never enter analysis.
             raise GuardFailedError("No canonical request is attached to this instance; cannot analyze.")
 
-        self._transition(OrchestrationState.ANALYZING, note="analysis started")
+        self._transition(OrchestrationState.ANALYZING, note="analysis started", extra_fields={"analysis_status": "in_progress"})
         self.record.analysis_status = AnalysisStatus.IN_PROGRESS
         try:
             analysis_hook(self.request, self.record.execution_result_reference)
             self.record.analysis_status = AnalysisStatus.COMPLETED
         except Exception:  # noqa: BLE001 - analysis failure must not crash or rewrite evidence
             self.record.analysis_status = AnalysisStatus.FAILED
+        self._sync_extra(analysis_status=self.record.analysis_status.value)
 
         if report_requested:
-            self._transition(OrchestrationState.REPORT_GENERATING, note="report requested")
+            self._transition(
+                OrchestrationState.REPORT_GENERATING, note="report requested",
+                extra_fields={"report_status": "in_progress"},
+            )
             self.record.report_status = ReportStatus.IN_PROGRESS
             try:
                 assert report_hook is not None
@@ -1330,9 +1527,116 @@ class MockOrchestrationInstance:
                 self.record.report_status = ReportStatus.COMPLETED
             except Exception:  # noqa: BLE001 - report failure falls back, never erases evidence
                 self.record.report_status = ReportStatus.FAILED
+            self._sync_extra(report_status=self.record.report_status.value)
             self._transition(OrchestrationState.COMPLETED, note="report step concluded")
         else:
             self._transition(OrchestrationState.COMPLETED, note="no report requested")
+
+
+# ---------------------------------------------------------------------------
+# Durable construction / reload (v0.36.0 Durable Execution State and
+# Cross-Process Safety)
+# ---------------------------------------------------------------------------
+
+
+def build_durable_orchestration_instance(
+    *,
+    session_id: str,
+    draft: RequestDraft,
+    state_store: "state_store_mod.OrchestrationStateStore",
+    clock: Callable[[], float] = time.monotonic,
+    id_factory: Callable[[], str] = lambda: uuid.uuid4().hex,
+) -> MockOrchestrationInstance:
+    """The explicit, named "production construction" entry point that
+    requires a durable state store (mirrors `build_production_adapter_
+    runner(...)`'s own explicitness convention). `MockOrchestrationInstance`
+    itself still defaults to `state_store=None` for every existing caller
+    and test -- this function exists only so production code paths have one
+    unambiguous, named way to opt into durability, never an implicit
+    default."""
+    if state_store is None:
+        raise ValueError("build_durable_orchestration_instance requires an explicit, non-None state_store.")
+    return MockOrchestrationInstance(
+        session_id=session_id, draft=draft, clock=clock, id_factory=id_factory, state_store=state_store,
+    )
+
+
+def reload_orchestration_instance(
+    state_store: "state_store_mod.OrchestrationStateStore",
+    orchestration_instance_id: str,
+    *,
+    clock: Callable[[], float] = time.monotonic,
+) -> tuple[MockOrchestrationInstance, "state_store_mod.DurableRecord"]:
+    """Reconstructs an in-memory view of an already-durable orchestration
+    instance -- e.g. after a process restart, or in a second cooperating
+    process. Returns (instance, durable_record).
+
+    `instance.record` is reconstructed as faithfully as what was actually
+    persisted allows: current_state, previous_state, confirmation status/
+    consumption, invocation status/id, failure_category, cancellation/
+    analysis/report status, the transition sequence number, and the full
+    ordered transition history are all genuine, durably-sourced values.
+
+    `instance.request` is always None after a reload -- inline code was
+    deliberately never durably persisted (only a digest), so a full
+    CanonicalExecutionRequest cannot be reconstructed. This means
+    `begin_analysis()` and `invoke()` correctly refuse to proceed on a
+    reloaded instance (both already fail closed when `self.request is
+    None` -- an existing guard from `v0.31.0`, not something added here) --
+    this reload path can never resurrect execution capability from
+    incomplete state, satisfying this milestone's own stop condition.
+
+    `instance.record.execution_result_reference` is always None after a
+    reload -- raw stdout/stderr/output-file details/warnings/errors were
+    never durably persisted, matching this codebase's existing "safe
+    summary" precedent. The durable, safe execution facts that WERE
+    persisted (execution_status, exit_code, output_file_count,
+    validation_ok/problems) are available on the second return value,
+    `durable_record`, rather than being fabricated into a full
+    MockExecutionResult."""
+    rec = state_store.load_record(orchestration_instance_id)
+    placeholder_draft = RequestDraft(request_id=rec.canonical_request_id or orchestration_instance_id)
+    instance = MockOrchestrationInstance(
+        session_id=rec.session_id,
+        draft=placeholder_draft,
+        clock=clock,
+        orchestration_instance_id=orchestration_instance_id,
+        state_store=None,  # avoid __init__'s own create_record() call -- the record already exists
+    )
+    instance.record.current_state = OrchestrationState(rec.current_state)
+    instance.record.previous_state = OrchestrationState(rec.previous_state) if rec.previous_state else None
+    instance.record.canonical_request_id = rec.canonical_request_id
+    instance.record.request_hash = rec.request_hash
+    instance.record.confirmation_status = ConfirmationStatus(rec.confirmation_status)
+    instance.record.confirmation_event_reference = rec.confirmation_timestamp
+    instance.record.confirmation_consumption_status = rec.confirmation_consumed
+    instance.record.helper_invocation_status = HelperInvocationStatus(rec.invocation_status)
+    instance.record.helper_invocation_id = rec.invocation_id
+    instance.record.failure_category = FailureCategory(rec.failure_category) if rec.failure_category else None
+    instance.record.cancellation_status = CancellationStatus(rec.cancellation_status)
+    instance.record.analysis_status = AnalysisStatus(rec.analysis_status)
+    instance.record.report_status = ReportStatus(rec.report_status)
+    instance.record.transition_sequence_number = rec.transition_sequence_number
+    instance.record.created_at = rec.created_at
+    instance.record.last_transition_at = rec.last_transition_at
+    if rec.validation_ok is not None:
+        instance.record.validation_outcome = ResultValidation(
+            is_structurally_valid=rec.validation_ok, problems=rec.validation_problems
+        )
+    instance.record.transition_log = [
+        TransitionEvent(
+            sequence_number=event.sequence_number,
+            from_state=OrchestrationState(event.from_state),
+            to_state=OrchestrationState(event.to_state),
+            at=event.at,
+            note=event.note,
+        )
+        for event in state_store.get_transition_history(orchestration_instance_id)
+    ]
+    # Re-attach the store only now that reconstruction is complete, so any
+    # FURTHER mutation of this reloaded instance is durable too.
+    instance._state_store = state_store
+    return instance, rec
 
 
 # ---------------------------------------------------------------------------

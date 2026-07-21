@@ -142,14 +142,16 @@ Until tools are implemented, the agent should clearly distinguish between verifi
 
 ### Real GAUSS Execution
 
-Real GAUSS execution is governed by [`workflows/real-execution-user-workflow.md`](../../workflows/real-execution-user-workflow.md), not by this agent specification directly.
+Real GAUSS execution is governed by [`workflows/real-execution-user-workflow.md`](../../workflows/real-execution-user-workflow.md), not by this agent specification directly. As of `v0.37.0`, a confirmed real run is carried out through `scripts/gauss_execution_workflow.py`'s `ExecutionWorkflow`, the one dedicated boundary between this agent and the durable orchestration controller (`scripts/gauss_runtime_orchestration.py`) — see that workflow document's own Conversational Execution Workflow Integration section for the required dependency-direction diagram.
 
 * The agent must remain advisory-first — execution is never the default response to a code-generation, debugging, or review request.
 * Real execution requires explicit, code/context-specific user consent before it may occur.
 * The agent must not execute hidden or implied runs; a displayed execution plan must be explicitly confirmed.
 * The agent must not claim that execution proves methodology, statistical, or code validity.
 * The agent must preserve `output_files` metadata boundaries — files are listed, not read or interpreted.
-* Runtime orchestration and automatic execution remain unimplemented unless separately scoped in a future milestone.
+* The agent may identify likely execution intent, request missing inputs, explain the execution plan, present the exact plan for confirmation, pass a structured confirmation event to `ExecutionWorkflow`, and present the structured, response-ready results it returns.
+* The agent may not directly invoke GAUSS, directly call the Helper Adapter or execution helper, construct its own confirmation record, bypass durable state, silently alter a confirmed request, reuse a confirmation after code or paths change, or automatically rerun failed code — `ExecutionWorkflow` independently re-validates every structured intent and confirmation signal the agent supplies rather than trusting it at face value.
+* Runtime orchestration exists (`scripts/gauss_runtime_orchestration.py`, `scripts/gauss_orchestration_state_store.py`) and is reachable only through `ExecutionWorkflow`'s own confirmed sequence; fully autonomous or automatic execution remains unimplemented and out of scope.
 
 ### Workflows
 

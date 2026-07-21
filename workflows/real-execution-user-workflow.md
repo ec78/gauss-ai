@@ -244,6 +244,25 @@ This workflow may prepare a call to `gauss_code_execution`, but it does not itse
 - do not overstate conclusions
 - do not automatically rerun
 
+## Conversational Execution Workflow Integration (v0.37.0)
+
+As of `v0.37.0`, a real, confirmed run described by this workflow is carried out through one dedicated module -- `scripts/gauss_execution_workflow.py` -- rather than through any direct call from a conversational surface. The required dependency direction is:
+
+```text
+user-facing execution interaction
+-> execution-intent and mode decision (gauss_execution_workflow.classify_interaction_mode)
+-> execution-plan builder (gauss_execution_workflow.ExecutionWorkflow.propose_execution)
+-> canonical request (scripts/gauss_runtime_orchestration.py)
+-> durable orchestration controller (scripts/gauss_runtime_orchestration.py,
+   backed by scripts/gauss_orchestration_state_store.py)
+-> Helper Adapter (scripts/gauss_execution_adapter.py)
+-> GAUSS execution helper (scripts/gauss_code_execution.py)
+```
+
+This does not change any rule stated above -- eligibility, the consent model, the pre-execution safety review, and the response patterns (A-J) still govern what may be proposed, shown, and reported. It adds one enforced boundary: **no conversational surface, agent, or workflow document may call `gauss_code_execution`, the Helper Adapter, or the runtime orchestration controller directly.** Every real run this workflow describes must pass through `gauss_execution_workflow.ExecutionWorkflow`'s own sequence -- `propose_execution` (eligibility + safety + exact-plan display), `confirm_execution` (an explicit confirmation event bound to the displayed plan's `request_hash`, independently re-validated), and `execute` (durable authorization, then invocation) -- never a shortcut around any of those steps, and never a fallback to an in-memory-only production path. A rerun always requires a brand-new proposal and a brand-new confirmation; no code path reuses a prior confirmation for a second invocation.
+
+`gauss_execution_workflow.py` never invokes the Helper Adapter or `gauss_code_execution` directly, never performs shell execution, and never infers confirmation from conversational enthusiasm ("sounds good," "try this," "see if this works") -- only a fully validated, request-hash-bound confirmation event authorizes a real run. See `planning/v0.37.0-conversational-execution-workflow-integration.md` for the full interaction contract.
+
 ## Response Patterns
 
 ### Pattern A — Advisory Instead of Execution
@@ -351,13 +370,19 @@ After execution, apply:
 - Update if runtime orchestration is introduced.
 - Keep examples aligned with real observed GAUSS behavior.
 - Do not weaken consent or safety rules without explicit milestone scope.
+- Update the Conversational Execution Workflow Integration section above if `scripts/gauss_execution_workflow.py`'s own interaction contract changes.
 
 ## Related Files
 
 - `planning/v0.30.0-real-execution-user-workflow-design.md`
+- `planning/v0.37.0-conversational-execution-workflow-integration.md`
 - `workflows/execution-aware-analysis.md`
 - `workflows/report-generation.md`
 - `workflows/code-assistant-response.md`
 - `tools/gauss_code_execution.md`
 - `schemas/gauss_code_execution.schema.json`
 - `scripts/gauss_code_execution.py`
+- `scripts/gauss_execution_workflow.py`
+- `scripts/gauss_runtime_orchestration.py`
+- `scripts/gauss_orchestration_state_store.py`
+- `scripts/gauss_execution_adapter.py`

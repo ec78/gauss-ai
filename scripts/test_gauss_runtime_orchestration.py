@@ -25,9 +25,16 @@ independent requests, output-file creation/missing-output handling
 (including a regression test for a real bug found and fixed during v0.35.0's
 own real-invocation testing -- see `_missing_expected_outputs` in
 gauss_runtime_orchestration.py), and duplicate-identity/state-isolation
-guarantees. Nothing in this file imports scripts/gauss_code_execution.py,
-calls gauss_execution_adapter.load_real_helper(), launches a subprocess, or
-invokes GAUSS -- test_87 asserts this directly.
+guarantees. Tests 88-97 (v0.36.0) cover the controller's optional, additive
+integration with the durable SQLite state store (`gauss_orchestration_state_
+store.py`): full durable success/failure/missing-output flows, confirmation
+persisting across a simulated process restart, reload correctly refusing to
+resurrect analysis capability from incomplete durable state, and a
+cross-process authorization race. Every v0.36.0 test uses a disposable
+temporary SQLite database -- never the default repository-relative location.
+Nothing in this file imports scripts/gauss_code_execution.py, calls
+gauss_execution_adapter.load_real_helper(), launches a subprocess, or
+invokes GAUSS -- test_98 asserts this directly.
 """
 
 from __future__ import annotations
@@ -1672,18 +1679,253 @@ def test_86_no_automatic_rerun_after_missing_expected_output() -> None:
     )
 
 
-def test_87_default_test_run_still_never_imports_the_real_helper() -> None:
+# ---------------------------------------------------------------------------
+# v0.36.0 Durable Execution State and Cross-Process Safety: controller <->
+# state-store wiring, exercised against a disposable temporary SQLite
+# database per test. Nothing here uses the default (repository-location)
+# database, and nothing here imports scripts/gauss_code_execution.py.
+# ---------------------------------------------------------------------------
+
+import tempfile as _tempfile
+from pathlib import Path as _Path
+
+import gauss_orchestration_state_store as _store_mod
+
+
+def _durable_store(tmp_dir: str) -> _store_mod.OrchestrationStateStore:
+    s = _store_mod.OrchestrationStateStore(_Path(tmp_dir) / "durable.db")
+    s.initialize()
+    return s
+
+
+def test_88_durable_store_backed_full_success_flow() -> None:
+    with _tempfile.TemporaryDirectory() as tmp:
+        store = _durable_store(tmp)
+        inst = orch.build_durable_orchestration_instance(
+            session_id="s1", draft=_inline_draft(request_id="req-durable-success"), state_store=store,
+        )
+        inst.submit_for_review()
+        inst.display_plan()
+        assert inst.request is not None
+        inst.confirm(orch.ConfirmationEvent(scope=inst.request.request_hash, timestamp="t1", session_id="s1"))
+        inst.invoke(lambda _: _completed_result())
+        inst.begin_analysis(lambda req, res: None, report_requested=True, report_hook=lambda status: None)
+        check("in-memory instance reaches completed", inst.record.current_state == orch.OrchestrationState.COMPLETED)
+
+        durable_rec = store.load_record(inst.record.orchestration_instance_id)
+        check("durable record also reaches execution_completed or later", durable_rec.current_state in ("execution_completed", "completed"))
+        check("durable record shows confirmation consumed", durable_rec.confirmation_consumed is True)
+        check("durable record shows an invocation_id", durable_rec.invocation_id is not None)
+        store.close()
+
+
+def test_89_durable_store_backed_confirmation_persists_across_reload() -> None:
+    with _tempfile.TemporaryDirectory() as tmp:
+        store = _durable_store(tmp)
+        inst = orch.build_durable_orchestration_instance(
+            session_id="s1", draft=_inline_draft(request_id="req-durable-reload"), state_store=store,
+        )
+        inst.submit_for_review()
+        inst.display_plan()
+        assert inst.request is not None
+        inst.confirm(orch.ConfirmationEvent(scope=inst.request.request_hash, timestamp="t1", session_id="s1"))
+        instance_id = inst.record.orchestration_instance_id
+        store.close()
+
+        store2 = _store_mod.OrchestrationStateStore(_Path(tmp) / "durable.db")
+        store2.initialize()
+        reloaded, durable_rec = orch.reload_orchestration_instance(store2, instance_id)
+        check("reloaded instance shows confirmed state", reloaded.record.current_state == orch.OrchestrationState.CONFIRMED)
+        check("reloaded instance shows confirmation accepted", reloaded.record.confirmation_status == orch.ConfirmationStatus.ACCEPTED)
+        check("reloaded durable record confirms not yet consumed", durable_rec.confirmation_consumed is False)
+        check("reloaded instance's request is None (raw code never persisted)", reloaded.request is None)
+        store2.close()
+
+
+def test_90_reload_orchestration_instance_reconstructs_terminal_state() -> None:
+    with _tempfile.TemporaryDirectory() as tmp:
+        store = _durable_store(tmp)
+        inst = orch.build_durable_orchestration_instance(
+            session_id="s1", draft=_inline_draft(request_id="req-durable-terminal"), state_store=store,
+        )
+        inst.submit_for_review()
+        inst.display_plan()
+        assert inst.request is not None
+        inst.confirm(orch.ConfirmationEvent(scope=inst.request.request_hash, timestamp="t1", session_id="s1"))
+        inst.invoke(lambda _: _completed_result())
+        instance_id = inst.record.orchestration_instance_id
+        store.close()
+
+        store2 = _store_mod.OrchestrationStateStore(_Path(tmp) / "durable.db")
+        store2.initialize()
+        reloaded, durable_rec = orch.reload_orchestration_instance(store2, instance_id)
+        check("reloaded instance shows execution_completed", reloaded.record.current_state == orch.OrchestrationState.EXECUTION_COMPLETED)
+        check("reloaded instance's execution_result_reference is None (not durably persisted in full)", reloaded.record.execution_result_reference is None)
+        check("durable record still carries the safe execution facts", durable_rec.execution_status == "completed" and durable_rec.exit_code == 0)
+        check("transition history reconstructed with the correct count", len(reloaded.record.transition_log) == durable_rec.transition_sequence_number)
+        store2.close()
+
+
+def test_91_reload_instance_cannot_resurrect_analysis_without_request() -> None:
+    """A reloaded instance's begin_analysis() must fail closed -- this
+    already-existing guard (self.request is None -> GuardFailedError) is
+    what prevents this reload path from ever resurrecting execution
+    capability from incomplete durable state."""
+    with _tempfile.TemporaryDirectory() as tmp:
+        store = _durable_store(tmp)
+        inst = orch.build_durable_orchestration_instance(
+            session_id="s1", draft=_inline_draft(request_id="req-durable-no-resurrect"), state_store=store,
+        )
+        inst.submit_for_review()
+        inst.display_plan()
+        assert inst.request is not None
+        inst.confirm(orch.ConfirmationEvent(scope=inst.request.request_hash, timestamp="t1", session_id="s1"))
+        inst.invoke(lambda _: _completed_result())
+        instance_id = inst.record.orchestration_instance_id
+        store.close()
+
+        store2 = _store_mod.OrchestrationStateStore(_Path(tmp) / "durable.db")
+        store2.initialize()
+        reloaded, _ = orch.reload_orchestration_instance(store2, instance_id)
+        check_raises(
+            "begin_analysis on a reloaded instance fails closed (no request to analyze)",
+            orch.GuardFailedError, reloaded.begin_analysis, lambda req, res: None,
+        )
+        store2.close()
+
+
+def test_92_durable_authorization_failure_raises_duplicate_invocation_error() -> None:
+    """If the durable store already shows this request authorized by
+    another writer (simulating a second process racing ahead and invoking
+    first), a subsequent local invoke() attempt must fail closed and must
+    never call the runner. The durable record has already moved past
+    'confirmed' to 'executing' by the time this local attempt happens, so
+    the store's own precondition chain reports this as 'wrong_state' (a
+    correct, honest classification of "no longer confirmed", not
+    specifically "duplicate") -- invoke() maps this to GuardFailedError,
+    distinct from the narrower DuplicateInvocationError reserved for a
+    same-instance, in-memory-only double-invoke (see test_19)."""
+    with _tempfile.TemporaryDirectory() as tmp:
+        store = _durable_store(tmp)
+        inst = orch.build_durable_orchestration_instance(
+            session_id="s1", draft=_inline_draft(request_id="req-durable-dup"), state_store=store,
+        )
+        inst.submit_for_review()
+        inst.display_plan()
+        assert inst.request is not None
+        inst.confirm(orch.ConfirmationEvent(scope=inst.request.request_hash, timestamp="t1", session_id="s1"))
+
+        # Simulate a second process racing ahead and authorizing first,
+        # directly against the durable store.
+        store.authorize_invocation(
+            inst.record.orchestration_instance_id, request_hash=inst.request.request_hash,
+            confirmation_scope=inst.request.confirmation_scope, session_id="s1", invocation_id="raced-ahead",
+            expected_transition_sequence_number=inst.record.transition_sequence_number,
+        )
+
+        calls: list[Any] = []
+        check_raises(
+            "invoke() refuses when the durable store already shows this request authorized",
+            orch.GuardFailedError, inst.invoke, lambda ri: calls.append(ri) or _completed_result(),
+        )
+        check("the runner was never called", len(calls) == 0)
+        store.close()
+
+
+def test_93_default_in_memory_mode_never_touches_a_store() -> None:
+    """Confirms MockOrchestrationInstance's default construction (no
+    state_store argument) never creates, opens, or references any database
+    -- the default in-memory-only behavior is completely unaffected by
+    v0.36.0's additions."""
+    inst = _fully_confirmed_instance()
+    check("no state_store attached by default", inst._state_store is None)
+    inst.invoke(lambda _: _completed_result())
+    check("default in-memory invoke still works unchanged", inst.record.current_state == orch.OrchestrationState.EXECUTION_COMPLETED)
+
+
+def test_94_build_durable_orchestration_instance_requires_explicit_store() -> None:
+    check_raises(
+        "build_durable_orchestration_instance refuses a None state_store",
+        ValueError, orch.build_durable_orchestration_instance,
+        session_id="s1", draft=_inline_draft(), state_store=None,
+    )
+
+
+def test_95_durable_runtime_error_flow_persists_failure_category() -> None:
+    with _tempfile.TemporaryDirectory() as tmp:
+        store = _durable_store(tmp)
+        inst = orch.build_durable_orchestration_instance(
+            session_id="s1", draft=_inline_draft(request_id="req-durable-error"), state_store=store,
+        )
+        inst.submit_for_review()
+        inst.display_plan()
+        assert inst.request is not None
+        inst.confirm(orch.ConfirmationEvent(scope=inst.request.request_hash, timestamp="t1", session_id="s1"))
+        inst.invoke(lambda _: _real_shaped_runtime_error_result())
+        durable_rec = store.load_record(inst.record.orchestration_instance_id)
+        check("durable record shows execution_failed", durable_rec.current_state == "execution_failed")
+        check("durable record shows gauss_runtime_error", durable_rec.failure_category == "gauss_runtime_error")
+        store.close()
+
+
+def test_96_durable_missing_expected_output_flow() -> None:
+    with _tempfile.TemporaryDirectory() as tmp:
+        store = _durable_store(tmp)
+        inst = orch.build_durable_orchestration_instance(
+            session_id="s1", draft=_inline_draft(request_id="req-durable-missing-output", expected_output_files=("results.csv",)),
+            state_store=store,
+        )
+        inst.submit_for_review()
+        inst.display_plan()
+        assert inst.request is not None
+        inst.confirm(orch.ConfirmationEvent(scope=inst.request.request_hash, timestamp="t1", session_id="s1"))
+        inst.invoke(lambda _: _completed_result(output_files=[]))
+        durable_rec = store.load_record(inst.record.orchestration_instance_id)
+        check("durable record still reaches execution_completed", durable_rec.current_state == "execution_completed")
+        check("durable record shows missing_expected_output", durable_rec.failure_category == "missing_expected_output")
+        store.close()
+
+
+def test_97_durable_launch_failure_persists_ambiguity_free_result() -> None:
+    """A runner launch failure (the injected callable raising) must still be
+    durably recorded as a definite execution_failed outcome -- never left
+    ambiguous, since this layer DOES know the outcome in this case (the
+    exception was caught synchronously, unlike a real process crash)."""
+    with _tempfile.TemporaryDirectory() as tmp:
+        store = _durable_store(tmp)
+        inst = orch.build_durable_orchestration_instance(
+            session_id="s1", draft=_inline_draft(request_id="req-durable-launch-fail"), state_store=store,
+        )
+        inst.submit_for_review()
+        inst.display_plan()
+        assert inst.request is not None
+        inst.confirm(orch.ConfirmationEvent(scope=inst.request.request_hash, timestamp="t1", session_id="s1"))
+
+        def failing_runner(_: Any) -> dict[str, Any]:
+            raise RuntimeError("simulated launch failure")
+
+        inst.invoke(failing_runner)
+        durable_rec = store.load_record(inst.record.orchestration_instance_id)
+        check("durable record shows execution_failed after a launch failure", durable_rec.current_state == "execution_failed")
+        check("durable record shows runner_launch_failure", durable_rec.failure_category == "runner_launch_failure")
+        check("no longer ambiguous (a definite result was recorded)", not any(r.orchestration_instance_id == inst.record.orchestration_instance_id for r in store.list_ambiguous_invocations()))
+        store.close()
+
+
+def test_98_default_test_run_still_never_imports_the_real_helper() -> None:
     """Re-confirms, at the very end of this file's own test ordering, that
-    nothing added for v0.33.0, v0.34.0, or v0.35.0 changed the
-    default-test-suite guarantee: gauss_code_execution must still be absent
-    from sys.modules after every test in this file (41-87) has run,
-    including the new reliability/output-verification tests above, none of
-    which call build_production_adapter_runner(...) or import the real
-    helper."""
+    nothing added for v0.33.0 through v0.36.0 changed the default-test-suite
+    guarantee: gauss_code_execution must still be absent from sys.modules
+    after every test in this file (41-98) has run, including the new
+    v0.36.0 durable-store-integration tests above, none of which call
+    build_production_adapter_runner(...) or import the real helper. This
+    also confirms the v0.36.0 durable-store tests never leave any lingering
+    reference to the real helper module, even indirectly through the store
+    module (which itself never imports it either)."""
     import sys as _sys
 
     check(
-        "gauss_code_execution remains absent from sys.modules after the full v0.33.0/v0.34.0/v0.35.0 test set",
+        "gauss_code_execution remains absent from sys.modules after the full v0.33.0-v0.36.0 test set",
         "gauss_code_execution" not in _sys.modules,
     )
 

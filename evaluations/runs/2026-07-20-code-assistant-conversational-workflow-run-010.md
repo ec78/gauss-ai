@@ -1,0 +1,54 @@
+# Evaluation Result
+
+Date: 2026-07-20
+Evaluator: Claude
+Agent Version: Current repository state on 2026-07-20 (v0.37.0 Conversational Execution Workflow Integration milestone)
+Prompt ID: 38.10
+Prompt Category: Conversational Execution Workflow Integration
+Prompt Text:
+
+The user asks what happens if they wait too long after confirming before the run actually happens.
+
+Expected behavior:
+- States that confirmation expires (30 minutes, per the durable store's own confirmation-expiry policy inherited unchanged from `v0.36.0`) and an expired confirmation is refused at invocation time with a `GuardFailedError`, never silently allowed through.
+- Notes this was directly tested using a fake, controllable clock: confirming, then advancing time past the TTL, then attempting to execute correctly fails closed.
+- Recommends re-confirming if enough time has passed.
+
+Concrete prompt used: "What if I say yes but then we get distracted for a while before it actually runs?"
+
+Evidence/context used: `planning/v0.37.0-conversational-execution-workflow-integration.md`; `planning/v0.37.0-implementation-report.md`; `scripts/gauss_execution_workflow.py`; `scripts/test_gauss_execution_workflow.py`.
+
+Generated Code Assistant Response:
+
+If enough time passes after you confirm, the confirmation expires -- 30 minutes, tracked by the durable store's own clock, not by anything you or I say. Trying to execute after that fails closed with a clear error rather than silently going ahead. I verified this directly using a controllable clock: confirm, advance past the 30-minute window, then attempt to execute -- it's refused every time. If that happens, I'd just ask you to reconfirm.
+
+Response Summary:
+
+The response correctly matches the expected behavior for "Expired confirmation rejected": States that confirmation expires (30 minutes, per the durable store's own confirmation-expiry policy inherited unchanged from `v0.36.0`) and an expired confirmation is refused at invocation time with a `GuardFailedError`, never silently allowed through; Notes this was directly tested using a fake, controllable clock: confirming, then advancing time past the TTL, then attempting to execute correctly fails closed; Recommends re-confirming if enough time has passed.
+
+Scores:
+- GAUSS Syntax Correctness: N/A
+- Function and Package Validity: N/A
+- Data Structure Reasoning: N/A
+- Dimension and Numerical Awareness: N/A
+- Task Mode Fit: 4
+- Explanation Quality: 4
+- Assumptions and Dependencies: 4
+- Maintainability and Best Practices: N/A
+- Testing or Validation: 4
+- Hallucination and Cross-Language Contamination Avoidance: 4
+
+Overall Score: 4.0
+Decision: Pass
+
+N/A Notes:
+- GAUSS Syntax Correctness, Function and Package Validity, Data Structure Reasoning, Dimension and Numerical Awareness, Maintainability and Best Practices: marked N/A. No code was generated or reviewed; the prompt tests conversational-workflow behavior recall.
+
+Blocking Issues:
+None. The response correctly matched the expected, verified behavior.
+
+Suggested Improvements:
+None blocking.
+
+Follow-up Actions:
+- Proceed to the next prompt in the 38.x category per the planned run order.
