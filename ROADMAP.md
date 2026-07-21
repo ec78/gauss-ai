@@ -437,6 +437,16 @@ See `planning/v0.38.0-persistent-execution-sessions.md`.
 - **Future `39.x` evaluation category named, not created.** Eight example benchmark scenarios are proposed for a future implementation milestone; no prompts, coverage rows, run files, or index entries were added by this milestone.
 - Does not modify helper code, schema, the adapter, the durable state store, the controller, workflows, agents, or any existing benchmark — confirmed via `git status --short`. No GAUSS was run.
 
+## v0.39.0: Execution Session Model Implementation (Planning)
+
+See `planning/v0.39.0-execution-session-model.md`.
+
+- **Planning milestone; implementation begins with the identity/session abstraction only.** Resolves `v0.38.0`'s open "session vs. instance vs. request identity" question with three separate concepts and three separate identifiers: Execution Request (unchanged, `CanonicalExecutionRequest`), Execution Session (a new, durable-lifecycle identity — `execution_session_id`, distinct from `orchestration_instance_id`), and Execution Instance (one execution attempt, mapping onto the existing `helper_invocation_id` concept).
+- **Session-only state machine defined.** Six states (`created`, `awaiting_confirmation`, `confirmed`, `expired`, `cancelled`, `ready`) — deliberately excludes `running`/`completed`/`failed`, which belong to Execution Instances, not sessions. `v0.38.0`'s `queued` state is refined into `ready` (validly confirmed, eligible for an instance), with worker-queuing semantics explicitly deferred.
+- **Confirmation binding, serialization model, and a proposed API surface (`create_session`/`validate_session`/`expire_session`/`cancel_session`/`get_session_state`) are fully specified** for a future implementation milestone, restating rather than replacing every existing hash-binding/expiry/consumption rule from `v0.31.0`/`v0.36.0`.
+- **No persistence yet, no cross-process execution yet.** `scripts/gauss_execution_session.py` is not created by this milestone; no database, distributed workers, background jobs, or agent-handoff mechanism is implemented. No tests are created (deferred to the future implementation milestone this document scopes).
+- Does not modify helper code, schema, the adapter, the durable state store, the controller, the conversational workflow module, workflows, agents, or any existing benchmark — confirmed via `git status --short`. No GAUSS was run.
+
 ## Future (TBD / Possible)
 
 Not yet planned or committed. Candidate directions after `v0.18.0`/`v0.19.0`/`v0.20.0`/`v0.21.0`/`v0.22.0`/`v0.23.0`/`v0.24.0`/`v0.25.0`/`v0.26.0`/`v0.27.0`/`v0.28.0`/`v0.29.0`/`v0.30.0`/`v0.31.0`:
