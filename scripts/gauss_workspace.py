@@ -380,6 +380,20 @@ class WorkspaceRegistry:
         self.get_workspace(workspace_id)  # raises WorkspaceNotFoundError if unknown
         return WorkspaceManifest(workspace_id=workspace_id, files=tuple(self._manifests.get(workspace_id, ())))
 
+    # -- containment (public, for external callers -- e.g. v0.43.0's
+    #    execution-workflow integration -- that need to check whether a
+    #    path belongs to a specific workspace without duplicating this
+    #    module's own _resolve_inside logic a second time) ----------------
+
+    def resolve_within_workspace(self, workspace_id: str, candidate: str) -> Path | None:
+        """Returns the resolved path if `candidate` (relative or absolute)
+        resolves inside the given workspace's own `root_path`, else
+        `None`. Read-only; never touches the filesystem beyond
+        `Path.resolve(strict=False)`. Raises `WorkspaceNotFoundError` if
+        `workspace_id` is unknown."""
+        workspace = self.get_workspace(workspace_id)
+        return _resolve_inside(Path(workspace.root_path), candidate)
+
 
 # ---------------------------------------------------------------------------
 # Self-test harness (this repository's established convention -- no pytest

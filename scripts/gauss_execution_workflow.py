@@ -69,6 +69,13 @@ if str(_SCRIPT_DIR) not in sys.path:
 import gauss_runtime_orchestration as orchestration_mod  # noqa: E402
 import gauss_orchestration_state_store as state_store_mod  # noqa: E402
 
+# v0.43.0: gauss_workspace never imports this module, the controller, the
+# durable store, the adapter, or the real helper -- the dependency
+# direction is one-way (this module may depend on gauss_workspace, never
+# the reverse), and gauss_workspace itself performs no real filesystem
+# mutation and no execution of any kind. Importing it has no side effects.
+import gauss_workspace as workspace_mod  # noqa: E402
+
 
 # ---------------------------------------------------------------------------
 # Interaction mode and intent classification
@@ -312,6 +319,9 @@ class ExecutionProposal:
     eligibility_passed: bool
     safety_review: "orchestration_mod.SafetyReviewOutcome"
     known_limitations: tuple[str, ...]
+    #: v0.43.0: a reference only -- never a duplicate of workspace state.
+    #: None when this proposal was not built against a workspace.
+    workspace_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -359,6 +369,21 @@ class OutputFileSummary:
 
 
 @dataclass(frozen=True)
+class WorkspaceProvenance:
+    """v0.43.0: connects a completed execution back to the workspace it ran
+    in, the confirmed request's own identity, and the specific invocation
+    attempt -- so "what exactly produced this result?" is answerable.
+    `artifacts` mirrors `gauss_workspace.ManifestFileEntry` (metadata only,
+    never content) for every output file this execution registered into
+    the owning workspace's manifest."""
+
+    workspace_id: str
+    execution_session_id: str  # == orchestration_instance_id
+    execution_instance_id: str | None  # == helper_invocation_id
+    artifacts: tuple["workspace_mod.ManifestFileEntry", ...]
+
+
+@dataclass(frozen=True)
 class ResponseReadyResult:
     orchestration_instance_id: str
     executed: bool
@@ -379,6 +404,8 @@ class ResponseReadyResult:
     limitations: tuple[str, ...]
     methodology_caveat: str
     rerun_requires_new_request: bool
+    #: v0.43.0: None when this instance was never associated with a workspace.
+    workspace_provenance: WorkspaceProvenance | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -401,12 +428,30 @@ class RerunRequiresNewRequestError(Exception):
     path anywhere in this module."""
 
 
+class WorkspaceExecutionGuardError(Exception):
+    """v0.43.0: raised when a workspace-bound instance fails workspace
+    validation immediately before invocation -- the workspace does not
+    exist, has been deleted, no longer resolves inside its approved parent
+    directory, or fails an ownership check. Raised before
+    `MockOrchestrationInstance.invoke(...)` is ever called; the runner is
+    never touched when this is raised."""
+
+    def __init__(self, reason_category: str, detail: str) -> None:
+        super().__init__(f"{reason_category}: {detail}")
+        self.reason_category = reason_category
+        self.detail = detail
+
+
 # ---------------------------------------------------------------------------
 # Response composition helpers
 # ---------------------------------------------------------------------------
 
 
-def _to_response_ready_result(instance: "orchestration_mod.MockOrchestrationInstance") -> ResponseReadyResult:
+def _to_response_ready_result(
+    instance: "orchestration_mod.MockOrchestrationInstance",
+    *,
+    workspace_provenance: WorkspaceProvenance | None = None,
+) -> ResponseReadyResult:
     """Built from a live, same-process instance whose full evidence
     (instance.record.execution_result_reference) is still attached -- never
     guesses or fabricates a field the record does not actually carry."""
@@ -442,10 +487,13 @@ def _to_response_ready_result(instance: "orchestration_mod.MockOrchestrationInst
         limitations=KNOWN_LIMITATIONS,
         methodology_caveat=_METHODOLOGY_CAVEAT,
         rerun_requires_new_request=True,
+        workspace_provenance=workspace_provenance,
     )
 
 
-def _durable_record_to_response_ready_result(rec: "state_store_mod.DurableRecord") -> ResponseReadyResult:
+def _durable_record_to_response_ready_result(
+    rec: "state_store_mod.DurableRecord", *, workspace_provenance: WorkspaceProvenance | None = None
+) -> ResponseReadyResult:
     """Built from a durable-only view (a reloaded instance, or an instance
     never cached in this process). Per-file output metadata was never
     durably persisted -- only a count -- so `output_files` is always empty
@@ -471,6 +519,7 @@ def _durable_record_to_response_ready_result(rec: "state_store_mod.DurableRecord
         limitations=KNOWN_LIMITATIONS,
         methodology_caveat=_METHODOLOGY_CAVEAT,
         rerun_requires_new_request=True,
+        workspace_provenance=workspace_provenance,
     )
 
 
@@ -495,10 +544,17 @@ class ExecutionWorkflow:
         self,
         *,
         state_store: "state_store_mod.OrchestrationStateStore",
+        workspace_registry: "workspace_mod.WorkspaceRegistry | None" = None,
         clock: Callable[[], float] = time.monotonic,
         id_factory: Callable[[], str] = lambda: uuid.uuid4().hex,
     ) -> None:
         self._state_store = state_store
+        # v0.43.0: optional, defaulting to None -- every existing caller and
+        # test that never passes workspace_registry keeps its original,
+        # workspace-unaware behavior unchanged. Only when a registry IS
+        # supplied does propose_execution(...)'s workspace_id parameter
+        # become usable.
+        self._workspace_registry = workspace_registry
         self._clock = clock
         self._id_factory = id_factory
         # Process-local convenience cache only -- never the source of truth.
@@ -507,6 +563,13 @@ class ExecutionWorkflow:
         # is not present here, so cross-process/restart behavior is
         # inherited from v0.36.0, not reimplemented.
         self._instances: dict[str, "orchestration_mod.MockOrchestrationInstance"] = {}
+        # v0.43.0: workspace association and computed provenance are both
+        # in-memory-only, process-local, and never durably persisted --
+        # consistent with gauss_workspace.py's own in-memory-only scope. A
+        # reloaded instance in a different process has no workspace
+        # association, a disclosed limitation (see KNOWN_LIMITATIONS.md).
+        self._workspace_ids: dict[str, str] = {}
+        self._workspace_provenance: dict[str, WorkspaceProvenance] = {}
 
     # -- proposal ------------------------------------------------------------
 
@@ -531,7 +594,57 @@ class ExecutionWorkflow:
         expected_output_files: tuple[str, ...] = (),
         required_packages: tuple[str, ...] = (),
         allow_output_files: bool = True,
+        workspace_id: str | None = None,
     ) -> ProposalOutcome:
+        """`workspace_id`, when supplied, makes this proposal workspace-aware
+        (v0.43.0): `working_directory`/`output_directory` are derived from
+        (or validated against) the workspace's own `root_path` rather than
+        duplicated by the caller -- the workspace remains the source of
+        truth for its own location. A workspace that does not exist, has
+        been deleted or archived, or whose bound `working_directory`/
+        `output_directory` would escape it, is folded into this proposal's
+        ordinary eligibility outcome (a normal blocked `ProposalOutcome`,
+        never a raised exception) -- exactly like every other eligibility
+        failure this method already produces."""
+        workspace_failure_reason: str | None = None
+        if workspace_id is not None:
+            if self._workspace_registry is None:
+                raise ValueError(
+                    "workspace_id was supplied but this ExecutionWorkflow has no workspace_registry configured."
+                )
+            workspace_outcome = self._workspace_registry.validate_workspace(workspace_id)
+            if not workspace_outcome.valid:
+                workspace_failure_reason = (
+                    f"workspace {workspace_id!r} failed validation ({workspace_outcome.reason_category}): "
+                    f"{workspace_outcome.detail}"
+                )
+            else:
+                workspace = self._workspace_registry.get_workspace(workspace_id)
+                if workspace.status == workspace_mod.WorkspaceStatus.ARCHIVED:
+                    # validate_workspace(...) treats 'archived' as a generally
+                    # valid reference (e.g. still readable for inspection);
+                    # a NEW execution proposal is a stricter question this
+                    # workflow answers itself -- an archived workspace is
+                    # closed to further proposals, matching Task 4's
+                    # explicit "Reject: ... archived workspace."
+                    workspace_failure_reason = f"workspace {workspace_id!r} is archived and cannot accept a new execution proposal."
+                elif working_directory is None:
+                    working_directory = workspace.root_path
+                elif self._workspace_registry.resolve_within_workspace(workspace_id, working_directory) is None:
+                    workspace_failure_reason = (
+                        f"working_directory {working_directory!r} does not resolve inside workspace "
+                        f"{workspace_id!r}'s own root_path."
+                    )
+                if (
+                    workspace_failure_reason is None
+                    and output_directory is not None
+                    and self._workspace_registry.resolve_within_workspace(workspace_id, output_directory) is None
+                ):
+                    workspace_failure_reason = (
+                        f"output_directory {output_directory!r} does not resolve inside workspace "
+                        f"{workspace_id!r}'s own root_path."
+                    )
+
         environment_summary = orchestration_mod.EnvironmentSummary(
             executable_path=executable_path or "",
             gauss_version=gauss_version,
@@ -556,6 +669,10 @@ class ExecutionWorkflow:
             safety_review=safety_outcome,
         )
         eligibility_outcome = evaluate_eligibility(draft, eligibility_declarations)
+        combined_eligible = eligibility_outcome.eligible and workspace_failure_reason is None
+        combined_reasons = eligibility_outcome.reasons + (
+            (workspace_failure_reason,) if workspace_failure_reason is not None else ()
+        )
 
         instance = orchestration_mod.build_durable_orchestration_instance(
             session_id=session_id,
@@ -565,11 +682,11 @@ class ExecutionWorkflow:
             id_factory=self._id_factory,
         )
         self._instances[instance.record.orchestration_instance_id] = instance
+        if workspace_id is not None:
+            self._workspace_ids[instance.record.orchestration_instance_id] = workspace_id
 
-        if not eligibility_outcome.eligible:
-            instance.block(
-                orchestration_mod.FailureCategory.INELIGIBLE_REQUEST, "; ".join(eligibility_outcome.reasons)
-            )
+        if not combined_eligible:
+            instance.block(orchestration_mod.FailureCategory.INELIGIBLE_REQUEST, "; ".join(combined_reasons))
             return self._blocked_outcome(instance)
 
         instance.submit_for_review()
@@ -597,6 +714,7 @@ class ExecutionWorkflow:
             eligibility_passed=True,
             safety_review=instance.request.safety_review,
             known_limitations=KNOWN_LIMITATIONS,
+            workspace_id=workspace_id,
         )
         return ProposalOutcome(
             orchestration_instance_id=instance.record.orchestration_instance_id,
@@ -686,8 +804,87 @@ class ExecutionWorkflow:
             # raise a raw InvalidTransitionError for a state this method
             # itself just produced.
             return _to_response_ready_result(instance)
-        instance.invoke(runner)
-        return _to_response_ready_result(instance)
+
+        workspace_id = self._workspace_ids.get(orchestration_instance_id)
+        if workspace_id is None:
+            instance.invoke(runner)
+            return _to_response_ready_result(instance)
+
+        # -- v0.43.0 workspace-bound path -------------------------------------
+        assert self._workspace_registry is not None
+        workspace_check = self._workspace_registry.validate_workspace(workspace_id)
+        if not workspace_check.valid:
+            # Fail closed: the runner is never touched when the workspace
+            # itself does not permit execution (deleted, not found, escaped
+            # its approved root, or an ownership mismatch).
+            raise WorkspaceExecutionGuardError(
+                workspace_check.reason_category or "invalid", workspace_check.detail or "workspace validation failed"
+            )
+        # Requires the workspace to currently be 'ready' -- raises
+        # InvalidWorkspaceTransitionError otherwise (e.g. already executing,
+        # archived, or never advanced past 'created'/'populated'), before
+        # the runner is ever touched.
+        self._workspace_registry.update_workspace_status(workspace_id, to_status=workspace_mod.WorkspaceStatus.EXECUTING)
+        try:
+            instance.invoke(runner)
+        finally:
+            # Per planning/v0.41.0's Workspace Lifecycle Integration (Task
+            # 5): both a successful AND a failed execution attempt conclude
+            # the workspace's own involvement the same way -- 'completed'.
+            # Success/failure classification remains owned entirely by the
+            # Execution Instance (execution_status/failure_category on the
+            # result), never duplicated onto workspace status. Using
+            # try/finally (rather than only transitioning after a
+            # successful invoke() return) guarantees the workspace is never
+            # left stranded in 'executing' if invoke() itself raises.
+            self._workspace_registry.update_workspace_status(workspace_id, to_status=workspace_mod.WorkspaceStatus.COMPLETED)
+
+        provenance = self._register_workspace_provenance(workspace_id, instance)
+        return _to_response_ready_result(instance, workspace_provenance=provenance)
+
+    def _register_workspace_provenance(
+        self, workspace_id: str, instance: "orchestration_mod.MockOrchestrationInstance"
+    ) -> WorkspaceProvenance | None:
+        """Registers every discovered output file into the owning
+        workspace's manifest (source='execution') and returns a
+        WorkspaceProvenance connecting the workspace, the confirmed
+        request's own identity, and this specific invocation attempt.
+        Never reads or duplicates file content -- only the same
+        path/size/type metadata gauss_runtime_orchestration.py's
+        MockExecutionResult already carries."""
+        assert self._workspace_registry is not None
+        result = instance.record.execution_result_reference
+        artifacts: list["workspace_mod.ManifestFileEntry"] = []
+        if result is not None:
+            workspace = self._workspace_registry.get_workspace(workspace_id)
+            workspace_root = Path(workspace.root_path).resolve(strict=False)
+            for f in result.output_files:
+                try:
+                    relative = Path(f.path).resolve(strict=False).relative_to(workspace_root)
+                except ValueError:
+                    # Should not happen given propose_execution's own
+                    # containment validation of working/output directories
+                    # -- skip rather than fabricate a relative_path for a
+                    # file this workspace cannot actually account for.
+                    continue
+                artifacts.append(
+                    self._workspace_registry.add_file_to_manifest(
+                        workspace_id,
+                        name=Path(f.path).name,
+                        relative_path=str(relative),
+                        source="execution",
+                        size=f.size_bytes,
+                        creation_state=result.execution_status,
+                    )
+                )
+        provenance = WorkspaceProvenance(
+            workspace_id=workspace_id,
+            execution_session_id=instance.record.orchestration_instance_id,
+            execution_instance_id=instance.record.helper_invocation_id,
+            artifacts=tuple(artifacts),
+        )
+        self._workspace_provenance[instance.record.orchestration_instance_id] = provenance
+        return provenance
 
     # -- cancellation --------------------------------------------------------
 
@@ -706,11 +903,16 @@ class ExecutionWorkflow:
     def inspect(self, orchestration_instance_id: str) -> ResponseReadyResult:
         instance = self._instances.get(orchestration_instance_id)
         if instance is not None and instance.request is not None:
-            return _to_response_ready_result(instance)
+            return _to_response_ready_result(
+                instance, workspace_provenance=self._workspace_provenance.get(orchestration_instance_id)
+            )
         try:
             rec = self._state_store.load_record(orchestration_instance_id)
         except state_store_mod.RecordNotFoundError as exc:
             raise UnknownInstanceError(str(exc)) from exc
+        # workspace_provenance is never available for a durable-only view --
+        # it is process-local, in-memory-only, and was never durably
+        # persisted (see __init__'s own docstring note on this limitation).
         return _durable_record_to_response_ready_result(rec)
 
     # -- rerun -----------------------------------------------------------------
