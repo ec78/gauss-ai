@@ -458,6 +458,16 @@ See `planning/v0.39.0-execution-session-model.md` (the design this milestone imp
 - **Tests added.** `scripts/test_gauss_execution_session.py` (new, 26 tests): creation (1-3), confirmation (4-8), expiration (9-11), cancellation (12-14), security — replay, forced-state defense-in-depth, changed request, changed code identity (15-18), lifecycle — forbidden transitions, terminal-state closure, `invalidate_session` scope (19-23), serialization/redaction (24-25), no-GAUSS-import confirmation (26). **26/26 passing.** No GAUSS run by any test.
 - Does not modify helper code, schema, the adapter, the durable state store, the controller, the conversational workflow module, workflows, agents, or any existing benchmark — confirmed via `git status --short`. No GAUSS was run.
 
+## v0.41.0: GAUSS File and Artifact Workflow Design (Planning)
+
+See `planning/v0.41.0-file-artifact-workflow-design.md`.
+
+- **Planning milestone; focuses on project-level workflows.** Defines the architecture needed to move from "user provides code" to "user provides a GAUSS project workspace" — a workspace abstraction and seven-state lifecycle, a file manifest model, a three-category artifact model (input/execution/derived), file security boundaries, input/output file-handling design, a safe file-reading workflow (a future milestone's own scope), a reproducibility model connecting workspace → files → request → session → instance → outputs → reports, and artifact-ownership open questions.
+- **No file handling implementation yet.** `v0.41.0` creates no code — no workspace module, no artifact storage, no file manifest implementation.
+- **No automatic file reading.** The design explicitly requires a separate, future, explicit safe-file-reading workflow before any output file's *contents* (as opposed to metadata) may ever be referenced in a response — restating, not weakening, `workflows/execution-aware-analysis.md`'s and `workflows/report-generation.md`'s existing metadata-not-content boundary.
+- **No artifact persistence.** Nothing in this milestone writes a workspace, manifest, or artifact record to disk, a database, or `gauss_orchestration_state_store.py`.
+- Does not modify the execution helper, create workspace code, create artifact storage, read user files, run GAUSS, add automatic execution, add runtime orchestration, change schemas, add benchmarks, change the system prompt, or create a release tag — confirmed via `git status --short`. No GAUSS was run.
+
 ## Future (TBD / Possible)
 
 Not yet planned or committed. Candidate directions after `v0.18.0`/`v0.19.0`/`v0.20.0`/`v0.21.0`/`v0.22.0`/`v0.23.0`/`v0.24.0`/`v0.25.0`/`v0.26.0`/`v0.27.0`/`v0.28.0`/`v0.29.0`/`v0.30.0`/`v0.31.0`:
