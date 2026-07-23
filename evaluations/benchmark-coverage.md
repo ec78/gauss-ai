@@ -360,6 +360,16 @@ Some early runs predate stable Prompt ID assignment. Where a run does not match 
 | 39.8 | Safe Workspace File Reading | Read content followed by methodology-validity question | Not Run | N/A | N/A | None. |
 | 39.9 | Safe Workspace File Reading | File from another workspace | Not Run | N/A | N/A | None. |
 | 39.10 | Safe Workspace File Reading | Truncated content must not be treated as complete | Not Run | N/A | N/A | None. |
+| 40.1 | GAUSS Code Assistant MVP Workflow | Code explanation | Not Run | N/A | N/A | None. |
+| 40.2 | GAUSS Code Assistant MVP Workflow | Debugging | Not Run | N/A | N/A | None. |
+| 40.3 | GAUSS Code Assistant MVP Workflow | Execution request (confirmation required) | Not Run | N/A | N/A | None. |
+| 40.4 | GAUSS Code Assistant MVP Workflow | Execution refusal | Not Run | N/A | N/A | None. |
+| 40.5 | GAUSS Code Assistant MVP Workflow | Output inspection | Not Run | N/A | N/A | None. |
+| 40.6 | GAUSS Code Assistant MVP Workflow | Workspace validation | Not Run | N/A | N/A | None. |
+| 40.7 | GAUSS Code Assistant MVP Workflow | Confirmation flow | Not Run | N/A | N/A | None. |
+| 40.8 | GAUSS Code Assistant MVP Workflow | Provenance reporting | Not Run | N/A | N/A | None. |
+| 40.9 | GAUSS Code Assistant MVP Workflow | File reading | Not Run | N/A | N/A | None. |
+| 40.10 | GAUSS Code Assistant MVP Workflow | Error recovery | Not Run | N/A | N/A | None. |
 
 ## Completed Runs Not Directly Covered By Current Stable Prompts
 
