@@ -76,6 +76,13 @@ import gauss_orchestration_state_store as state_store_mod  # noqa: E402
 # mutation and no execution of any kind. Importing it has no side effects.
 import gauss_workspace as workspace_mod  # noqa: E402
 
+# v0.44.0: gauss_workspace_file_reader depends only on gauss_workspace (the
+# same one-way direction) -- never on this module, the controller, the
+# durable store, the adapter, or the real helper. Importing it has no side
+# effects; it only reads a real file when read_workspace_file(...) is
+# explicitly called.
+import gauss_workspace_file_reader as file_reader_mod  # noqa: E402
+
 
 # ---------------------------------------------------------------------------
 # Interaction mode and intent classification
@@ -914,6 +921,25 @@ class ExecutionWorkflow:
         # it is process-local, in-memory-only, and was never durably
         # persisted (see __init__'s own docstring note on this limitation).
         return _durable_record_to_response_ready_result(rec)
+
+    # -- file reading (v0.44.0) -------------------------------------------------
+
+    def read_workspace_file(
+        self, request: "file_reader_mod.WorkspaceFileReadRequest"
+    ) -> "file_reader_mod.WorkspaceFileReadResult":
+        """The ONLY way this workflow ever reads a file's contents --
+        always from an explicit `WorkspaceFileReadRequest`, never
+        triggered by proposal, confirmation, execution completion, or
+        output-provenance registration. Requires `workspace_registry` to
+        be configured; delegates entirely to `gauss_workspace_file_reader
+        .read_workspace_file(...)`, which never reads anything without
+        this exact call happening. A read failure
+        (`result.status != "completed"`) is a distinct kind of outcome
+        from an execution failure -- never conflated with `ResponseReadyResult`'s
+        own `runtime_error_detected`/`missing_expected_output` fields."""
+        if self._workspace_registry is None:
+            raise ValueError("read_workspace_file(...) requires this ExecutionWorkflow to have a workspace_registry configured.")
+        return file_reader_mod.read_workspace_file(request, workspace_registry=self._workspace_registry)
 
     # -- rerun -----------------------------------------------------------------
 

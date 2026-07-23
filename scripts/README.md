@@ -420,6 +420,60 @@ When both gates are present and a valid scenario is selected (exercised exactly 
 
 **Release-readiness (`scripts/check_release_readiness.py`) and every default test command never set either gate and never invoke this file.**
 
+## `gauss_workspace.py`
+
+Purpose:
+An in-memory-only GAUSS workspace abstraction (`v0.42.0` GAUSS Workspace Abstraction Implementation, `planning/v0.41.0-file-artifact-workflow-design.md`). `WorkspaceRegistry` tracks `Workspace` identity, a seven-state lifecycle (`created`/`populated`/`ready`/`executing`/`completed`/`archived`/`deleted`, exactly six edges), bounded-filesystem path validation, workspace metadata, and a basic metadata-only manifest (`ManifestFileEntry`/`WorkspaceManifest`). No database, no real filesystem mutation (paths are validated as strings via `Path.resolve(strict=False)`, never created/read/deleted by this module), no dependency on any execution-adjacent module.
+
+Supported behavior:
+
+- `create_workspace(...)` / `get_workspace(...)` / `get_workspace_metadata(...)` — identity and lookup, bounded to one `approved_parent_directory` per registry.
+- `update_workspace_status(...)` / `archive_workspace(...)` / `delete_workspace(...)` — lifecycle transitions; `archive_workspace` requires `completed`, `delete_workspace` requires `archived`, every other combination raises `InvalidWorkspaceTransitionError`.
+- `validate_workspace(...)` — read-only: existence, not-deleted, root-path-still-contained, optional `expected_owner_reference` check.
+- `add_file_to_manifest(...)` / `get_workspace_manifest(...)` — caller-asserted metadata only (`name`/`relative_path`/`size`/`checksum`/`source`/`creation_state`); never opens or reads the file.
+- `resolve_within_workspace(workspace_id, candidate)` (added `v0.43.0`) — the public containment check external callers use instead of duplicating this module's own private `_resolve_inside`.
+
+`v0.43.0` wired this into `gauss_execution_workflow.py` (below); `v0.44.0` wired `gauss_workspace_file_reader.py` (below) on top of that.
+
+Self-test: `python scripts/gauss_workspace.py --self-test`. Full suite: `python scripts/test_gauss_workspace.py` (24 tests: creation, lifecycle, security, manifest, isolation).
+
+## `gauss_workspace_file_reader.py`
+
+Purpose:
+A safe, explicit-request-only workspace-bound file reader (`v0.44.0` Safe Workspace File Reading Workflow, `planning/v0.44.0-safe-file-reading-workflow.md`). The single entry point, `read_workspace_file(request, *, workspace_registry)`, always requires an explicit `WorkspaceFileReadRequest` — there is no scan, no directory listing, and no "read everything in the manifest" mode anywhere in this module. Depends only on `gauss_workspace.py`; no dependency on any execution-adjacent module.
+
+Supported formats: `.txt`, `.csv`, `.tsv`, `.out`, `.log`, `.gss`, `.dat` — every one of these is still rejected (`binary_content_detected`) if the actual bytes look binary (a NUL byte, or an excessive non-printable-byte ratio), regardless of extension.
+
+Limits: `DEFAULT_MAX_BYTES = 262_144` (256 KiB); `ABSOLUTE_MAX_BYTES = 5_242_880` (5 MiB, a hard ceiling no request may exceed); UTF-8 only (`unsupported_encoding` otherwise, no fallback chain); an oversized file is rejected outright (`file_too_large`) unless the request explicitly sets `allow_truncation=True`, in which case `truncated=True` is set and `size_bytes`/`checksum` describe exactly the bytes actually returned, never the full file.
+
+Failure behavior: every rejection is a structured `WorkspaceFileReadResult` (`status="rejected"`/`"error"`, a specific `error_code`) — never a raised exception for an ordinary validation failure. Failure taxonomy: `workspace_not_found`, `deleted`/`path_escaped_root`/`ownership_mismatch` (reused from `WorkspaceValidationOutcome`), `path_not_relative`, `path_escapes_workspace`, `file_not_found`, `not_a_regular_file`, `unsupported_file_type`, `file_type_mismatch`, `file_too_large`, `binary_content_detected`, `decode_error`, `unsupported_encoding`, `io_error`.
+
+Example usage:
+
+```python
+import gauss_workspace as gw
+import gauss_workspace_file_reader as reader
+
+registry = gw.WorkspaceRegistry(approved_parent_directory="/safe/parent")
+workspace = registry.create_workspace()
+# ... workspace populated, advanced to 'ready', executed against ...
+
+result = reader.read_workspace_file(
+    reader.WorkspaceFileReadRequest(workspace_id=workspace.workspace_id, relative_path="results.csv"),
+    workspace_registry=registry,
+)
+if result.status == reader.ReadStatus.COMPLETED.value:
+    print(result.content)  # evidence of file contents -- not a methodology conclusion
+else:
+    print(result.error_code, result.error_message)
+```
+
+Workflow integration: `gauss_execution_workflow.ExecutionWorkflow.read_workspace_file(request)` (requires `workspace_registry` to be configured) is the only way the conversational workflow layer reads a file — never triggered by `propose_execution(...)`, `execute(...)`, or output-provenance registration.
+
+Self-test: `python scripts/gauss_workspace_file_reader.py --self-test`. Full suites: `python scripts/test_gauss_workspace_file_reader.py` (25 tests: successful reads, safety, boundary behavior, isolation) and `python scripts/test_workspace_file_read_integration.py` (6 tests: the workflow-layer explicit-request-only boundary, read-failure-vs-execution-failure separation).
+
+This module does not implement binary parsing, spreadsheet parsing, image/PDF interpretation, uploads, or persistent artifact storage, and never runs GAUSS.
+
 ## PACKAGE_DOC_DIRECTORIES refresh process
 
 `scripts/command_doc_lookup.py`'s `PACKAGE_DOC_DIRECTORIES` constant (added `v0.11.0`) is a hardcoded snapshot of the official GAUSS Applications index (`docs_root/applications.rst`), not a live parse of that file at lookup time. It is source classification only — it tells the evidence schema's `source_type`/`source_authority` fields whether a matched file lives in a separately-distributed package directory versus the core documentation tree. It is **not** licensing verification; the Code Assistant must still state a package's licensing/version dependency explicitly whenever it recommends a package-sourced command, regardless of this classification.

@@ -153,6 +153,10 @@ Real GAUSS execution is governed by [`workflows/real-execution-user-workflow.md`
 * The agent may not directly invoke GAUSS, directly call the Helper Adapter or execution helper, construct its own confirmation record, bypass durable state, silently alter a confirmed request, reuse a confirmation after code or paths change, or automatically rerun failed code — `ExecutionWorkflow` independently re-validates every structured intent and confirmation signal the agent supplies rather than trusting it at face value.
 * Runtime orchestration exists (`scripts/gauss_runtime_orchestration.py`, `scripts/gauss_orchestration_state_store.py`) and is reachable only through `ExecutionWorkflow`'s own confirmed sequence; fully autonomous or automatic execution remains unimplemented and out of scope.
 
+### Safe Workspace File Reading
+
+As of `v0.44.0`, the agent may pass an explicit `WorkspaceFileReadRequest` to `ExecutionWorkflow.read_workspace_file(...)` (`scripts/gauss_workspace_file_reader.py`) only when the user has explicitly asked about a specific file's contents — never automatically after execution, never merely because `output_files` metadata exists. The agent must not infer, summarize, or describe a file's contents without an actual read result, must not treat a read result as proof of methodology or statistical validity, and must not attempt to read unsupported binary formats (images, PDFs, spreadsheets, archives, executables) — those remain out of scope until a later, separately scoped workflow. A read failure is reported honestly and is never described as an execution failure.
+
 ### Workflows
 
 The agent should participate in these workflows:

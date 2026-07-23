@@ -361,6 +361,14 @@ After execution, apply:
 6. **Execution fails with a GAUSS error.** Summarize the error evidence (Pattern F); ask for confirmation before any rerun.
 7. **User asks if successful execution proves the model is valid.** Explain the evidence/interpretation boundary (Pattern J); route to the Econometrics Expert.
 
+## Safe Workspace File Reading (v0.44.0)
+
+`output_files` metadata (Pattern I) never authorizes reading a file's actual contents. As of `v0.44.0`, reading a workspace file's contents requires a separate, explicit request — e.g. "explain the contents of `results.csv`" — handled by `scripts/gauss_workspace_file_reader.py`, reached only through `gauss_execution_workflow.ExecutionWorkflow.read_workspace_file(...)`. Nothing about execution completing, an output file being discovered, or a manifest entry being registered ever triggers a read on its own.
+
+Only bounded, allowlisted text formats are supported (`.txt`, `.csv`, `.tsv`, `.out`, `.log`, `.gss`, `.dat`), each still rejected if its actual bytes look binary regardless of extension; a conservative size limit applies (256 KiB by default, 5 MiB absolute ceiling, never silently truncated unless the request explicitly allows it); only UTF-8 decoding is supported. A file-read failure (missing file, unsupported type, oversized, binary content, path outside the workspace, etc.) is a distinct, separately reported outcome — never described as an execution failure.
+
+Reading a file's contents still does not prove methodology, statistical, or code validity — restated, not weakened, from the Evidence and Trust Boundaries above. Route any validity question raised after a read the same way as after execution: to the Econometrics Expert (Pattern J). Unsupported binary formats (images, PDFs, spreadsheets, archives, executables) remain out of scope for this workflow and require a later, separately scoped specialized workflow.
+
 ## Maintenance Notes
 
 - Update this workflow when execution helper behavior changes.
@@ -376,6 +384,7 @@ After execution, apply:
 
 - `planning/v0.30.0-real-execution-user-workflow-design.md`
 - `planning/v0.37.0-conversational-execution-workflow-integration.md`
+- `planning/v0.44.0-safe-file-reading-workflow.md`
 - `workflows/execution-aware-analysis.md`
 - `workflows/report-generation.md`
 - `workflows/code-assistant-response.md`
@@ -386,3 +395,5 @@ After execution, apply:
 - `scripts/gauss_runtime_orchestration.py`
 - `scripts/gauss_orchestration_state_store.py`
 - `scripts/gauss_execution_adapter.py`
+- `scripts/gauss_workspace.py`
+- `scripts/gauss_workspace_file_reader.py`
