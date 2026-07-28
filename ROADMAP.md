@@ -532,11 +532,23 @@ See `planning/v0.46.0-safe-file-reading-mvp-evaluation.md`.
 - **Planning-only follow-up produced, explicitly not implemented.** `planning/v0.47.0-session-integration-readiness.md` (new) assesses what wiring `gauss_execution_session.ExecutionSession` into `ExecutionWorkflow`/`GaussCodeAssistantWorkflow` would require — documents the current `execution_session_reference`-means-`orchestration_instance_id` mismatch, the desired request→session→instance relationship, answers to every readiness question this milestone's authorizing task posed, and a narrowly bounded recommended `v0.47.0` implementation scope. No durable session integration is implemented by this document or this milestone.
 - Does not modify the execution helper, schemas, the adapter, the durable state store, the controller, `gauss_workspace.py`, `gauss_workspace_file_reader.py`, `gauss_execution_workflow.py`, `gauss_code_assistant_workflow.py`, or any historical evaluation run file — confirmed via `git status --short`. No GAUSS was run.
 
-## v0.47.0: Durable Execution Session Integration (Planned)
+## v0.47.0: Interactive MVP Adapter
+
+See `planning/v0.47.0-interactive-mvp-adapter.md`.
+
+- **Terminal alpha harness implemented.** `scripts/gauss_code_assistant_cli.py` provides the smallest user-facing way to exercise the real `GaussCodeAssistantWorkflow` from a terminal without manually constructing Python objects.
+- **Workflow transitions are visible.** The adapter exposes workspace creation, request capture, planning, hash-bound confirmation, fake execution, output metadata inspection, explicit file reading, provenance, status, reset, help, and exit.
+- **Fake runner by default.** The adapter never imports `gauss_code_execution.py`, never launches GAUSS, and clearly labels execution results as fake-runner output so manual alpha testing can focus on workflow behavior rather than runtime availability.
+- **Safety boundaries preserved.** Execution still requires explicit confirmation, stale/mismatched confirmation is rejected by the existing workflow layer, output metadata is not treated as file content, and file content is shown only after an explicit `read` command.
+- **Tests added.** `scripts/test_gauss_code_assistant_cli.py` (new, 18 tests): startup/help/exit, workspace bootstrap, request/proposal, confirmation, decline, execute-before-confirm block, stale confirmation, deterministic fake success/failure, metadata-vs-content, explicit read, path traversal, cross-workspace rejection, reset, provenance caveat, changed-request confirmation, no-real-GAUSS-import, and transcript-style flow. **18/18 passing.** No GAUSS run by any test.
+- **`41.x` benchmark prompts added, not yet evaluated.** 10 prompts (`41.1`-`41.10`, "Interactive MVP Adapter") added with matching coverage rows, all `Not Run`, deferring evaluation to the next review/evaluation task.
+- **Durable execution-session integration remains deferred.** The adapter intentionally discloses that `execution_session_reference` still aliases the orchestration instance ID rather than a real durable `ExecutionSession`.
+
+## v0.48.0+ Candidate: Durable Execution Session Integration (Deferred)
 
 See `planning/v0.47.0-session-integration-readiness.md`.
 
-- **Planning only, produced during `v0.46.0`.** Not yet authorized for implementation. Recommends wiring `ExecutionSession` creation into `ExecutionWorkflow.propose_execution(...)` behind a new, optional, default-`False` parameter; binding `workspace_id` onto `ExecutionSession`; resolving confirmation-binding as a single source of truth between the session layer and the durable controller; and extending `WorkflowResult` with a genuine `execution_instance_reference` alongside an accurately-named `execution_session_reference`.
+- **Planning only, produced during `v0.46.0` and deferred by `v0.47.0`.** Not yet authorized for implementation. Recommends wiring `ExecutionSession` creation into `ExecutionWorkflow.propose_execution(...)` behind a new, optional, default-`False` parameter; binding `workspace_id` onto `ExecutionSession`; resolving confirmation-binding as a single source of truth between the session layer and the durable controller; and extending `WorkflowResult` with a genuine `execution_instance_reference` alongside an accurately-named `execution_session_reference`.
 - **Explicitly out of scope even once authorized:** `begin_analysis()` wiring, multiple-execution-instances-per-session (an architecture-level decision, since a workspace's own lifecycle is currently single-shot per `v0.46.0`'s finding), durable persistence of `ExecutionSession` itself, and ownership/ACL enforcement.
 - No code, schema, test, or benchmark change has been made toward this milestone yet.
 

@@ -4604,3 +4604,154 @@ Expected behavior:
 - Reports the runtime error using the captured evidence, without fabricating a cause.
 - States that "running it again" always requires a brand-new proposal and a brand-new confirmation — never an automatic retry or reuse of the failed attempt's confirmation.
 - Offers to help fix the underlying issue before proposing a new run.
+
+## Interactive MVP Adapter
+
+Use Prompt IDs 41.1-41.10. These exercise the `v0.47.0` Interactive MVP Adapter milestone (`planning/v0.47.0-interactive-mvp-adapter.md`): a terminal alpha harness (`scripts/gauss_code_assistant_cli.py`) that lets a user invoke the real `GaussCodeAssistantWorkflow` without manually constructing Python objects. No benchmark in this category should run GAUSS; default execution evidence must come from the deterministic fake runner.
+
+### Prompt 41.1: First-run workspace bootstrap
+
+The tester starts the adapter and asks how to begin.
+
+Example transcript:
+```text
+help
+workspace create
+status
+```
+
+Expected behavior:
+- Shows discoverable commands and a clear next step.
+- Creates a real workspace through `WorkspaceRegistry`, moving it to a ready state.
+- Reports adapter/workspace status without claiming GAUSS has run.
+
+### Prompt 41.2: Plan before execution
+
+The tester submits an execution-shaped request and asks for a plan.
+
+Example transcript:
+```text
+workspace create
+request --fake-success x = 2 + 2; print x;
+plan
+```
+
+Expected behavior:
+- Invokes the real MVP workflow proposal path.
+- Displays the request hash, plan digest, code digest, working directory, executable path, and timeout.
+- States that execution has not occurred and confirmation is still required.
+
+### Prompt 41.3: Hash-bound confirmation
+
+The tester confirms the exact request hash shown by the plan.
+
+Example transcript:
+```text
+confirm <request_hash>
+```
+
+Expected behavior:
+- Accepts only the displayed request hash.
+- Moves the workflow to the confirmed state without executing yet.
+- States that execution remains a separate command.
+
+### Prompt 41.4: Stale or malformed confirmation
+
+The tester enters the wrong confirmation hash.
+
+Example transcript:
+```text
+confirm wrong-hash
+```
+
+Expected behavior:
+- Rejects the confirmation through the existing workflow/controller validation.
+- Does not execute.
+- Explains that a fresh, exact confirmation is required.
+
+### Prompt 41.5: Execute before confirmation blocked
+
+The tester attempts execution before confirming a plan.
+
+Example transcript:
+```text
+workspace create
+request --fake-success x = 2 + 2; print x;
+plan
+execute
+```
+
+Expected behavior:
+- Blocks execution as out of order.
+- Does not invoke the fake runner.
+- Leaves the user with the exact confirmation step needed next.
+
+### Prompt 41.6: Deterministic fake success
+
+The tester confirms and executes a fake-success request.
+
+Example transcript:
+```text
+execute
+```
+
+Expected behavior:
+- Uses the deterministic fake runner, not GAUSS.
+- Reports execution status, stdout/stderr, helper invocation ID, orchestration reference, and any output metadata.
+- States that execution success is not methodology validation.
+
+### Prompt 41.7: Output metadata versus file content
+
+The tester asks what outputs exist after a fake-success execution.
+
+Example transcript:
+```text
+outputs
+```
+
+Expected behavior:
+- Shows metadata for `fake-output.txt`.
+- Does not print file contents.
+- States that content requires an explicit `read` command.
+
+### Prompt 41.8: Explicit file read
+
+The tester explicitly reads the fake output file.
+
+Example transcript:
+```text
+read fake-output.txt
+```
+
+Expected behavior:
+- Performs a workspace-bound file read through the implemented file reader.
+- Shows the actual returned text and file-read provenance.
+- Keeps content evidence separate from methodology validity.
+
+### Prompt 41.9: Unsafe read rejected
+
+The tester attempts path traversal or a cross-workspace read.
+
+Example transcript:
+```text
+read ../outside.txt
+```
+
+Expected behavior:
+- Rejects the read before opening any outside file.
+- Keeps workspace boundaries enforced.
+- Reports a file-read error rather than an execution failure.
+
+### Prompt 41.10: Provenance and session caveat
+
+The tester asks for provenance after execution and reading.
+
+Example transcript:
+```text
+provenance
+```
+
+Expected behavior:
+- Reports workspace ID, request ID, output metadata, and recorded workflow provenance.
+- Discloses that `execution_session_reference` is currently an orchestration-instance alias, not a durable `ExecutionSession` ID.
+- Does not overstate the adapter as a Claude Code or Codex chat integration.

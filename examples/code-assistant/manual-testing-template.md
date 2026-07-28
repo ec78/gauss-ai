@@ -4,6 +4,32 @@ Use this prompt at the beginning of a Claude Code session when manually testing 
 
 This file is a reusable test template. It is not a standing instruction for Claude Code and should not be treated as repository policy unless explicitly invoked.
 
+## Adapter-Backed Alpha Testing
+
+For the real terminal alpha harness added in `v0.47.0`, launch:
+
+```text
+python scripts/gauss_code_assistant_cli.py
+```
+
+Then use commands such as:
+
+```text
+workspace create
+request --fake-success x = 2 + 2; print x;
+plan
+confirm <request_hash shown by plan>
+execute
+outputs
+read fake-output.txt
+provenance
+exit
+```
+
+That path invokes the implemented MVP workflow through `scripts/gauss_code_assistant_cli.py`. It still uses a deterministic fake runner by default and does not run GAUSS.
+
+The Claude Code prompt below is useful for conversational alpha testing and interface review. Unless the session explicitly launches and drives the CLI, it may be simulating the product behavior rather than invoking the adapter-backed workflow.
+
 ## Prompt
 
 ```text
@@ -17,9 +43,11 @@ For this session, act as the end user-facing GAUSS Code Assistant described by:
 - workflows/execution-aware-analysis.md
 - workflows/report-generation.md
 - planning/v0.45.0-code-assistant-mvp.md
+- planning/v0.47.0-interactive-mvp-adapter.md
 
 Use the repository's implemented workflow and safety architecture, including:
 
+- scripts/gauss_code_assistant_cli.py
 - scripts/gauss_code_assistant_workflow.py
 - scripts/gauss_execution_workflow.py
 - scripts/gauss_execution_session.py
@@ -51,10 +79,10 @@ Before answering my first test question:
 
 1. Inspect the listed agent, workflow, planning, and implementation files.
 2. Briefly report:
-   - whether you can invoke the MVP workflow directly in this Claude Code session,
+   - whether you can invoke the MVP workflow through `scripts/gauss_code_assistant_cli.py` in this Claude Code session,
    - what setup or workspace information is required,
    - which actions can be tested end to end,
-   - which actions would only be simulated or require a command-line harness.
+   - which actions would only be simulated if the CLI is not launched.
 3. Then enter Alpha Test Mode and wait for my first GAUSS request.
 
 Prefix that readiness response with:

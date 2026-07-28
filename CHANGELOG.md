@@ -4,6 +4,10 @@ This file records notable changes to the GAUSS AI framework.
 
 ## [Unreleased]
 
+- Added `v0.47.0` Interactive MVP Adapter: a terminal alpha harness for exercising the real `GaussCodeAssistantWorkflow` with workspace bootstrap, planning, confirmation, fake execution, output metadata inspection, explicit file reading, provenance, status, reset, and help/exit commands.
+- Added `scripts/test_gauss_code_assistant_cli.py` covering the adapter's interactive workflow boundaries with 18 fake-runner-only tests; no GAUSS is run.
+- Added `planning/v0.47.0-interactive-mvp-adapter.md`, `release-notes-v0.47.0.md`, and `41.x` Interactive MVP Adapter benchmark prompts/coverage rows.
+- Deferred durable execution-session integration to a later milestone after adapter-backed manual alpha testing.
 - GAUSS Language Expert Body of Knowledge.
 - Initial Code Assistant agent.
 - Knowledge source integration.

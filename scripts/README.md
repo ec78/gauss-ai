@@ -1,5 +1,34 @@
 # Scripts
 
+## `gauss_code_assistant_cli.py`
+
+Purpose:
+Run the `v0.47.0` Interactive MVP Adapter: a tiny terminal alpha harness around the real `GaussCodeAssistantWorkflow`.
+
+Example:
+
+```text
+python scripts/gauss_code_assistant_cli.py
+```
+
+The adapter creates a local test workspace, proposes an execution plan, requires an explicit hash-bound `confirm <request_hash>`, runs a deterministic fake runner, registers output metadata, and reads output content only after an explicit `read <relative-path>` command.
+
+Useful transcript:
+
+```text
+workspace create
+request --fake-success x = 2 + 2; print x;
+plan
+confirm <request_hash shown by plan>
+execute
+outputs
+read fake-output.txt
+provenance
+exit
+```
+
+This is an alpha test harness, not a GAUSS launcher. It never imports `gauss_code_execution.py`, never invokes GAUSS, and deliberately discloses that `execution_session_reference` is still an orchestration-instance alias until durable session integration is implemented.
+
 ## `command_doc_lookup.py`
 
 Purpose:
