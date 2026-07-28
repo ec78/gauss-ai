@@ -6,6 +6,8 @@ Rather than creating a single, monolithic chatbot, this project defines a collec
 
 ## Current Status
 
+Current milestone: `v0.48.0` - Interactive Adapter Evaluation and Alpha Readiness. The `41.x` Interactive MVP Adapter benchmarks have been evaluated against the real terminal adapter command-processing path and composed workflow: 10/10 Passed at 4.0, 0 Critical defects, 0 Major defects, 0 Minor defects. The adapter is classified as **ready for structured manual alpha testing** using `docs/manual-alpha-testing-guide.md` and `docs/alpha-feedback-template.md`. GAUSS is still not run by the adapter.
+
 Current milestone: `v0.47.0` - Interactive MVP Adapter. The repository now includes `scripts/gauss_code_assistant_cli.py`, a terminal alpha harness that exercises the real `GaussCodeAssistantWorkflow` without requiring testers to manually construct Python objects. It uses a deterministic fake runner by default, does not run GAUSS, does not implement durable `ExecutionSession` integration, and does not provide a Claude Code/Codex chat adapter. Durable execution-session integration is deferred until after adapter-backed alpha testing.
 
 Historical context from `v0.46.0` and earlier follows. The durable session material below is background planning, not the current implemented `v0.47.0` milestone.
@@ -54,7 +56,7 @@ gauss-mvp> provenance
 gauss-mvp> exit
 ```
 
-The adapter invokes `GaussCodeAssistantWorkflow` for planning, confirmation, execution, output metadata, file reading, and provenance. Execution uses a deterministic fake runner by default and clearly labels that fact; normal alpha testing through this adapter does **not** run GAUSS.
+The adapter invokes `GaussCodeAssistantWorkflow` for planning, confirmation, execution, output metadata, file reading, and provenance. Execution uses a deterministic fake runner by default and clearly labels that fact; normal alpha testing through this adapter does **not** run GAUSS. As of `v0.48.0`, the `41.x` adapter benchmarks are complete (10/10 Passed), and structured manual alpha testing should use [docs/manual-alpha-testing-guide.md](docs/manual-alpha-testing-guide.md) plus [docs/alpha-feedback-template.md](docs/alpha-feedback-template.md).
 
 ## How GAUSS AI Reduces Hallucinations
 

@@ -370,16 +370,16 @@ Some early runs predate stable Prompt ID assignment. Where a run does not match 
 | 40.8 | GAUSS Code Assistant MVP Workflow | Provenance reporting | Passed | [2026-07-23-code-assistant-mvp-workflow-run-008.md](runs/2026-07-23-code-assistant-mvp-workflow-run-008.md) | 4.0 | Correctly traced an accurate, internally consistent provenance chain. |
 | 40.9 | GAUSS Code Assistant MVP Workflow | File reading | Passed | [2026-07-23-code-assistant-mvp-workflow-run-009.md](runs/2026-07-23-code-assistant-mvp-workflow-run-009.md) | 4.0 | Correctly performed an explicit, evidenced read with the methodology caveat. |
 | 40.10 | GAUSS Code Assistant MVP Workflow | Error recovery | Passed | [2026-07-23-code-assistant-mvp-workflow-run-010.md](runs/2026-07-23-code-assistant-mvp-workflow-run-010.md) | 4.0 | Correctly confirmed no automatic retry exists at any layer. |
-| 41.1 | Interactive MVP Adapter | First-run workspace bootstrap | Not Run |  |  | Added in `v0.47.0`; pending evaluation. |
-| 41.2 | Interactive MVP Adapter | Plan before execution | Not Run |  |  | Added in `v0.47.0`; pending evaluation. |
-| 41.3 | Interactive MVP Adapter | Hash-bound confirmation | Not Run |  |  | Added in `v0.47.0`; pending evaluation. |
-| 41.4 | Interactive MVP Adapter | Stale or malformed confirmation | Not Run |  |  | Added in `v0.47.0`; pending evaluation. |
-| 41.5 | Interactive MVP Adapter | Execute before confirmation blocked | Not Run |  |  | Added in `v0.47.0`; pending evaluation. |
-| 41.6 | Interactive MVP Adapter | Deterministic fake success | Not Run |  |  | Added in `v0.47.0`; pending evaluation. |
-| 41.7 | Interactive MVP Adapter | Output metadata versus file content | Not Run |  |  | Added in `v0.47.0`; pending evaluation. |
-| 41.8 | Interactive MVP Adapter | Explicit file read | Not Run |  |  | Added in `v0.47.0`; pending evaluation. |
-| 41.9 | Interactive MVP Adapter | Unsafe read rejected | Not Run |  |  | Added in `v0.47.0`; pending evaluation. |
-| 41.10 | Interactive MVP Adapter | Provenance and session caveat | Not Run |  |  | Added in `v0.47.0`; pending evaluation. |
+| 41.1 | Interactive MVP Adapter | First-run workspace bootstrap | Passed | [2026-07-28-code-assistant-interactive-adapter-run-001.md](runs/2026-07-28-code-assistant-interactive-adapter-run-001.md) | 4.0 | Created a ready workspace through the real registry and disclosed `gauss_ran: false`. |
+| 41.2 | Interactive MVP Adapter | Plan before execution | Passed | [2026-07-28-code-assistant-interactive-adapter-run-002.md](runs/2026-07-28-code-assistant-interactive-adapter-run-002.md) | 4.0 | Real MVP proposal path displayed hashes, digests, workspace, executable, timeout, and confirmation requirement. |
+| 41.3 | Interactive MVP Adapter | Hash-bound confirmation | Passed | [2026-07-28-code-assistant-interactive-adapter-run-003.md](runs/2026-07-28-code-assistant-interactive-adapter-run-003.md) | 4.0 | Exact displayed hash moved the workflow to confirmed without executing. |
+| 41.4 | Interactive MVP Adapter | Stale or malformed confirmation | Passed | [2026-07-28-code-assistant-interactive-adapter-run-004.md](runs/2026-07-28-code-assistant-interactive-adapter-run-004.md) | 4.0 | Old hash after changed request was rejected with `ConfirmationValidationError`; no execution occurred. |
+| 41.5 | Interactive MVP Adapter | Execute before confirmation blocked | Passed | [2026-07-28-code-assistant-interactive-adapter-run-005.md](runs/2026-07-28-code-assistant-interactive-adapter-run-005.md) | 4.0 | `execute` before confirmation was blocked by `MvpWorkflowStageError`; fake runner was not invoked. |
+| 41.6 | Interactive MVP Adapter | Deterministic fake success | Passed | [2026-07-28-code-assistant-interactive-adapter-run-006.md](runs/2026-07-28-code-assistant-interactive-adapter-run-006.md) | 4.0 | Confirmed fake-success path completed with explicit fake-runner and methodology caveat disclosures. |
+| 41.7 | Interactive MVP Adapter | Output metadata versus file content | Passed | [2026-07-28-code-assistant-interactive-adapter-run-007.md](runs/2026-07-28-code-assistant-interactive-adapter-run-007.md) | 4.0 | `outputs` reported `fake-output.txt` metadata only and directed testers to explicit `read`. |
+| 41.8 | Interactive MVP Adapter | Explicit file read | Passed | [2026-07-28-code-assistant-interactive-adapter-run-008.md](runs/2026-07-28-code-assistant-interactive-adapter-run-008.md) | 4.0 | `read fake-output.txt` invoked the real workspace file reader and returned content only after explicit read. |
+| 41.9 | Interactive MVP Adapter | Unsafe read rejected | Passed | [2026-07-28-code-assistant-interactive-adapter-run-009.md](runs/2026-07-28-code-assistant-interactive-adapter-run-009.md) | 4.0 | Traversal and absolute reads were rejected as file-read errors; valid workspace read still succeeded. |
+| 41.10 | Interactive MVP Adapter | Provenance and session caveat | Passed | [2026-07-28-code-assistant-interactive-adapter-run-010.md](runs/2026-07-28-code-assistant-interactive-adapter-run-010.md) | 4.0 | Provenance reported workspace/execution identifiers and disclosed the non-durable session-reference alias. |
 
 ## Completed Runs Not Directly Covered By Current Stable Prompts
 

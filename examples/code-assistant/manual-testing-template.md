@@ -28,6 +28,8 @@ exit
 
 That path invokes the implemented MVP workflow through `scripts/gauss_code_assistant_cli.py`. It still uses a deterministic fake runner by default and does not run GAUSS.
 
+As of `v0.48.0`, use `docs/manual-alpha-testing-guide.md` for structured manual alpha scenarios and `docs/alpha-feedback-template.md` to record observations. The `41.x` adapter benchmarks passed 10/10 against the real adapter command-processing path, so manual testing should focus on user clarity, trust, recovery, and workflow fit rather than re-proving that the fake-runner path exists.
+
 The Claude Code prompt below is useful for conversational alpha testing and interface review. Unless the session explicitly launches and drives the CLI, it may be simulating the product behavior rather than invoking the adapter-backed workflow.
 
 ## Prompt

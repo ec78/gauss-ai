@@ -541,10 +541,20 @@ See `planning/v0.47.0-interactive-mvp-adapter.md`.
 - **Fake runner by default.** The adapter never imports `gauss_code_execution.py`, never launches GAUSS, and clearly labels execution results as fake-runner output so manual alpha testing can focus on workflow behavior rather than runtime availability.
 - **Safety boundaries preserved.** Execution still requires explicit confirmation, stale/mismatched confirmation is rejected by the existing workflow layer, output metadata is not treated as file content, and file content is shown only after an explicit `read` command.
 - **Tests added.** `scripts/test_gauss_code_assistant_cli.py` (new, 18 tests): startup/help/exit, workspace bootstrap, request/proposal, confirmation, decline, execute-before-confirm block, stale confirmation, deterministic fake success/failure, metadata-vs-content, explicit read, path traversal, cross-workspace rejection, reset, provenance caveat, changed-request confirmation, no-real-GAUSS-import, and transcript-style flow. **18/18 passing.** No GAUSS run by any test.
-- **`41.x` benchmark prompts added, not yet evaluated.** 10 prompts (`41.1`-`41.10`, "Interactive MVP Adapter") added with matching coverage rows, all `Not Run`, deferring evaluation to the next review/evaluation task.
+- **`41.x` benchmark prompts added.** 10 prompts (`41.1`-`41.10`, "Interactive MVP Adapter") added with matching coverage rows; these were evaluated in `v0.48.0`.
 - **Durable execution-session integration remains deferred.** The adapter intentionally discloses that `execution_session_reference` still aliases the orchestration instance ID rather than a real durable `ExecutionSession`.
 
-## v0.48.0+ Candidate: Durable Execution Session Integration (Deferred)
+## v0.48.0: Interactive Adapter Evaluation and Alpha Readiness
+
+See `planning/v0.48.0-interactive-adapter-evaluation.md`.
+
+- **Evaluation-only readiness milestone.** Evaluated all ten `41.x` Interactive MVP Adapter benchmarks against the real `InteractiveMvpAdapter.handle_line(...)` command-processing path and composed workflow with deterministic fake runners. No benchmark was passed solely because a unit test exists.
+- **Result: 10/10 Passed, 0 Critical, 0 Major, 0 Minor.** The evaluation covered first-run workspace bootstrap, request-to-plan, hash-bound confirmation, stale confirmation rejection, execute-before-confirm block, deterministic fake success, metadata-vs-content separation, explicit file reading, unsafe-read rejection, provenance/session-caveat disclosure, fake failure recovery, decline/recovery, reset/fresh-workspace behavior, and transparent real-workflow/fake-execution disclosure.
+- **Manual alpha materials added.** `docs/manual-alpha-testing-guide.md` provides the exact launch command, first-run walkthrough, supported commands, scenario tests, pass/fail criteria, expected disclosures, limitations, and issue-recording guidance. `docs/alpha-feedback-template.md` provides a structured observation template.
+- **Alpha-readiness decision:** ready for structured manual alpha testing. Broader development should pause for human feedback before selecting the next implementation milestone.
+- **No implementation code changed.** No durable `ExecutionSession` integration, real GAUSS execution, chat adapter, uploads, persistence, cloud execution, multi-user ACLs, binary/PDF/image/spreadsheet readers, autonomous execution, or autonomous file reading were added. No GAUSS was run.
+
+## v0.49.0+ Candidate: Durable Execution Session Integration (Deferred)
 
 See `planning/v0.47.0-session-integration-readiness.md`.
 

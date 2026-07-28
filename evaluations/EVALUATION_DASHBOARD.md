@@ -15,8 +15,8 @@ Use this dashboard to understand coverage by milestone, prompt range, expert cat
 
 ## Dashboard Metadata
 
-- Current milestone: `v0.46.0` - Safe File Reading and MVP Workflow Evaluation.
-- Captures evaluation state through: `v0.46.0`'s `39.x`/`40.x` benchmark evaluations (completed, 20/20 Passed — 19 at 4.0, one at 3.8 with a documented Minor finding). `v0.38.0`-`v0.45.0` added no new benchmark categories (design-only or infrastructure-only milestones).
+- Current milestone: `v0.48.0` - Interactive Adapter Evaluation and Alpha Readiness.
+- Captures evaluation state through: `v0.48.0`'s `41.x` Interactive MVP Adapter benchmark evaluations (completed, 10/10 Passed at 4.0, 0 Critical, 0 Major, 0 Minor). `v0.47.0` added the interactive adapter and `v0.48.0` evaluated it for structured manual alpha readiness.
 - Evaluation model: manual benchmark evaluation with tracking guard. No runtime scoring engine exists.
 - Runtime scoring engine: Not implemented.
 - Benchmark prompts source: `evaluations/benchmark-prompts.md`.
@@ -29,15 +29,15 @@ Use this dashboard to understand coverage by milestone, prompt range, expert cat
 
 ## Current Evaluation State
 
-Captured by running `scripts/check_evaluation_tracking.py`, `scripts/check_release_readiness.py`, and `scripts/validate_all_evidence.py` (default and `--json`) against the repository state after `v0.46.0`'s `39.x`/`40.x` benchmark evaluations were completed:
+Captured by running `scripts/check_evaluation_tracking.py --json` against the repository state after `v0.48.0`'s `41.x` benchmark evaluations were completed, plus the default release-readiness/evidence guards during release validation:
 
-- Prompt IDs: 364.
-- Coverage rows: 364.
-- Run files referenced: 351.
-- Index entries: 356.
+- Prompt IDs: 374.
+- Coverage rows: 374.
+- Run files referenced: 361.
+- Index entries: 366.
 - Tracking errors: 0.
 - Documented (historical) tracking warnings: 2.
-- Current active-category ("Not Run" in the highest-numbered active category) warnings: 0 — all 10 `39.x` prompts (Safe Workspace File Reading) and all 10 `40.x` prompts (GAUSS Code Assistant MVP Workflow) are now `Passed`, so the tracking guard's "current active category" check has nothing to flag.
+- Current active-category ("Not Run" in the highest-numbered active category) warnings: 0 — all 10 `41.x` prompts (Interactive MVP Adapter) are now `Passed`, so the tracking guard's "current active category" check has nothing to flag.
 - Default tracking guard (`check_evaluation_tracking.py`): PASS.
 - JSON tracking guard (`check_evaluation_tracking.py --json`): `overall_pass: true`.
 - Strict tracking guard (`check_evaluation_tracking.py --strict`): FAIL — expected, both current warnings are the two documented historical ones (see "Known Warnings and Historical Exceptions" below).
@@ -100,6 +100,8 @@ Important:
 | 39.x | Safe Workspace File Reading (`v0.44.0`, evaluated `v0.46.0`) | Explicit-request-only workspace file reading: explicit-read vs. metadata-only, path traversal, absolute-path rejection, unsupported/binary content, oversized-file/truncation honesty, missing files, content-vs-methodology-validity separation, cross-workspace isolation | 10 | 10 | 10/10 Passed (4.0) | All prompts run and passed for `v0.44.0`'s `scripts/gauss_workspace_file_reader.py`, evaluated during `v0.46.0` (`planning/v0.46.0-safe-file-reading-mvp-evaluation.md`) against real, executed evidence — never against the existence of a passing unit test alone. Every safety boundary (traversal, absolute path, binary content, oversized/truncated files, cross-workspace access) held under direct, real exercise. No GAUSS was run. |
 | 40.x | GAUSS Code Assistant MVP Workflow (`v0.45.0`, evaluated `v0.46.0`) | Orchestration-facade conversational judgment: explain/debug staying advisory-only, confirmation-gated execution, unsafe/unknown-workspace refusal, output-metadata-only inspection, stale-plan confirmation rejection, provenance accuracy, explicit file reading, and no-automatic-retry error recovery | 10 | 10 | 10/10 Passed (9 at 4.0, one at 3.8) | All prompts run and passed for `v0.45.0`'s `scripts/gauss_code_assistant_workflow.py`, evaluated during `v0.46.0` against real, executed evidence. `40.6` (Workspace validation) passed with one documented **Minor** finding — a redundant, non-blocking wording clause in the declined-proposal message when a workspace is unknown — recorded, not fixed during `v0.46.0` per this repository's own defect-severity policy (`planning/v0.46.0-safe-file-reading-mvp-evaluation.md`'s Defect Classification). Zero Critical or Major defects found. No GAUSS was run. |
 
+| 41.x | Interactive MVP Adapter (`v0.47.0`, evaluated `v0.48.0`) | Terminal alpha harness behavior: first-run workspace bootstrap, request-to-plan, hash-bound confirmation, stale confirmation rejection, execute-before-confirm block, deterministic fake success, output metadata vs. content, explicit file reading, unsafe-read rejection, provenance and session-caveat disclosure | 10 | 10 | 10/10 Passed (4.0) | All prompts run and passed for `scripts/gauss_code_assistant_cli.py`, evaluated during `v0.48.0` against the real adapter command-processing path and composed workflow with deterministic fake runners. Zero Critical, Major, or Minor defects found. No GAUSS was run. Classification: ready for structured manual alpha testing. |
+
 Counts above are taken directly from `evaluations/benchmark-coverage.md` and `evaluations/runs/INDEX.md`. Categories `1.x` through `10.x` predate stable Prompt ID conventions in places and are summarized as "early baseline" or historical where a prompt has never been run; these were not invented to force full coverage, and their `Not Run` prompts remain genuinely not run today.
 
 ## Expert Foundation Evaluation Summary
@@ -119,7 +121,7 @@ Counts above are taken directly from `evaluations/benchmark-coverage.md` and `ev
 - **Historical tracking warning — 2.2 / 2.3 Prompt ID mismatch:** the `2.2` coverage row (`evaluations/benchmark-coverage.md`) links to `evaluations/runs/2026-06-30-code-assistant-manual-run-001.md`, but that run file's own `Prompt ID:` field states `2.3`. This predates stable Prompt ID assignment and is documented in `evaluations/benchmark-coverage.md`'s "Historical Tracking Exceptions" section. It is a warning, not an error, and `--strict` promotes it to a failure by design.
 - **Historical tracking warning — `v0.3.0` smoke-test file:** `evaluations/runs/2026-07-01-code-assistant-smoke-test-v0.3.0.md` predates Prompt-ID-based tracking entirely and is intentionally not indexed in `benchmark-coverage.md` or `runs/INDEX.md`. It is preserved as legitimate repository history, documented in the same "Historical Tracking Exceptions" section. It is a warning, not an error, and `--strict` promotes it to a failure by design.
 - **Evidence warnings — `glm`/`olsmt` HDF5 URI false positives:** `examples/retrieval/schema-aligned/glm.evidence.json` and `olsmt.evidence.json` contain path-shaped strings from official documentation examples (an HDF5 URI) that the path-warning heuristic flags. These are reviewed false positives, not real local-path leaks, documented in `scripts/README.md`'s strict-mode policy notes. `--strict` promotes them to failures by design.
-- **Current active-category "Not Run" warnings:** none. After completing the `39.x`/`40.x` evaluations, the tracking guard's "current active category" check has nothing to report, because every prompt in both categories is `Passed`.
+- **Current active-category "Not Run" warnings:** none. After completing the `41.x` evaluations, the tracking guard's "current active category" check has nothing to report, because every prompt in the highest-numbered category is `Passed`.
 - **Strict-mode policy:** default gates (`check_evaluation_tracking.py`, `validate_all_evidence.py`, `check_release_readiness.py`) pass. Strict modes are informational and fail only because the warnings above are promoted to failures. Strict failures should not block a release unless the project explicitly changes this policy — see `scripts/README.md` and prior readiness checklists (`v0.12.0` onward) for the policy's history.
 
 ## Guard Command Reference

@@ -4,6 +4,10 @@ This file records notable changes to the GAUSS AI framework.
 
 ## [Unreleased]
 
+- Added `v0.48.0` Interactive Adapter Evaluation and Alpha Readiness: evaluated all `41.x` Interactive MVP Adapter benchmarks against the real adapter command-processing path and composed workflow.
+- Added `docs/manual-alpha-testing-guide.md` and `docs/alpha-feedback-template.md` for structured manual alpha testing.
+- Added ten `41.x` evaluation run files and updated benchmark coverage, run index, and evaluation dashboard to show 10/10 Passed with 0 Critical, 0 Major, and 0 Minor defects.
+- Added `planning/v0.48.0-interactive-adapter-evaluation.md` and `release-notes-v0.48.0.md`; classified the adapter as ready for structured manual alpha testing.
 - Added `v0.47.0` Interactive MVP Adapter: a terminal alpha harness for exercising the real `GaussCodeAssistantWorkflow` with workspace bootstrap, planning, confirmation, fake execution, output metadata inspection, explicit file reading, provenance, status, reset, and help/exit commands.
 - Added `scripts/test_gauss_code_assistant_cli.py` covering the adapter's interactive workflow boundaries with 18 fake-runner-only tests; no GAUSS is run.
 - Added `planning/v0.47.0-interactive-mvp-adapter.md`, `release-notes-v0.47.0.md`, and `41.x` Interactive MVP Adapter benchmark prompts/coverage rows.
