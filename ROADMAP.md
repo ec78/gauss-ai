@@ -578,7 +578,17 @@ See `planning/v0.50.0-real-gauss-execution-evaluation.md`.
 - **Readiness classification:** ready for structured real GAUSS alpha testing, not ready for autonomous debugging-loop implementation.
 - **Still deferred.** Durable `ExecutionSession` integration, Claude Code/Codex chat integration, autonomous debugging, automatic retries, cloud execution, broader file readers, and production cross-platform guarantees remain out of scope.
 
-## v0.51.0+ Candidate: Durable Execution Session Integration (Deferred)
+## v0.51.0: Execution Result Interpretation
+
+See `planning/v0.51.0-execution-result-interpretation.md`.
+
+- **Dedicated interpreter added.** `scripts/gauss_execution_interpreter.py` consumes already-captured execution metadata and optional stdout/stderr text. It never launches GAUSS, edits code, retries execution, or reads workspace files.
+- **Central GAUSS error catalog added.** `scripts/gauss_error_catalog.py` maps verified GAUSS error codes to deterministic categories and diagnostic next steps. Initial specialized codes: `G0105`, `G0036`, and `G0025`; uncataloged `G####` codes remain preserved and classified as unknown.
+- **CLI `interpret` command added.** The interactive adapter can now explain the current execution result after `execute`, including success, syntax failure, runtime/matrix-dimension failure, timeout, blocked-before-launch, fake results, insufficient evidence, and unknown failures.
+- **Regression coverage added.** `scripts/test_gauss_execution_interpreter.py` validates catalog lookup, classification, missing streams, unknown codes, and truthfulness boundaries. `scripts/test_gauss_code_assistant_cli.py` now covers `interpret` before and after execution.
+- **`43.x` benchmark prompts added, not yet evaluated.** Ten prompts (`43.1`-`43.10`, "Execution Interpretation") cover success, syntax/runtime errors, timeout, blocked execution, fake/real evidence, missing evidence, unknown failure, and truthfulness.
+
+## v0.52.0+ Candidate: Durable Execution Session Integration (Deferred)
 
 See `planning/v0.47.0-session-integration-readiness.md`.
 

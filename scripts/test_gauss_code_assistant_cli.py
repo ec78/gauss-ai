@@ -282,6 +282,7 @@ def test_18_complete_transcript_style_flow() -> None:
             "outputs",
             "stdout",
             "stderr",
+            "interpret",
             "read fake-output.txt",
             "provenance",
             "status",
@@ -293,6 +294,7 @@ def test_18_complete_transcript_style_flow() -> None:
         check("transcript exercises metadata listing", "CONTENT_DISCLOSURE" in text)
         check("transcript exercises explicit stdout", "stdout_begin" in text)
         check("transcript exercises explicit stderr", "stderr_begin" in text)
+        check("transcript exercises interpretation", "Execution interpretation from existing evidence" in text)
         check("transcript exercises explicit read", "content_begin" in text)
         check("transcript exercises provenance", "provenance.execution_instance_id" in text)
         adapter.close()
@@ -315,6 +317,47 @@ def test_19_captured_streams_require_explicit_request() -> None:
         stderr = _joined(_run(adapter, "stderr"))
         check("explicit stderr returns captured content", "Undefined symbol" in stderr)
         check("explicit stderr has boundaries", "stderr_begin" in stderr and "stderr_end" in stderr)
+        adapter.close()
+
+
+def test_20_interpret_before_execute() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _plan_success(adapter)
+        out = _run(adapter, "interpret")
+        check("interpret before execute unavailable", "ERROR no_result" in _joined(out))
+        adapter.close()
+
+
+def test_21_interpret_fake_success() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        out = _joined(_run(adapter, "interpret"))
+        check("interpret does not launch", "No GAUSS launch, no retry, no code edit" in out)
+        check("interpret success", "completion_status: completed" in out)
+        check("interpret safe continue", "safe_to_continue: true" in out)
+        adapter.close()
+
+
+def test_22_interpret_fake_syntax_error() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _run(adapter, "workspace create")
+        _run(adapter, "request --fake-failure x = ;")
+        _run(adapter, "plan")
+        assert adapter.mvp_session is not None
+        assert adapter.mvp_session.proposal_outcome is not None
+        assert adapter.mvp_session.proposal_outcome.proposal is not None
+        request_hash = adapter.mvp_session.proposal_outcome.proposal.request_hash
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        out = _joined(_run(adapter, "interpret"))
+        check("interpret error code", "error_code: G0105" in out)
+        check("interpret syntax failure", "failure_type: parse_syntax" in out)
+        check("interpret diagnostic only", "next_step: Inspect" in out)
         adapter.close()
 
 

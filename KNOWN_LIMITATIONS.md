@@ -1,5 +1,7 @@
 # Known Limitations
 
+`v0.51.0` adds deterministic execution-result interpretation. Interpretation does not repair code, does not retry execution, does not launch GAUSS, does not read files automatically, and cannot infer statistical correctness. Only known GAUSS error codes in `scripts/gauss_error_catalog.py` receive specialized explanations; unknown GAUSS error codes are preserved and intentionally classified generically until cataloged from verified evidence.
+
 `v0.50.0` evaluated the opt-in real local GAUSS execution path and classified it as ready for structured real GAUSS alpha testing, not broader production use. Real execution remains explicit, local, process-local, not durable-session-backed, not a Claude Code/Codex chat adapter, and bounded by Windows/GAUSS 26.1.1 evidence from this machine. Timeout handling was validated with an injected result rather than a real bounded GAUSS timeout fixture. One Minor flow issue remains: a completed workspace can still display a new plan after reset, but execution then fails safely before launch.
 
 `v0.49.0` added opt-in real local GAUSS execution to the interactive terminal adapter. Fake execution remains the default. Real execution requires `--runner gauss` plus `--gauss-executable` or `GAUSS_EXECUTABLE`, accepts only a terminal `tgauss`/`tgauss.exe` path, and still requires the existing hash-bound confirmation before `execute`.

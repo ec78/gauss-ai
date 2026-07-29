@@ -4,6 +4,11 @@ This file records notable changes to the GAUSS AI framework.
 
 ## [Unreleased]
 
+- Added `v0.51.0` Execution Result Interpretation: a deterministic execution interpreter and GAUSS error catalog for explaining completed, failed, timed-out, blocked, fake, and real-shaped execution evidence.
+- Added the interactive adapter `interpret` command, which consumes existing execution evidence only and never reruns GAUSS, edits code, retries execution, or reads output files automatically.
+- Added `scripts/test_gauss_execution_interpreter.py` plus CLI regression coverage for interpretation before/after execution and catalog-backed syntax classification.
+- Added `43.x` Execution Interpretation benchmark prompts and coverage rows, initially `Not Run` pending a formal evaluation milestone.
+- Added `planning/v0.51.0-execution-result-interpretation.md` and `release-notes-v0.51.0.md`.
 - Added `v0.50.0` Real GAUSS Execution Evaluation and Debugging Readiness: formally evaluated all `42.x` Opt-In Real GAUSS Execution benchmarks with real GAUSS where required.
 - Added explicit `stdout` and `stderr` commands to the interactive adapter so captured process text is inspectable only after an explicit user request.
 - Added ten `42.x` evaluation run files and updated benchmark coverage, run index, and evaluation dashboard to show 10/10 Passed with 0 Critical, 0 Major, and 1 Minor finding.

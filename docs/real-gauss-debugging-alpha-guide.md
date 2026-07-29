@@ -24,6 +24,7 @@ request x = 2 + 2; print x;
 plan
 confirm <request_hash>
 execute
+interpret
 stdout
 stderr
 provenance
@@ -45,6 +46,7 @@ request x = ;
 plan
 confirm <request_hash>
 execute
+interpret
 stdout
 stderr
 read <generated-script-relative-path>
@@ -67,6 +69,7 @@ request x = ones(2,2); y = ones(3,1); z = x + y; print z;
 plan
 confirm <request_hash>
 execute
+interpret
 stderr
 read <generated-script-relative-path>
 ```
@@ -86,6 +89,7 @@ request output file = gauss_output.txt reset; x = 12345; print x; output off;
 plan
 confirm <request_hash>
 execute
+interpret
 outputs
 read gauss_output.txt
 ```
@@ -100,6 +104,7 @@ Expected:
 
 - `stdout`: displays captured stdout after explicit request.
 - `stderr`: displays captured stderr after explicit request.
+- `interpret`: explains the current execution result from already-captured evidence. It never reruns GAUSS, retries, edits code, or reads output files automatically.
 - `outputs`: lists produced file metadata only.
 - `read <relative-path>`: reads supported text files inside the workspace, including generated `.gss` scripts and output `.txt` files.
 - `provenance`: reports backend, `gauss_ran`, process exit code, timeout state, workspace ID, execution reference, and artifact metadata.

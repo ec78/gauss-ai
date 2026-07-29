@@ -390,6 +390,16 @@ Some early runs predate stable Prompt ID assignment. Where a run does not match 
 | 42.8 | Opt-In Real GAUSS Execution | Timeout handling | Passed | [2026-07-29-code-assistant-real-gauss-execution-run-008.md](runs/2026-07-29-code-assistant-real-gauss-execution-run-008.md) | 3.8 | Timeout behavior passed through an injected result; no unsafe real-GAUSS timeout loop was run. Real-process timeout coverage remains unverified. |
 | 42.9 | Opt-In Real GAUSS Execution | Output metadata without automatic reading | Passed | [2026-07-29-code-assistant-real-gauss-execution-run-009.md](runs/2026-07-29-code-assistant-real-gauss-execution-run-009.md) | 4.0 | Real output file was registered as metadata only; `read gauss_output.txt` was required for content. |
 | 42.10 | Opt-In Real GAUSS Execution | Provenance and truthful `gauss_ran` disclosure | Passed | [2026-07-29-code-assistant-real-gauss-execution-run-010.md](runs/2026-07-29-code-assistant-real-gauss-execution-run-010.md) | 3.8 | Provenance and `gauss_ran` were truthful. Minor: completed-workspace reuse can still reach plan before failing safely at execute. |
+| 43.1 | Execution Interpretation | Successful execution interpretation | Not Run |  |  | Added in `v0.51.0`; evaluation pending. |
+| 43.2 | Execution Interpretation | Syntax-error interpretation | Not Run |  |  | Added in `v0.51.0`; evaluation pending. |
+| 43.3 | Execution Interpretation | Runtime matrix-dimension interpretation | Not Run |  |  | Added in `v0.51.0`; evaluation pending. |
+| 43.4 | Execution Interpretation | Timeout interpretation | Not Run |  |  | Added in `v0.51.0`; evaluation pending. |
+| 43.5 | Execution Interpretation | Blocked-before-launch interpretation | Not Run |  |  | Added in `v0.51.0`; evaluation pending. |
+| 43.6 | Execution Interpretation | Fake execution interpretation | Not Run |  |  | Added in `v0.51.0`; evaluation pending. |
+| 43.7 | Execution Interpretation | Missing stdout/stderr evidence | Not Run |  |  | Added in `v0.51.0`; evaluation pending. |
+| 43.8 | Execution Interpretation | Real execution metadata interpretation | Not Run |  |  | Added in `v0.51.0`; evaluation pending. |
+| 43.9 | Execution Interpretation | Unknown GAUSS error code | Not Run |  |  | Added in `v0.51.0`; evaluation pending. |
+| 43.10 | Execution Interpretation | Truthfulness boundaries | Not Run |  |  | Added in `v0.51.0`; evaluation pending. |
 
 ## Completed Runs Not Directly Covered By Current Stable Prompts
 

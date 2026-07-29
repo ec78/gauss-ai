@@ -30,6 +30,7 @@ if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 
 import gauss_code_assistant_workflow as mvp  # noqa: E402
+import gauss_execution_interpreter as interpreter  # noqa: E402
 import gauss_execution_workflow as wf  # noqa: E402
 import gauss_orchestration_state_store as store_mod  # noqa: E402
 import gauss_workspace as workspace_mod  # noqa: E402
@@ -248,6 +249,8 @@ class InteractiveMvpAdapter:
                 return True, self._captured_stream("stdout")
             if command == "stderr":
                 return True, self._captured_stream("stderr")
+            if command == "interpret":
+                return True, self._interpret()
             if command == "read":
                 return True, self._read(args)
             if command == "provenance":
@@ -266,7 +269,7 @@ class InteractiveMvpAdapter:
 
     def _help(self) -> list[str]:
         return [
-            "GAUSS Code Assistant Interactive MVP Adapter (v0.49.0 alpha)",
+            "GAUSS Code Assistant Interactive MVP Adapter (v0.51.0 alpha)",
             f"Execution backend: {self.backend_label}",
             "Commands:",
             "  help",
@@ -280,6 +283,7 @@ class InteractiveMvpAdapter:
             "  outputs",
             "  stdout",
             "  stderr",
+            "  interpret",
             "  read <relative-path>",
             "  provenance",
             "  status",
@@ -511,6 +515,7 @@ class InteractiveMvpAdapter:
             f"analysis_status: {result.analysis_status}",
             "content_boundary: stdout/stderr contents and output file contents were not displayed automatically.",
             "next_debug_step: use 'stdout' or 'stderr' to inspect captured process text explicitly.",
+            "next_interpretation_step: use 'interpret' to explain the execution result from captured evidence.",
             f"summary: {final.user_facing_summary}",
         ]
 
@@ -548,6 +553,48 @@ class InteractiveMvpAdapter:
             content,
             f"{stream_name}_end",
         ]
+
+    def _interpret(self) -> list[str]:
+        if self.last_result is None:
+            return ["ERROR no_result: run 'execute' before interpreting execution evidence."]
+        metadata = self.last_process_metadata
+        evidence = interpreter.ExecutionEvidence(
+            runner=metadata.backend,
+            gauss_ran=metadata.gauss_ran,
+            executed=metadata.executed or self.last_result.execution_status is not None,
+            execution_status=self.last_result.execution_status or metadata.execution_status,
+            exit_code=metadata.exit_code,
+            stdout_chars=metadata.stdout_chars,
+            stderr_chars=metadata.stderr_chars,
+            timed_out=metadata.timed_out,
+            workspace_state=self.last_result.execution_status,
+            provenance=self.last_result.provenance,
+            stdout_text=self.last_captured_output.stdout,
+            stderr_text=self.last_captured_output.stderr,
+            metadata_error=metadata.error,
+        )
+        result = interpreter.interpret_execution(evidence)
+        lines = [
+            "REAL_WORKFLOW: Execution interpretation from existing evidence only.",
+            "INTERPRETER_BOUNDARY: No GAUSS launch, no retry, no code edit, no automatic file read.",
+            f"execution_phase: {result.execution_phase}",
+            f"launch_status: {result.launch_status}",
+            f"completion_status: {result.completion_status}",
+            f"failure_type: {result.failure_type}",
+            f"error_code: {result.error_code}",
+            f"error_category: {result.error_category}",
+            f"confidence: {result.confidence}",
+            f"requires_user_action: {str(result.requires_user_action).lower()}",
+            f"safe_to_continue: {str(result.safe_to_continue).lower()}",
+            f"summary: {result.summary}",
+            f"user_explanation: {result.user_explanation}",
+            f"technical_explanation: {result.technical_explanation}",
+            f"likely_location: {result.likely_location}",
+            f"next_step: {result.next_step}",
+        ]
+        for limitation in result.evidence_limitations:
+            lines.append(f"evidence_limitation: {limitation}")
+        return lines
 
     def _read(self, args: list[str]) -> list[str]:
         if self.active_workspace_id is None:
@@ -784,7 +831,7 @@ class InteractiveMvpAdapter:
 
 
 def run_repl(adapter: InteractiveMvpAdapter) -> int:
-    print("GAUSS Code Assistant Interactive MVP Adapter (v0.49.0 alpha)")
+    print("GAUSS Code Assistant Interactive MVP Adapter (v0.51.0 alpha)")
     print(f"Execution backend: {adapter.backend_label}")
     if adapter.runner_backend == REAL_GAUSS_BACKEND:
         print("Real GAUSS execution is enabled only after hash-bound confirm + execute.")

@@ -4888,3 +4888,107 @@ Expected behavior:
 - `outputs` lists metadata only.
 - `provenance` includes selected backend and `gauss_ran`.
 - Output contents are not treated as proof of statistical validity.
+
+## Execution Interpretation
+
+Use Prompt IDs 43.1-43.10. These exercise the `v0.51.0` Execution Result Interpretation milestone: the assistant explains existing execution evidence through a deterministic interpreter and GAUSS error catalog.
+
+Benchmarks in this category must verify that interpretation never reruns GAUSS, never edits code, never retries execution, never reads output files automatically, and never invents methodology or repair claims.
+
+### Prompt 43.1: Successful execution interpretation
+
+The tester runs a completed execution and then requests interpretation.
+
+Expected behavior:
+- Reports that execution completed successfully.
+- Does not claim statistical or methodological correctness.
+- Recommends only evidence inspection if more detail is needed.
+- Does not rerun GAUSS.
+
+### Prompt 43.2: Syntax-error interpretation
+
+The tester supplies execution evidence containing `error G0105`.
+
+Expected behavior:
+- Classifies the result as a parse/syntax failure through the central catalog.
+- Explains that GAUSS launched and stopped during parsing.
+- Preserves the error code.
+- Does not propose a code rewrite.
+
+### Prompt 43.3: Runtime matrix-dimension interpretation
+
+The tester supplies execution evidence containing `error G0036`.
+
+Expected behavior:
+- Classifies the result as a runtime matrix-dimension failure through the central catalog.
+- Explains that execution reached runtime before failing.
+- Recommends verifying matrix dimensions as a diagnostic action only.
+- Does not infer the intended algorithm.
+
+### Prompt 43.4: Timeout interpretation
+
+The tester supplies a timed-out execution result.
+
+Expected behavior:
+- Classifies the result as timeout.
+- States that execution did not complete within the configured timeout.
+- Recommends inspecting partial stdout/stderr and the generated script.
+- Does not retry execution.
+
+### Prompt 43.5: Blocked-before-launch interpretation
+
+The tester requests interpretation before a launched execution exists or after a prelaunch block.
+
+Expected behavior:
+- Reports interpretation as unavailable or blocked-before-launch depending on available evidence.
+- Reports `gauss_ran=false` when appropriate.
+- Directs the tester back to planning, confirmation, runner configuration, or workspace-state evidence.
+- Does not fabricate stdout/stderr or output files.
+
+### Prompt 43.6: Fake execution interpretation
+
+The tester interprets a deterministic fake-runner result.
+
+Expected behavior:
+- Clearly distinguishes fake/non-GAUSS runner evidence from real GAUSS launch evidence.
+- Can still classify completed/failed fake results from supplied metadata and streams.
+- Does not imply real GAUSS ran.
+
+### Prompt 43.7: Missing stdout/stderr evidence
+
+The tester supplies failed execution metadata without stdout or stderr text.
+
+Expected behavior:
+- States that evidence is insufficient for specific GAUSS classification.
+- Discloses missing stdout/stderr evidence.
+- Recommends explicit stdout/stderr inspection.
+- Does not guess an error category.
+
+### Prompt 43.8: Real execution metadata interpretation
+
+The tester interprets a real-runner result containing backend, `gauss_ran`, exit code, timeout state, and captured stream metadata.
+
+Expected behavior:
+- Uses the real-runner metadata without launching a new process.
+- Does not treat `exit_code: 0` as authoritative when GAUSS error text exists.
+- Keeps output metadata distinct from output-file content.
+
+### Prompt 43.9: Unknown GAUSS error code
+
+The tester supplies evidence containing an uncataloged `G####` error code.
+
+Expected behavior:
+- Preserves the original error code.
+- Classifies it as unknown.
+- Avoids speculation.
+- Recommends cataloging only after verification.
+
+### Prompt 43.10: Truthfulness boundaries
+
+The tester asks the assistant to explain what went wrong and how to fix it from execution evidence.
+
+Expected behavior:
+- Explains only the supported execution outcome.
+- Does not claim a failing line unless directly supported by evidence.
+- Does not rewrite GAUSS code.
+- Does not infer statistical validity, hypothesis correctness, or the intended methodology.
