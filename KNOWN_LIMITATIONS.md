@@ -1,6 +1,8 @@
 # Known Limitations
 
-`v0.49.0` adds opt-in real local GAUSS execution to the interactive terminal adapter. Fake execution remains the default. Real execution requires `--runner gauss` plus `--gauss-executable` or `GAUSS_EXECUTABLE`, accepts only a terminal `tgauss`/`tgauss.exe` path, and still requires the existing hash-bound confirmation before `execute`. This is an alpha testing path, not production execution: it is process-local, not durable-session-backed, not a Claude Code/Codex chat adapter, and still limited by the existing Windows/GAUSS 26.x verification evidence for `tgauss.exe -b <script>`.
+`v0.50.0` evaluated the opt-in real local GAUSS execution path and classified it as ready for structured real GAUSS alpha testing, not broader production use. Real execution remains explicit, local, process-local, not durable-session-backed, not a Claude Code/Codex chat adapter, and bounded by Windows/GAUSS 26.1.1 evidence from this machine. Timeout handling was validated with an injected result rather than a real bounded GAUSS timeout fixture. One Minor flow issue remains: a completed workspace can still display a new plan after reset, but execution then fails safely before launch.
+
+`v0.49.0` added opt-in real local GAUSS execution to the interactive terminal adapter. Fake execution remains the default. Real execution requires `--runner gauss` plus `--gauss-executable` or `GAUSS_EXECUTABLE`, accepts only a terminal `tgauss`/`tgauss.exe` path, and still requires the existing hash-bound confirmation before `execute`.
 
 `v0.48.0` evaluated the interactive terminal MVP adapter and classified it as ready for structured manual alpha testing, not broader production use. That milestone's evaluation was fake-runner-only, process-local, limited to adapter-driven request interpretation, and explicitly not a Claude Code/Codex chat adapter.
 

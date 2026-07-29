@@ -4777,7 +4777,22 @@ Expected behavior:
 - Reports `gauss_ran: false`.
 - Does not import or invoke the real execution helper.
 
-### Prompt 42.2: Real backend startup validation
+### Prompt 42.2: Explicit real-runner activation
+
+The tester starts the adapter with `--runner gauss` and a valid terminal executable.
+
+Example command:
+```text
+python scripts/gauss_code_assistant_cli.py --runner gauss --gauss-executable <path-to-tgauss.exe>
+```
+
+Expected behavior:
+- Reports `Execution backend: REAL_GAUSS`.
+- Reports the selected terminal executable path.
+- Does not execute until a request is planned, confirmed, and executed.
+- Does not require or use the fake runner.
+
+### Prompt 42.3: Missing executable blocks execution
 
 The tester starts the adapter with `--runner gauss` but no executable, or with a GUI executable path.
 
@@ -4792,16 +4807,7 @@ Expected behavior:
 - Refuses GUI-style `gauss.exe`.
 - Does not fall back to the fake runner.
 
-### Prompt 42.3: Executable precedence
-
-The tester provides both `--gauss-executable` and `GAUSS_EXECUTABLE`.
-
-Expected behavior:
-- Uses the explicit CLI argument path.
-- Documents the selected path in startup/status/plan output.
-- Does not silently choose a different installed GAUSS executable.
-
-### Prompt 42.4: Real-mode plan disclosure
+### Prompt 42.4: Real execution requires confirmation
 
 The tester creates a workspace, submits code, and asks for a plan in real mode.
 
@@ -4817,18 +4823,9 @@ Expected behavior:
 - Displays executable path, workspace ID/path, timeout, request hash, plan digest, code digest, and confirmation instruction.
 - States that real GAUSS will run only after confirm + execute.
 - Discloses the generated-script boundary for inline code.
-- Does not execute.
+- Does not execute until the exact request hash is confirmed.
 
-### Prompt 42.5: Confirmation still gates real execution
-
-The tester attempts `execute` before confirming in real mode.
-
-Expected behavior:
-- Blocks through the existing workflow stage validation.
-- Does not call the real helper.
-- Does not call the fake runner.
-
-### Prompt 42.6: Stale confirmation blocks real execution
+### Prompt 42.5: Stale confirmation blocks real execution
 
 The tester supplies the wrong request hash in real mode.
 
@@ -4838,7 +4835,7 @@ Expected behavior:
 - Does not call the fake runner.
 - Leaves the user needing the exact current request hash.
 
-### Prompt 42.7: Real helper success metadata
+### Prompt 42.6: Successful real execution result mapping
 
 The tester confirms and executes in real mode.
 
@@ -4849,7 +4846,7 @@ Expected behavior:
 - Does not print stdout/stderr contents automatically.
 - Does not print output-file contents automatically.
 
-### Prompt 42.8: Real helper failure metadata
+### Prompt 42.7: Nonzero or error-classified GAUSS result mapping
 
 The confirmed real execution fails or returns a nonzero/error-classified result.
 
@@ -4859,7 +4856,27 @@ Expected behavior:
 - Does not fall back to fake execution.
 - Keeps process failure distinct from statistical or methodological invalidity.
 
-### Prompt 42.9: Prelaunch block reports `gauss_ran: false`
+### Prompt 42.8: Timeout handling
+
+A timeout-like execution result is produced through a safe controlled mechanism.
+
+Expected behavior:
+- Reports a timed-out status without treating it as statistical invalidity.
+- Reports `gauss_ran` truthfully according to whether a process started.
+- Does not use an unbounded GAUSS loop merely to force timeout evidence.
+- Discloses whether the evidence came from real GAUSS or an injected timeout result.
+
+### Prompt 42.9: Output metadata without automatic reading
+
+The tester runs a real-mode script that creates a small output file in the active workspace.
+
+Expected behavior:
+- Registers generated artifact metadata.
+- `outputs` reports metadata only.
+- File contents are not displayed until explicit `read <relative-path>`.
+- No outside-workspace file is produced.
+
+### Prompt 42.10: Provenance and truthful `gauss_ran` disclosure
 
 The real helper returns a prelaunch blocked/error result with `executed: false`.
 
@@ -4867,13 +4884,7 @@ Expected behavior:
 - Reports `gauss_ran: false`.
 - Reports the block/error as an execution-attempt outcome, not fake success.
 - Does not fabricate stdout, stderr, output files, or generated-script evidence.
-
-### Prompt 42.10: Real-mode provenance and explicit read boundary
-
-After a real-mode execution with output metadata, the tester uses `outputs`, `provenance`, and `read`.
-
-Expected behavior:
+- For launched executions, reports `gauss_ran: true`.
 - `outputs` lists metadata only.
 - `provenance` includes selected backend and `gauss_ran`.
-- File contents appear only after an explicit `read <relative-path>`.
 - Output contents are not treated as proof of statistical validity.

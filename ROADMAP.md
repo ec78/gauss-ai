@@ -566,7 +566,19 @@ See `planning/v0.49.0-opt-in-real-gauss-execution.md`.
 - **Docs added.** `docs/real-gauss-alpha-testing-guide.md` and `release-notes-v0.49.0.md` document the alpha path and limitations.
 - **Still deferred.** Durable `ExecutionSession` integration, Claude Code/Codex chat integration, uploads, persistence, cloud execution, autonomous execution/reading, GUI executable support, and broad cross-platform execution guarantees remain out of scope.
 
-## v0.50.0+ Candidate: Durable Execution Session Integration (Deferred)
+## v0.50.0: Real GAUSS Execution Evaluation and Debugging Readiness
+
+See `planning/v0.50.0-real-gauss-execution-evaluation.md`.
+
+- **Evaluation milestone completed.** All ten `42.x` Opt-In Real GAUSS Execution benchmarks were formally evaluated: 10/10 Passed, 0 Critical, 0 Major, 1 Minor.
+- **Real GAUSS scenarios exercised.** Successful arithmetic, syntax-style failure, runtime dimension failure, and output-file creation were run through the interactive adapter path using GAUSS 26.1.1 on Windows.
+- **Debugging readiness improved.** Added explicit `stdout` and `stderr` commands so captured process text can be inspected only after user request; `execute` remains metadata-only.
+- **Output boundaries held.** Output metadata remained metadata until explicit `read`; generated scripts could be inspected through the existing workspace file reader.
+- **Caveats retained.** Timeout behavior was validated with an injected timeout result rather than an unsafe real-GAUSS loop, and completed-workspace reuse fails safely at `execute` after a plan can still be displayed.
+- **Readiness classification:** ready for structured real GAUSS alpha testing, not ready for autonomous debugging-loop implementation.
+- **Still deferred.** Durable `ExecutionSession` integration, Claude Code/Codex chat integration, autonomous debugging, automatic retries, cloud execution, broader file readers, and production cross-platform guarantees remain out of scope.
+
+## v0.51.0+ Candidate: Durable Execution Session Integration (Deferred)
 
 See `planning/v0.47.0-session-integration-readiness.md`.
 

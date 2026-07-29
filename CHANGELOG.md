@@ -4,6 +4,10 @@ This file records notable changes to the GAUSS AI framework.
 
 ## [Unreleased]
 
+- Added `v0.50.0` Real GAUSS Execution Evaluation and Debugging Readiness: formally evaluated all `42.x` Opt-In Real GAUSS Execution benchmarks with real GAUSS where required.
+- Added explicit `stdout` and `stderr` commands to the interactive adapter so captured process text is inspectable only after an explicit user request.
+- Added ten `42.x` evaluation run files and updated benchmark coverage, run index, and evaluation dashboard to show 10/10 Passed with 0 Critical, 0 Major, and 1 Minor finding.
+- Added `planning/v0.50.0-real-gauss-execution-evaluation.md`, `docs/real-gauss-debugging-alpha-guide.md`, and `release-notes-v0.50.0.md`.
 - Added `v0.49.0` Opt-In Real GAUSS Execution: the interactive adapter now supports `--runner gauss` with an explicit terminal `tgauss`/`tgauss.exe` executable path while keeping the fake runner as default.
 - Routed the opt-in real adapter path through the existing `gauss_code_execution.execute_gauss_code(...)` helper with no CLI-owned process runner and no silent fallback to fake execution.
 - Added backend/process disclosures for planning, execution, status, outputs, and provenance, including `gauss_ran`, exit code, timeout state, duration, stdout/stderr lengths, and generated-script path metadata.

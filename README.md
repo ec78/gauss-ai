@@ -6,7 +6,9 @@ Rather than creating a single, monolithic chatbot, this project defines a collec
 
 ## Current Status
 
-Current milestone: `v0.49.0` - Opt-In Real GAUSS Execution. The interactive terminal adapter still defaults to a deterministic fake runner, but testers can now explicitly start it with `--runner gauss` plus a validated terminal `tgauss` executable path to exercise the existing `gauss_code_execution` helper through the implemented MVP workflow. Real execution remains local/experimental, Windows-oriented by existing verification evidence, hash-confirmation-gated, metadata-first, and not a Claude Code/Codex chat adapter.
+Current milestone: `v0.50.0` - Real GAUSS Execution Evaluation and Debugging Readiness. The `42.x` Opt-In Real GAUSS Execution benchmarks have been formally evaluated: 10/10 Passed, 0 Critical defects, 0 Major defects, 1 Minor flow-clarity finding. The project is classified as **ready for structured real GAUSS alpha testing** using `docs/real-gauss-alpha-testing-guide.md` and `docs/real-gauss-debugging-alpha-guide.md`. Real execution remains explicit, local, hash-confirmation-gated, and not a Claude Code/Codex chat adapter.
+
+Previous milestone: `v0.49.0` - Opt-In Real GAUSS Execution. The interactive terminal adapter still defaults to a deterministic fake runner, but testers can explicitly start it with `--runner gauss` plus a validated terminal `tgauss` executable path to exercise the existing `gauss_code_execution` helper through the implemented MVP workflow.
 
 Previous milestone: `v0.48.0` - Interactive Adapter Evaluation and Alpha Readiness. The `41.x` Interactive MVP Adapter benchmarks were evaluated against the real terminal adapter command-processing path and composed workflow: 10/10 Passed at 4.0, 0 Critical defects, 0 Major defects, 0 Minor defects. The adapter was classified as **ready for structured manual alpha testing** using `docs/manual-alpha-testing-guide.md` and `docs/alpha-feedback-template.md`; that evaluation used the fake runner only and did not run GAUSS.
 
@@ -66,7 +68,7 @@ gauss-mvp> provenance
 gauss-mvp> exit
 ```
 
-The adapter invokes `GaussCodeAssistantWorkflow` for planning, confirmation, execution, output metadata, file reading, and provenance. Execution uses a deterministic fake runner by default and clearly labels that fact. In real mode, the plan and execution transcript disclose the selected backend, executable path, workspace path, timeout, request hash, generated-script boundary, exit code, timeout state, duration, and stdout/stderr lengths without printing stdout/stderr contents or output-file contents automatically. Use [docs/manual-alpha-testing-guide.md](docs/manual-alpha-testing-guide.md), [docs/alpha-feedback-template.md](docs/alpha-feedback-template.md), and for real execution specifically [docs/real-gauss-alpha-testing-guide.md](docs/real-gauss-alpha-testing-guide.md).
+The adapter invokes `GaussCodeAssistantWorkflow` for planning, confirmation, execution, output metadata, file reading, and provenance. Execution uses a deterministic fake runner by default and clearly labels that fact. In real mode, the plan and execution transcript disclose the selected backend, executable path, workspace path, timeout, request hash, generated-script boundary, exit code, timeout state, duration, and stdout/stderr lengths without printing stdout/stderr contents or output-file contents automatically. Captured stdout/stderr can be inspected only through explicit `stdout`/`stderr` commands. Use [docs/manual-alpha-testing-guide.md](docs/manual-alpha-testing-guide.md), [docs/alpha-feedback-template.md](docs/alpha-feedback-template.md), [docs/real-gauss-alpha-testing-guide.md](docs/real-gauss-alpha-testing-guide.md), and [docs/real-gauss-debugging-alpha-guide.md](docs/real-gauss-debugging-alpha-guide.md).
 
 ## How GAUSS AI Reduces Hallucinations
 

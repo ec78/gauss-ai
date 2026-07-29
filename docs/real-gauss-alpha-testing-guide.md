@@ -71,6 +71,7 @@ The exact generated `.gss` script path is reported after execution because the e
 - `outputs` must show metadata only.
 - File contents require `read <relative-path>`.
 - Stdout/stderr contents are not printed automatically; the adapter reports lengths and process metadata.
+- Use `stdout` and `stderr` when you explicitly want to inspect captured process text after execution.
 
 ## Feedback
 

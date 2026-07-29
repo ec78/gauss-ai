@@ -15,8 +15,8 @@ Use this dashboard to understand coverage by milestone, prompt range, expert cat
 
 ## Dashboard Metadata
 
-- Current milestone: `v0.49.0` - Opt-In Real GAUSS Execution.
-- Captures evaluation state through: `v0.49.0`'s `42.x` Opt-In Real GAUSS Execution benchmark prompts and coverage rows (added, not yet formally evaluated). `v0.49.0` adds opt-in real local GAUSS execution to the interactive adapter; benchmark evaluation is intentionally not marked Passed without corresponding run files and, where required, real-process evidence.
+- Current milestone: `v0.50.0` - Real GAUSS Execution Evaluation and Debugging Readiness.
+- Captures evaluation state through: `v0.50.0`'s `42.x` Opt-In Real GAUSS Execution benchmark evaluations (completed, 10/10 Passed, 0 Critical, 0 Major, 1 Minor). `v0.50.0` classifies the project as ready for structured real GAUSS alpha testing.
 - Evaluation model: manual benchmark evaluation with tracking guard. No runtime scoring engine exists.
 - Runtime scoring engine: Not implemented.
 - Benchmark prompts source: `evaluations/benchmark-prompts.md`.
@@ -29,18 +29,18 @@ Use this dashboard to understand coverage by milestone, prompt range, expert cat
 
 ## Current Evaluation State
 
-Captured by running `scripts/check_evaluation_tracking.py --json` against the repository state after `v0.49.0`'s `42.x` benchmark prompts and coverage rows were added, plus the default release-readiness/evidence guards during release validation:
+Captured by running `scripts/check_evaluation_tracking.py --json` against the repository state after `v0.50.0`'s `42.x` benchmark evaluations were completed, plus the default release-readiness/evidence guards during release validation:
 
 - Prompt IDs: 384.
 - Coverage rows: 384.
-- Run files referenced: 361.
-- Index entries: 366.
+- Run files referenced: 371.
+- Index entries: 376.
 - Tracking errors: 0.
 - Documented (historical) tracking warnings: 2.
-- Current active-category ("Not Run" in the highest-numbered active category) warnings: 10 - all 10 `42.x` prompts (Opt-In Real GAUSS Execution) are newly added and intentionally `Not Run`.
+- Current active-category ("Not Run" in the highest-numbered active category) warnings: 0 - all 10 `42.x` prompts (Opt-In Real GAUSS Execution) are now `Passed`.
 - Default tracking guard (`check_evaluation_tracking.py`): PASS.
 - JSON tracking guard (`check_evaluation_tracking.py --json`): `overall_pass: true`.
-- Strict tracking guard (`check_evaluation_tracking.py --strict`): FAIL - expected, because strict mode promotes the documented historical warnings and the current active-category `42.x` Not Run warnings.
+- Strict tracking guard (`check_evaluation_tracking.py --strict`): FAIL - expected, because strict mode promotes the documented historical warnings.
 - Release-readiness default (`check_release_readiness.py`): PASS.
 - Release-readiness JSON (`check_release_readiness.py --json`): `overall_pass: true`.
 - Release-readiness strict (`check_release_readiness.py --strict`): informational FAIL — `strict_pass: false`, but `overall_pass` remains `true` because strict results never affect this script's own exit code.
@@ -101,7 +101,7 @@ Important:
 | 40.x | GAUSS Code Assistant MVP Workflow (`v0.45.0`, evaluated `v0.46.0`) | Orchestration-facade conversational judgment: explain/debug staying advisory-only, confirmation-gated execution, unsafe/unknown-workspace refusal, output-metadata-only inspection, stale-plan confirmation rejection, provenance accuracy, explicit file reading, and no-automatic-retry error recovery | 10 | 10 | 10/10 Passed (9 at 4.0, one at 3.8) | All prompts run and passed for `v0.45.0`'s `scripts/gauss_code_assistant_workflow.py`, evaluated during `v0.46.0` against real, executed evidence. `40.6` (Workspace validation) passed with one documented **Minor** finding — a redundant, non-blocking wording clause in the declined-proposal message when a workspace is unknown — recorded, not fixed during `v0.46.0` per this repository's own defect-severity policy (`planning/v0.46.0-safe-file-reading-mvp-evaluation.md`'s Defect Classification). Zero Critical or Major defects found. No GAUSS was run. |
 
 | 41.x | Interactive MVP Adapter (`v0.47.0`, evaluated `v0.48.0`) | Terminal alpha harness behavior: first-run workspace bootstrap, request-to-plan, hash-bound confirmation, stale confirmation rejection, execute-before-confirm block, deterministic fake success, output metadata vs. content, explicit file reading, unsafe-read rejection, provenance and session-caveat disclosure | 10 | 10 | 10/10 Passed (4.0) | All prompts run and passed for `scripts/gauss_code_assistant_cli.py`, evaluated during `v0.48.0` against the real adapter command-processing path and composed workflow with deterministic fake runners. Zero Critical, Major, or Minor defects found. No GAUSS was run. Classification: ready for structured manual alpha testing. |
-| 42.x | Opt-In Real GAUSS Execution (`v0.49.0`) | Interactive adapter real-backend behavior: fake default, real startup validation, executable precedence, real-mode plan disclosure, confirmation/stale-confirmation gating, success/failure/prelaunch metadata, provenance, and explicit read boundary | 10 | 0 | 10 Not Run | Prompts and coverage rows added in `v0.49.0`. Implementation tests validate this boundary against injected helpers by default, and an explicit `--run-gauss` smoke gate exists, but no formal 42.x benchmark run files have been recorded yet. Real-process scenarios must not be marked Passed without actual real GAUSS evidence where required. |
+| 42.x | Opt-In Real GAUSS Execution (`v0.49.0`, evaluated `v0.50.0`) | Interactive adapter real-backend behavior: fake default, explicit real activation, missing/invalid executable blocking, confirmation/stale-confirmation gating, successful real execution, syntax/runtime failures, timeout handling, output metadata vs. explicit read, provenance and `gauss_ran` accuracy | 10 | 10 | 10/10 Passed (8 at 4.0, 2 at 3.8) | All prompts run and passed. Real-process scenarios used GAUSS 26.1.1 on Windows where required. Timeout handling used an injected timeout result rather than an unsafe unbounded GAUSS loop. One Minor finding: completed-workspace reuse can still display a plan before failing safely at execute. Classification: ready for structured real GAUSS alpha testing. |
 
 Counts above are taken directly from `evaluations/benchmark-coverage.md` and `evaluations/runs/INDEX.md`. Categories `1.x` through `10.x` predate stable Prompt ID conventions in places and are summarized as "early baseline" or historical where a prompt has never been run; these were not invented to force full coverage, and their `Not Run` prompts remain genuinely not run today.
 
@@ -122,7 +122,7 @@ Counts above are taken directly from `evaluations/benchmark-coverage.md` and `ev
 - **Historical tracking warning — 2.2 / 2.3 Prompt ID mismatch:** the `2.2` coverage row (`evaluations/benchmark-coverage.md`) links to `evaluations/runs/2026-06-30-code-assistant-manual-run-001.md`, but that run file's own `Prompt ID:` field states `2.3`. This predates stable Prompt ID assignment and is documented in `evaluations/benchmark-coverage.md`'s "Historical Tracking Exceptions" section. It is a warning, not an error, and `--strict` promotes it to a failure by design.
 - **Historical tracking warning — `v0.3.0` smoke-test file:** `evaluations/runs/2026-07-01-code-assistant-smoke-test-v0.3.0.md` predates Prompt-ID-based tracking entirely and is intentionally not indexed in `benchmark-coverage.md` or `runs/INDEX.md`. It is preserved as legitimate repository history, documented in the same "Historical Tracking Exceptions" section. It is a warning, not an error, and `--strict` promotes it to a failure by design.
 - **Evidence warnings — `glm`/`olsmt` HDF5 URI false positives:** `examples/retrieval/schema-aligned/glm.evidence.json` and `olsmt.evidence.json` contain path-shaped strings from official documentation examples (an HDF5 URI) that the path-warning heuristic flags. These are reviewed false positives, not real local-path leaks, documented in `scripts/README.md`'s strict-mode policy notes. `--strict` promotes them to failures by design.
-- **Current active-category "Not Run" warnings:** 10. The `42.x` Opt-In Real GAUSS Execution prompts were added in `v0.49.0` and intentionally remain `Not Run` until formal evaluation evidence exists.
+- **Current active-category "Not Run" warnings:** none. After completing the `42.x` evaluations, every prompt in the highest-numbered category is `Passed`.
 - **Strict-mode policy:** default gates (`check_evaluation_tracking.py`, `validate_all_evidence.py`, `check_release_readiness.py`) pass. Strict modes are informational and fail only because the warnings above are promoted to failures. Strict failures should not block a release unless the project explicitly changes this policy — see `scripts/README.md` and prior readiness checklists (`v0.12.0` onward) for the policy's history.
 
 ## Guard Command Reference

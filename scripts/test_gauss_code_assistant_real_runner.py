@@ -229,6 +229,8 @@ def test_09_real_stdout_stderr_are_metadata_only() -> None:
         check("stdout length reported", "stdout_chars: 12" in out)
         check("stderr length reported", "stderr_chars: 0" in out)
         check("stdout content not printed", "stub stdout" not in out)
+        stdout = _joined(_run(adapter, "stdout"))
+        check("explicit stdout returns content", "stub stdout" in stdout)
         outputs = _joined(_run(adapter, "outputs"))
         check("output metadata present", "real-helper-output.txt" in outputs)
         check("output content not printed", "real helper output fixture" not in outputs)
@@ -248,6 +250,8 @@ def test_10_nonzero_or_failed_result_does_not_fall_back_to_fake() -> None:
         check("exit code surfaced", "exit_code: 1" in out)
         check("still reports real process started", "gauss_ran: true" in out)
         check("no fake fallback", "FAKE_RUNNER" not in out)
+        stderr = _joined(_run(adapter, "stderr"))
+        check("explicit stderr returns failure content", "stub stderr" in stderr)
         adapter.close()
 
 

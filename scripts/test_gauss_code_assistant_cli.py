@@ -280,6 +280,8 @@ def test_18_complete_transcript_style_flow() -> None:
             f"confirm {request_hash}",
             "execute",
             "outputs",
+            "stdout",
+            "stderr",
             "read fake-output.txt",
             "provenance",
             "status",
@@ -289,8 +291,30 @@ def test_18_complete_transcript_style_flow() -> None:
         check("transcript exercises plan", "confirmation_required" in text)
         check("transcript exercises fake execute", "FAKE_RUNNER" in text)
         check("transcript exercises metadata listing", "CONTENT_DISCLOSURE" in text)
+        check("transcript exercises explicit stdout", "stdout_begin" in text)
+        check("transcript exercises explicit stderr", "stderr_begin" in text)
         check("transcript exercises explicit read", "content_begin" in text)
         check("transcript exercises provenance", "provenance.execution_instance_id" in text)
+        adapter.close()
+
+
+def test_19_captured_streams_require_explicit_request() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _run(adapter, "workspace create")
+        _run(adapter, "request --fake-failure x = ;")
+        _run(adapter, "plan")
+        assert adapter.mvp_session is not None
+        assert adapter.mvp_session.proposal_outcome is not None
+        assert adapter.mvp_session.proposal_outcome.proposal is not None
+        request_hash = adapter.mvp_session.proposal_outcome.proposal.request_hash
+        _run(adapter, f"confirm {request_hash}")
+        execute = _joined(_run(adapter, "execute"))
+        check("execute reports stderr length", "stderr_chars:" in execute)
+        check("execute does not print captured stderr content", "Undefined symbol" not in execute)
+        stderr = _joined(_run(adapter, "stderr"))
+        check("explicit stderr returns captured content", "Undefined symbol" in stderr)
+        check("explicit stderr has boundaries", "stderr_begin" in stderr and "stderr_end" in stderr)
         adapter.close()
 
 

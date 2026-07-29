@@ -72,6 +72,12 @@ class ExecutionProcessMetadata:
     error: str | None = None
 
 
+@dataclass
+class CapturedProcessOutput:
+    stdout: str | None = None
+    stderr: str | None = None
+
+
 def _backend_label(backend: str) -> str:
     if backend == REAL_GAUSS_BACKEND:
         return "REAL_GAUSS"
@@ -161,6 +167,7 @@ class InteractiveMvpAdapter:
         )
         self._real_helper = real_helper
         self.last_process_metadata = ExecutionProcessMetadata(backend=self.backend_label)
+        self.last_captured_output = CapturedProcessOutput()
         self._owns_parent_tmp = workspace_parent is None
         self._parent_tmp: tempfile.TemporaryDirectory[str] | None = None
         if workspace_parent is None:
@@ -237,6 +244,10 @@ class InteractiveMvpAdapter:
                 return True, self._execute()
             if command == "outputs":
                 return True, self._outputs()
+            if command == "stdout":
+                return True, self._captured_stream("stdout")
+            if command == "stderr":
+                return True, self._captured_stream("stderr")
             if command == "read":
                 return True, self._read(args)
             if command == "provenance":
@@ -267,6 +278,8 @@ class InteractiveMvpAdapter:
             "  decline",
             "  execute",
             "  outputs",
+            "  stdout",
+            "  stderr",
             "  read <relative-path>",
             "  provenance",
             "  status",
@@ -341,6 +354,7 @@ class InteractiveMvpAdapter:
         self.mvp_session = mvp.MvpWorkflowSession()
         self.last_result = None
         self.last_process_metadata = ExecutionProcessMetadata(backend=self.backend_label)
+        self.last_captured_output = CapturedProcessOutput()
         return [
             "ADAPTER: Stored request. No workflow execution occurred yet.",
             "ADAPTER_DISCLOSURE: Request interpretation is limited and adapter-driven.",
@@ -496,6 +510,7 @@ class InteractiveMvpAdapter:
             f"output_file_count: {result.output_file_count}",
             f"analysis_status: {result.analysis_status}",
             "content_boundary: stdout/stderr contents and output file contents were not displayed automatically.",
+            "next_debug_step: use 'stdout' or 'stderr' to inspect captured process text explicitly.",
             f"summary: {final.user_facing_summary}",
         ]
 
@@ -514,6 +529,25 @@ class InteractiveMvpAdapter:
                 f"created_by_execution={item.created_by_execution}"
             )
         return lines
+
+    def _captured_stream(self, stream_name: str) -> list[str]:
+        if self.last_result is None:
+            return [f"ERROR no_result: run 'execute' before inspecting {stream_name}."]
+        if stream_name == "stdout":
+            content = self.last_captured_output.stdout
+        else:
+            content = self.last_captured_output.stderr
+        if content is None:
+            content = ""
+        return [
+            f"REAL_WORKFLOW: Reporting captured {stream_name} only after explicit request.",
+            f"execution_backend: {self.last_process_metadata.backend}",
+            f"gauss_ran: {str(self.last_process_metadata.gauss_ran).lower()}",
+            f"{stream_name}_chars: {len(content)}",
+            f"{stream_name}_begin",
+            content,
+            f"{stream_name}_end",
+        ]
 
     def _read(self, args: list[str]) -> list[str]:
         if self.active_workspace_id is None:
@@ -602,6 +636,7 @@ class InteractiveMvpAdapter:
         self.pending_request = None
         self.last_result = None
         self.last_process_metadata = ExecutionProcessMetadata(backend=self.backend_label)
+        self.last_captured_output = CapturedProcessOutput()
         return [
             "ADAPTER: Cleared active request, proposal, confirmation, and result.",
             "workspace_retained: true",
@@ -617,6 +652,10 @@ class InteractiveMvpAdapter:
         def runner(runner_input: Any) -> dict[str, Any]:
             workdir = Path(runner_input.working_directory)
             if mode == "failure":
+                self.last_captured_output = CapturedProcessOutput(
+                    stdout="Program execute failed\n",
+                    stderr="error G0105 : Undefined symbol\n",
+                )
                 self.last_process_metadata = ExecutionProcessMetadata(
                     backend=self.backend_label,
                     executable_path=runner_input.executable_path,
@@ -646,6 +685,7 @@ class InteractiveMvpAdapter:
                 "gauss_ran=false\n"
             ).encode("utf-8")
             output_path.write_bytes(content)
+            self.last_captured_output = CapturedProcessOutput(stdout="fake runner completed\n", stderr="")
             self.last_process_metadata = ExecutionProcessMetadata(
                 backend=self.backend_label,
                 executable_path=runner_input.executable_path,
@@ -716,10 +756,12 @@ class InteractiveMvpAdapter:
                 )
             except Exception as exc:  # noqa: BLE001
                 self.last_process_metadata.error = str(exc)
+                self.last_captured_output = CapturedProcessOutput()
                 raise
 
             stdout_text = result.get("stdout") or ""
             stderr_text = result.get("stderr") or ""
+            self.last_captured_output = CapturedProcessOutput(stdout=stdout_text, stderr=stderr_text)
             raw_details = result.get("raw_execution_details") or {}
             self.last_process_metadata = ExecutionProcessMetadata(
                 backend=self.backend_label,
