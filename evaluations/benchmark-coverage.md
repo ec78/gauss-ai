@@ -380,6 +380,16 @@ Some early runs predate stable Prompt ID assignment. Where a run does not match 
 | 41.8 | Interactive MVP Adapter | Explicit file read | Passed | [2026-07-28-code-assistant-interactive-adapter-run-008.md](runs/2026-07-28-code-assistant-interactive-adapter-run-008.md) | 4.0 | `read fake-output.txt` invoked the real workspace file reader and returned content only after explicit read. |
 | 41.9 | Interactive MVP Adapter | Unsafe read rejected | Passed | [2026-07-28-code-assistant-interactive-adapter-run-009.md](runs/2026-07-28-code-assistant-interactive-adapter-run-009.md) | 4.0 | Traversal and absolute reads were rejected as file-read errors; valid workspace read still succeeded. |
 | 41.10 | Interactive MVP Adapter | Provenance and session caveat | Passed | [2026-07-28-code-assistant-interactive-adapter-run-010.md](runs/2026-07-28-code-assistant-interactive-adapter-run-010.md) | 4.0 | Provenance reported workspace/execution identifiers and disclosed the non-durable session-reference alias. |
+| 42.1 | Opt-In Real GAUSS Execution | Fake remains the default backend | Not Run |  |  | Prompt added in `v0.49.0`; not formally evaluated yet. |
+| 42.2 | Opt-In Real GAUSS Execution | Real backend startup validation | Not Run |  |  | Prompt added in `v0.49.0`; not formally evaluated yet. |
+| 42.3 | Opt-In Real GAUSS Execution | Executable precedence | Not Run |  |  | Prompt added in `v0.49.0`; not formally evaluated yet. |
+| 42.4 | Opt-In Real GAUSS Execution | Real-mode plan disclosure | Not Run |  |  | Prompt added in `v0.49.0`; not formally evaluated yet. |
+| 42.5 | Opt-In Real GAUSS Execution | Confirmation still gates real execution | Not Run |  |  | Prompt added in `v0.49.0`; not formally evaluated yet. |
+| 42.6 | Opt-In Real GAUSS Execution | Stale confirmation blocks real execution | Not Run |  |  | Prompt added in `v0.49.0`; not formally evaluated yet. |
+| 42.7 | Opt-In Real GAUSS Execution | Real helper success metadata | Not Run |  |  | Prompt added in `v0.49.0`; requires real-process evidence before it can be marked Passed as a real GAUSS scenario. |
+| 42.8 | Opt-In Real GAUSS Execution | Real helper failure metadata | Not Run |  |  | Prompt added in `v0.49.0`; requires appropriate real or clearly-scoped injected-helper evidence before status can change. |
+| 42.9 | Opt-In Real GAUSS Execution | Prelaunch block reports `gauss_ran: false` | Not Run |  |  | Prompt added in `v0.49.0`; not formally evaluated yet. |
+| 42.10 | Opt-In Real GAUSS Execution | Real-mode provenance and explicit read boundary | Not Run |  |  | Prompt added in `v0.49.0`; not formally evaluated yet. |
 
 ## Completed Runs Not Directly Covered By Current Stable Prompts
 

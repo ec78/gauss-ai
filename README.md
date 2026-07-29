@@ -6,7 +6,9 @@ Rather than creating a single, monolithic chatbot, this project defines a collec
 
 ## Current Status
 
-Current milestone: `v0.48.0` - Interactive Adapter Evaluation and Alpha Readiness. The `41.x` Interactive MVP Adapter benchmarks have been evaluated against the real terminal adapter command-processing path and composed workflow: 10/10 Passed at 4.0, 0 Critical defects, 0 Major defects, 0 Minor defects. The adapter is classified as **ready for structured manual alpha testing** using `docs/manual-alpha-testing-guide.md` and `docs/alpha-feedback-template.md`. GAUSS is still not run by the adapter.
+Current milestone: `v0.49.0` - Opt-In Real GAUSS Execution. The interactive terminal adapter still defaults to a deterministic fake runner, but testers can now explicitly start it with `--runner gauss` plus a validated terminal `tgauss` executable path to exercise the existing `gauss_code_execution` helper through the implemented MVP workflow. Real execution remains local/experimental, Windows-oriented by existing verification evidence, hash-confirmation-gated, metadata-first, and not a Claude Code/Codex chat adapter.
+
+Previous milestone: `v0.48.0` - Interactive Adapter Evaluation and Alpha Readiness. The `41.x` Interactive MVP Adapter benchmarks were evaluated against the real terminal adapter command-processing path and composed workflow: 10/10 Passed at 4.0, 0 Critical defects, 0 Major defects, 0 Minor defects. The adapter was classified as **ready for structured manual alpha testing** using `docs/manual-alpha-testing-guide.md` and `docs/alpha-feedback-template.md`; that evaluation used the fake runner only and did not run GAUSS.
 
 Current milestone: `v0.47.0` - Interactive MVP Adapter. The repository now includes `scripts/gauss_code_assistant_cli.py`, a terminal alpha harness that exercises the real `GaussCodeAssistantWorkflow` without requiring testers to manually construct Python objects. It uses a deterministic fake runner by default, does not run GAUSS, does not implement durable `ExecutionSession` integration, and does not provide a Claude Code/Codex chat adapter. Durable execution-session integration is deferred until after adapter-backed alpha testing.
 
@@ -30,7 +32,7 @@ The assistant can be tried manually by providing the Code Assistant prompt, agen
 
 ## Interactive MVP Adapter Alpha
 
-`v0.47.0` adds a terminal alpha harness for testing the implemented MVP workflow without writing Python glue:
+`v0.49.0` includes a terminal alpha harness for testing the implemented MVP workflow without writing Python glue. Fake execution remains the default:
 
 ```text
 python scripts/gauss_code_assistant_cli.py
@@ -41,6 +43,14 @@ Optional: pass an approved local workspace parent directory:
 ```text
 python scripts/gauss_code_assistant_cli.py --workspace-parent .gauss-ai-alpha-workspaces
 ```
+
+For explicit local real-GAUSS alpha testing only, select the real backend and provide a terminal executable:
+
+```text
+python scripts/gauss_code_assistant_cli.py --runner gauss --gauss-executable C:\gauss26\tgauss.exe
+```
+
+If `--gauss-executable` is omitted, the real backend checks `GAUSS_EXECUTABLE`. The CLI argument takes precedence. Missing paths, invalid paths, and GUI executables such as `gauss.exe` block startup with a clear error; there is no silent fallback to the fake runner.
 
 Sample session:
 
@@ -56,7 +66,7 @@ gauss-mvp> provenance
 gauss-mvp> exit
 ```
 
-The adapter invokes `GaussCodeAssistantWorkflow` for planning, confirmation, execution, output metadata, file reading, and provenance. Execution uses a deterministic fake runner by default and clearly labels that fact; normal alpha testing through this adapter does **not** run GAUSS. As of `v0.48.0`, the `41.x` adapter benchmarks are complete (10/10 Passed), and structured manual alpha testing should use [docs/manual-alpha-testing-guide.md](docs/manual-alpha-testing-guide.md) plus [docs/alpha-feedback-template.md](docs/alpha-feedback-template.md).
+The adapter invokes `GaussCodeAssistantWorkflow` for planning, confirmation, execution, output metadata, file reading, and provenance. Execution uses a deterministic fake runner by default and clearly labels that fact. In real mode, the plan and execution transcript disclose the selected backend, executable path, workspace path, timeout, request hash, generated-script boundary, exit code, timeout state, duration, and stdout/stderr lengths without printing stdout/stderr contents or output-file contents automatically. Use [docs/manual-alpha-testing-guide.md](docs/manual-alpha-testing-guide.md), [docs/alpha-feedback-template.md](docs/alpha-feedback-template.md), and for real execution specifically [docs/real-gauss-alpha-testing-guide.md](docs/real-gauss-alpha-testing-guide.md).
 
 ## How GAUSS AI Reduces Hallucinations
 

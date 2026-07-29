@@ -554,7 +554,19 @@ See `planning/v0.48.0-interactive-adapter-evaluation.md`.
 - **Alpha-readiness decision:** ready for structured manual alpha testing. Broader development should pause for human feedback before selecting the next implementation milestone.
 - **No implementation code changed.** No durable `ExecutionSession` integration, real GAUSS execution, chat adapter, uploads, persistence, cloud execution, multi-user ACLs, binary/PDF/image/spreadsheet readers, autonomous execution, or autonomous file reading were added. No GAUSS was run.
 
-## v0.49.0+ Candidate: Durable Execution Session Integration (Deferred)
+## v0.49.0: Opt-In Real GAUSS Execution
+
+See `planning/v0.49.0-opt-in-real-gauss-execution.md`.
+
+- **Opt-in real backend added to the interactive adapter.** `scripts/gauss_code_assistant_cli.py` now accepts `--runner fake|gauss`; fake remains the default.
+- **Executable selection is explicit.** Real mode requires `--gauss-executable` or `GAUSS_EXECUTABLE`, with CLI argument precedence, and accepts only terminal `tgauss`/`tgauss.exe` paths.
+- **Existing execution helper reused.** Real mode lazily calls `gauss_code_execution.execute_gauss_code(...)`; the CLI does not reimplement subprocess handling and does not silently fall back to fake execution.
+- **User-visible state improved.** Startup, plan, execute, status, outputs, and provenance disclose backend selection, executable path, workspace, timeout, request hash, `gauss_ran`, exit code, timeout state, duration, stdout/stderr lengths, generated script path metadata, and output metadata without automatic content reads.
+- **Tests added.** `scripts/test_gauss_code_assistant_real_runner.py` validates default fake behavior, real-runner validation, env/CLI precedence, confirmation gating, stale-confirm rejection, structured helper arguments, no fake fallback, prelaunch block reporting, timeout metadata, and provenance against injected helpers by default. It also includes an explicit `--run-gauss` local smoke gate.
+- **Docs added.** `docs/real-gauss-alpha-testing-guide.md` and `release-notes-v0.49.0.md` document the alpha path and limitations.
+- **Still deferred.** Durable `ExecutionSession` integration, Claude Code/Codex chat integration, uploads, persistence, cloud execution, autonomous execution/reading, GUI executable support, and broad cross-platform execution guarantees remain out of scope.
+
+## v0.50.0+ Candidate: Durable Execution Session Integration (Deferred)
 
 See `planning/v0.47.0-session-integration-readiness.md`.
 

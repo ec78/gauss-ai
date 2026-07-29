@@ -4,6 +4,11 @@ This file records notable changes to the GAUSS AI framework.
 
 ## [Unreleased]
 
+- Added `v0.49.0` Opt-In Real GAUSS Execution: the interactive adapter now supports `--runner gauss` with an explicit terminal `tgauss`/`tgauss.exe` executable path while keeping the fake runner as default.
+- Routed the opt-in real adapter path through the existing `gauss_code_execution.execute_gauss_code(...)` helper with no CLI-owned process runner and no silent fallback to fake execution.
+- Added backend/process disclosures for planning, execution, status, outputs, and provenance, including `gauss_ran`, exit code, timeout state, duration, stdout/stderr lengths, and generated-script path metadata.
+- Added `scripts/test_gauss_code_assistant_real_runner.py`, `docs/real-gauss-alpha-testing-guide.md`, `planning/v0.49.0-opt-in-real-gauss-execution.md`, and `release-notes-v0.49.0.md`.
+- Added `42.x` Opt-In Real GAUSS Execution benchmark prompts and coverage rows; formal benchmark evaluations remain pending.
 - Added `v0.48.0` Interactive Adapter Evaluation and Alpha Readiness: evaluated all `41.x` Interactive MVP Adapter benchmarks against the real adapter command-processing path and composed workflow.
 - Added `docs/manual-alpha-testing-guide.md` and `docs/alpha-feedback-template.md` for structured manual alpha testing.
 - Added ten `41.x` evaluation run files and updated benchmark coverage, run index, and evaluation dashboard to show 10/10 Passed with 0 Critical, 0 Major, and 0 Minor defects.

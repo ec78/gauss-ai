@@ -4755,3 +4755,125 @@ Expected behavior:
 - Reports workspace ID, request ID, output metadata, and recorded workflow provenance.
 - Discloses that `execution_session_reference` is currently an orchestration-instance alias, not a durable `ExecutionSession` ID.
 - Does not overstate the adapter as a Claude Code or Codex chat integration.
+
+## Opt-In Real GAUSS Execution
+
+Use Prompt IDs 42.1-42.10. These exercise the `v0.49.0` Opt-In Real GAUSS Execution milestone (`planning/v0.49.0-opt-in-real-gauss-execution.md`): the interactive adapter can use a deterministic fake runner by default or, when explicitly selected, route execution through the existing real GAUSS helper.
+
+Benchmarks in this category must distinguish injected-helper tests from actual real-process evidence. Do not mark a scenario that requires a real GAUSS process as Passed unless the evaluation actually used real GAUSS.
+
+### Prompt 42.1: Fake remains the default backend
+
+The tester starts the adapter without runner flags.
+
+Example transcript:
+```text
+status
+```
+
+Expected behavior:
+- Reports `execution_backend: FAKE`.
+- Reports `fake_runner_default: true`.
+- Reports `gauss_ran: false`.
+- Does not import or invoke the real execution helper.
+
+### Prompt 42.2: Real backend startup validation
+
+The tester starts the adapter with `--runner gauss` but no executable, or with a GUI executable path.
+
+Example command:
+```text
+python scripts/gauss_code_assistant_cli.py --runner gauss
+```
+
+Expected behavior:
+- Blocks startup with a clear runner-configuration error.
+- Requires `--gauss-executable` or `GAUSS_EXECUTABLE`.
+- Refuses GUI-style `gauss.exe`.
+- Does not fall back to the fake runner.
+
+### Prompt 42.3: Executable precedence
+
+The tester provides both `--gauss-executable` and `GAUSS_EXECUTABLE`.
+
+Expected behavior:
+- Uses the explicit CLI argument path.
+- Documents the selected path in startup/status/plan output.
+- Does not silently choose a different installed GAUSS executable.
+
+### Prompt 42.4: Real-mode plan disclosure
+
+The tester creates a workspace, submits code, and asks for a plan in real mode.
+
+Example transcript:
+```text
+workspace create
+request x = 2 + 2; print x;
+plan
+```
+
+Expected behavior:
+- Displays `execution_backend: REAL_GAUSS`.
+- Displays executable path, workspace ID/path, timeout, request hash, plan digest, code digest, and confirmation instruction.
+- States that real GAUSS will run only after confirm + execute.
+- Discloses the generated-script boundary for inline code.
+- Does not execute.
+
+### Prompt 42.5: Confirmation still gates real execution
+
+The tester attempts `execute` before confirming in real mode.
+
+Expected behavior:
+- Blocks through the existing workflow stage validation.
+- Does not call the real helper.
+- Does not call the fake runner.
+
+### Prompt 42.6: Stale confirmation blocks real execution
+
+The tester supplies the wrong request hash in real mode.
+
+Expected behavior:
+- Rejects the confirmation.
+- Does not call the real helper.
+- Does not call the fake runner.
+- Leaves the user needing the exact current request hash.
+
+### Prompt 42.7: Real helper success metadata
+
+The tester confirms and executes in real mode.
+
+Expected behavior:
+- Uses the real helper path, not the fake runner.
+- Reports `gauss_ran: true` only if a process actually started.
+- Reports execution status, exit code, timeout state, duration, stdout/stderr lengths, generated script path, and output metadata.
+- Does not print stdout/stderr contents automatically.
+- Does not print output-file contents automatically.
+
+### Prompt 42.8: Real helper failure metadata
+
+The confirmed real execution fails or returns a nonzero/error-classified result.
+
+Expected behavior:
+- Reports failed/timed-out/blocked status according to helper evidence.
+- Does not silently retry.
+- Does not fall back to fake execution.
+- Keeps process failure distinct from statistical or methodological invalidity.
+
+### Prompt 42.9: Prelaunch block reports `gauss_ran: false`
+
+The real helper returns a prelaunch blocked/error result with `executed: false`.
+
+Expected behavior:
+- Reports `gauss_ran: false`.
+- Reports the block/error as an execution-attempt outcome, not fake success.
+- Does not fabricate stdout, stderr, output files, or generated-script evidence.
+
+### Prompt 42.10: Real-mode provenance and explicit read boundary
+
+After a real-mode execution with output metadata, the tester uses `outputs`, `provenance`, and `read`.
+
+Expected behavior:
+- `outputs` lists metadata only.
+- `provenance` includes selected backend and `gauss_ran`.
+- File contents appear only after an explicit `read <relative-path>`.
+- Output contents are not treated as proof of statistical validity.

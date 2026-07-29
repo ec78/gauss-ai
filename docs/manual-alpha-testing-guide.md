@@ -1,13 +1,15 @@
 # Manual Alpha Testing Guide
 
-This guide tests the `v0.47.0`/`v0.48.0` interactive adapter path. It does not run GAUSS.
+This guide tests the default fake-runner interactive adapter path from `v0.47.0` through `v0.49.0`. It does not run GAUSS.
+
+For explicit local real-GAUSS alpha testing added in `v0.49.0`, use [real-gauss-alpha-testing-guide.md](real-gauss-alpha-testing-guide.md).
 
 ## Prerequisites
 
 - Python available as `python`.
 - Repository checkout available locally.
 - Run commands from the repository root.
-- No GAUSS installation is required for this alpha harness.
+- No GAUSS installation is required for the default fake-runner alpha harness.
 
 ## Launch
 
@@ -20,6 +22,14 @@ Optional workspace parent:
 ```text
 python scripts/gauss_code_assistant_cli.py --workspace-parent .gauss-ai-alpha-workspaces
 ```
+
+Real execution is opt-in only:
+
+```text
+python scripts/gauss_code_assistant_cli.py --runner gauss --gauss-executable C:\gauss26\tgauss.exe
+```
+
+Do not use real mode for this default guide; use the dedicated real-GAUSS guide instead.
 
 ## Supported Commands
 
@@ -71,6 +81,7 @@ exit
 Pass criteria:
 
 - `plan` shows `request_hash`, `plan_digest`, `code_digest`, `workspace_id`, `orchestration_instance_id`, and the confirmation command.
+- `plan` shows `execution_backend: FAKE`.
 - `execute` is accepted only after confirmation.
 - `execute` says `FAKE_RUNNER` and `GAUSS was not run`.
 - `outputs` reports metadata only.

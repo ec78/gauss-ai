@@ -1,6 +1,8 @@
 # Known Limitations
 
-`v0.48.0` evaluated the interactive terminal MVP adapter and classified it as ready for structured manual alpha testing, not broader production use. The adapter remains fake-runner-only, process-local, limited to adapter-driven request interpretation, and explicitly not a Claude Code/Codex chat adapter. It still does not run GAUSS or integrate durable `ExecutionSession` records.
+`v0.49.0` adds opt-in real local GAUSS execution to the interactive terminal adapter. Fake execution remains the default. Real execution requires `--runner gauss` plus `--gauss-executable` or `GAUSS_EXECUTABLE`, accepts only a terminal `tgauss`/`tgauss.exe` path, and still requires the existing hash-bound confirmation before `execute`. This is an alpha testing path, not production execution: it is process-local, not durable-session-backed, not a Claude Code/Codex chat adapter, and still limited by the existing Windows/GAUSS 26.x verification evidence for `tgauss.exe -b <script>`.
+
+`v0.48.0` evaluated the interactive terminal MVP adapter and classified it as ready for structured manual alpha testing, not broader production use. That milestone's evaluation was fake-runner-only, process-local, limited to adapter-driven request interpretation, and explicitly not a Claude Code/Codex chat adapter.
 
 `v0.47.0` adds an interactive terminal MVP adapter (`scripts/gauss_code_assistant_cli.py`) for alpha testing the real Python MVP workflow without manually constructing Python objects. It is intentionally fake-runner-only by default, does not run GAUSS, does not create durable execution sessions, and does not provide a Claude Code/Codex chat adapter. Durable execution-session integration remains deferred until after this interactive harness is exercised.
 

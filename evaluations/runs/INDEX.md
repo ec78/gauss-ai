@@ -385,6 +385,8 @@ This index summarizes completed manual evaluation runs for GAUSS AI agents. Use 
 | [2026-07-28-code-assistant-interactive-adapter-run-009.md](2026-07-28-code-assistant-interactive-adapter-run-009.md) | 2026-07-28 | 41.9 | Interactive MVP Adapter | Unsafe read rejected | 4.0 | Pass | Traversal and absolute reads were rejected as file-read errors; valid workspace read still succeeded. | None blocking. |
 | [2026-07-28-code-assistant-interactive-adapter-run-010.md](2026-07-28-code-assistant-interactive-adapter-run-010.md) | 2026-07-28 | 41.10 | Interactive MVP Adapter | Provenance and session caveat | 4.0 | Pass | Provenance reported workspace/execution identifiers and disclosed the non-durable session-reference alias. | None blocking. |
 
+Note: `42.x` Opt-In Real GAUSS Execution prompts and coverage rows were added in `v0.49.0`, but no formal `42.x` run files have been recorded yet. Real-process scenarios must not be indexed as passed without actual real GAUSS evidence where required.
+
 ## Patterns Observed So Far
 
 - Strong handling of GAUSS string search and `strindx == 0`.

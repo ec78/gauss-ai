@@ -6,14 +6,16 @@ terminal commands are translated into the existing
 components. The adapter owns no execution eligibility, confirmation,
 workspace-boundary, file-reading, or provenance safety logic.
 
-Default execution uses a deterministic fake runner. This module never imports
-`gauss_code_execution`, never launches GAUSS, and never constructs a real
-helper runner.
+Default execution uses a deterministic fake runner. Real local GAUSS execution
+is available only when the tester explicitly starts the adapter with
+`--runner gauss`; that path lazily imports the existing `gauss_code_execution`
+helper and never falls back to the fake runner.
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import shlex
 import sys
 import tempfile
@@ -38,6 +40,10 @@ PROMPT = "gauss-mvp> "
 DEFAULT_CODE = "x = 2 + 2;\nprint x;"
 FAILURE_CODE = "x = ;"
 DEFAULT_EXECUTABLE = "C:/example/gauss26/tgauss.exe"
+FAKE_BACKEND = "fake"
+REAL_GAUSS_BACKEND = "gauss"
+DEFAULT_FAKE_GAUSS_VERSION = "GAUSS 26 (fake runner default; no GAUSS invocation)"
+DEFAULT_REAL_GAUSS_VERSION = "GAUSS local terminal executable (explicit opt-in)"
 
 
 @dataclass(frozen=True)
@@ -46,6 +52,57 @@ class PendingRequest:
     summary: str
     code: str
     fake_result: str
+
+
+@dataclass
+class ExecutionProcessMetadata:
+    backend: str
+    executable_path: str | None = None
+    gauss_ran: bool = False
+    executed: bool = False
+    execution_status: str | None = None
+    exit_code: int | None = None
+    timed_out: bool = False
+    elapsed_seconds: float | None = None
+    timeout_seconds: float | None = None
+    stdout_chars: int = 0
+    stderr_chars: int = 0
+    generated_script_path: str | None = None
+    command_preview: str | None = None
+    error: str | None = None
+
+
+def _backend_label(backend: str) -> str:
+    if backend == REAL_GAUSS_BACKEND:
+        return "REAL_GAUSS"
+    return "FAKE"
+
+
+def _resolve_real_executable(
+    *,
+    runner_backend: str,
+    gauss_executable: str | Path | None,
+    env: dict[str, str] | None = None,
+) -> str | None:
+    if runner_backend != REAL_GAUSS_BACKEND:
+        return None
+
+    env_values = os.environ if env is None else env
+    candidate = str(gauss_executable).strip() if gauss_executable is not None else ""
+    if not candidate:
+        candidate = env_values.get("GAUSS_EXECUTABLE", "").strip()
+    if not candidate:
+        raise ValueError("real GAUSS runner requires --gauss-executable or GAUSS_EXECUTABLE.")
+
+    path = Path(candidate).expanduser().resolve(strict=False)
+    if not path.exists() or not path.is_file():
+        raise ValueError(f"real GAUSS executable was not found: {path}")
+    if path.name.lower() not in {"tgauss", "tgauss.exe"}:
+        raise ValueError(
+            "real GAUSS runner requires a terminal executable named tgauss or tgauss.exe; "
+            f"refusing {path.name!r}."
+        )
+    return str(path)
 
 
 def _passing_safety() -> wf.SafetyReviewInput:
@@ -80,9 +137,30 @@ class InteractiveMvpAdapter:
         workspace_parent: str | Path | None = None,
         session_id: str | None = None,
         clock: Any = time.time,
+        runner_backend: str = FAKE_BACKEND,
+        gauss_executable: str | Path | None = None,
+        gauss_version: str | None = None,
+        real_helper: Any | None = None,
+        env: dict[str, str] | None = None,
     ) -> None:
+        if runner_backend not in {FAKE_BACKEND, REAL_GAUSS_BACKEND}:
+            raise ValueError("runner_backend must be 'fake' or 'gauss'.")
         self.adapter_session_id = session_id or f"adapter-{uuid.uuid4().hex}"
         self._clock = clock
+        self.runner_backend = runner_backend
+        self.backend_label = _backend_label(runner_backend)
+        self.real_gauss_executable = _resolve_real_executable(
+            runner_backend=runner_backend,
+            gauss_executable=gauss_executable,
+            env=env,
+        )
+        self.gauss_version = (
+            gauss_version
+            if gauss_version is not None
+            else (DEFAULT_REAL_GAUSS_VERSION if runner_backend == REAL_GAUSS_BACKEND else DEFAULT_FAKE_GAUSS_VERSION)
+        )
+        self._real_helper = real_helper
+        self.last_process_metadata = ExecutionProcessMetadata(backend=self.backend_label)
         self._owns_parent_tmp = workspace_parent is None
         self._parent_tmp: tempfile.TemporaryDirectory[str] | None = None
         if workspace_parent is None:
@@ -139,7 +217,12 @@ class InteractiveMvpAdapter:
             if command in {"help", "?"}:
                 return True, self._help()
             if command in {"exit", "quit"}:
-                return False, ["Exiting interactive MVP adapter. No GAUSS was run by this adapter."]
+                ran_text = (
+                    "GAUSS process started in this adapter session."
+                    if self.last_process_metadata.gauss_ran
+                    else "No GAUSS was run; no GAUSS process was started by this adapter session."
+                )
+                return False, [f"Exiting interactive MVP adapter. {ran_text}"]
             if command == "workspace":
                 return True, self._workspace(args)
             if command == "request":
@@ -172,7 +255,8 @@ class InteractiveMvpAdapter:
 
     def _help(self) -> list[str]:
         return [
-            "GAUSS Code Assistant Interactive MVP Adapter (v0.47.0 alpha)",
+            "GAUSS Code Assistant Interactive MVP Adapter (v0.49.0 alpha)",
+            f"Execution backend: {self.backend_label}",
             "Commands:",
             "  help",
             "  workspace create",
@@ -188,7 +272,8 @@ class InteractiveMvpAdapter:
             "  status",
             "  reset",
             "  exit",
-            "Default execution uses a deterministic fake runner. GAUSS is never run by this adapter.",
+            "Default execution uses a deterministic fake runner.",
+            "Real GAUSS execution is opt-in only with --runner gauss and a terminal tgauss executable.",
         ]
 
     def _workspace(self, args: list[str]) -> list[str]:
@@ -255,10 +340,12 @@ class InteractiveMvpAdapter:
         )
         self.mvp_session = mvp.MvpWorkflowSession()
         self.last_result = None
+        self.last_process_metadata = ExecutionProcessMetadata(backend=self.backend_label)
         return [
             "ADAPTER: Stored request. No workflow execution occurred yet.",
             "ADAPTER_DISCLOSURE: Request interpretation is limited and adapter-driven.",
             f"request_id: {self.pending_request.request_id}",
+            f"execution_backend: {self.backend_label}",
             f"fake_runner_mode: {fake_result}",
             "next_step: run 'plan'",
         ]
@@ -278,8 +365,8 @@ class InteractiveMvpAdapter:
             eligibility_declarations=wf.EligibilityDeclarations(execution_explicitly_requested=True),
             safety_input=_passing_safety(),
             code=self.pending_request.code,
-            executable_path=DEFAULT_EXECUTABLE,
-            gauss_version="GAUSS 26 (fake runner default; no GAUSS invocation)",
+            executable_path=self.real_gauss_executable or DEFAULT_EXECUTABLE,
+            gauss_version=self.gauss_version,
             timeout_seconds=30.0,
             workspace_id=self.active_workspace_id,
         )
@@ -298,6 +385,8 @@ class InteractiveMvpAdapter:
         return [
             "REAL_WORKFLOW: GaussCodeAssistantWorkflow.propose invoked.",
             "Execution plan (nothing has run):",
+            f"execution_backend: {self.backend_label}",
+            f"real_gauss_will_run_after_confirm_execute: {str(self.runner_backend == REAL_GAUSS_BACKEND).lower()}",
             f"adapter_session_id: {self.adapter_session_id}",
             f"workspace_id: {p.workspace_id}",
             f"request_id: {p.request_id}",
@@ -308,7 +397,10 @@ class InteractiveMvpAdapter:
             f"code_digest: {p.code_digest}",
             f"working_directory: {p.working_directory}",
             f"executable_path: {p.executable_path}",
+            "script_path: inline code; gauss_code_execution will generate a .gss script inside the workspace at execution time",
             f"timeout_seconds: {p.timeout_seconds}",
+            "request_hash_confirmation: the request_hash above must be supplied exactly before execution.",
+            "content_boundary: stdout/stderr and output files are not read automatically.",
             "confirmation_required: run 'confirm <request_hash>' to execute this exact plan.",
         ]
 
@@ -373,18 +465,37 @@ class InteractiveMvpAdapter:
             return ["ERROR no_session: run 'request' and 'plan' first."]
         if self.pending_request is None:
             return ["ERROR no_request: run 'request <code>' first."]
-        result = self.workflow.execute(self.mvp_session, runner=self._fake_runner(self.pending_request.fake_result))
+        runner = (
+            self._fake_runner(self.pending_request.fake_result)
+            if self.runner_backend == FAKE_BACKEND
+            else self._real_gauss_runner()
+        )
+        result = self.workflow.execute(self.mvp_session, runner=runner)
         final = self.workflow.compose_response(self.mvp_session)
         self.last_result = final
+        metadata = self.last_process_metadata
         return [
             "REAL_WORKFLOW: GaussCodeAssistantWorkflow.execute invoked.",
-            "FAKE_RUNNER: deterministic fake runner used; GAUSS was not run.",
+            (
+                "FAKE_RUNNER: deterministic fake runner used; GAUSS was not run."
+                if self.runner_backend == FAKE_BACKEND
+                else "REAL_GAUSS_RUNNER: existing gauss_code_execution helper selected; no fake fallback was used."
+            ),
+            f"execution_backend: {metadata.backend}",
+            f"gauss_ran: {str(metadata.gauss_ran).lower()}",
             f"orchestration_instance_id: {result.orchestration_instance_id}",
             f"execution_status: {result.execution_status}",
             f"executed: {result.executed}",
+            f"exit_code: {metadata.exit_code}",
+            f"timed_out: {str(metadata.timed_out).lower()}",
+            f"duration_seconds: {metadata.elapsed_seconds}",
+            f"stdout_chars: {metadata.stdout_chars}",
+            f"stderr_chars: {metadata.stderr_chars}",
+            f"generated_script_path: {metadata.generated_script_path or 'none'}",
             f"runtime_error_detected: {result.runtime_error_detected}",
             f"output_file_count: {result.output_file_count}",
             f"analysis_status: {result.analysis_status}",
+            "content_boundary: stdout/stderr contents and output file contents were not displayed automatically.",
             f"summary: {final.user_facing_summary}",
         ]
 
@@ -394,6 +505,7 @@ class InteractiveMvpAdapter:
         lines = [
             "REAL_WORKFLOW: Reporting WorkflowResult.files_produced metadata only.",
             "CONTENT_DISCLOSURE: No file contents are read by 'outputs'. Use 'read <relative-path>'.",
+            f"execution_backend: {self.last_process_metadata.backend}",
             f"file_count: {len(self.last_result.files_produced)}",
         ]
         for item in self.last_result.files_produced:
@@ -440,6 +552,10 @@ class InteractiveMvpAdapter:
         lines = [
             "REAL_WORKFLOW: Reporting WorkflowResult.provenance.",
             f"adapter_session_id: {self.adapter_session_id}",
+            f"execution_backend: {self.last_process_metadata.backend}",
+            f"gauss_ran: {str(self.last_process_metadata.gauss_ran).lower()}",
+            f"process_exit_code: {self.last_process_metadata.exit_code}",
+            f"process_timed_out: {str(self.last_process_metadata.timed_out).lower()}",
             f"workspace_id: {self.last_result.workspace_id}",
             f"execution_session_reference: {self.last_result.execution_session_reference}",
             "execution_session_reference_note: this is orchestration_instance_id, not a durable ExecutionSession ID yet.",
@@ -473,14 +589,19 @@ class InteractiveMvpAdapter:
             f"request_id: {request_id}",
             f"mvp_stage: {stage}",
             f"orchestration_instance_id: {instance_id or 'none'}",
-            "fake_runner_default: true",
-            "gauss_ran: false",
+            f"execution_backend: {self.backend_label}",
+            f"fake_runner_default: {str(self.runner_backend == FAKE_BACKEND).lower()}",
+            f"real_gauss_executable: {self.real_gauss_executable or 'none'}",
+            f"gauss_ran: {str(self.last_process_metadata.gauss_ran).lower()}",
+            f"last_exit_code: {self.last_process_metadata.exit_code}",
+            f"last_timed_out: {str(self.last_process_metadata.timed_out).lower()}",
         ]
 
     def _reset(self) -> list[str]:
         self.mvp_session = None
         self.pending_request = None
         self.last_result = None
+        self.last_process_metadata = ExecutionProcessMetadata(backend=self.backend_label)
         return [
             "ADAPTER: Cleared active request, proposal, confirmation, and result.",
             "workspace_retained: true",
@@ -496,6 +617,18 @@ class InteractiveMvpAdapter:
         def runner(runner_input: Any) -> dict[str, Any]:
             workdir = Path(runner_input.working_directory)
             if mode == "failure":
+                self.last_process_metadata = ExecutionProcessMetadata(
+                    backend=self.backend_label,
+                    executable_path=runner_input.executable_path,
+                    gauss_ran=False,
+                    executed=True,
+                    execution_status="failed",
+                    exit_code=0,
+                    timed_out=False,
+                    timeout_seconds=runner_input.timeout_seconds,
+                    stdout_chars=len("Program execute failed\n"),
+                    stderr_chars=len("error G0105 : Undefined symbol\n"),
+                )
                 return {
                     "executed": True,
                     "execution_status": "failed",
@@ -513,6 +646,18 @@ class InteractiveMvpAdapter:
                 "gauss_ran=false\n"
             ).encode("utf-8")
             output_path.write_bytes(content)
+            self.last_process_metadata = ExecutionProcessMetadata(
+                backend=self.backend_label,
+                executable_path=runner_input.executable_path,
+                gauss_ran=False,
+                executed=True,
+                execution_status="completed",
+                exit_code=0,
+                timed_out=False,
+                timeout_seconds=runner_input.timeout_seconds,
+                stdout_chars=len("fake runner completed\n"),
+                stderr_chars=0,
+            )
             return {
                 "executed": True,
                 "execution_status": "completed",
@@ -533,10 +678,77 @@ class InteractiveMvpAdapter:
 
         return runner
 
+    # ------------------------------------------------------------------
+    # opt-in real execution
+    # ------------------------------------------------------------------
+
+    def _load_real_helper(self) -> Any:
+        if self._real_helper is not None:
+            return self._real_helper
+        import gauss_code_execution  # noqa: PLC0415
+
+        self._real_helper = gauss_code_execution.execute_gauss_code
+        return self._real_helper
+
+    def _real_gauss_runner(self):
+        def runner(runner_input: Any) -> dict[str, Any]:
+            helper = self._load_real_helper()
+            self.last_process_metadata = ExecutionProcessMetadata(
+                backend=self.backend_label,
+                executable_path=self.real_gauss_executable,
+                gauss_ran=False,
+                timeout_seconds=runner_input.timeout_seconds,
+            )
+            try:
+                result = helper(
+                    executable_path=self.real_gauss_executable,
+                    gauss_version=self.gauss_version,
+                    code=runner_input.code,
+                    script_path=runner_input.script_path,
+                    working_directory=runner_input.working_directory,
+                    input_files=list(runner_input.expected_input_files),
+                    output_directory=runner_input.output_directory,
+                    timeout_seconds=runner_input.timeout_seconds,
+                    allow_file_write=False,
+                    allow_output_files=runner_input.allow_output_files,
+                    allow_network=False,
+                    strict=True,
+                )
+            except Exception as exc:  # noqa: BLE001
+                self.last_process_metadata.error = str(exc)
+                raise
+
+            stdout_text = result.get("stdout") or ""
+            stderr_text = result.get("stderr") or ""
+            raw_details = result.get("raw_execution_details") or {}
+            self.last_process_metadata = ExecutionProcessMetadata(
+                backend=self.backend_label,
+                executable_path=result.get("executable_path") or self.real_gauss_executable,
+                gauss_ran=bool(result.get("executed")),
+                executed=bool(result.get("executed")),
+                execution_status=result.get("execution_status"),
+                exit_code=result.get("exit_code"),
+                timed_out=result.get("execution_status") == "timed_out",
+                elapsed_seconds=result.get("elapsed_seconds"),
+                timeout_seconds=result.get("timeout_seconds"),
+                stdout_chars=len(stdout_text),
+                stderr_chars=len(stderr_text),
+                generated_script_path=raw_details.get("generated_script_path"),
+                command_preview=result.get("command"),
+            )
+            return result
+
+        return runner
+
 
 def run_repl(adapter: InteractiveMvpAdapter) -> int:
-    print("GAUSS Code Assistant Interactive MVP Adapter (v0.47.0 alpha)")
-    print("Type 'help' for commands. Default execution uses a deterministic fake runner; GAUSS is never run.")
+    print("GAUSS Code Assistant Interactive MVP Adapter (v0.49.0 alpha)")
+    print(f"Execution backend: {adapter.backend_label}")
+    if adapter.runner_backend == REAL_GAUSS_BACKEND:
+        print("Real GAUSS execution is enabled only after hash-bound confirm + execute.")
+        print(f"GAUSS executable: {adapter.real_gauss_executable}")
+    else:
+        print("Type 'help' for commands. Default execution uses a deterministic fake runner; GAUSS is not run.")
     try:
         while True:
             try:
@@ -558,7 +770,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Interactive terminal adapter for the GAUSS Code Assistant MVP workflow. "
-            "Uses a deterministic fake runner by default and never runs GAUSS."
+            "Uses a deterministic fake runner by default; real GAUSS execution is opt-in."
         )
     )
     parser.add_argument(
@@ -566,8 +778,33 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Approved parent directory for alpha workspaces. Defaults to a temporary directory.",
     )
+    parser.add_argument(
+        "--runner",
+        choices=[FAKE_BACKEND, REAL_GAUSS_BACKEND],
+        default=FAKE_BACKEND,
+        help="Execution backend. Default: fake. Use 'gauss' only for explicit local GAUSS alpha testing.",
+    )
+    parser.add_argument(
+        "--gauss-executable",
+        default=None,
+        help="Path to terminal GAUSS executable (tgauss or tgauss.exe). Required for --runner gauss unless GAUSS_EXECUTABLE is set.",
+    )
+    parser.add_argument(
+        "--gauss-version",
+        default=None,
+        help="Optional descriptive GAUSS version label recorded in the execution plan.",
+    )
     args = parser.parse_args(argv if argv is not None else sys.argv[1:])
-    adapter = InteractiveMvpAdapter(workspace_parent=args.workspace_parent)
+    try:
+        adapter = InteractiveMvpAdapter(
+            workspace_parent=args.workspace_parent,
+            runner_backend=args.runner,
+            gauss_executable=args.gauss_executable,
+            gauss_version=args.gauss_version,
+        )
+    except ValueError as exc:
+        print(f"ERROR runner_configuration: {exc}", file=sys.stderr)
+        return 2
     return run_repl(adapter)
 
 
