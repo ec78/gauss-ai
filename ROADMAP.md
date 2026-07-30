@@ -600,6 +600,20 @@ See `planning/v0.52.0-interpretation-evaluation-and-recovery-ux.md`.
 - **Tests added.** 4 new workspace-integration tests (completed/executing rejection, unchanged state, lower-level defense-in-depth); 9 new CLI tests (recovery UX, new fake evidence modes, interpreter boundary proofs). Full existing regression suite unaffected.
 - **Still deferred.** Durable `ExecutionSession` integration, Claude Code/Codex chat integration, autonomous debugging, code repair, automatic retries, multi-attempt workspaces, cloud execution, and production cross-platform guarantees remain out of scope.
 
+## v0.53.0: Verified GAUSS Error Knowledge
+
+See `planning/v0.53.0-verified-gauss-error-knowledge.md`.
+
+- **Evaluation milestone completed.** All ten `44.x` Verified Error Knowledge benchmarks were evaluated: 10/10 Passed at 4.0, 0 Critical, 0 Major, 0 Minor.
+- **Catalog expanded with verification metadata, not size for its own sake.** `GaussErrorCatalogEntry` now carries `verification_status` (one or more of Real Runtime / Official Documentation / Repository Evidence / Unknown) and `verification_source` for every entry, plus an optional `documentation_discrepancy` field. Retrofitted onto the existing three entries (`G0105`, `G0036`, `G0025`) and required of the two new ones.
+- **Two new entries, both evidence-backed, no speculation.** `G0014` ("File not found", File I/O) is dual-sourced: real runtime evidence already recorded in `v0.28.0`'s research plus official Aptech documentation. `G0290` ("Library not found", Package or Library) is documentation-only, explicitly disclosed as not yet runtime-confirmed in this repository — no fabricated runtime claim.
+- **A genuine documentation-vs-runtime disagreement found and recorded, not hidden.** Official Aptech documentation titles `G0036` "Matrices are not conformable"; every real runtime observation in this repository shows "Matrix dimensions are incompatible". Runtime evidence remains authoritative for the catalog's own wording, per policy; the disagreement itself is a structured field on the entry.
+- **Timeout-wording Minor finding resolved.** Carried since `v0.52.0`'s own evaluation: simulated/injected timeout evidence now produces `launch_status: fake_or_non_gauss_runner` (consistent with every other non-real-evidence branch, replacing the previous `launch_unknown`) and explicitly states no real GAUSS process was launched — worded distinctly from an observed real-launch timeout.
+- **Human-readable catalog documentation added.** `docs/gauss-error-catalog.md` documents every verified entry plus explicitly-labeled future placeholders, so verified knowledge and speculation are never presented as the same thing.
+- **No execution behavior changed.** No new execution paths, no code repair, no retries, no autonomous reasoning; the interpreter still contains zero hardcoded GAUSS-specific knowledge outside the catalog (a dedicated test asserts this).
+- **Tests added.** 10 new interpreter tests (catalog integrity, duplicate detection, new-code lookup, verification metadata surfacing, documentation-discrepancy surfacing, timeout-wording distinction, no-hardcoded-knowledge structural check) and 2 new CLI tests. Full existing regression suite unaffected.
+- **Still deferred.** Assisted debugging, code repair, durable `ExecutionSession` integration, autonomous retry, Claude Code/Codex chat integration, and cloud execution remain out of scope.
+
 ## Future Candidate: Durable Execution Session Integration (Deferred)
 
 See `planning/v0.47.0-session-integration-readiness.md`.

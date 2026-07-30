@@ -4,6 +4,16 @@ This file records notable changes to the GAUSS AI framework.
 
 ## [Unreleased]
 
+- Added `v0.53.0` Verified GAUSS Error Knowledge: expanded the GAUSS error catalog with two new evidence-backed entries (`G0014` "File not found", `G0290` "Library not found") and formal verification metadata on every entry.
+- Added `VerificationStatus` (Real Runtime / Official Documentation / Repository Evidence / Unknown) and `verification_source`/`documentation_discrepancy` fields to `GaussErrorCatalogEntry`; retrofitted onto the existing three entries (`G0105`, `G0036`, `G0025`).
+- Recorded a genuine documentation-vs-runtime wording disagreement for `G0036` ("Matrices are not conformable" per official Aptech documentation vs. "Matrix dimensions are incompatible" per every real runtime observation in this repository) rather than silently picking one.
+- Fixed the `v0.52.0` Minor finding: timeout interpretation now truthfully distinguishes simulated/injected timeout evidence from an observed real-GAUSS timeout, both in wording and in `launch_status`.
+- Rebuilt `_CATALOG` construction to raise immediately on a duplicate error code instead of silently overwriting, and to require every entry to declare at least one verification status.
+- Surfaced `verification_status`/`verification_source`/`documentation_discrepancy` through `ExecutionInterpretation` and the CLI's `interpret` command.
+- Added `docs/gauss-error-catalog.md`, a human-readable catalog distinguishing verified entries from explicitly-labeled future placeholders.
+- Added 10 new tests to `scripts/test_gauss_execution_interpreter.py` (catalog integrity, duplicate detection, new-code lookup, verification metadata, documentation-discrepancy surfacing, timeout-wording distinction, no-hardcoded-knowledge structural check) and 2 to `scripts/test_gauss_code_assistant_cli.py`.
+- Added ten `44.x` Verified Error Knowledge evaluation run files and updated benchmark coverage, run index, and evaluation dashboard to show 10/10 Passed at 4.0.
+- Added `planning/v0.53.0-verified-gauss-error-knowledge.md` and `release-notes-v0.53.0.md`.
 - Added `v0.52.0` Interpretation Evaluation and Recovery UX: formally evaluated all ten `43.x` Execution Interpretation benchmarks through the real `interpret` CLI/interpreter path (10/10 Passed, 0 Critical, 0 Major, 1 Minor).
 - Fixed the completed-workspace planning issue carried since `v0.50.0`: `ExecutionWorkflow.propose_execution(...)` now rejects a new proposal against a `completed` or `executing` workspace at the authoritative workflow layer, before any `ExecutionProposal` is built; the CLI translates this into explicit `workspace create` guidance. The pre-existing `execute`-time guard remains as defense in depth.
 - Added `--fake-timeout` and `--fake-unknown-error` request modes to `InteractiveMvpAdapter` for deterministic interpreter testing without a real GAUSS installation.

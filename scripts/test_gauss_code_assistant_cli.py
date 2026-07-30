@@ -546,6 +546,38 @@ def test_31_interpret_never_auto_displays_streams_or_reads_files() -> None:
         adapter.close()
 
 
+def test_32_interpret_surfaces_verification_metadata_through_cli() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _run(adapter, "workspace create")
+        _run(adapter, "request --fake-failure x = ;")
+        _run(adapter, "plan")
+        assert adapter.mvp_session is not None
+        request_hash = adapter.mvp_session.proposal_outcome.proposal.request_hash
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        out = _joined(_run(adapter, "interpret"))
+        check("CLI surfaces verification_status for a cataloged code", "verification_status: real_runtime, official_documentation" in out)
+        check("CLI surfaces verification_source for a cataloged code", "verification_source:" in out)
+        adapter.close()
+
+
+def test_33_fake_timeout_wording_is_honestly_simulated_through_cli() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _run(adapter, "workspace create")
+        _run(adapter, "request --fake-timeout x = 2 + 2; print x;")
+        _run(adapter, "plan")
+        assert adapter.mvp_session is not None
+        request_hash = adapter.mvp_session.proposal_outcome.proposal.request_hash
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        out = _joined(_run(adapter, "interpret"))
+        check("simulated timeout is disclosed as simulated, not observed", "simulated" in out.lower() or "injected" in out.lower())
+        check("simulated timeout does not claim gauss was launched", "launch_status: launched" not in out)
+        adapter.close()
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

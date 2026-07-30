@@ -160,6 +160,111 @@ def test_10_truthfulness_no_repair_language() -> None:
     check("does not infer model validity", "hypothesis" not in text and "methodology" not in text)
 
 
+def test_11_catalog_entries_have_verification_metadata() -> None:
+    for entry in catalog.catalog_entries():
+        check(f"{entry.error_code} declares at least one verification_status", len(entry.verification_status) > 0)
+        check(f"{entry.error_code} declares a non-empty verification_source", bool(entry.verification_source and entry.verification_source.strip()))
+
+
+def test_12_duplicate_error_code_detected() -> None:
+    duplicate = (
+        catalog.lookup_error("G0105"),
+        catalog.lookup_error("G0105"),
+    )
+    assert duplicate[0] is not None and duplicate[1] is not None
+    try:
+        catalog._build_catalog(duplicate)  # noqa: SLF001 - intentionally exercising the internal guard
+        _failures.append("duplicate error codes should raise ValueError but did not")
+    except ValueError as exc:
+        check("duplicate detection names the offending code", "G0105" in str(exc))
+
+
+def test_13_new_verified_codes_present() -> None:
+    codes = catalog.known_error_codes()
+    check("G0014 is cataloged", "G0014" in codes)
+    check("G0290 is cataloged", "G0290" in codes)
+    file_not_found = catalog.lookup_error("G0014")
+    library_not_found = catalog.lookup_error("G0290")
+    assert file_not_found is not None and library_not_found is not None
+    check("G0014 is file_io category", file_not_found.category == catalog.GaussErrorCategory.FILE_IO)
+    check("G0290 is package_or_library category", library_not_found.category == catalog.GaussErrorCategory.PACKAGE_OR_LIBRARY)
+
+
+def test_14_verification_status_surfaced_through_interpreter() -> None:
+    result = interp.interpret_execution(
+        _evidence(execution_status="failed", stderr_text="error G0105 : Bad expression or missing arguments\n")
+    )
+    check("verification_status surfaced", len(result.verification_status) > 0)
+    check("real_runtime present for G0105", "real_runtime" in result.verification_status)
+    check("official_documentation present for G0105", "official_documentation" in result.verification_status)
+    check("verification_source surfaced", result.verification_source is not None)
+
+
+def test_15_documentation_discrepancy_surfaced_for_g0036() -> None:
+    result = interp.interpret_execution(
+        _evidence(execution_status="failed", stderr_text="error G0036 : Matrix dimensions are incompatible\n")
+    )
+    check("documentation_discrepancy is surfaced for G0036", result.documentation_discrepancy is not None)
+    assert result.documentation_discrepancy is not None
+    check("discrepancy names the documented wording", "not conformable" in result.documentation_discrepancy.lower())
+    check(
+        "runtime wording still used for the user-facing explanation",
+        "incompatible" in result.user_explanation.lower(),
+    )
+
+
+def test_16_g0014_file_not_found_interpreted() -> None:
+    result = interp.interpret_execution(
+        _evidence(execution_status="failed", stderr_text="error G0014 : File not found 'data.txt', line 3\n")
+    )
+    check("G0014 code preserved", result.error_code == "G0014")
+    check("G0014 category", result.failure_type == catalog.GaussErrorCategory.FILE_IO.value)
+    check("G0014 does not claim a specific fix", "rename" not in result.next_step.lower())
+
+
+def test_17_g0290_library_not_found_interpreted() -> None:
+    result = interp.interpret_execution(
+        _evidence(execution_status="failed", stderr_text="error G0290 : Library not found\n")
+    )
+    check("G0290 code preserved", result.error_code == "G0290")
+    check("G0290 category", result.failure_type == catalog.GaussErrorCategory.PACKAGE_OR_LIBRARY.value)
+    check("G0290 phase is startup", result.execution_phase == "startup")
+    check("G0290 is documentation-only verified", result.verification_status == ("official_documentation",))
+
+
+def test_18_timeout_wording_distinguishes_simulated_from_observed() -> None:
+    observed = interp.interpret_execution(
+        _evidence(runner="REAL_GAUSS", gauss_ran=True, execution_status="timed_out", timed_out=True)
+    )
+    simulated = interp.interpret_execution(
+        _evidence(runner="FAKE", gauss_ran=False, execution_status="timed_out", timed_out=True)
+    )
+    check("observed timeout reports a real launch", observed.launch_status == "launched")
+    check("observed timeout wording implies a real process", "gauss was launched" in observed.user_explanation.lower())
+    check("simulated timeout does not claim a real launch", simulated.launch_status == "fake_or_non_gauss_runner")
+    check(
+        "simulated timeout wording explicitly disclaims a real launch",
+        "simulated" in simulated.user_explanation.lower() or "injected" in simulated.user_explanation.lower(),
+    )
+    check("simulated timeout wording differs from observed timeout wording", simulated.user_explanation != observed.user_explanation)
+
+
+def test_19_unknown_code_still_unknown_with_expanded_catalog() -> None:
+    result = interp.interpret_execution(
+        _evidence(execution_status="failed", stderr_text="error G9999 : Newly observed error\n")
+    )
+    check("G9999 remains uncataloged after catalog expansion", result.error_category == catalog.GaussErrorCategory.UNKNOWN.value)
+    check("G9999 carries no verification metadata", result.verification_status == ())
+
+
+def test_20_no_hardcoded_error_knowledge_outside_catalog() -> None:
+    source = Path(interp.__file__).read_text(encoding="utf-8")
+    check(
+        "interpreter source contains no literal GAUSS error-code strings outside the catalog import",
+        not any(code in source for code in catalog.known_error_codes()),
+    )
+
+
 def run_tests() -> int:
     tests = [(name, fn) for name, fn in sorted(globals().items()) if name.startswith("test_") and callable(fn)]
     for name, fn in tests:

@@ -630,6 +630,11 @@ class InteractiveMvpAdapter:
         ]
         for limitation in result.evidence_limitations:
             lines.append(f"evidence_limitation: {limitation}")
+        if result.verification_status:
+            lines.append(f"verification_status: {', '.join(result.verification_status)}")
+            lines.append(f"verification_source: {result.verification_source}")
+        if result.documentation_discrepancy:
+            lines.append(f"documentation_discrepancy: {result.documentation_discrepancy}")
         return lines
 
     def _read(self, args: list[str]) -> list[str]:

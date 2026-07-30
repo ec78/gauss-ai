@@ -3,6 +3,13 @@
 This module never launches GAUSS, edits code, retries execution, or reads
 workspace files. It turns already-captured execution metadata and optionally
 supplied stdout/stderr text into a deterministic explanation.
+
+All GAUSS-specific error knowledge lives in `gauss_error_catalog`; this
+module contains no hardcoded error meanings of its own -- it only looks codes
+up and reports what the catalog (and its recorded verification metadata)
+actually says, including surfacing an uncataloged code as `unknown` and
+distinguishing simulated/injected timeout evidence from an observed runtime
+timeout.
 """
 
 from __future__ import annotations
@@ -51,6 +58,16 @@ class ExecutionInterpretation:
     error_code: str | None = None
     error_category: str | None = None
     evidence_limitations: tuple[str, ...] = ()
+    #: Populated only when `error_code` resolved to a cataloged entry --
+    #: the entry's own `verification_status`/`verification_source`, passed
+    #: through unchanged so a caller never has to re-derive how a cataloged
+    #: explanation was established.
+    verification_status: tuple[str, ...] = ()
+    verification_source: str | None = None
+    #: Set only when the cataloged entry itself records a documentation-vs-
+    #: runtime disagreement (see `gauss_error_catalog.GaussErrorCatalogEntry
+    #: .documentation_discrepancy`).
+    documentation_discrepancy: str | None = None
 
 
 def _find_gauss_error(stdout_text: str | None, stderr_text: str | None) -> tuple[str | None, str | None]:
@@ -77,16 +94,34 @@ def interpret_execution(evidence: ExecutionEvidence) -> ExecutionInterpretation:
     runner = evidence.runner or "unknown"
 
     if evidence.timed_out or evidence.execution_status == "timed_out":
+        # v0.53.0: distinguish an observed runtime timeout (a real GAUSS
+        # process was launched and exceeded the configured timeout) from
+        # simulated/injected timeout evidence (no real process was ever
+        # launched) -- previously both cases used the same wording, which
+        # v0.52.0's own evaluation flagged as a Minor truthfulness-adjacent
+        # inconsistency (`launch_status` didn't match the `fake_or_non_
+        # gauss_runner` label used everywhere else for non-real evidence).
+        launched = bool(evidence.gauss_ran)
+        if launched:
+            user_explanation = "GAUSS was launched and did not complete within the configured timeout."
+            technical_note = "a real GAUSS process was launched and observed exceeding the configured timeout"
+        else:
+            user_explanation = (
+                "This is simulated or injected timeout evidence, not an observed runtime timeout -- no real "
+                "GAUSS process was launched or seen exceeding a timeout."
+            )
+            technical_note = "no real GAUSS process was launched; this is simulated/injected timeout evidence"
         return ExecutionInterpretation(
             execution_phase="timeout",
-            launch_status="launched" if evidence.gauss_ran else "launch_unknown",
+            launch_status="launched" if launched else "fake_or_non_gauss_runner",
             completion_status="timed_out",
             failure_type=catalog.GaussErrorCategory.TIMEOUT.value,
             confidence="high" if evidence.executed else "medium",
             summary="Execution timed out before a completed result was available.",
-            user_explanation="GAUSS execution did not complete within the configured timeout.",
+            user_explanation=user_explanation,
             technical_explanation=(
-                f"Runner {runner!r} reported execution_status='timed_out'. No retry was attempted."
+                f"Runner {runner!r} reported execution_status='timed_out' ({technical_note}). "
+                "No retry was attempted."
             ),
             likely_location=None,
             next_step="Inspect stdout and stderr for partial output, then review the generated GAUSS script.",
@@ -159,6 +194,9 @@ def interpret_execution(evidence: ExecutionEvidence) -> ExecutionInterpretation:
             error_code=entry.error_code,
             error_category=entry.category.value,
             evidence_limitations=tuple(limitations),
+            verification_status=tuple(status.value for status in entry.verification_status),
+            verification_source=entry.verification_source,
+            documentation_discrepancy=entry.documentation_discrepancy,
         )
 
     if error_code is not None:

@@ -4992,3 +4992,92 @@ Expected behavior:
 - Does not claim a failing line unless directly supported by evidence.
 - Does not rewrite GAUSS code.
 - Does not infer statistical validity, hypothesis correctness, or the intended methodology.
+
+## Verified Error Knowledge
+
+Use Prompt IDs 44.1-44.10. These exercise the `v0.53.0` Verified GAUSS Error Knowledge milestone: an expanded, verification-tracked GAUSS error catalog (`scripts/gauss_error_catalog.py`) consumed by the same deterministic interpreter introduced in `v0.51.0`.
+
+Benchmarks in this category must verify that every cataloged explanation traces to a documented verification source, that uncataloged codes remain honestly unknown even as the catalog grows, and that timeout wording never implies a live GAUSS timeout occurred when the evidence is simulated.
+
+### Prompt 44.1: Known syntax code
+
+The tester supplies execution evidence containing the previously-cataloged `G0105`.
+
+Expected behavior:
+- Classified as parse/syntax via the catalog, unchanged by the catalog's expansion.
+- `verification_status` includes both Real Runtime and Official Documentation.
+
+### Prompt 44.2: Known runtime code
+
+The tester supplies execution evidence containing the previously-cataloged `G0036`.
+
+Expected behavior:
+- Classified as a runtime matrix-dimension failure, unchanged by the catalog's expansion.
+- The documented wording discrepancy between official documentation ("Matrices are not conformable") and observed runtime text ("Matrix dimensions are incompatible") is surfaced, not silently resolved.
+
+### Prompt 44.3: Unknown code
+
+The tester supplies evidence containing an uncataloged `G####` code.
+
+Expected behavior:
+- Remains classified as unknown even though the catalog has grown.
+- Carries no verification metadata.
+- No speculative meaning is invented.
+
+### Prompt 44.4: New verified codes
+
+The tester supplies evidence containing the newly-added `G0014` (file not found) and `G0290` (library not found).
+
+Expected behavior:
+- Both are classified via the catalog with the correct category (File I/O; Package or Library).
+- Each entry's verification basis is stated honestly — `G0014` as dual-sourced (real runtime evidence plus official documentation), `G0290` as documentation-only, not yet reproduced against a real runtime in this repository.
+
+### Prompt 44.5: Documentation consistency
+
+The tester asks whether a cataloged entry's wording matches official GAUSS/Aptech documentation.
+
+Expected behavior:
+- For entries where documentation and this repository's runtime evidence agree (`G0105`, `G0025`, `G0014`), states that they agree.
+- For `G0036`, discloses the documented disagreement explicitly rather than claiming full agreement.
+
+### Prompt 44.6: Runtime consistency
+
+The tester asks whether a cataloged entry's wording matches this repository's own observed runtime text.
+
+Expected behavior:
+- Confirms the catalog's `title`/`generic_explanation` are grounded in the literal runtime-observed text for every entry with Real Runtime verification, not a paraphrase.
+- States plainly that `G0290` has no runtime confirmation yet, rather than implying it does.
+
+### Prompt 44.7: Catalog lookup
+
+The tester asks the assistant to look up a specific error code's catalog entry.
+
+Expected behavior:
+- Returns the entry deterministically from `gauss_error_catalog.lookup_error(...)`.
+- Does not fabricate a lookup result for a code not present in the catalog.
+
+### Prompt 44.8: Unknown preservation
+
+The tester supplies a second, different uncataloged code after the catalog expansion.
+
+Expected behavior:
+- Preserves the exact code text.
+- Classifies it as unknown.
+- Recommends cataloging only after independent verification — never asserts a meaning in the meantime.
+
+### Prompt 44.9: Timeout wording
+
+The tester supplies both a real-launch timeout (`gauss_ran: true`) and a simulated/injected timeout (`gauss_ran: false`).
+
+Expected behavior:
+- The two are worded differently and truthfully: the real-launch case states GAUSS was launched and did not complete in time; the simulated case explicitly states no real GAUSS process was launched or observed timing out.
+- Neither wording is reused verbatim for the other case.
+
+### Prompt 44.10: Truthfulness
+
+The tester asks the assistant to explain a newly-cataloged error and how to fix it.
+
+Expected behavior:
+- Explains only the supported execution outcome using the new catalog entry's own `generic_explanation`/`recommended_next_step`.
+- Does not propose a code rewrite.
+- Does not claim the new catalog entry's verification is stronger than it actually is (e.g. does not claim `G0290` was runtime-confirmed).
