@@ -588,7 +588,19 @@ See `planning/v0.51.0-execution-result-interpretation.md`.
 - **Regression coverage added.** `scripts/test_gauss_execution_interpreter.py` validates catalog lookup, classification, missing streams, unknown codes, and truthfulness boundaries. `scripts/test_gauss_code_assistant_cli.py` now covers `interpret` before and after execution.
 - **`43.x` benchmark prompts added, not yet evaluated.** Ten prompts (`43.1`-`43.10`, "Execution Interpretation") cover success, syntax/runtime errors, timeout, blocked execution, fake/real evidence, missing evidence, unknown failure, and truthfulness.
 
-## v0.52.0+ Candidate: Durable Execution Session Integration (Deferred)
+## v0.52.0: Interpretation Evaluation and Recovery UX
+
+See `planning/v0.52.0-interpretation-evaluation-and-recovery-ux.md`.
+
+- **Evaluation milestone completed.** All ten `43.x` Execution Interpretation benchmarks were formally evaluated through the real CLI/interpreter path: 10/10 Passed, 0 Critical, 0 Major, 1 Minor (a `launch_status` wording-consistency observation for injected timeout evidence).
+- **Real GAUSS scenarios exercised.** Successful arithmetic, syntax-style failure (`G0105`), and runtime matrix-dimension failure (`G0036`) were run through `InteractiveMvpAdapter`'s real backend on GAUSS 26.1.1/Windows; timeout and unknown-error evidence used explicitly-disclosed deterministic fixtures.
+- **Completed-workspace planning issue fixed.** The `v0.50.0`/`v0.42.10` Minor finding — a completed workspace could still display a new plan before failing safely at `execute` — is resolved: `ExecutionWorkflow.propose_execution(...)` now rejects a new proposal against a `completed` or `executing` workspace at the authoritative workflow layer, before any `ExecutionProposal` is built, with the CLI translating the rejection into explicit `workspace create` guidance. The pre-existing `execute`-time guard remains as defense in depth.
+- **Recovery UX improvements.** New `--fake-timeout`/`--fake-unknown-error` request modes for deterministic interpreter testing; `fake_runner_mode` no longer echoed under the real backend; `reset`-vs-`workspace create` distinction documented explicitly.
+- **Interpreter boundaries proven through the integrated CLI**, not only direct unit tests: no re-execution, no retry, no code edit, no automatic file read, no auto-displayed streams, no workspace mutation, deterministic repeated interpretation.
+- **Tests added.** 4 new workspace-integration tests (completed/executing rejection, unchanged state, lower-level defense-in-depth); 9 new CLI tests (recovery UX, new fake evidence modes, interpreter boundary proofs). Full existing regression suite unaffected.
+- **Still deferred.** Durable `ExecutionSession` integration, Claude Code/Codex chat integration, autonomous debugging, code repair, automatic retries, multi-attempt workspaces, cloud execution, and production cross-platform guarantees remain out of scope.
+
+## Future Candidate: Durable Execution Session Integration (Deferred)
 
 See `planning/v0.47.0-session-integration-readiness.md`.
 

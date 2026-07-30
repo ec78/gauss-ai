@@ -15,8 +15,8 @@ Use this dashboard to understand coverage by milestone, prompt range, expert cat
 
 ## Dashboard Metadata
 
-- Current milestone: `v0.51.0` - Execution Result Interpretation.
-- Captures evaluation state through: `v0.51.0`'s addition of the `43.x` Execution Interpretation benchmark category. The `43.x` prompts are added and tracked but not yet formally evaluated.
+- Current milestone: `v0.52.0` - Interpretation Evaluation and Recovery UX.
+- Captures evaluation state through: `v0.52.0`'s formal evaluation of all ten `43.x` Execution Interpretation prompts (added, but not yet evaluated, in `v0.51.0`) and its fix for the completed-workspace planning issue.
 - Evaluation model: manual benchmark evaluation with tracking guard. No runtime scoring engine exists.
 - Runtime scoring engine: Not implemented.
 - Benchmark prompts source: `evaluations/benchmark-prompts.md`.
@@ -29,15 +29,15 @@ Use this dashboard to understand coverage by milestone, prompt range, expert cat
 
 ## Current Evaluation State
 
-Captured by running `scripts/check_evaluation_tracking.py --json` against the repository state after `v0.51.0` added the `43.x` Execution Interpretation prompts and coverage rows:
+Captured by running `scripts/check_evaluation_tracking.py --json` against the repository state after `v0.52.0` evaluated all ten `43.x` Execution Interpretation prompts and resolved `evaluations/runs/alpha-feedback-template-fake-error.md`:
 
 - Prompt IDs: 394.
 - Coverage rows: 394.
-- Run files referenced: 371.
-- Index entries: 376.
+- Run files referenced: 381.
+- Index entries: 386.
 - Tracking errors: 0.
-- Documented (historical) tracking warnings: 2.
-- Current active-category ("Not Run" in the highest-numbered active category) warnings: 10 - all 10 `43.x` prompts (Execution Interpretation) are intentionally `Not Run` pending a formal evaluation milestone.
+- Documented (historical) tracking warnings: 3 (the pre-existing 2, plus `alpha-feedback-template-fake-error.md`, resolved in `v0.52.0` as a third documented historical exception — see below).
+- Current active-category ("Not Run" in the highest-numbered active category) warnings: 0 - all ten `43.x` prompts are now `Passed` (see `evaluations/runs/2026-07-30-code-assistant-execution-interpretation-run-001.md` through `-010.md`).
 - Default tracking guard (`check_evaluation_tracking.py`): PASS.
 - JSON tracking guard (`check_evaluation_tracking.py --json`): `overall_pass: true`.
 - Strict tracking guard (`check_evaluation_tracking.py --strict`): FAIL - expected, because strict mode promotes the documented historical warnings.
@@ -50,7 +50,7 @@ Captured by running `scripts/check_evaluation_tracking.py --json` against the re
 
 Important:
 
-- A default PASS does not mean zero warnings. The tracking guard's default PASS above still carries 2 documented historical warnings; the evidence validator's default PASS still carries warnings from the `glm`/`olsmt` HDF5-URI false positives.
+- A default PASS does not mean zero warnings. The tracking guard's default PASS above still carries 3 documented historical warnings; the evidence validator's default PASS still carries warnings from the `glm`/`olsmt` HDF5-URI false positives.
 - Strict-mode failures are expected and are limited to the documented warning-promoted-to-failure cases named in this file. They are not a signal of new defects.
 - Evidence validation is structural (schema conformance, required fields, path-warning heuristics), not semantic or execution validation. It does not confirm that any documented GAUSS syntax is correct or that any example runs.
 - GAUSS code is not executed by any of these checks. All checks here operate on markdown files, JSON evidence files, and schema definitions only.
@@ -102,7 +102,7 @@ Important:
 
 | 41.x | Interactive MVP Adapter (`v0.47.0`, evaluated `v0.48.0`) | Terminal alpha harness behavior: first-run workspace bootstrap, request-to-plan, hash-bound confirmation, stale confirmation rejection, execute-before-confirm block, deterministic fake success, output metadata vs. content, explicit file reading, unsafe-read rejection, provenance and session-caveat disclosure | 10 | 10 | 10/10 Passed (4.0) | All prompts run and passed for `scripts/gauss_code_assistant_cli.py`, evaluated during `v0.48.0` against the real adapter command-processing path and composed workflow with deterministic fake runners. Zero Critical, Major, or Minor defects found. No GAUSS was run. Classification: ready for structured manual alpha testing. |
 | 42.x | Opt-In Real GAUSS Execution (`v0.49.0`, evaluated `v0.50.0`) | Interactive adapter real-backend behavior: fake default, explicit real activation, missing/invalid executable blocking, confirmation/stale-confirmation gating, successful real execution, syntax/runtime failures, timeout handling, output metadata vs. explicit read, provenance and `gauss_ran` accuracy | 10 | 10 | 10/10 Passed (8 at 4.0, 2 at 3.8) | All prompts run and passed. Real-process scenarios used GAUSS 26.1.1 on Windows where required. Timeout handling used an injected timeout result rather than an unsafe unbounded GAUSS loop. One Minor finding: completed-workspace reuse can still display a plan before failing safely at execute. Classification: ready for structured real GAUSS alpha testing. |
-| 43.x | Execution Interpretation (`v0.51.0`) | Evidence-only post-execution explanation: success, syntax/runtime errors, timeout, blocked execution, fake and real evidence, missing evidence, unknown failures, uncataloged GAUSS codes, and truthfulness boundaries | 10 | 0 | 10 Not Run | Prompts and coverage rows added in `v0.51.0`. Formal benchmark evaluation is pending; unit tests are not treated as benchmark evidence. |
+| 43.x | Execution Interpretation (`v0.51.0`, evaluated `v0.52.0`) | Evidence-only post-execution explanation: success, syntax/runtime errors, timeout, blocked execution, fake and real evidence, missing evidence, unknown failures, uncataloged GAUSS codes, and truthfulness boundaries | 10 | 10 | 10/10 Passed (8 at 4.0, 2 at 3.8) | All prompts run and passed for `scripts/gauss_execution_interpreter.py`/`scripts/gauss_error_catalog.py`, evaluated during `v0.52.0` against real GAUSS evidence (success, `G0105`, `G0036`) where it materially strengthened the evaluation, and explicitly-disclosed deterministic fixtures for timeout and the uncataloged `G9999` case. One Minor finding (43.4: `launch_status` wording inconsistency for fake timeout evidence). Zero Critical or Major defects. This evaluation also exercises the `v0.52.0` fix for the completed-workspace planning issue (see `40.x`'s and `42.x`'s Minor findings, now resolved). |
 
 Counts above are taken directly from `evaluations/benchmark-coverage.md` and `evaluations/runs/INDEX.md`. Categories `1.x` through `10.x` predate stable Prompt ID conventions in places and are summarized as "early baseline" or historical where a prompt has never been run; these were not invented to force full coverage, and their `Not Run` prompts remain genuinely not run today.
 
@@ -123,7 +123,8 @@ Counts above are taken directly from `evaluations/benchmark-coverage.md` and `ev
 - **Historical tracking warning — 2.2 / 2.3 Prompt ID mismatch:** the `2.2` coverage row (`evaluations/benchmark-coverage.md`) links to `evaluations/runs/2026-06-30-code-assistant-manual-run-001.md`, but that run file's own `Prompt ID:` field states `2.3`. This predates stable Prompt ID assignment and is documented in `evaluations/benchmark-coverage.md`'s "Historical Tracking Exceptions" section. It is a warning, not an error, and `--strict` promotes it to a failure by design.
 - **Historical tracking warning — `v0.3.0` smoke-test file:** `evaluations/runs/2026-07-01-code-assistant-smoke-test-v0.3.0.md` predates Prompt-ID-based tracking entirely and is intentionally not indexed in `benchmark-coverage.md` or `runs/INDEX.md`. It is preserved as legitimate repository history, documented in the same "Historical Tracking Exceptions" section. It is a warning, not an error, and `--strict` promotes it to a failure by design.
 - **Evidence warnings — `glm`/`olsmt` HDF5 URI false positives:** `examples/retrieval/schema-aligned/glm.evidence.json` and `olsmt.evidence.json` contain path-shaped strings from official documentation examples (an HDF5 URI) that the path-warning heuristic flags. These are reviewed false positives, not real local-path leaks, documented in `scripts/README.md`'s strict-mode policy notes. `--strict` promotes them to failures by design.
-- **Current active-category "Not Run" warnings:** 10. The newly-added `43.x` Execution Interpretation prompts are intentionally `Not Run` until a formal evaluation milestone records run files.
+- **Historical tracking warning — `alpha-feedback-template-fake-error.md`:** resolved intentionally in `v0.52.0`. This is a real manual alpha-test observation record (a fake-failure recovery scenario run on 2026-07-29) committed to the repository for its historical record value, but several of its template sections (What Felt Confusing, Severity, Suggested Improvement, Possible Benchmark) were left blank by the original tester — it does not carry a formal Prompt ID or score and does not fit `benchmark-coverage.md`'s scored-benchmark schema. Following the same precedent already established for `2026-07-01-code-assistant-smoke-test-v0.3.0.md`, it is committed but intentionally left unindexed in `benchmark-coverage.md`/`runs/INDEX.md`, and documented here instead. It is a warning, not an error, and `--strict` promotes it to a failure by design.
+- **Current active-category "Not Run" warnings:** 0. All ten `43.x` Execution Interpretation prompts were formally evaluated in `v0.52.0`; see `evaluations/runs/2026-07-30-code-assistant-execution-interpretation-run-001.md` through `-010.md`.
 - **Strict-mode policy:** default gates (`check_evaluation_tracking.py`, `validate_all_evidence.py`, `check_release_readiness.py`) pass. Strict modes are informational and fail only because the warnings above are promoted to failures. Strict failures should not block a release unless the project explicitly changes this policy — see `scripts/README.md` and prior readiness checklists (`v0.12.0` onward) for the policy's history.
 
 ## Guard Command Reference
@@ -149,7 +150,7 @@ Expected current results (captured at the same time as "Current Evaluation State
 - `validate_all_evidence.py --strict`: expected FAIL, due to the known `glm`/`olsmt` HDF5-URI warnings.
 - `check_evaluation_tracking.py` default: PASS.
 - `check_evaluation_tracking.py --json`: `overall_pass: true`.
-- `check_evaluation_tracking.py --strict`: expected FAIL, due to the two historical warnings.
+- `check_evaluation_tracking.py --strict`: expected FAIL, due to the three historical warnings.
 - `check_release_readiness.py` default: PASS.
 - `check_release_readiness.py --json`: `overall_pass: true`.
 - `check_release_readiness.py --strict`: expected informational FAIL (`strict_pass: false`); default readiness (`overall_pass`) is unaffected, since strict results never change this script's own exit code.

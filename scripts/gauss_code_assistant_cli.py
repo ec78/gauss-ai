@@ -269,13 +269,13 @@ class InteractiveMvpAdapter:
 
     def _help(self) -> list[str]:
         return [
-            "GAUSS Code Assistant Interactive MVP Adapter (v0.51.0 alpha)",
+            "GAUSS Code Assistant Interactive MVP Adapter (v0.52.0 alpha)",
             f"Execution backend: {self.backend_label}",
             "Commands:",
             "  help",
             "  workspace create",
             "  workspace status",
-            "  request [--fake-success|--fake-failure] <GAUSS code or short request>",
+            "  request [--fake-success|--fake-failure|--fake-timeout|--fake-unknown-error] <GAUSS code or short request>",
             "  plan",
             "  confirm <request_hash>",
             "  decline",
@@ -339,6 +339,17 @@ class InteractiveMvpAdapter:
         elif remaining and remaining[0] == "--fake-failure":
             fake_result = "failure"
             remaining = remaining[1:]
+        elif remaining and remaining[0] == "--fake-timeout":
+            # v0.52.0: a controlled, injected timeout result for benchmark
+            # 43.4/evaluation use -- never an unbounded real GAUSS loop.
+            fake_result = "timeout"
+            remaining = remaining[1:]
+        elif remaining and remaining[0] == "--fake-unknown-error":
+            # v0.52.0: a deterministic uncataloged-error fixture (G9999 is
+            # not, and must never become, a catalog entry) for benchmark
+            # 43.9/evaluation use.
+            fake_result = "unknown_error"
+            remaining = remaining[1:]
 
         text = " ".join(remaining).strip()
         if not text:
@@ -359,14 +370,20 @@ class InteractiveMvpAdapter:
         self.last_result = None
         self.last_process_metadata = ExecutionProcessMetadata(backend=self.backend_label)
         self.last_captured_output = CapturedProcessOutput()
-        return [
+        lines = [
             "ADAPTER: Stored request. No workflow execution occurred yet.",
             "ADAPTER_DISCLOSURE: Request interpretation is limited and adapter-driven.",
             f"request_id: {self.pending_request.request_id}",
             f"execution_backend: {self.backend_label}",
-            f"fake_runner_mode: {fake_result}",
-            "next_step: run 'plan'",
         ]
+        if self.runner_backend == FAKE_BACKEND:
+            # v0.52.0: only shown for the fake backend -- this field is
+            # meaningless (and was confusingly echoed regardless of
+            # backend before this fix) when --runner gauss is selected,
+            # since real execution has no "fake_result" mode at all.
+            lines.append(f"fake_runner_mode: {fake_result}")
+        lines.append("next_step: run 'plan'")
+        return lines
 
     def _plan(self) -> list[str]:
         if self.active_workspace_id is None:
@@ -389,14 +406,33 @@ class InteractiveMvpAdapter:
             workspace_id=self.active_workspace_id,
         )
         if outcome.blocked:
-            return [
+            lines = [
                 "REAL_WORKFLOW: GaussCodeAssistantWorkflow.propose -> blocked.",
                 f"adapter_session_id: {self.adapter_session_id}",
                 f"orchestration_instance_id: {outcome.orchestration_instance_id}",
                 f"failure_category: {outcome.failure_category}",
                 f"failure_reason: {outcome.failure_reason}",
                 "No execution occurred.",
+                "No new plan was created.",
             ]
+            reason = outcome.failure_reason or ""
+            if "already completed its single allowed execution attempt" in reason:
+                lines.extend(
+                    [
+                        "workspace_single_shot_exhausted: true",
+                        "guidance: this workspace already completed its one allowed execution attempt; "
+                        "its lifecycle does not permit a second plan or execution. Run 'workspace create' "
+                        "to start a fresh workspace before requesting or planning again.",
+                        "note: 'reset' alone clears the current request/plan/result state, but does not "
+                        "change this workspace's own completed status -- 'workspace create' is required.",
+                    ]
+                )
+            elif "is currently executing" in reason:
+                lines.append(
+                    "guidance: this workspace's prior execution attempt has not finished; wait for it to "
+                    "conclude, or run 'workspace create' to start a fresh workspace."
+                )
+            return lines
 
         assert outcome.proposal is not None
         p = outcome.proposal
@@ -698,6 +734,56 @@ class InteractiveMvpAdapter:
     def _fake_runner(self, mode: str):
         def runner(runner_input: Any) -> dict[str, Any]:
             workdir = Path(runner_input.working_directory)
+            if mode == "timeout":
+                self.last_captured_output = CapturedProcessOutput(stdout="", stderr="")
+                self.last_process_metadata = ExecutionProcessMetadata(
+                    backend=self.backend_label,
+                    executable_path=runner_input.executable_path,
+                    gauss_ran=False,
+                    executed=True,
+                    execution_status="timed_out",
+                    exit_code=None,
+                    timed_out=True,
+                    timeout_seconds=runner_input.timeout_seconds,
+                    stdout_chars=0,
+                    stderr_chars=0,
+                )
+                return {
+                    "executed": True,
+                    "execution_status": "timed_out",
+                    "exit_code": None,
+                    "stdout": "",
+                    "stderr": "",
+                    "output_files": [],
+                    "warnings": ["fake runner result; GAUSS was not invoked"],
+                    "errors": [],
+                }
+            if mode == "unknown_error":
+                stdout_text = "Program execute failed\n"
+                stderr_text = "error G9999 : Simulated uncataloged GAUSS error for benchmark 43.9\n"
+                self.last_captured_output = CapturedProcessOutput(stdout=stdout_text, stderr=stderr_text)
+                self.last_process_metadata = ExecutionProcessMetadata(
+                    backend=self.backend_label,
+                    executable_path=runner_input.executable_path,
+                    gauss_ran=False,
+                    executed=True,
+                    execution_status="failed",
+                    exit_code=0,
+                    timed_out=False,
+                    timeout_seconds=runner_input.timeout_seconds,
+                    stdout_chars=len(stdout_text),
+                    stderr_chars=len(stderr_text),
+                )
+                return {
+                    "executed": True,
+                    "execution_status": "failed",
+                    "exit_code": 0,
+                    "stdout": stdout_text,
+                    "stderr": stderr_text,
+                    "output_files": [],
+                    "warnings": ["fake runner result; GAUSS was not invoked"],
+                    "errors": ["error G9999 : Simulated uncataloged GAUSS error for benchmark 43.9"],
+                }
             if mode == "failure":
                 self.last_captured_output = CapturedProcessOutput(
                     stdout="Program execute failed\n",
@@ -831,7 +917,7 @@ class InteractiveMvpAdapter:
 
 
 def run_repl(adapter: InteractiveMvpAdapter) -> int:
-    print("GAUSS Code Assistant Interactive MVP Adapter (v0.51.0 alpha)")
+    print("GAUSS Code Assistant Interactive MVP Adapter (v0.52.0 alpha)")
     print(f"Execution backend: {adapter.backend_label}")
     if adapter.runner_backend == REAL_GAUSS_BACKEND:
         print("Real GAUSS execution is enabled only after hash-bound confirm + execute.")

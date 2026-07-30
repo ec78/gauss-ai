@@ -361,6 +361,191 @@ def test_22_interpret_fake_syntax_error() -> None:
         adapter.close()
 
 
+def test_23_completed_workspace_plan_rejected_with_guidance() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        check(
+            "workspace reaches completed after its one execution",
+            adapter.registry.get_workspace(adapter.active_workspace_id).status == gw.WorkspaceStatus.COMPLETED,
+        )
+
+        _run(adapter, "request --fake-success y = 9; print y;")
+        out = _joined(_run(adapter, "plan"))
+        check("second plan on a completed workspace is blocked", "propose -> blocked" in out)
+        check("no execution occurred on the blocked second plan", "No execution occurred." in out)
+        check("no new plan was created is stated explicitly", "No new plan was created." in out)
+        check("single-shot exhaustion is flagged", "workspace_single_shot_exhausted: true" in out)
+        check("guidance names 'workspace create' as the remedy", "workspace create" in out)
+        assert adapter.mvp_session is not None
+        check("no ExecutionProposal exists for the blocked second attempt", adapter.mvp_session.proposal_outcome.proposal is None)
+        adapter.close()
+
+
+def test_24_completed_workspace_state_unchanged_after_rejected_plan() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        workspace_id = adapter.active_workspace_id
+        manifest_before = adapter.registry.get_workspace_manifest(workspace_id).files
+
+        _run(adapter, "request --fake-success y = 9; print y;")
+        _run(adapter, "plan")
+
+        check(
+            "workspace status is untouched by the rejected second plan",
+            adapter.registry.get_workspace(workspace_id).status == gw.WorkspaceStatus.COMPLETED,
+        )
+        check(
+            "manifest is untouched by the rejected second plan",
+            adapter.registry.get_workspace_manifest(workspace_id).files == manifest_before,
+        )
+        adapter.close()
+
+
+def test_25_workspace_create_recovers_from_completed() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        old_workspace_id = adapter.active_workspace_id
+
+        _run(adapter, "request --fake-success y = 9; print y;")
+        _run(adapter, "plan")  # blocked -- completed workspace
+
+        _run(adapter, "workspace create")
+        check("workspace create produced a different workspace id", adapter.active_workspace_id != old_workspace_id)
+        request_hash2 = _plan_success(adapter)
+        check("a normal plan on the fresh workspace succeeds", len(request_hash2) == 64)
+        adapter.close()
+
+
+def test_26_reset_then_request_plan_normal_flow_still_works() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _plan_success(adapter)
+        _run(adapter, "decline")
+        _run(adapter, "reset")
+        request_hash = _plan_success(adapter)
+        check("reset allows a normal new request+plan on the same still-ready workspace", len(request_hash) == 64)
+        check(
+            "the workspace used for reset+replan is still ready (never entered execution)",
+            adapter.registry.get_workspace(adapter.active_workspace_id).status == gw.WorkspaceStatus.READY,
+        )
+        adapter.close()
+
+
+def test_27_interpretation_and_streams_remain_available_before_reset() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _run(adapter, "workspace create")
+        _run(adapter, "request --fake-failure x = ;")
+        _run(adapter, "plan")
+        assert adapter.mvp_session is not None
+        request_hash = adapter.mvp_session.proposal_outcome.proposal.request_hash
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+
+        first_interpret = _joined(_run(adapter, "interpret"))
+        second_interpret = _joined(_run(adapter, "interpret"))
+        check("interpret is repeatable without loss of evidence", "ERROR no_result" not in second_interpret)
+        check("repeated interpretation is identical (deterministic, non-destructive)", first_interpret == second_interpret)
+
+        first_stderr = _joined(_run(adapter, "stderr"))
+        second_stderr = _joined(_run(adapter, "stderr"))
+        check("stderr remains available on a second explicit request", "ERROR no_result" not in second_stderr)
+        check("repeated stderr inspection is identical", first_stderr == second_stderr)
+
+        provenance = _joined(_run(adapter, "provenance"))
+        check("provenance remains available before reset", "ERROR no_result" not in provenance)
+
+        _run(adapter, "reset")
+        after_reset = _joined(_run(adapter, "interpret"))
+        check("interpret is unavailable only after an explicit reset", "ERROR no_result" in after_reset)
+        adapter.close()
+
+
+def test_28_fake_timeout_through_cli() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _run(adapter, "workspace create")
+        _run(adapter, "request --fake-timeout x = 2 + 2; print x;")
+        _run(adapter, "plan")
+        assert adapter.mvp_session is not None
+        request_hash = adapter.mvp_session.proposal_outcome.proposal.request_hash
+        _run(adapter, f"confirm {request_hash}")
+        execute_out = _joined(_run(adapter, "execute"))
+        check("execute reports timed_out", "timed_out: true" in execute_out)
+        out = _joined(_run(adapter, "interpret"))
+        check("interpret classifies timeout", "execution_phase: timeout" in out)
+        check("interpret does not retry", "No GAUSS launch, no retry, no code edit" in out)
+        check("interpret recommends inspection only", "next_step: Inspect stdout and stderr" in out)
+        adapter.close()
+
+
+def test_29_fake_unknown_error_through_cli() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _run(adapter, "workspace create")
+        _run(adapter, "request --fake-unknown-error x = 2 + 2; print x;")
+        _run(adapter, "plan")
+        assert adapter.mvp_session is not None
+        request_hash = adapter.mvp_session.proposal_outcome.proposal.request_hash
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        out = _joined(_run(adapter, "interpret"))
+        check("interpret preserves the uncataloged code", "error_code: G9999" in out)
+        check("interpret classifies it as unknown, not a guess", "failure_type: unknown" in out)
+        check(
+            "interpret states genericly that the code is uncataloged rather than inventing a meaning",
+            "not yet in the local deterministic catalog" in out,
+        )
+        adapter.close()
+
+
+def test_30_interpret_does_not_mutate_workspace_or_reexecute() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        workspace_status_before = adapter.registry.get_workspace(adapter.active_workspace_id).status
+        stage_before = adapter.mvp_session.stage
+        instance_id_before = adapter.mvp_session.orchestration_instance_id
+
+        _run(adapter, "interpret")
+        _run(adapter, "interpret")
+
+        check("interpret never changes workspace status", adapter.registry.get_workspace(adapter.active_workspace_id).status == workspace_status_before)
+        check("interpret never advances the session stage", adapter.mvp_session.stage == stage_before)
+        check("interpret never creates a new orchestration instance", adapter.mvp_session.orchestration_instance_id == instance_id_before)
+        adapter.close()
+
+
+def test_31_interpret_never_auto_displays_streams_or_reads_files() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _run(adapter, "workspace create")
+        _run(adapter, "request --fake-failure x = ;")
+        _run(adapter, "plan")
+        assert adapter.mvp_session is not None
+        request_hash = adapter.mvp_session.proposal_outcome.proposal.request_hash
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+
+        out = _joined(_run(adapter, "interpret"))
+        check("interpret output carries no stdout content-boundary marker", "stdout_begin" not in out)
+        check("interpret output carries no stderr content-boundary marker", "stderr_begin" not in out)
+        check("interpret output carries no file-read content-boundary marker", "content_begin" not in out)
+        check("interpret alone never triggers a workspace file read", len(adapter.mvp_session.file_reads) == 0)
+        adapter.close()
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

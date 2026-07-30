@@ -635,6 +635,31 @@ class ExecutionWorkflow:
                     # closed to further proposals, matching Task 4's
                     # explicit "Reject: ... archived workspace."
                     workspace_failure_reason = f"workspace {workspace_id!r} is archived and cannot accept a new execution proposal."
+                elif workspace.status == workspace_mod.WorkspaceStatus.COMPLETED:
+                    # v0.52.0: this workspace already reached its single
+                    # completed execution attempt. Without this check,
+                    # propose_execution(...) would happily build a full,
+                    # confirmable plan against a workspace that execute(...)
+                    # can never actually enter EXECUTING for again (the
+                    # workspace lifecycle has no COMPLETED -> EXECUTING
+                    # edge) -- the user would only discover this after
+                    # planning and confirming, from a raw
+                    # InvalidWorkspaceTransitionError at execute(...) time.
+                    # Rejecting here, at the authoritative workspace-state
+                    # boundary, means no ExecutionProposal is ever built for
+                    # this case (see _blocked_outcome's proposal=None).
+                    workspace_failure_reason = (
+                        f"workspace {workspace_id!r} has already completed its single allowed execution "
+                        "attempt and cannot accept a new execution proposal; create a fresh workspace "
+                        "(this workspace's own lifecycle does not support a second attempt)."
+                    )
+                elif workspace.status == workspace_mod.WorkspaceStatus.EXECUTING:
+                    # A second proposal must not be buildable while a first
+                    # invocation is still in flight for this same workspace.
+                    workspace_failure_reason = (
+                        f"workspace {workspace_id!r} is currently executing and cannot accept a new "
+                        "execution proposal until that attempt finishes."
+                    )
                 elif working_directory is None:
                     working_directory = workspace.root_path
                 elif self._workspace_registry.resolve_within_workspace(workspace_id, working_directory) is None:

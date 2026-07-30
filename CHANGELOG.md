@@ -4,6 +4,15 @@ This file records notable changes to the GAUSS AI framework.
 
 ## [Unreleased]
 
+- Added `v0.52.0` Interpretation Evaluation and Recovery UX: formally evaluated all ten `43.x` Execution Interpretation benchmarks through the real `interpret` CLI/interpreter path (10/10 Passed, 0 Critical, 0 Major, 1 Minor).
+- Fixed the completed-workspace planning issue carried since `v0.50.0`: `ExecutionWorkflow.propose_execution(...)` now rejects a new proposal against a `completed` or `executing` workspace at the authoritative workflow layer, before any `ExecutionProposal` is built; the CLI translates this into explicit `workspace create` guidance. The pre-existing `execute`-time guard remains as defense in depth.
+- Added `--fake-timeout` and `--fake-unknown-error` request modes to `InteractiveMvpAdapter` for deterministic interpreter testing without a real GAUSS installation.
+- Fixed `fake_runner_mode` being echoed in `request` output even under the real GAUSS backend, where the field was meaningless.
+- Added 4 new tests to `scripts/test_workspace_execution_integration.py` (completed/executing-workspace rejection, unchanged state on rejection, lower-level defense-in-depth) and 9 new tests to `scripts/test_gauss_code_assistant_cli.py` (recovery UX, new fake evidence modes, interpreter boundary proofs).
+- Added ten `43.x` evaluation run files and updated benchmark coverage, run index, and evaluation dashboard to show 10/10 Passed.
+- Resolved `evaluations/runs/alpha-feedback-template-fake-error.md` as an intentional, documented historical exception (committed but not indexed in `benchmark-coverage.md`/`runs/INDEX.md`, following the same precedent as the `v0.3.0` smoke-test file).
+- Added `planning/v0.52.0-interpretation-evaluation-and-recovery-ux.md` and `release-notes-v0.52.0.md`.
+- Extended `docs/real-gauss-debugging-alpha-guide.md` with the completed-workspace recovery distinction (`reset` vs. `workspace create`) and the new fake evidence modes.
 - Added `v0.51.0` Execution Result Interpretation: a deterministic execution interpreter and GAUSS error catalog for explaining completed, failed, timed-out, blocked, fake, and real-shaped execution evidence.
 - Added the interactive adapter `interpret` command, which consumes existing execution evidence only and never reruns GAUSS, edits code, retries execution, or reads output files automatically.
 - Added `scripts/test_gauss_execution_interpreter.py` plus CLI regression coverage for interpretation before/after execution and catalog-backed syntax classification.

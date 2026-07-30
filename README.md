@@ -6,7 +6,9 @@ Rather than creating a single, monolithic chatbot, this project defines a collec
 
 ## Current Status
 
-Current milestone: `v0.51.0` - Execution Result Interpretation. The interactive adapter now has an evidence-only `interpret` command backed by `scripts/gauss_execution_interpreter.py` and the deterministic GAUSS error catalog in `scripts/gauss_error_catalog.py`. Interpretation consumes already-captured execution metadata/stdout/stderr; it never reruns GAUSS, edits code, retries execution, reads output files automatically, or claims statistical correctness.
+Current milestone: `v0.52.0` - Interpretation Evaluation and Recovery UX. All ten `43.x` Execution Interpretation benchmarks were formally evaluated through the real `interpret` CLI/interpreter path: 10/10 Passed, 0 Critical defects, 0 Major defects, 1 Minor (a wording-consistency observation). This milestone also fixes the completed-workspace planning issue carried since `v0.50.0`: a workspace that already completed its one execution attempt now rejects a new `plan` immediately, with explicit `workspace create` guidance, instead of only failing later at `execute`.
+
+Previous milestone: `v0.51.0` - Execution Result Interpretation. The interactive adapter has an evidence-only `interpret` command backed by `scripts/gauss_execution_interpreter.py` and the deterministic GAUSS error catalog in `scripts/gauss_error_catalog.py`. Interpretation consumes already-captured execution metadata/stdout/stderr; it never reruns GAUSS, edits code, retries execution, reads output files automatically, or claims statistical correctness.
 
 Previous milestone: `v0.50.0` - Real GAUSS Execution Evaluation and Debugging Readiness. The `42.x` Opt-In Real GAUSS Execution benchmarks were formally evaluated: 10/10 Passed, 0 Critical defects, 0 Major defects, 1 Minor flow-clarity finding. The project is classified as **ready for structured real GAUSS alpha testing** using `docs/real-gauss-alpha-testing-guide.md` and `docs/real-gauss-debugging-alpha-guide.md`. Real execution remains explicit, local, hash-confirmation-gated, and not a Claude Code/Codex chat adapter.
 

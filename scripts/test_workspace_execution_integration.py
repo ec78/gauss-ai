@@ -473,6 +473,118 @@ def test_16_module_never_runs_gauss() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Completed-workspace planning rejection (v0.52.0, 17-20)
+# ---------------------------------------------------------------------------
+
+
+def test_17_completed_workspace_rejects_new_proposal() -> None:
+    with tempfile.TemporaryDirectory() as ws_tmp, tempfile.TemporaryDirectory() as db_tmp:
+        registry = gw.WorkspaceRegistry(approved_parent_directory=ws_tmp)
+        store = _store(db_tmp)
+        workflow = wf.ExecutionWorkflow(state_store=store, workspace_registry=registry)
+        workspace = registry.create_workspace()
+        _advance_workspace_to_ready(registry, workspace.workspace_id)
+
+        first = _propose(workflow, request_id="req-1", workspace_id=workspace.workspace_id)
+        _confirm(workflow, first, request_id="req-1")
+        workflow.execute(first.orchestration_instance_id, runner=_fake_runner_completed)
+        check(
+            "workspace reaches completed after its one execution attempt",
+            registry.get_workspace(workspace.workspace_id).status == gw.WorkspaceStatus.COMPLETED,
+        )
+
+        second = _propose(workflow, request_id="req-2", workspace_id=workspace.workspace_id)
+        check("a completed workspace blocks a second proposal", second.blocked)
+        check("no ExecutionProposal object is built for the blocked second attempt", second.proposal is None)
+        assert second.failure_reason is not None
+        check(
+            "the block reason names the completed, single-shot nature of the workspace",
+            "already completed its single allowed execution attempt" in second.failure_reason,
+        )
+        store.close()
+
+
+def test_18_completed_workspace_rejection_leaves_state_unchanged() -> None:
+    with tempfile.TemporaryDirectory() as ws_tmp, tempfile.TemporaryDirectory() as db_tmp:
+        registry = gw.WorkspaceRegistry(approved_parent_directory=ws_tmp)
+        store = _store(db_tmp)
+        workflow = wf.ExecutionWorkflow(state_store=store, workspace_registry=registry)
+        workspace = registry.create_workspace()
+        _advance_workspace_to_ready(registry, workspace.workspace_id)
+
+        first = _propose(workflow, request_id="req-1", workspace_id=workspace.workspace_id)
+        _confirm(workflow, first, request_id="req-1")
+        workflow.execute(first.orchestration_instance_id, runner=_fake_runner_completed)
+        manifest_before = registry.get_workspace_manifest(workspace.workspace_id).files
+
+        _propose(workflow, request_id="req-2", workspace_id=workspace.workspace_id)
+
+        check(
+            "workspace status is untouched by the rejected second proposal",
+            registry.get_workspace(workspace.workspace_id).status == gw.WorkspaceStatus.COMPLETED,
+        )
+        check(
+            "manifest is untouched by the rejected second proposal",
+            registry.get_workspace_manifest(workspace.workspace_id).files == manifest_before,
+        )
+        # The first execution's own result remains fully readable -- rejecting
+        # a second plan must not discard prior evidence.
+        inspected = workflow.inspect(first.orchestration_instance_id)
+        check("the first execution's result remains inspectable after the rejected second attempt", inspected.executed)
+        store.close()
+
+
+def test_19_executing_workspace_rejects_new_proposal() -> None:
+    with tempfile.TemporaryDirectory() as ws_tmp, tempfile.TemporaryDirectory() as db_tmp:
+        registry = gw.WorkspaceRegistry(approved_parent_directory=ws_tmp)
+        store = _store(db_tmp)
+        workflow = wf.ExecutionWorkflow(state_store=store, workspace_registry=registry)
+        workspace = registry.create_workspace()
+        _advance_workspace_to_ready(registry, workspace.workspace_id)
+        registry.update_workspace_status(workspace.workspace_id, to_status=gw.WorkspaceStatus.EXECUTING)
+
+        outcome = _propose(workflow, workspace_id=workspace.workspace_id)
+        check("an in-flight (executing) workspace blocks a new proposal", outcome.blocked)
+        check("no ExecutionProposal object is built while executing", outcome.proposal is None)
+        store.close()
+
+
+def test_20_lower_level_transition_still_blocked_if_propose_is_bypassed() -> None:
+    """Defense in depth: even if a caller obtains a CONFIRMED instance bound
+    to a workspace that only becomes COMPLETED afterward (e.g. a race, or a
+    caller that skips this workflow's own propose_execution(...) checks by
+    holding a stale confirmed instance), execute(...)'s own
+    WorkspaceRegistry.update_workspace_status(...) call still refuses the
+    COMPLETED -> EXECUTING transition. This is the same guard that existed
+    before v0.52.0's earlier propose-time rejection -- it must remain
+    intact, not be replaced by the earlier check."""
+    with tempfile.TemporaryDirectory() as ws_tmp, tempfile.TemporaryDirectory() as db_tmp:
+        registry = gw.WorkspaceRegistry(approved_parent_directory=ws_tmp)
+        store = _store(db_tmp)
+        workflow = wf.ExecutionWorkflow(state_store=store, workspace_registry=registry)
+        workspace = registry.create_workspace()
+        _advance_workspace_to_ready(registry, workspace.workspace_id)
+
+        outcome = _propose(workflow, workspace_id=workspace.workspace_id)
+        _confirm(workflow, outcome)
+
+        # Simulate the workspace independently reaching 'completed' (e.g. via
+        # a different orchestration instance) between confirmation and
+        # execution of this instance.
+        registry.update_workspace_status(workspace.workspace_id, to_status=gw.WorkspaceStatus.EXECUTING)
+        registry.update_workspace_status(workspace.workspace_id, to_status=gw.WorkspaceStatus.COMPLETED)
+
+        check_raises(
+            "execute() still refuses completed -> executing at the workspace-lifecycle boundary",
+            gw.InvalidWorkspaceTransitionError,
+            workflow.execute,
+            outcome.orchestration_instance_id,
+            runner=_fake_runner_completed,
+        )
+        store.close()
+
+
+# ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
 
