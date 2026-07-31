@@ -578,6 +578,185 @@ def test_33_fake_timeout_wording_is_honestly_simulated_through_cli() -> None:
         adapter.close()
 
 
+def test_34_diagnose_before_workspace_creation() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        out = _joined(_run(adapter, "diagnose"))
+        check("diagnose before any workspace reports no_result", "ERROR no_result" in out)
+        adapter.close()
+
+
+def test_35_diagnose_before_request() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _run(adapter, "workspace create")
+        out = _joined(_run(adapter, "diagnose"))
+        check("diagnose before request reports no_result", "ERROR no_result" in out)
+        adapter.close()
+
+
+def test_36_diagnose_before_execute() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _plan_success(adapter)
+        out = _joined(_run(adapter, "diagnose"))
+        check("diagnose before execute reports no_result", "ERROR no_result" in out)
+        adapter.close()
+
+
+def test_37_diagnosis_after_success() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        out = _joined(_run(adapter, "diagnose"))
+        check("diagnostic boundary disclosed", "DIAGNOSTIC_BOUNDARY" in out)
+        check("no-failure status for a successful run", "diagnostic_status: no_failure_detected" in out)
+        check("safe to continue", "safe_to_continue: true" in out)
+        check("repair boundary disclosed", "Diagnosis does not modify or repair the program." in out)
+        adapter.close()
+
+
+def test_38_diagnosis_after_g0105() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _run(adapter, "workspace create")
+        _run(adapter, "request --fake-failure x = ;")
+        _run(adapter, "plan")
+        assert adapter.mvp_session is not None
+        request_hash = adapter.mvp_session.proposal_outcome.proposal.request_hash
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        out = _joined(_run(adapter, "diagnose"))
+        check("source_error_code G0105", "source_error_code: G0105" in out)
+        check("at least one possible cause", "possible_cause_count: 0" not in out)
+        check("questions posed", "questions_to_ask:" in out)
+        adapter.close()
+
+
+def test_39_diagnosis_after_g0036() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _run(adapter, "workspace create")
+        _run(adapter, "request --fake-failure x = ones(2,2); y = ones(3,1); z = x + y;")
+        _run(adapter, "plan")
+        assert adapter.mvp_session is not None
+        request_hash = adapter.mvp_session.proposal_outcome.proposal.request_hash
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        # the deterministic --fake-failure fixture always reports G0105, not
+        # G0036 -- exercised here purely to confirm the diagnose path works
+        # end to end from a fresh request; the dedicated G0036 case is
+        # covered directly against the engine in
+        # test_gauss_execution_diagnostics.py, which does not depend on the
+        # CLI's fake-failure fixture's fixed error code.
+        out = _joined(_run(adapter, "diagnose"))
+        check("diagnose completes without error", "ERROR" not in out.split("\n")[0])
+        adapter.close()
+
+
+def test_40_diagnosis_after_unknown_error() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _run(adapter, "workspace create")
+        _run(adapter, "request --fake-unknown-error x = 2 + 2; print x;")
+        _run(adapter, "plan")
+        assert adapter.mvp_session is not None
+        request_hash = adapter.mvp_session.proposal_outcome.proposal.request_hash
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        out = _joined(_run(adapter, "diagnose"))
+        check("unknown error status", "diagnostic_status: unknown_error" in out)
+        check("code preserved", "source_error_code: G9999" in out)
+        check("no possible causes for unknown code", "possible_cause_count: 0" in out)
+        adapter.close()
+
+
+def test_41_diagnosis_after_timeout_fixture() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _run(adapter, "workspace create")
+        _run(adapter, "request --fake-timeout x = 2 + 2; print x;")
+        _run(adapter, "plan")
+        assert adapter.mvp_session is not None
+        request_hash = adapter.mvp_session.proposal_outcome.proposal.request_hash
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        out = _joined(_run(adapter, "diagnose"))
+        check("timeout status", "diagnostic_status: timeout" in out)
+        check("no asserted causes for timeout", "possible_cause_count: 0" in out)
+        adapter.close()
+
+
+def test_42_repeated_diagnose_is_deterministic() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        first = _joined(_run(adapter, "diagnose"))
+        second = _joined(_run(adapter, "diagnose"))
+        check("repeated diagnose output is identical", first == second)
+        adapter.close()
+
+
+def test_43_interpretation_remains_available_after_diagnosis() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        _run(adapter, "diagnose")
+        out = _joined(_run(adapter, "interpret"))
+        check("interpret still works after diagnose", "ERROR no_result" not in out)
+        adapter.close()
+
+
+def test_44_streams_remain_explicitly_accessible_after_diagnosis() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _run(adapter, "workspace create")
+        _run(adapter, "request --fake-failure x = ;")
+        _run(adapter, "plan")
+        assert adapter.mvp_session is not None
+        request_hash = adapter.mvp_session.proposal_outcome.proposal.request_hash
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        diagnose_out = _joined(_run(adapter, "diagnose"))
+        check("diagnose does not auto-display stdout content", "stdout_begin" not in diagnose_out)
+        check("diagnose does not auto-display stderr content", "stderr_begin" not in diagnose_out)
+        stderr_out = _joined(_run(adapter, "stderr"))
+        check("stderr remains explicitly accessible after diagnose", "stderr_begin" in stderr_out and "ERROR" not in stderr_out.split("\n")[0])
+        adapter.close()
+
+
+def test_45_completed_workspace_state_unchanged_by_diagnosis() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        status_before = adapter.registry.get_workspace(adapter.active_workspace_id).status
+        _run(adapter, "diagnose")
+        _run(adapter, "diagnose")
+        check("workspace status unchanged by diagnose", adapter.registry.get_workspace(adapter.active_workspace_id).status == status_before)
+        adapter.close()
+
+
+def test_46_reset_clears_diagnostic_availability() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        _run(adapter, "diagnose")
+        _run(adapter, "reset")
+        out = _joined(_run(adapter, "diagnose"))
+        check("diagnose unavailable after reset, consistent with interpret's own reset behavior", "ERROR no_result" in out)
+        adapter.close()
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

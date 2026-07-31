@@ -4,6 +4,15 @@ This file records notable changes to the GAUSS AI framework.
 
 ## [Unreleased]
 
+- Added `v0.54.0` Evidence-Based Diagnostic Reasoning: a new deterministic diagnostic layer (`scripts/gauss_execution_diagnostics.py`) that reasons over execution evidence, interpretation, and the verified GAUSS error catalog to produce a bounded, evidence-only `DiagnosticAssessment` — strictly short of proposing a code repair.
+- Added `DiagnosticStatus`/`DiagnosticConfidence` enums and `DiagnosticAssessment`/`DiagnosticCause` dataclasses. Cause-level confidence is capped at `low` for every catalog-derived possible cause, deliberately distinct from (and typically lower than) the underlying error's classification confidence.
+- Added `known_triggers`/`diagnostic_questions`/`required_evidence_for_diagnosis` fields to `GaussErrorCatalogEntry`, populated for all five existing codes (`G0105`, `G0036`, `G0025`, `G0014`, `G0290`) from the same accepted evidence sources as each entry's own verification status.
+- Added the CLI `diagnose` command, distinct from `interpret`; never calls `execute`/`plan`/`confirm`, never auto-displays stdout/stderr, never auto-reads files, never mutates workspace state, deterministic across repeated calls.
+- Added a fixed repair-boundary disclosure ("Diagnosis does not modify or repair the program.") present in every diagnostic branch; `DiagnosticAssessment` has no field capable of holding replacement code.
+- Added `scripts/test_gauss_execution_diagnostics.py` (31 tests: core engine, boundary/purity, catalog-knowledge integrity) and 13 new CLI tests.
+- Added ten `45.x` Evidence-Based Diagnostic Reasoning evaluation run files and updated benchmark coverage, run index, and evaluation dashboard to show 10/10 Passed at 4.0.
+- Added `planning/v0.54.0-evidence-based-diagnostic-reasoning.md`, `release-notes-v0.54.0.md`, and `docs/gauss-diagnostic-reasoning.md`.
+- Updated `docs/gauss-error-catalog.md` with each entry's diagnostic knowledge, explicitly distinguishing verified error meaning from possible (unconfirmed) diagnostic cause from out-of-scope repair advice.
 - Added `v0.53.0` Verified GAUSS Error Knowledge: expanded the GAUSS error catalog with two new evidence-backed entries (`G0014` "File not found", `G0290` "Library not found") and formal verification metadata on every entry.
 - Added `VerificationStatus` (Real Runtime / Official Documentation / Repository Evidence / Unknown) and `verification_source`/`documentation_discrepancy` fields to `GaussErrorCatalogEntry`; retrofitted onto the existing three entries (`G0105`, `G0036`, `G0025`).
 - Recorded a genuine documentation-vs-runtime wording disagreement for `G0036` ("Matrices are not conformable" per official Aptech documentation vs. "Matrix dimensions are incompatible" per every real runtime observation in this repository) rather than silently picking one.

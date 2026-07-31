@@ -15,8 +15,8 @@ Use this dashboard to understand coverage by milestone, prompt range, expert cat
 
 ## Dashboard Metadata
 
-- Current milestone: `v0.53.0` - Verified GAUSS Error Knowledge.
-- Captures evaluation state through: `v0.53.0`'s expansion and evaluation of the GAUSS error catalog (two new verification-tracked entries, `G0014`/`G0290`) and its ten `44.x` Verified Error Knowledge benchmarks.
+- Current milestone: `v0.54.0` - Evidence-Based Diagnostic Reasoning.
+- Captures evaluation state through: `v0.54.0`'s addition of a deterministic diagnostic layer (`scripts/gauss_execution_diagnostics.py`), consuming interpretation and the verified error catalog to produce a bounded, evidence-only `DiagnosticAssessment`, and its ten `45.x` benchmarks.
 - Evaluation model: manual benchmark evaluation with tracking guard. No runtime scoring engine exists.
 - Runtime scoring engine: Not implemented.
 - Benchmark prompts source: `evaluations/benchmark-prompts.md`.
@@ -29,15 +29,15 @@ Use this dashboard to understand coverage by milestone, prompt range, expert cat
 
 ## Current Evaluation State
 
-Captured by running `scripts/check_evaluation_tracking.py --json` against the repository state after `v0.53.0` added and evaluated the `44.x` Verified Error Knowledge benchmarks:
+Captured by running `scripts/check_evaluation_tracking.py --json` against the repository state after `v0.54.0` added and evaluated the `45.x` Evidence-Based Diagnostic Reasoning benchmarks:
 
-- Prompt IDs: 404.
-- Coverage rows: 404.
-- Run files referenced: 391.
-- Index entries: 396.
+- Prompt IDs: 414.
+- Coverage rows: 414.
+- Run files referenced: 401.
+- Index entries: 406.
 - Tracking errors: 0.
-- Documented (historical) tracking warnings: 3 (unchanged from `v0.52.0`).
-- Current active-category ("Not Run" in the highest-numbered active category) warnings: 0 - all ten `44.x` prompts were evaluated and `Passed` immediately (see `evaluations/runs/2026-07-30-code-assistant-verified-error-knowledge-run-001.md` through `-010.md`).
+- Documented (historical) tracking warnings: 3 (unchanged from `v0.52.0`/`v0.53.0`).
+- Current active-category ("Not Run" in the highest-numbered active category) warnings: 0 - all ten `45.x` prompts were evaluated and `Passed` immediately (see `evaluations/runs/2026-07-31-code-assistant-diagnostic-reasoning-run-001.md` through `-010.md`).
 - Default tracking guard (`check_evaluation_tracking.py`): PASS.
 - JSON tracking guard (`check_evaluation_tracking.py --json`): `overall_pass: true`.
 - Strict tracking guard (`check_evaluation_tracking.py --strict`): FAIL - expected, because strict mode promotes the documented historical warnings.
@@ -104,6 +104,7 @@ Important:
 | 42.x | Opt-In Real GAUSS Execution (`v0.49.0`, evaluated `v0.50.0`) | Interactive adapter real-backend behavior: fake default, explicit real activation, missing/invalid executable blocking, confirmation/stale-confirmation gating, successful real execution, syntax/runtime failures, timeout handling, output metadata vs. explicit read, provenance and `gauss_ran` accuracy | 10 | 10 | 10/10 Passed (8 at 4.0, 2 at 3.8) | All prompts run and passed. Real-process scenarios used GAUSS 26.1.1 on Windows where required. Timeout handling used an injected timeout result rather than an unsafe unbounded GAUSS loop. One Minor finding: completed-workspace reuse can still display a plan before failing safely at execute. Classification: ready for structured real GAUSS alpha testing. |
 | 43.x | Execution Interpretation (`v0.51.0`, evaluated `v0.52.0`) | Evidence-only post-execution explanation: success, syntax/runtime errors, timeout, blocked execution, fake and real evidence, missing evidence, unknown failures, uncataloged GAUSS codes, and truthfulness boundaries | 10 | 10 | 10/10 Passed (8 at 4.0, 2 at 3.8) | All prompts run and passed for `scripts/gauss_execution_interpreter.py`/`scripts/gauss_error_catalog.py`, evaluated during `v0.52.0` against real GAUSS evidence (success, `G0105`, `G0036`) where it materially strengthened the evaluation, and explicitly-disclosed deterministic fixtures for timeout and the uncataloged `G9999` case. One Minor finding (43.4: `launch_status` wording inconsistency for fake timeout evidence). Zero Critical or Major defects. This evaluation also exercises the `v0.52.0` fix for the completed-workspace planning issue (see `40.x`'s and `42.x`'s Minor findings, now resolved). |
 | 44.x | Verified Error Knowledge (`v0.53.0`) | Verification-tracked GAUSS error catalog expansion: known/unknown codes, newly-verified codes (`G0014`/`G0290`), documentation-vs-runtime consistency, catalog lookup, unknown preservation, and truthful timeout wording | 10 | 10 | 10/10 Passed (4.0) | All prompts run and passed for the expanded `scripts/gauss_error_catalog.py` (5 entries, each with `verification_status`/`verification_source`) and `scripts/gauss_execution_interpreter.py`, evaluated during `v0.53.0`. No new real GAUSS invocation was needed — `G0014` is grounded in already-existing real-runtime evidence (`v0.28.0`) plus official Aptech documentation (fetched directly during this milestone); `G0290` is grounded in official documentation only, honestly disclosed as not yet runtime-confirmed. Zero Critical, Major, or Minor defects. This evaluation also resolves the `43.4` Minor finding (timeout wording now structurally distinguishes simulated from observed evidence). |
+| 45.x | Evidence-Based Diagnostic Reasoning (`v0.54.0`) | Deterministic diagnostic layer over execution evidence, interpretation, and the verified error catalog: bounded possible causes, confidence ceiling, missing-evidence disclosure, and the repair boundary | 10 | 10 | 10/10 Passed (4.0) | All prompts run and passed for `scripts/gauss_execution_diagnostics.py`, evaluated during `v0.54.0` against the pure engine and, for the boundary-critical prompt (45.9), the full integrated CLI. No real GAUSS invocation was performed for this category. Every cataloged-code diagnosis is capped at `low` cause-level confidence regardless of category-level classification confidence; `possible_causes` is structurally empty for uncataloged codes; `repair_boundary` is a fixed, always-present disclosure. Zero Critical, Major, or Minor defects. |
 
 Counts above are taken directly from `evaluations/benchmark-coverage.md` and `evaluations/runs/INDEX.md`. Categories `1.x` through `10.x` predate stable Prompt ID conventions in places and are summarized as "early baseline" or historical where a prompt has never been run; these were not invented to force full coverage, and their `Not Run` prompts remain genuinely not run today.
 

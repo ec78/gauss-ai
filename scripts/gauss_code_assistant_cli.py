@@ -30,6 +30,7 @@ if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 
 import gauss_code_assistant_workflow as mvp  # noqa: E402
+import gauss_execution_diagnostics as diagnostics  # noqa: E402
 import gauss_execution_interpreter as interpreter  # noqa: E402
 import gauss_execution_workflow as wf  # noqa: E402
 import gauss_orchestration_state_store as store_mod  # noqa: E402
@@ -251,6 +252,8 @@ class InteractiveMvpAdapter:
                 return True, self._captured_stream("stderr")
             if command == "interpret":
                 return True, self._interpret()
+            if command == "diagnose":
+                return True, self._diagnose()
             if command == "read":
                 return True, self._read(args)
             if command == "provenance":
@@ -269,7 +272,7 @@ class InteractiveMvpAdapter:
 
     def _help(self) -> list[str]:
         return [
-            "GAUSS Code Assistant Interactive MVP Adapter (v0.52.0 alpha)",
+            "GAUSS Code Assistant Interactive MVP Adapter (v0.54.0 alpha)",
             f"Execution backend: {self.backend_label}",
             "Commands:",
             "  help",
@@ -284,6 +287,7 @@ class InteractiveMvpAdapter:
             "  stdout",
             "  stderr",
             "  interpret",
+            "  diagnose",
             "  read <relative-path>",
             "  provenance",
             "  status",
@@ -590,11 +594,14 @@ class InteractiveMvpAdapter:
             f"{stream_name}_end",
         ]
 
-    def _interpret(self) -> list[str]:
-        if self.last_result is None:
-            return ["ERROR no_result: run 'execute' before interpreting execution evidence."]
+    def _build_execution_evidence(self) -> "interpreter.ExecutionEvidence":
+        """Shared by `_interpret()` and `_diagnose()` so both operate on an
+        identically-assembled evidence snapshot -- assembly only, no
+        classification logic lives here (that stays in `interpret_execution`,
+        called once by `interpret` and once, internally, by `diagnose`)."""
         metadata = self.last_process_metadata
-        evidence = interpreter.ExecutionEvidence(
+        assert self.last_result is not None
+        return interpreter.ExecutionEvidence(
             runner=metadata.backend,
             gauss_ran=metadata.gauss_ran,
             executed=metadata.executed or self.last_result.execution_status is not None,
@@ -609,6 +616,11 @@ class InteractiveMvpAdapter:
             stderr_text=self.last_captured_output.stderr,
             metadata_error=metadata.error,
         )
+
+    def _interpret(self) -> list[str]:
+        if self.last_result is None:
+            return ["ERROR no_result: run 'execute' before interpreting execution evidence."]
+        evidence = self._build_execution_evidence()
         result = interpreter.interpret_execution(evidence)
         lines = [
             "REAL_WORKFLOW: Execution interpretation from existing evidence only.",
@@ -635,6 +647,52 @@ class InteractiveMvpAdapter:
             lines.append(f"verification_source: {result.verification_source}")
         if result.documentation_discrepancy:
             lines.append(f"documentation_discrepancy: {result.documentation_discrepancy}")
+        return lines
+
+    def _diagnose(self) -> list[str]:
+        if self.last_result is None:
+            return ["ERROR no_result: run 'execute' before diagnosing execution evidence."]
+        evidence = self._build_execution_evidence()
+        assessment = diagnostics.diagnose_execution(evidence)
+        lines = [
+            "REAL_WORKFLOW: Diagnostic reasoning from existing evidence and interpretation only.",
+            "DIAGNOSTIC_BOUNDARY: No GAUSS launch, no execute, no plan, no retry, no code edit, no automatic file read, "
+            "no workspace mutation.",
+            f"diagnostic_status: {assessment.diagnostic_status}",
+            f"confidence: {assessment.confidence}",
+            f"summary: {assessment.summary}",
+            f"safe_to_continue: {str(assessment.safe_to_continue).lower()}",
+            f"requires_user_input: {str(assessment.requires_user_input).lower()}",
+            f"source_error_code: {assessment.source_error_code}",
+            f"source_error_category: {assessment.source_error_category}",
+        ]
+        if assessment.knowledge_verification:
+            lines.append(f"knowledge_verification: {', '.join(assessment.knowledge_verification)}")
+        lines.append("known_facts:")
+        for fact in assessment.supporting_evidence:
+            lines.append(f"  - {fact}")
+        if assessment.contradicting_evidence:
+            lines.append("contradicting_evidence:")
+            for item in assessment.contradicting_evidence:
+                lines.append(f"  - {item}")
+        lines.append(f"possible_cause_count: {len(assessment.possible_causes)}")
+        for cause in assessment.possible_causes:
+            lines.append(f"  cause[{cause.cause_id}] (confidence={cause.confidence}, catalog_verified={cause.is_catalog_verified}): {cause.description}")
+        if assessment.missing_evidence:
+            lines.append("missing_evidence:")
+            for item in assessment.missing_evidence:
+                lines.append(f"  - {item}")
+        if assessment.questions_to_ask:
+            lines.append("questions_to_ask:")
+            for question in assessment.questions_to_ask:
+                lines.append(f"  - {question}")
+        if assessment.recommended_diagnostic_steps:
+            lines.append("recommended_diagnostic_steps:")
+            for step in assessment.recommended_diagnostic_steps:
+                lines.append(f"  - {step}")
+        for limitation in assessment.limitations:
+            lines.append(f"limitation: {limitation}")
+        lines.append(f"repair_boundary: {assessment.repair_boundary}")
         return lines
 
     def _read(self, args: list[str]) -> list[str]:
@@ -922,7 +980,7 @@ class InteractiveMvpAdapter:
 
 
 def run_repl(adapter: InteractiveMvpAdapter) -> int:
-    print("GAUSS Code Assistant Interactive MVP Adapter (v0.52.0 alpha)")
+    print("GAUSS Code Assistant Interactive MVP Adapter (v0.54.0 alpha)")
     print(f"Execution backend: {adapter.backend_label}")
     if adapter.runner_backend == REAL_GAUSS_BACKEND:
         print("Real GAUSS execution is enabled only after hash-bound confirm + execute.")

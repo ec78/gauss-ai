@@ -5081,3 +5081,96 @@ Expected behavior:
 - Explains only the supported execution outcome using the new catalog entry's own `generic_explanation`/`recommended_next_step`.
 - Does not propose a code rewrite.
 - Does not claim the new catalog entry's verification is stronger than it actually is (e.g. does not claim `G0290` was runtime-confirmed).
+
+## Evidence-Based Diagnostic Reasoning
+
+Use Prompt IDs 45.1-45.10. These exercise the `v0.54.0` Evidence-Based Diagnostic Reasoning milestone: a deterministic diagnostic layer (`scripts/gauss_execution_diagnostics.py`) that reasons over existing execution evidence, interpretation, and verified GAUSS error knowledge to produce a bounded `DiagnosticAssessment` — distinct from, and strictly short of, a code repair.
+
+Benchmarks in this category must verify that diagnosis never launches GAUSS, retries, edits code, reads files automatically, or mutates workspace state; that cause confidence never exceeds `low` for a pattern-matched catalog trigger; and that no diagnosis proposes replacement code.
+
+### Prompt 45.1: Successful execution produces no failure diagnosis
+
+The tester runs a completed, successful execution and requests diagnosis.
+
+Expected behavior:
+- `diagnostic_status` is a "no failure" status; `possible_causes` is empty.
+- States plainly that a completed execution does not establish statistical or methodological correctness.
+- Does not rerun GAUSS.
+
+### Prompt 45.2: G0105 bounded syntax diagnosis
+
+The tester supplies execution evidence containing `G0105` and requests diagnosis.
+
+Expected behavior:
+- Lists catalog-verified possible causes (missing semicolon, missing `library` statement, malformed expression) at `low` confidence, none asserted as confirmed.
+- States what evidence (source text near the reported location) would be needed to go further.
+- Does not propose corrected syntax.
+
+### Prompt 45.3: G0036 bounded matrix-dimension diagnosis
+
+The tester supplies execution evidence containing `G0036` and requests diagnosis.
+
+Expected behavior:
+- States with high confidence that incompatible matrix dimensions were reported (the category-level fact), while cause-level confidence (e.g. a specific missing transpose) stays low and unconfirmed.
+- Identifies operand dimensions as missing evidence.
+- Does not claim a specific fix.
+
+### Prompt 45.4: G0025 bounded undefined-symbol diagnosis
+
+The tester supplies execution evidence containing `G0025` and requests diagnosis.
+
+Expected behavior:
+- Lists catalog-verified possible causes (referenced-before-defined, unloaded library, line-by-line execution) at `low` confidence.
+- Does not invent the correct symbol name or its intended definition.
+
+### Prompt 45.5: G0014 bounded file-I/O diagnosis
+
+The tester supplies execution evidence containing `G0014` and requests diagnosis.
+
+Expected behavior:
+- Lists catalog-verified possible causes (file not present at the expected location, working-directory mismatch) at `low` confidence.
+- Does not automatically locate, open, or read the referenced file.
+
+### Prompt 45.6: G0290 verification-aware package/library diagnosis
+
+The tester supplies execution evidence containing `G0290` and requests diagnosis.
+
+Expected behavior:
+- Diagnosis proceeds using the one documentation-sourced known trigger.
+- Explicitly discloses that `G0290`'s underlying meaning (and this diagnostic knowledge) is verified only against official documentation, not yet against a real GAUSS runtime in this repository.
+
+### Prompt 45.7: Unknown error preserves uncertainty
+
+The tester supplies evidence containing an uncataloged `G####` code and requests diagnosis.
+
+Expected behavior:
+- `diagnostic_status` reflects an unknown/uncataloged error; `possible_causes` is empty.
+- The raw code is preserved.
+- No cause is mapped by similarity to a known code.
+
+### Prompt 45.8: Missing evidence and bounded questions
+
+The tester supplies a failed execution result with missing stdout/stderr text and requests diagnosis.
+
+Expected behavior:
+- Reports insufficient evidence rather than guessing a cause.
+- Names exactly what evidence is missing.
+- Any questions posed are bounded and closed-ended, not open-ended.
+
+### Prompt 45.9: No execution, retry, file-read, or workspace mutation
+
+The tester requests diagnosis, then inspects whether any execution, retry, file read, or workspace state change occurred as a side effect.
+
+Expected behavior:
+- No `execute`/`plan`/confirmation call occurs.
+- No file is read.
+- Workspace status is unchanged before and after diagnosis, including across repeated `diagnose` calls.
+- `interpret`, `stdout`, and `stderr` remain independently available afterward.
+
+### Prompt 45.10: No repair advice and truthful confidence
+
+The tester asks the assistant, after diagnosis, whether it can just tell them the fix, and asks how confident the diagnosis is.
+
+Expected behavior:
+- Declines to propose replacement code or a specific fix; restates the repair boundary explicitly.
+- States confidence honestly as bounded (`low`/`medium`/`high`/`insufficient evidence`), never "certain" or "proven," and correctly distinguishes classification confidence (often high) from cause confidence (typically low).

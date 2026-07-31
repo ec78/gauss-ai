@@ -614,6 +614,27 @@ See `planning/v0.53.0-verified-gauss-error-knowledge.md`.
 - **Tests added.** 10 new interpreter tests (catalog integrity, duplicate detection, new-code lookup, verification metadata surfacing, documentation-discrepancy surfacing, timeout-wording distinction, no-hardcoded-knowledge structural check) and 2 new CLI tests. Full existing regression suite unaffected.
 - **Still deferred.** Assisted debugging, code repair, durable `ExecutionSession` integration, autonomous retry, Claude Code/Codex chat integration, and cloud execution remain out of scope.
 
+## v0.54.0: Evidence-Based Diagnostic Reasoning
+
+See `planning/v0.54.0-evidence-based-diagnostic-reasoning.md`.
+
+- **Evaluation milestone completed.** All ten `45.x` Evidence-Based Diagnostic Reasoning benchmarks were evaluated: 10/10 Passed at 4.0, 0 Critical, 0 Major, 0 Minor.
+- **New deterministic diagnostic layer.** `scripts/gauss_execution_diagnostics.py`'s `diagnose_execution(evidence) -> DiagnosticAssessment` reasons over execution evidence, the existing interpreter's own classification (called internally, never duplicated), and the verified error catalog. Pure and stateless — no GAUSS launch, no execution helper, no workspace mutation, no file read, no network, no LLM call, no retry, no repair construction (structurally verified: the module has no import of any execution/workspace module).
+- **Bounded confidence, explicitly split from classification confidence.** A cataloged error code can support high confidence about *what category* of problem was reported while every specific *cause* stays at `low` — deliberately uniform across all catalog-derived causes, since this engine has no source-code-content evidence to distinguish between them. No numeric/opaque scoring.
+- **Catalog extended with diagnostic knowledge, not hardcoded logic.** `GaussErrorCatalogEntry` gained `known_triggers`/`diagnostic_questions`/`required_evidence_for_diagnosis`, populated only from the same accepted evidence sources as each entry's own `verification_status`. All five existing codes (`G0105`, `G0036`, `G0025`, `G0014`, `G0290`) now carry this knowledge; `G0290`'s diagnosis is explicitly labeled documentation-only, never implied to be runtime-confirmed.
+- **CLI `diagnose` command added**, distinct from `interpret` ("what happened?" vs. "what might explain it, and what's missing?"). Available any time after `execute`; never calls `execute`/`plan`/`confirm`; never auto-displays streams or auto-reads files; never mutates workspace state; deterministic across repeated calls.
+- **Repair boundary structurally enforced.** `DiagnosticAssessment` has no field capable of holding replacement code; a fixed disclosure string ("Diagnosis does not modify or repair the program.") is present in every branch.
+- **Tests added.** 31 new tests in `scripts/test_gauss_execution_diagnostics.py` (core engine, boundary/purity, catalog-knowledge integrity) and 13 new CLI tests. Full existing regression suite unaffected.
+- **Still deferred.** Repair planning/application, autonomous correction, automatic retry, durable `ExecutionSession` integration, multi-attempt workspaces, Claude Code/Codex chat integration, and cloud execution remain out of scope.
+
+## Future Candidate: Diagnostic Evaluation and Refinement (Not Yet Authorized)
+
+Not planned or scoped. `v0.54.0`'s own `45.x` evaluation found zero unresolved defects, so this is a lower-priority candidate than a catalog-knowledge expansion — but if a future manual alpha-testing pass against real, varied failures surfaces gaps in diagnostic cause coverage or wording, that refinement work would land here, strictly bounded to the existing diagnosis/repair separation (no code repair, no autonomous reasoning).
+
+## Future Candidate: Repair Planning (Not Yet Authorized)
+
+Not planned, scoped, or implemented. This is explicitly the next stage after Diagnosis in this project's own staged pipeline (Execution → Evidence Collection → Interpretation → Verified Knowledge → Diagnosis → Repair Planning), but `v0.54.0` implements Diagnosis only and stops there deliberately — no repair-planning design document, data model, or code exists yet. Any future work here would still need to preserve the same repair boundary principle already enforced today: a repair *proposal* (if ever implemented) would remain distinct from an *applied* repair, and neither would be authorized as part of extending diagnosis itself.
+
 ## Future Candidate: Durable Execution Session Integration (Deferred)
 
 See `planning/v0.47.0-session-integration-readiness.md`.
