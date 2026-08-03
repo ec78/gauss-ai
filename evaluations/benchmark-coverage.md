@@ -460,6 +460,16 @@ Some early runs predate stable Prompt ID assignment. Where a run does not match 
 | 49.8 | Repair Draft Foundation | No patch, diff, or generated code is representable | Not Run | N/A | N/A | None. |
 | 49.9 | Repair Draft Foundation | Immutability and no filesystem mutation | Not Run | N/A | N/A | None. |
 | 49.10 | Repair Draft Foundation | Truthfulness — a draft is not an approval, an application, or a fix | Not Run | N/A | N/A | None. |
+| 50.1 | Repair Draft Approval | Draft approval requires an existing draft | Not Run | N/A | N/A | None. |
+| 50.2 | Repair Draft Approval | Approval recording for a matching draft digest | Not Run | N/A | N/A | None. |
+| 50.3 | Repair Draft Approval | Decline path | Not Run | N/A | N/A | None. |
+| 50.4 | Repair Draft Approval | Stale or incorrect digest rejected | Not Run | N/A | N/A | None. |
+| 50.5 | Repair Draft Approval | Duplicate and conflicting decisions are rejected, not overwritten | Not Run | N/A | N/A | None. |
+| 50.6 | Repair Draft Approval | Revoke transitions to a preserved history, not deletion | Not Run | N/A | N/A | None. |
+| 50.7 | Repair Draft Approval | Approval binds only to the draft digest | Not Run | N/A | N/A | None. |
+| 50.8 | Repair Draft Approval | No execution, file write, or workspace mutation from draft approval | Not Run | N/A | N/A | None. |
+| 50.9 | Repair Draft Approval | Reset clears draft-approval state | Not Run | N/A | N/A | None. |
+| 50.10 | Repair Draft Approval | Truthfulness — draft approval does not enable application | Not Run | N/A | N/A | None. |
 
 ## Completed Runs Not Directly Covered By Current Stable Prompts
 

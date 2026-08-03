@@ -4,6 +4,18 @@ This file records notable changes to the GAUSS AI framework.
 
 ## [Unreleased]
 
+- Added `v0.60.0` Repair Draft Review and Approval: a new deterministic draft-approval layer (`scripts/gauss_repair_draft_approval.py`) that records an explicit human accept/decline/revoke decision for a specific `RepairDraft`, hash-bound to `repair_draft_digest(...)` alone. Phase 3 of the `v0.58.0` design.
+- Added `DraftApprovalDecision` enum (`approved`/`declined`/`revoked`), `DraftApprovalRecord` dataclass, `DraftApprovalStore`, and `DraftApprovalConflictError`.
+- The approval binding is explicitly `repair_draft_digest` only — never `repair_plan_digest`, workspace ID, relative path, or execution request ID, verified directly by dedicated tests.
+- `revoke(...)` transitions an active record to a preserved `REVOKED` state in place, rather than deleting it as `gauss_repair_approval.RepairApprovalStore.revoke(...)` does — a decision history stays visible, while the digest is freed for a fresh `approve`/`decline` call.
+- `safe_to_apply`/`safe_to_prepare_draft` are structurally always `False` on every `DraftApprovalRecord`, across approved/declined/revoked states alike.
+- Added the CLI `approve-repair-draft`/`decline-repair-draft`/`show-repair-draft-approval` commands, requiring the exact current `draft_digest`; a stale or incorrect digest is rejected with the correct current digest shown for guidance. `reset` now also clears `last_repair_draft`'s associated approval state via a fresh `DraftApprovalStore`.
+- Added `scripts/test_gauss_repair_draft_approval.py` (22 tests) and 12 new CLI tests.
+- Added a `50.x` Repair Draft Approval evaluation category (ten prompts, matching coverage rows), deliberately left `Not Run` — no evaluation results fabricated.
+- Added `planning/v0.60.0-repair-draft-approval.md`, `release-notes-v0.60.0.md`, and `docs/gauss-repair-draft-approval.md`.
+- Updated `docs/gauss-repair-draft.md` to reference the new downstream draft-approval layer without changing repair-draft's own responsibilities.
+- No interpreter, diagnostic, repair-planning, strategy-approval, or repair-draft-model behavior changed. `scripts/gauss_repair_planner.py`, `scripts/gauss_repair_approval.py`, and `scripts/gauss_repair_draft.py` have zero diff.
+
 - Added `v0.59.0` Source Identity and Repair Draft Foundation: implements Phase 1 of the `v0.58.0` design — immutable `SourceArtifact`/`SourceIdentity`/`EditScope`/`RepairDraft` models and deterministic structural validation (`scripts/gauss_repair_draft.py`). No patch generation, file editing, or application.
 - Added `repair_draft_digest(draft)` and `source_identity_digest(identity)`, both following the exact canonical-JSON/SHA-256 convention `repair_plan_digest` already established. `repair_draft_id` is deliberately excluded from the digest (content identity, not instance identity).
 - Added `validate_repair_draft(draft, current_source_identity=None)`: ten pure, I/O-free structural checks (workspace/hash matching, UTF-8-only encoding, well-formed and bounded [≤200-line] edit ranges, structural single-file/immutability/determinism guarantees, no-generated-code detection).

@@ -88,7 +88,9 @@ Neither digest is stored as a field on the object it identifies (unlike the mile
 
 ## Relationship to Repair Approval
 
-`gauss_repair_approval.py` (`v0.57.0`) is unaffected. Strategy approval (recording a decision about a `RepairPlan`) remains completely separate from, and does not authorize, anything about a `RepairDraft`. **Draft approval — a human explicitly accepting a specific draft — does not exist yet.** This milestone builds the object a future draft-approval layer would operate on; it does not build that layer.
+`gauss_repair_approval.py` (`v0.57.0`) is unaffected. Strategy approval (recording a decision about a `RepairPlan`) remains completely separate from, and does not authorize, anything about a `RepairDraft`.
+
+**As of `v0.60.0`, draft approval exists** — `scripts/gauss_repair_draft_approval.py`, documented in `docs/gauss-repair-draft-approval.md`. It consumes a `RepairDraft` and `repair_draft_digest(...)` exclusively; this module (`gauss_repair_draft.py`) has no knowledge that it exists, the same decoupling `gauss_repair_planner.py` maintains from `gauss_repair_approval.py`.
 
 ## Relationship to Future Repair Application
 
@@ -127,7 +129,7 @@ gauss-mvp> show-repair-draft
 ## Limitations
 
 - This is a foundation model only. No draft-generation logic exists — every field is explicitly supplied by whoever calls `build_repair_draft(...)` (a human via the CLI, or a test).
-- No draft-approval mechanism exists yet (see "Relationship to Repair Approval" above).
+- Draft approval exists (`v0.60.0`, see "Relationship to Repair Approval" above), but nothing consumes an approval decision toward drafting refinement or application — see `docs/gauss-repair-draft-approval.md`.
 - No persistence: `last_repair_draft` is process-local, cleared by `reset`, gone on process exit — consistent with every other stage's own current behavior.
 - Validation is structural only; it does not, and cannot, assess GAUSS correctness.
 - `current_source_identity` re-verification is available as a function parameter but this module never obtains a "current" value itself — no I/O exists here to do so.

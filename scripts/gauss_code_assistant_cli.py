@@ -35,6 +35,7 @@ import gauss_execution_interpreter as interpreter  # noqa: E402
 import gauss_execution_workflow as wf  # noqa: E402
 import gauss_repair_approval as repair_approval  # noqa: E402
 import gauss_repair_draft as repair_draft_mod  # noqa: E402
+import gauss_repair_draft_approval as draft_approval  # noqa: E402
 import gauss_repair_planner as repair_planner  # noqa: E402
 import gauss_orchestration_state_store as store_mod  # noqa: E402
 import gauss_workspace as workspace_mod  # noqa: E402
@@ -209,6 +210,9 @@ class InteractiveMvpAdapter:
         # this field (drafting has no consumer yet).
         self.last_repair_draft: repair_draft_mod.RepairDraft | None = None
         self._draft_counter = 0
+        # v0.60.0: process-local store of draft-approval decisions -- exactly
+        # as durable (i.e. not) as _repair_approval_store already is.
+        self._draft_approval_store = draft_approval.DraftApprovalStore()
         self._turn_counter = 0
 
     # ------------------------------------------------------------------
@@ -280,6 +284,12 @@ class InteractiveMvpAdapter:
                 return True, self._repair_draft(args)
             if command == "show-repair-draft":
                 return True, self._show_repair_draft(args)
+            if command == "approve-repair-draft":
+                return True, self._approve_repair_draft(args)
+            if command == "decline-repair-draft":
+                return True, self._decline_repair_draft(args)
+            if command == "show-repair-draft-approval":
+                return True, self._show_repair_draft_approval(args)
             if command == "read":
                 return True, self._read(args)
             if command == "provenance":
@@ -298,7 +308,7 @@ class InteractiveMvpAdapter:
 
     def _help(self) -> list[str]:
         return [
-            "GAUSS Code Assistant Interactive MVP Adapter (v0.59.0 alpha)",
+            "GAUSS Code Assistant Interactive MVP Adapter (v0.60.0 alpha)",
             f"Execution backend: {self.backend_label}",
             "Commands:",
             "  help",
@@ -322,6 +332,9 @@ class InteractiveMvpAdapter:
             "               --operation TEXT --description TEXT [--workspace-id ID] [--encoding utf-8]",
             "               [--procedure NAME] [--symbol NAME]",
             "  show-repair-draft",
+            "  approve-repair-draft <draft_digest>",
+            "  decline-repair-draft <draft_digest>",
+            "  show-repair-draft-approval",
             "  read <relative-path>",
             "  provenance",
             "  status",
@@ -1101,6 +1114,63 @@ class InteractiveMvpAdapter:
             return ["ERROR no_repair_draft: run 'repair-draft' first."]
         return self._render_repair_draft(self.last_repair_draft)
 
+    def _render_draft_approval_record(self, record: "draft_approval.DraftApprovalRecord") -> list[str]:
+        return [
+            "REAL_WORKFLOW: Repair-draft approval recorded from the current repair draft only.",
+            "DRAFT_APPROVAL_BOUNDARY: No code was modified. No file was written. No patch was applied. No "
+            "execution occurred. Repair Application remains unavailable.",
+            f"decision: {record.decision}",
+            f"draft_digest: {record.draft_digest}",
+            f"repair_draft_id: {record.repair_draft_id}",
+            f"recorded_at: {record.recorded_at}",
+            f"safe_to_apply: {str(record.safe_to_apply).lower()}",
+            f"safe_to_prepare_draft: {str(record.safe_to_prepare_draft).lower()}",
+            f"approval_boundary: {record.approval_boundary}",
+        ]
+
+    def _record_repair_draft_decision(
+        self, args: list[str], *, decision: "draft_approval.DraftApprovalDecision", command_name: str
+    ) -> list[str]:
+        if self.last_repair_draft is None:
+            return ["ERROR no_repair_draft: run 'repair-draft' first."]
+        if not args:
+            return [f"ERROR usage: {command_name} <draft_digest>"]
+        supplied_digest = args[0]
+        actual_digest = repair_draft_mod.repair_draft_digest(self.last_repair_draft)
+        if supplied_digest != actual_digest:
+            return [
+                "ERROR stale_or_incorrect_digest: supplied draft_digest does not match the current repair draft.",
+                f"current_draft_digest: {actual_digest}",
+                "guidance: run 'repair-draft' or 'show-repair-draft' again to see the current digest, or "
+                "re-supply the exact digest shown there.",
+            ]
+        try:
+            if decision == draft_approval.DraftApprovalDecision.APPROVED:
+                record = self._draft_approval_store.approve(self.last_repair_draft, recorded_at=str(self._clock()))
+            else:
+                record = self._draft_approval_store.decline(self.last_repair_draft, recorded_at=str(self._clock()))
+        except draft_approval.DraftApprovalConflictError as exc:
+            return [f"ERROR draft_approval_conflict: {exc}"]
+        return self._render_draft_approval_record(record)
+
+    def _approve_repair_draft(self, args: list[str]) -> list[str]:
+        return self._record_repair_draft_decision(
+            args, decision=draft_approval.DraftApprovalDecision.APPROVED, command_name="approve-repair-draft"
+        )
+
+    def _decline_repair_draft(self, args: list[str]) -> list[str]:
+        return self._record_repair_draft_decision(
+            args, decision=draft_approval.DraftApprovalDecision.DECLINED, command_name="decline-repair-draft"
+        )
+
+    def _show_repair_draft_approval(self, args: list[str]) -> list[str]:
+        if self.last_repair_draft is None:
+            return ["ERROR no_repair_draft: run 'repair-draft' first."]
+        record = self._draft_approval_store.get_decision(self.last_repair_draft)
+        if record is None:
+            return ["ERROR no_draft_approval: run 'approve-repair-draft' or 'decline-repair-draft' first."]
+        return self._render_draft_approval_record(record)
+
     def _read(self, args: list[str]) -> list[str]:
         if self.active_workspace_id is None:
             return ["ERROR no_workspace: run 'workspace create' first."]
@@ -1192,6 +1262,7 @@ class InteractiveMvpAdapter:
         self.last_repair_plan = None
         self._repair_approval_store = repair_approval.RepairApprovalStore()
         self.last_repair_draft = None
+        self._draft_approval_store = draft_approval.DraftApprovalStore()
         return [
             "ADAPTER: Cleared active request, proposal, confirmation, and result.",
             "workspace_retained: true",
@@ -1389,7 +1460,7 @@ class InteractiveMvpAdapter:
 
 
 def run_repl(adapter: InteractiveMvpAdapter) -> int:
-    print("GAUSS Code Assistant Interactive MVP Adapter (v0.59.0 alpha)")
+    print("GAUSS Code Assistant Interactive MVP Adapter (v0.60.0 alpha)")
     print(f"Execution backend: {adapter.backend_label}")
     if adapter.runner_backend == REAL_GAUSS_BACKEND:
         print("Real GAUSS execution is enabled only after hash-bound confirm + execute.")

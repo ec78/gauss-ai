@@ -1300,6 +1300,156 @@ def test_83_repair_draft_never_calls_execute_or_mutates_approval_store() -> None
         adapter.close()
 
 
+def _draft_digest_from(out: list[str]) -> str:
+    return [line.split(": ", 1)[1] for line in out if line.startswith("draft_digest:")][0]
+
+
+def _plan_and_draft(adapter: "cli.InteractiveMvpAdapter") -> str:
+    """Drives request -> plan -> confirm -> execute -> repair-plan ->
+    repair-draft, returning the resulting draft's own digest."""
+    request_hash = _plan_success(adapter)
+    _run(adapter, f"confirm {request_hash}")
+    _run(adapter, "execute")
+    _run(adapter, "repair-plan")
+    out = _repair_draft_from(adapter)
+    return _draft_digest_from(out)
+
+
+def test_84_approve_repair_draft_before_draft_exists() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        _run(adapter, "repair-plan")
+        out = _joined(_run(adapter, "approve-repair-draft somehash"))
+        check("approve-repair-draft before a draft exists reports no_repair_draft", "ERROR no_repair_draft" in out)
+        adapter.close()
+
+
+def test_85_approve_repair_draft_after_draft_exists() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        digest = _plan_and_draft(adapter)
+        out = _joined(_run(adapter, f"approve-repair-draft {digest}"))
+        check("approval recorded", "decision: approved" in out)
+        check("draft_digest echoed back matches", f"draft_digest: {digest}" in out)
+        check("safe_to_apply still false", "safe_to_apply: false" in out)
+        check("safe_to_prepare_draft still false", "safe_to_prepare_draft: false" in out)
+        check("draft approval boundary disclosed", "DRAFT_APPROVAL_BOUNDARY" in out)
+        check("approval_boundary states approved", "has been approved" in out)
+        adapter.close()
+
+
+def test_86_decline_repair_draft_path() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        digest = _plan_and_draft(adapter)
+        out = _joined(_run(adapter, f"decline-repair-draft {digest}"))
+        check("decline recorded", "decision: declined" in out)
+        check("decline boundary does not claim approval", "has been approved" not in out.split("approval_boundary:")[1])
+        adapter.close()
+
+
+def test_87_approve_repair_draft_stale_digest_rejected() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _plan_and_draft(adapter)
+        out = _joined(_run(adapter, "approve-repair-draft 0000000000000000000000000000000000000000000000000000000000000000"))
+        check("stale/incorrect digest rejected", "ERROR stale_or_incorrect_digest" in out)
+        check("current_draft_digest disclosed for guidance", "current_draft_digest:" in out)
+        adapter.close()
+
+
+def test_88_re_approve_repair_draft_without_revoke_reports_conflict() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        digest = _plan_and_draft(adapter)
+        _run(adapter, f"approve-repair-draft {digest}")
+        out = _joined(_run(adapter, f"approve-repair-draft {digest}"))
+        check("re-approving without revoke reports a conflict, not a silent overwrite", "ERROR draft_approval_conflict" in out)
+        adapter.close()
+
+
+def test_89_approve_repair_draft_missing_argument() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _plan_and_draft(adapter)
+        out = _joined(_run(adapter, "approve-repair-draft"))
+        check("approve-repair-draft with no digest argument reports usage error", "ERROR usage" in out)
+        adapter.close()
+
+
+def test_90_show_repair_draft_approval_before_decision_exists() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _plan_and_draft(adapter)
+        out = _joined(_run(adapter, "show-repair-draft-approval"))
+        check("show-repair-draft-approval before any decision reports no_draft_approval", "ERROR no_draft_approval" in out)
+        adapter.close()
+
+
+def test_91_show_repair_draft_approval_after_decision() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        digest = _plan_and_draft(adapter)
+        _run(adapter, f"approve-repair-draft {digest}")
+        first = _joined(_run(adapter, "show-repair-draft-approval"))
+        second = _joined(_run(adapter, "show-repair-draft-approval"))
+        check("repeated show-repair-draft-approval is deterministic", first == second)
+        check("shows the approved decision", "decision: approved" in first)
+        adapter.close()
+
+
+def test_92_reset_clears_repair_draft_approval_state() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        digest = _plan_and_draft(adapter)
+        _run(adapter, f"approve-repair-draft {digest}")
+        _run(adapter, "reset")
+        out = _joined(_run(adapter, "approve-repair-draft " + digest))
+        check("approve-repair-draft after reset reports no_repair_draft, consistent with repair-draft's own reset behavior", "ERROR no_repair_draft" in out)
+        adapter.close()
+
+
+def test_93_repair_draft_approval_does_not_mutate_workspace_or_filesystem() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        digest = _plan_and_draft(adapter)
+        status_before = adapter.registry.get_workspace(adapter.active_workspace_id).status
+        workspace_root = Path(adapter.registry.get_workspace(adapter.active_workspace_id).root_path)
+        entries_before = set(workspace_root.rglob("*")) if workspace_root.exists() else set()
+        _run(adapter, f"approve-repair-draft {digest}")
+        _run(adapter, "show-repair-draft-approval")
+        status_after = adapter.registry.get_workspace(adapter.active_workspace_id).status
+        entries_after = set(workspace_root.rglob("*")) if workspace_root.exists() else set()
+        check("workspace status unchanged by draft-approval commands", status_before == status_after)
+        check("no new filesystem entries created by draft-approval commands", entries_before == entries_after)
+        adapter.close()
+
+
+def test_94_repair_draft_approval_does_not_call_execute_or_mutate_strategy_approval() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        digest = _plan_and_draft(adapter)
+        strategy_len_before = len(adapter._repair_approval_store)  # noqa: SLF001
+        _run(adapter, f"approve-repair-draft {digest}")
+        strategy_len_after = len(adapter._repair_approval_store)  # noqa: SLF001
+        check("approving a draft does not add a strategy-level approval record", strategy_len_before == strategy_len_after)
+        adapter.close()
+
+
+def test_95_repair_planning_and_approval_regression_unaffected_by_draft_approval_layer() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        out = _joined(_run(adapter, "repair-plan"))
+        check("successful-execution repair-plan output unchanged by the new draft-approval layer", "repair_status: successful_execution_no_repair_needed" in out)
+        adapter.close()
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)
