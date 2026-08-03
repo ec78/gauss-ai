@@ -4,6 +4,19 @@ This file records notable changes to the GAUSS AI framework.
 
 ## [Unreleased]
 
+- Added `v0.56.0` Evidence-Aware Repair Planning: a new deterministic repair-planning layer (`scripts/gauss_repair_planner.py`) that reasons over execution evidence, interpretation, diagnosis, and the verified GAUSS error catalog to produce a bounded, evidence-only `RepairPlan` — strictly short of applying a change.
+- Added `RepairStatus` enum (`successful_execution_no_repair_needed`, `not_applicable`, `timeout`, `strategy_available`, `draft_possible_with_more_context`, `blocked_by_missing_source`, `unknown_error`, `insufficient_evidence`) and `RepairPlan`/`RepairAction` dataclasses. Confidence reuses `DiagnosticConfidence` directly rather than duplicating it.
+- Added a new, optional `SourceContext` dataclass (`code_text`, `line_start`/`line_end`, `matrix_shapes`, `referenced_paths`, `procedure_name`, `argument_summary`) accepted only from explicit caller input — never read from a file or inferred.
+- Added `repair_strategies`/`repair_preconditions`/`repair_verification_steps`/`repair_risks` fields to `GaussErrorCatalogEntry`, populated for all 11 existing codes from the same accepted evidence sources as each entry's own verification status.
+- `safe_to_apply` and `safe_to_prepare_draft` are structurally always `False`; no `RepairAction.is_concrete_edit` is ever `True`; no `action_type` is ever an edit/apply/patch verb — checked by dedicated boundary tests, not just by convention.
+- Added the CLI `repair-plan` command, distinct from `interpret`/`diagnose`, with optional `--source-text`/`--matrix-shape`/`--path`/`--procedure`/`--args`/`--line-start`/`--line-end` flags; never calls `execute`/`plan`/`confirm`, never auto-displays stdout/stderr, never auto-reads files, never mutates workspace state, deterministic across repeated calls.
+- Added a fixed repair-boundary disclosure and a CLI-level application-boundary line present on every `repair-plan` call.
+- Added `scripts/test_gauss_repair_planner.py` (40 tests: core scenarios, boundary/purity, catalog-knowledge integrity), 2 new tests to `scripts/test_gauss_error_catalog.py`, and 15 new CLI tests.
+- Added ten `47.x` Evidence-Aware Repair Planning evaluation run files and updated benchmark coverage, run index, and evaluation dashboard to show 10/10 Passed at 4.0.
+- Added `planning/v0.56.0-evidence-aware-repair-planning.md`, `release-notes-v0.56.0.md`, and `docs/gauss-repair-planning.md`.
+- Updated `docs/gauss-error-catalog.md` with each entry's repair strategy/verification/risks, and `docs/gauss-diagnostic-reasoning.md` to reference the new downstream repair-planning layer without changing diagnosis's own responsibilities.
+- No interpreter or diagnostic-engine control-flow changed; no execution, workspace, confirmation, or diagnostic classification behavior changed.
+
 - Added `v0.55.0` Verified Diagnostic Coverage Expansion: grew the verified GAUSS error catalog from 5 to 11 entries, all backed by real GAUSS 26.1.1 runtime reproduction (`tgauss.exe -b` in disposable scratch directories, no package install/removal, no license/config changes).
 - Added six new catalog entries: `G0058` (Index out of range), `G0159` (Wrong number of parameters), `G0104` (Argument must be positive), `G0071` (Type mismatch), `G0048` (Matrix singular), `G0047` (Rows don't match) — each real-runtime-verified only, not yet cross-checked against official documentation.
 - Added three new `GaussErrorCategory` values (`indexing_subscript`, `argument_validation`, `type_mismatch`) and populated the previously-empty `numerical` category for the first time (`G0048`); `matrix_dimension` now has two distinct codes (`G0036`, `G0047`).

@@ -186,9 +186,27 @@ def test_17_no_repair_instruction_appears_in_any_catalog_field() -> None:
             + list(entry.known_triggers)
             + list(entry.diagnostic_questions)
             + list(entry.required_evidence_for_diagnosis)
+            + list(entry.repair_strategies)
+            + list(entry.repair_preconditions)
+            + list(entry.repair_verification_steps)
+            + list(entry.repair_risks)
         ).lower()
         for term in banned_terms:
             check(f"{entry.error_code} has no repair instruction ({term!r})", term not in text)
+
+
+def test_19_all_entries_have_repair_planning_knowledge_as_of_v0_56_0() -> None:
+    for entry in catalog.catalog_entries():
+        check(f"{entry.error_code} has repair_strategies", len(entry.repair_strategies) > 0)
+        check(f"{entry.error_code} has repair_preconditions", len(entry.repair_preconditions) > 0)
+        check(f"{entry.error_code} has repair_verification_steps", len(entry.repair_verification_steps) > 0)
+        check(f"{entry.error_code} has repair_risks", len(entry.repair_risks) > 0)
+
+
+def test_20_repair_strategies_distinct_from_diagnostic_triggers() -> None:
+    for entry in catalog.catalog_entries():
+        overlap = set(entry.repair_strategies) & set(entry.known_triggers)
+        check(f"{entry.error_code} repair_strategies text is distinct from known_triggers text", overlap == set())
 
 
 def test_18_matrix_dimension_category_has_two_distinct_codes() -> None:

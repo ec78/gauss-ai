@@ -33,6 +33,7 @@ import gauss_code_assistant_workflow as mvp  # noqa: E402
 import gauss_execution_diagnostics as diagnostics  # noqa: E402
 import gauss_execution_interpreter as interpreter  # noqa: E402
 import gauss_execution_workflow as wf  # noqa: E402
+import gauss_repair_planner as repair_planner  # noqa: E402
 import gauss_orchestration_state_store as store_mod  # noqa: E402
 import gauss_workspace as workspace_mod  # noqa: E402
 import gauss_workspace_file_reader as file_reader_mod  # noqa: E402
@@ -254,6 +255,8 @@ class InteractiveMvpAdapter:
                 return True, self._interpret()
             if command == "diagnose":
                 return True, self._diagnose()
+            if command == "repair-plan":
+                return True, self._repair_plan(args)
             if command == "read":
                 return True, self._read(args)
             if command == "provenance":
@@ -272,7 +275,7 @@ class InteractiveMvpAdapter:
 
     def _help(self) -> list[str]:
         return [
-            "GAUSS Code Assistant Interactive MVP Adapter (v0.54.0 alpha)",
+            "GAUSS Code Assistant Interactive MVP Adapter (v0.56.0 alpha)",
             f"Execution backend: {self.backend_label}",
             "Commands:",
             "  help",
@@ -288,6 +291,8 @@ class InteractiveMvpAdapter:
             "  stderr",
             "  interpret",
             "  diagnose",
+            "  repair-plan [--source-text TEXT] [--matrix-shape NAME=RxC ...] [--path PATH ...]",
+            "              [--procedure NAME] [--args SUMMARY] [--line-start N] [--line-end N]",
             "  read <relative-path>",
             "  provenance",
             "  status",
@@ -695,6 +700,129 @@ class InteractiveMvpAdapter:
         lines.append(f"repair_boundary: {assessment.repair_boundary}")
         return lines
 
+    def _parse_source_context(self, args: list[str]) -> "repair_planner.SourceContext | str":
+        """Parses a small, bounded set of explicit source-context flags.
+        Returns a `SourceContext` on success, or an error message string on
+        invalid input. Never reads a file or fetches anything -- every value
+        comes directly from the flags the caller typed."""
+        code_text: str | None = None
+        line_start: int | None = None
+        line_end: int | None = None
+        matrix_shapes: list[str] = []
+        referenced_paths: list[str] = []
+        procedure_name: str | None = None
+        argument_summary: str | None = None
+
+        i = 0
+        while i < len(args):
+            token = args[i]
+            if token == "--source-text" and i + 1 < len(args):
+                code_text = args[i + 1]
+                i += 2
+            elif token == "--matrix-shape" and i + 1 < len(args):
+                matrix_shapes.append(args[i + 1])
+                i += 2
+            elif token == "--path" and i + 1 < len(args):
+                referenced_paths.append(args[i + 1])
+                i += 2
+            elif token == "--procedure" and i + 1 < len(args):
+                procedure_name = args[i + 1]
+                i += 2
+            elif token == "--args" and i + 1 < len(args):
+                argument_summary = args[i + 1]
+                i += 2
+            elif token == "--line-start" and i + 1 < len(args):
+                try:
+                    line_start = int(args[i + 1])
+                except ValueError:
+                    return f"ERROR usage: --line-start requires an integer, got {args[i + 1]!r}"
+                i += 2
+            elif token == "--line-end" and i + 1 < len(args):
+                try:
+                    line_end = int(args[i + 1])
+                except ValueError:
+                    return f"ERROR usage: --line-end requires an integer, got {args[i + 1]!r}"
+                i += 2
+            else:
+                return f"ERROR usage: unrecognized repair-plan option {token!r}"
+
+        return repair_planner.SourceContext(
+            code_text=code_text,
+            line_start=line_start,
+            line_end=line_end,
+            matrix_shapes=tuple(matrix_shapes),
+            referenced_paths=tuple(referenced_paths),
+            procedure_name=procedure_name,
+            argument_summary=argument_summary,
+        )
+
+    def _repair_plan(self, args: list[str]) -> list[str]:
+        if self.last_result is None:
+            return ["ERROR no_result: run 'execute' before requesting a repair plan."]
+        parsed = self._parse_source_context(args)
+        if isinstance(parsed, str):
+            return [parsed]
+        source_context = parsed if not parsed.is_empty() else None
+        evidence = self._build_execution_evidence()
+        plan = repair_planner.plan_repair(evidence, source_context=source_context)
+        lines = [
+            "REAL_WORKFLOW: Repair planning from existing evidence, interpretation, and diagnosis only.",
+            "REPAIR_PLAN_BOUNDARY: No GAUSS launch, no execute, no plan, no retry, no code edit, no file write, "
+            "no patch application, no new execution proposal, no workspace mutation.",
+            f"repair_status: {plan.repair_status}",
+            f"confidence: {plan.confidence}",
+            f"summary: {plan.summary}",
+            f"source_context_used: {str(plan.source_context_used).lower()}",
+            f"source_error_code: {plan.source_error_code}",
+            f"source_error_category: {plan.source_error_category}",
+        ]
+        if plan.knowledge_verification:
+            lines.append(f"knowledge_verification: {', '.join(plan.knowledge_verification)}")
+        lines.append("evidence_supporting_plan:")
+        for item in plan.supporting_evidence:
+            lines.append(f"  - {item}")
+        if plan.repair_strategy:
+            lines.append(f"proposed_repair_strategy: {plan.repair_strategy}")
+        if plan.target_scope:
+            lines.append(f"target_scope: {plan.target_scope}")
+        lines.append(f"proposed_action_count: {len(plan.proposed_actions)}")
+        for action in plan.proposed_actions:
+            lines.append(
+                f"  action[{action.action_id}] type={action.action_type} confidence={action.confidence} "
+                f"is_concrete_edit={str(action.is_concrete_edit).lower()}: {action.description}"
+            )
+        if plan.assumptions:
+            lines.append("assumptions:")
+            for item in plan.assumptions:
+                lines.append(f"  - {item}")
+        if plan.missing_evidence:
+            lines.append("missing_evidence:")
+            for item in plan.missing_evidence:
+                lines.append(f"  - {item}")
+        if plan.risks:
+            lines.append("risks:")
+            for item in plan.risks:
+                lines.append(f"  - {item}")
+        if plan.verification_steps:
+            lines.append("verification_steps:")
+            for item in plan.verification_steps:
+                lines.append(f"  - {item}")
+        if plan.questions_to_answer:
+            lines.append("questions_to_answer:")
+            for item in plan.questions_to_answer:
+                lines.append(f"  - {item}")
+        lines.extend(
+            [
+                f"requires_user_input: {str(plan.requires_user_input).lower()}",
+                f"requires_explicit_approval: {str(plan.requires_explicit_approval).lower()}",
+                f"safe_to_prepare_draft: {str(plan.safe_to_prepare_draft).lower()}",
+                f"safe_to_apply: {str(plan.safe_to_apply).lower()}",
+                f"repair_boundary: {plan.repair_boundary}",
+                "application_boundary: No patch was applied. No file was modified. GAUSS was not rerun.",
+            ]
+        )
+        return lines
+
     def _read(self, args: list[str]) -> list[str]:
         if self.active_workspace_id is None:
             return ["ERROR no_workspace: run 'workspace create' first."]
@@ -980,7 +1108,7 @@ class InteractiveMvpAdapter:
 
 
 def run_repl(adapter: InteractiveMvpAdapter) -> int:
-    print("GAUSS Code Assistant Interactive MVP Adapter (v0.54.0 alpha)")
+    print("GAUSS Code Assistant Interactive MVP Adapter (v0.56.0 alpha)")
     print(f"Execution backend: {adapter.backend_label}")
     if adapter.runner_backend == REAL_GAUSS_BACKEND:
         print("Real GAUSS execution is enabled only after hash-bound confirm + execute.")

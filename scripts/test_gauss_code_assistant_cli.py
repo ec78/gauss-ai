@@ -808,6 +808,213 @@ def test_48_unknown_code_remains_generic_after_catalog_expansion() -> None:
         adapter.close()
 
 
+def test_49_repair_plan_before_workspace_creation() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        out = _joined(_run(adapter, "repair-plan"))
+        check("repair-plan before any workspace reports no_result", "ERROR no_result" in out)
+        adapter.close()
+
+
+def test_50_repair_plan_before_request() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _run(adapter, "workspace create")
+        out = _joined(_run(adapter, "repair-plan"))
+        check("repair-plan before request reports no_result", "ERROR no_result" in out)
+        adapter.close()
+
+
+def test_51_repair_plan_before_execute() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _plan_success(adapter)
+        out = _joined(_run(adapter, "repair-plan"))
+        check("repair-plan before execute reports no_result", "ERROR no_result" in out)
+        adapter.close()
+
+
+def test_52_repair_plan_after_successful_execution() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        out = _joined(_run(adapter, "repair-plan"))
+        check("boundary disclosed", "REPAIR_PLAN_BOUNDARY" in out)
+        check("no-repair-needed status", "repair_status: successful_execution_no_repair_needed" in out)
+        check("safe_to_apply false", "safe_to_apply: false" in out)
+        check("application boundary disclosed", "No patch was applied. No file was modified. GAUSS was not rerun." in out)
+        adapter.close()
+
+
+def test_53_repair_plan_after_g0105() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _run(adapter, "workspace create")
+        _run(adapter, "request --fake-failure x = ;")
+        _run(adapter, "plan")
+        assert adapter.mvp_session is not None
+        request_hash = adapter.mvp_session.proposal_outcome.proposal.request_hash
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        out = _joined(_run(adapter, "repair-plan"))
+        check("source_error_code G0105", "source_error_code: G0105" in out)
+        check("strategy_available status", "repair_status: strategy_available" in out)
+        check("proposed strategy present", "proposed_repair_strategy:" in out)
+        check("safe_to_apply false", "safe_to_apply: false" in out)
+        adapter.close()
+
+
+def test_54_repair_plan_after_each_new_code() -> None:
+    codes = {
+        "G0036": "error G0036 : Matrix dimensions are incompatible\n",
+        "G0025": "error G0025 : Undefined symbol: 'x'\n",
+        "G0014": "error G0014 : File not found 'x.txt'\n",
+        "G0290": "error G0290 : Library not found\n",
+    }
+    for code, stderr_text in codes.items():
+        with tempfile.TemporaryDirectory() as tmp:
+            adapter = _new_adapter(tmp)
+            _failed_run_with_stderr(adapter, stderr_text)
+            out = _joined(_run(adapter, "repair-plan"))
+            check(f"{code} repair-plan reports correct source_error_code", f"source_error_code: {code}" in out)
+            check(f"{code} repair-plan has a proposed strategy", "proposed_repair_strategy:" in out)
+            check(f"{code} repair-plan safe_to_apply false", "safe_to_apply: false" in out)
+            adapter.close()
+
+
+def test_55_repair_plan_after_unknown_error() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _run(adapter, "workspace create")
+        _run(adapter, "request --fake-unknown-error x = 2 + 2; print x;")
+        _run(adapter, "plan")
+        assert adapter.mvp_session is not None
+        request_hash = adapter.mvp_session.proposal_outcome.proposal.request_hash
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        out = _joined(_run(adapter, "repair-plan"))
+        check("unknown_error status", "repair_status: unknown_error" in out)
+        check("code preserved", "source_error_code: G9999" in out)
+        check("no proposed strategy for unknown code", "proposed_repair_strategy:" not in out)
+        adapter.close()
+
+
+def test_56_repair_plan_after_timeout_fixture() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _run(adapter, "workspace create")
+        _run(adapter, "request --fake-timeout x = 2 + 2; print x;")
+        _run(adapter, "plan")
+        assert adapter.mvp_session is not None
+        request_hash = adapter.mvp_session.proposal_outcome.proposal.request_hash
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        out = _joined(_run(adapter, "repair-plan"))
+        check("timeout status", "repair_status: timeout" in out)
+        check(
+            "does not assert an infinite loop as fact (only disclaims verifying one)",
+            "does not verify whether the script contains an infinite loop" in out.lower(),
+        )
+        adapter.close()
+
+
+def test_57_repeated_repair_plan_is_deterministic() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        first = _joined(_run(adapter, "repair-plan"))
+        second = _joined(_run(adapter, "repair-plan"))
+        check("repeated repair-plan output is identical", first == second)
+        adapter.close()
+
+
+def test_58_diagnose_and_interpret_remain_available_after_repair_plan() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        _run(adapter, "repair-plan")
+        diagnose_out = _joined(_run(adapter, "diagnose"))
+        interpret_out = _joined(_run(adapter, "interpret"))
+        check("diagnose still works after repair-plan", "ERROR no_result" not in diagnose_out)
+        check("interpret still works after repair-plan", "ERROR no_result" not in interpret_out)
+        adapter.close()
+
+
+def test_59_streams_remain_explicitly_accessible_after_repair_plan() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _run(adapter, "workspace create")
+        _run(adapter, "request --fake-failure x = ;")
+        _run(adapter, "plan")
+        assert adapter.mvp_session is not None
+        request_hash = adapter.mvp_session.proposal_outcome.proposal.request_hash
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        repair_out = _joined(_run(adapter, "repair-plan"))
+        check("repair-plan does not auto-display stdout content", "stdout_begin" not in repair_out)
+        check("repair-plan does not auto-display stderr content", "stderr_begin" not in repair_out)
+        stderr_out = _joined(_run(adapter, "stderr"))
+        check("stderr remains explicitly accessible after repair-plan", "stderr_begin" in stderr_out and "ERROR" not in stderr_out.split("\n")[0])
+        adapter.close()
+
+
+def test_60_workspace_state_unchanged_by_repair_plan() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        status_before = adapter.registry.get_workspace(adapter.active_workspace_id).status
+        _run(adapter, "repair-plan")
+        _run(adapter, "repair-plan --matrix-shape A=2x3 --matrix-shape B=4x5")
+        check("workspace status unchanged by repair-plan", adapter.registry.get_workspace(adapter.active_workspace_id).status == status_before)
+        adapter.close()
+
+
+def test_61_reset_clears_repair_plan_availability() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        _run(adapter, "repair-plan")
+        _run(adapter, "reset")
+        out = _joined(_run(adapter, "repair-plan"))
+        check("repair-plan unavailable after reset, consistent with diagnose/interpret's own reset behavior", "ERROR no_result" in out)
+        adapter.close()
+
+
+def test_62_repair_plan_source_context_flags_narrow_plan_without_applying() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _failed_run_with_stderr(adapter, "error G0036 : Matrix dimensions are incompatible\n")
+        no_context = _joined(_run(adapter, "repair-plan"))
+        with_context = _joined(_run(adapter, "repair-plan --matrix-shape A=2x3 --matrix-shape B=4x5"))
+        check("no-context plan is strategy_available", "repair_status: strategy_available" in no_context)
+        check("with-context plan is draft_possible_with_more_context", "repair_status: draft_possible_with_more_context" in with_context)
+        check("with-context plan still reports safe_to_apply false", "safe_to_apply: false" in with_context)
+        check("with-context plan still reports safe_to_prepare_draft false", "safe_to_prepare_draft: false" in with_context)
+        check("with-context plan reports source_context_used true", "source_context_used: true" in with_context)
+        adapter.close()
+
+
+def test_63_repair_plan_rejects_unrecognized_option() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        out = _joined(_run(adapter, "repair-plan --not-a-real-flag"))
+        check("unrecognized repair-plan option reports an error", "ERROR usage" in out)
+        adapter.close()
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

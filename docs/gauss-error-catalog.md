@@ -10,13 +10,16 @@ An entry appears here only if it satisfies at least one of:
 
 Nothing here is a guess. An uncataloged `G####` code is not a gap in this document — it means this repository has not yet verified that code by any of the three routes above, and the interpreter reports it honestly as `unknown` rather than inventing a meaning.
 
-**Since `v0.54.0`, each entry below distinguishes three different kinds of claim — never conflate them:**
+**Since `v0.54.0`, each entry below distinguishes four different kinds of claim — never conflate them:**
 
 1. **Verified error meaning** (`Category`/`Generic interpretation`/`Source`) — what this error code *is*, established by the routes above.
 2. **Possible diagnostic cause** (`Known triggers`/`Diagnostic questions`) — a *plausible* situation known to trigger this code, never a confirmed diagnosis for any specific run. See `docs/gauss-diagnostic-reasoning.md` for how `scripts/gauss_execution_diagnostics.py` turns these into a bounded, low-confidence `DiagnosticCause` list.
-3. **Repair advice** — out of scope for this catalog and for the diagnostic layer entirely. Nothing here proposes a code change; `recommended inspection step` and `Diagnostic questions` are both phrased as things to look at or ask, never as edits to make.
+3. **Repair strategy** (`Repair strategy`/`Repair verification`/`Repair risks`, added `v0.56.0`) — a *bounded inspection strategy*, never a concrete edit or replacement code. See `docs/gauss-repair-planning.md` for how `scripts/gauss_repair_planner.py` turns these into a `RepairPlan` with `safe_to_apply` always `False`. Each entry's repair strategy requires the same source context its `Diagnostic questions`/`Required evidence` already name — this catalog does not maintain two separate context requirements per code.
+4. **Repair application** — out of scope for this catalog and for every layer implemented so far. Nothing here proposes or performs a code change; every field is phrased as something to look at, ask, or verify, never an edit to make.
 
 **As of `v0.55.0`, the catalog has 11 entries.** Six of these (`G0058`, `G0159`, `G0104`, `G0071`, `G0048`, `G0047`) are new this release, and `G0290` was upgraded from documentation-only to dual-sourced — all seven changes are backed by real GAUSS 26.1.1 runtime reproduction performed during `v0.55.0` (`planning/v0.55.0-verified-diagnostic-coverage-expansion.md`). The six new codes are real-runtime-verified only; none has yet been independently cross-checked against official Aptech documentation in this repository, which is disclosed explicitly in each entry's own **Verification** line rather than implied otherwise.
+
+**As of `v0.56.0`, all 11 entries additionally carry bounded repair-planning knowledge** (`Repair strategy`/`Repair verification`/`Repair risks` below), consumed by `scripts/gauss_repair_planner.py`. Every repair strategy is phrased as an inspection or decision prompt — never a concrete edit, never replacement code, never an unverified GAUSS API. See `planning/v0.56.0-evidence-aware-repair-planning.md` and `docs/gauss-repair-planning.md`.
 
 ## Verified Entries
 
@@ -30,6 +33,9 @@ Nothing here is a guess. An uncataloged `G####` code is not a gap in this docume
 - **Source:** Reproduced repeatedly via `tgauss.exe -b` (`planning/v0.28.0-real-gauss-invocation-research.md`; real evaluations in `v0.50.0`/`v0.52.0`) using `x = ;`. Official Aptech documentation confirms the same title and describes the same general causes (missing semicolons, unloaded library statements, locale-related parsing issues).
 - **Known triggers (possible causes, not confirmed):** a missing statement terminator (semicolon) on the reported line or the line before it; a required `library` statement not included before a package procedure call; an incomplete or malformed expression.
 - **Diagnostic questions:** Does the reported line, or the line immediately before it, end with a semicolon? If this line calls a package procedure, is the corresponding `library` statement present earlier in the file?
+- **Repair strategy:** Inspect and complete or correct the invalid expression at the reported parser location before rerunning.
+- **Repair verification:** Confirm the corrected script parses and executes without reproducing error G0105 at the same location.
+- **Repair risks:** A syntax-level fix does not confirm the surrounding logic is still correct; unrelated errors may surface only after this one is addressed.
 
 ### G0036 — Matrix dimensions are incompatible
 
@@ -42,6 +48,9 @@ Nothing here is a guess. An uncataloged `G####` code is not a gap in this docume
 - **Documentation discrepancy:** Official Aptech documentation titles this error "Matrices are not conformable," while every real runtime observation recorded in this repository shows the literal stderr text "Matrix dimensions are incompatible." This catalog uses the runtime-observed text for its title/explanation, per its own verification policy of preferring runtime evidence when the two disagree — the documentation wording is most likely a paraphrased page title rather than a literal runtime string, but that is not independently confirmed.
 - **Known triggers (possible causes, not confirmed):** an arithmetic or Kronecker-product operation performed on operands whose dimensions do not conform; operator precedence between the Kronecker-product operator (`.*.`) and standard matrix multiplication producing an unintended evaluation order.
 - **Diagnostic questions:** What are the row/column dimensions of each operand in the reported operation? Does the expression mix the Kronecker-product operator (`.*.`) and matrix multiplication without explicit parentheses? (Diagnosis does not claim a missing transpose or any other specific cause unless the operand dimensions are actually supplied as evidence.)
+- **Repair strategy:** Inspect the dimensions and intended roles of both operands before deciding whether the operation, operand construction, or orientation needs adjustment.
+- **Repair verification:** Confirm the corrected operands produce a result with the intended dimensions before rerunning the full script.
+- **Repair risks:** Adjusting an operand's shape or orientation without understanding its statistical role can silently change what is being computed, not just whether it runs.
 
 ### G0025 — Undefined symbol
 
@@ -53,6 +62,9 @@ Nothing here is a guess. An uncataloged `G####` code is not a gap in this docume
 - **Source:** Reproduced via `tgauss.exe -b` (`planning/v0.29.0-runtime-error-output-file-verification.md`) using `print undefinedvar;`, producing `error G0025 : Undefined symbol: 'undefinedvar'` with file/line info. Official Aptech documentation confirms an identical title and message format (example shown there: `G0025 : Undefined symbol: 'nobs' [estimate.gss, line 6]`) and documents the same underlying causes (a symbol referenced before definition, an unloaded library, or a procedure GAUSS hasn't been told about).
 - **Known triggers (possible causes, not confirmed):** a variable or procedure referenced before it was assigned or defined; a required library or package not loaded; a user-defined procedure not visible because the file defining it was not included, or the code was run line-by-line instead of as a complete file.
 - **Diagnostic questions:** Is the referenced symbol assigned or defined earlier in the same run? Is the library/package that defines it loaded? Was the file run as a complete program rather than line-by-line? (Diagnosis never guesses the correct symbol name or spelling.)
+- **Repair strategy:** Determine whether the missing symbol should be defined earlier in the script, supplied through scope, or loaded through an expected library or dependency.
+- **Repair verification:** Confirm the symbol resolves and the script no longer reports G0025 for this name before rerunning the full script.
+- **Repair risks:** Defining a symbol merely to silence the error, without understanding why it was missing, can mask a deeper scope or load-order problem.
 
 ### G0014 — File not found
 
@@ -64,6 +76,9 @@ Nothing here is a guess. An uncataloged `G####` code is not a gap in this docume
 - **Source:** Observed via `tgauss.exe -b` during `v0.28.0`'s non-interactive-invocation research (`planning/v0.28.0-real-gauss-invocation-research.md`). The specific test that produced it was an inconclusive `-e`-flag argument-parsing experiment, not an intentional file-not-found reproduction — but the resulting error text (`error G0014 : File not found '1+1;', line 1`) is genuine, unmodified GAUSS output. Official Aptech documentation independently confirms G0014 as "File not found," triggered when GAUSS cannot locate a referenced file in its current working directory or any directory in `SRC_PATH`.
 - **Known triggers (possible causes, not confirmed):** the referenced file is not present in GAUSS's current working directory or `SRC_PATH`; a relative path was used from a different working directory than expected.
 - **Diagnostic questions:** Does the referenced file exist at the expected location? What is GAUSS's current working directory for this run, and does it contain the file? (Diagnosis never automatically locates, opens, or reads the file.)
+- **Repair strategy:** Validate the referenced path, current working directory, file existence, and permissions before changing the program.
+- **Repair verification:** Confirm the referenced file is reachable from the same working directory GAUSS will use before rerunning.
+- **Repair risks:** Hardcoding an absolute path as a workaround can break portability across machines or working directories.
 
 ### G0290 — Library not found
 
@@ -75,6 +90,9 @@ Nothing here is a guess. An uncataloged `G####` code is not a gap in this docume
 - **Source:** Real runtime: reproduced via `tgauss.exe -b` (`planning/v0.55.0-verified-diagnostic-coverage-expansion.md`) using `library optmum;` in an isolated scratch directory against this repository's real GAUSS 26.1.1 installation, whose `pkgs/` directory does not include `optmum` (confirmed installed modules: cmlmt, coint, comt, dccelib, gml, maxlikmt, optmt, pubtable, qardl, quaids, timeseries, tsmt, tspdlib), consistently producing `error G0290 : Library not found '<path>\optmum.lcg'`. Official Aptech documentation independently documents G0290 as "Library not found," occurring when a required application `.lcg` library file is missing from the active `GAUSSHOME` installation (e.g. an uninstalled application module such as `optmum`, `comt`, or `tsmt`) — the runtime-observed title matches the documented title exactly; no discrepancy to record.
 - **Known triggers (possible causes, not confirmed):** the required GAUSS application/library module is not installed under the active `GAUSSHOME`.
 - **Diagnostic questions:** Is the required application module (e.g. `optmum`, `comt`, `tsmt`) installed under `GAUSSHOME` for the active GAUSS version?
+- **Repair strategy:** Confirm the required application module is installed under the active GAUSSHOME and correctly referenced before rerunning.
+- **Repair verification:** Confirm the `library` statement resolves without error before rerunning the full script.
+- **Repair risks:** Installing or modifying packages is outside this repository's automated scope; any installation must be performed by the user outside this workflow.
 
 ### G0058 — Index out of range
 
@@ -86,6 +104,9 @@ Nothing here is a guess. An uncataloged `G####` code is not a gap in this docume
 - **Source:** Reproduced via `tgauss.exe -b` (`planning/v0.55.0-verified-diagnostic-coverage-expansion.md`) using both `x = ones(2,2); print x[5,5];` and `x = ones(2,2); print x[-1,1];`, each consistently producing `error G0058 : Index out of range`.
 - **Known triggers (possible causes, not confirmed):** an index value greater than the object's number of rows or columns; an index value less than 1 (GAUSS uses 1-based indexing).
 - **Diagnostic questions:** What are the row/column dimensions of the object being indexed? Is the reported index value within the range 1 to the object's row/column count? (Diagnosis never proposes a corrected index value.)
+- **Repair strategy:** Inspect the object's actual dimensions and the reported index value before deciding whether the index, loop bound, or object construction needs adjustment.
+- **Repair verification:** Confirm the corrected index falls within the object's bounds and the script no longer reports G0058 at this location.
+- **Repair risks:** Widening an object's bounds to accommodate an index, rather than correcting the index itself, can silently change which elements are being read or written.
 
 ### G0159 — Wrong number of parameters
 
@@ -97,6 +118,9 @@ Nothing here is a guess. An uncataloged `G####` code is not a gap in this docume
 - **Source:** Reproduced via `tgauss.exe -b` (`planning/v0.55.0-verified-diagnostic-coverage-expansion.md`) using `proc(1) = myproc2(a, b); retp(a+b); endp; y = myproc2(1);`, consistently producing `error G0159 : Wrong number of parameters ''myproc2' expected 2 arguments, received 1'`.
 - **Known triggers (possible causes, not confirmed):** a procedure call supplying fewer arguments than the procedure's `proc` declaration requires; a procedure call supplying more arguments than it accepts.
 - **Diagnostic questions:** How many parameters does the called procedure's `proc` statement declare? How many arguments does the reported call site actually supply?
+- **Repair strategy:** Compare the procedure's declared parameter list against the reported call site and determine whether the call or the declaration needs adjustment.
+- **Repair verification:** Confirm the call site supplies exactly the declared number of arguments before rerunning the full script.
+- **Repair risks:** Adding placeholder arguments merely to match a count, without understanding their intended role, can silently change the procedure's behavior.
 
 ### G0104 — Argument must be positive
 
@@ -108,6 +132,9 @@ Nothing here is a guess. An uncataloged `G####` code is not a gap in this docume
 - **Source:** Reproduced via `tgauss.exe -b` (`planning/v0.55.0-verified-diagnostic-coverage-expansion.md`) using `x = eye(-1);`, consistently producing `error G0104 : Argument must be positive`.
 - **Known triggers (possible causes, not confirmed):** a zero or negative value supplied where a function or procedure requires a strictly positive value (e.g. a matrix-construction dimension such as `eye`'s size argument).
 - **Diagnostic questions:** What is the actual runtime value of the reported argument at the point of the call, and is it positive? (Diagnosis never proposes a replacement value.)
+- **Repair strategy:** Inspect the runtime value of the reported argument and determine why it is zero, negative, or otherwise outside the required range.
+- **Repair verification:** Confirm the corrected argument value is positive and the script no longer reports G0104 at this call site.
+- **Repair risks:** Substituting an arbitrary positive placeholder value without understanding its statistical or computational role can produce a result that runs but is meaningless.
 
 ### G0071 — Type mismatch
 
@@ -119,6 +146,9 @@ Nothing here is a guess. An uncataloged `G####` code is not a gap in this docume
 - **Source:** Reproduced via `tgauss.exe -b` (`planning/v0.55.0-verified-diagnostic-coverage-expansion.md`) using `x = sqrt("abc");`, consistently producing `error G0071 : Type mismatch`.
 - **Known triggers (possible causes, not confirmed):** a string value supplied where a numeric scalar or matrix argument was required.
 - **Diagnostic questions:** What is the actual type (string, scalar, matrix) of each operand or argument in the reported operation?
+- **Repair strategy:** Inspect the actual type of each operand or argument in the reported operation and determine which one does not match what the operation expects.
+- **Repair verification:** Confirm every operand or argument in the reported operation has a type the operation accepts before rerunning the full script.
+- **Repair risks:** Coercing a value to a different type without understanding why it had the wrong type can mask an upstream data-handling error.
 
 ### G0048 — Matrix singular
 
@@ -130,6 +160,9 @@ Nothing here is a guess. An uncataloged `G####` code is not a gap in this docume
 - **Source:** Reproduced via `tgauss.exe -b` (`planning/v0.55.0-verified-diagnostic-coverage-expansion.md`) using `x = ones(2,2); y = inv(x);`, consistently producing `error G0048 : Matrix singular`.
 - **Known triggers (possible causes, not confirmed):** a matrix supplied to `inv` or an equivalent inversion-requiring operation has linearly dependent rows or columns (a zero, or near-zero, determinant).
 - **Diagnostic questions:** Does the matrix supplied to the reported operation have linearly dependent rows or columns?
+- **Repair strategy:** Inspect the matrix supplied to the reported operation for linear dependence among its rows or columns before deciding whether the data, model specification, or operation needs adjustment.
+- **Repair verification:** Confirm the corrected matrix is non-singular (full rank) before rerunning the full script.
+- **Repair risks:** This repository does not assess whether a resulting non-singular matrix is statistically or methodologically appropriate for the intended model — that judgment remains the user's.
 
 ### G0047 — Rows don't match
 
@@ -141,6 +174,9 @@ Nothing here is a guess. An uncataloged `G####` code is not a gap in this docume
 - **Source:** Reproduced via `tgauss.exe -b` (`planning/v0.55.0-verified-diagnostic-coverage-expansion.md`) using `x = ones(2,2); y = ones(3,3); z = x~y;`, consistently producing `error G0047 : Rows don't match`. Distinct code from `G0036` (arithmetic/Kronecker dimension mismatch) — specific to the horizontal-concatenation (`~`) operator.
 - **Known triggers (possible causes, not confirmed):** a horizontal concatenation (`~`) attempted between operands with different numbers of rows.
 - **Diagnostic questions:** What are the row counts of each operand in the reported horizontal-concatenation operation?
+- **Repair strategy:** Inspect the row counts of each operand in the reported horizontal-concatenation operation before deciding whether the operands, the operation, or the intended orientation needs adjustment.
+- **Repair verification:** Confirm the corrected operands share the same row count before rerunning the full script.
+- **Repair risks:** Adjusting row counts (e.g. truncating or padding) without understanding why they differed can silently discard or misalign data.
 
 ## Considered But Not Added (`v0.55.0`)
 
@@ -165,6 +201,7 @@ These categories exist in `gauss_error_catalog.GaussErrorCategory` because the i
 3. If official documentation and observed runtime evidence disagree, keep runtime evidence as authoritative for `title`/`generic_explanation` and record the disagreement in `documentation_discrepancy` — never silently pick one without saying so.
 4. Add or extend a test in `scripts/test_gauss_execution_interpreter.py` proving the new entry is looked up and classified correctly.
 5. If verified diagnostic knowledge exists (from the same accepted sources), populate `known_triggers`/`diagnostic_questions`/`required_evidence_for_diagnosis` — never with a general programming guess; omit them (leave the tuples empty) if no verified trigger knowledge exists yet. Add or extend a test in `scripts/test_gauss_execution_diagnostics.py`.
-6. Update this document to match — by hand, since this file is not auto-generated.
+6. If bounded repair-planning knowledge exists (from the same accepted sources, or conservative generic inspection language), populate `repair_strategies`/`repair_preconditions`/`repair_verification_steps`/`repair_risks` — every strategy must be an inspection/decision prompt, never a concrete edit or replacement code. Add or extend a test in `scripts/test_gauss_repair_planner.py`.
+7. Update this document to match — by hand, since this file is not auto-generated.
 
-No interpreter or diagnostic-engine code should need to change to add a new entry; `gauss_execution_interpreter.interpret_execution(...)` and `gauss_execution_diagnostics.diagnose_execution(...)` only look codes up in the catalog. See `docs/gauss-diagnostic-reasoning.md` for how diagnostic knowledge is consumed.
+No interpreter, diagnostic-engine, or repair-planner code should need to change to add a new entry; `gauss_execution_interpreter.interpret_execution(...)`, `gauss_execution_diagnostics.diagnose_execution(...)`, and `gauss_repair_planner.plan_repair(...)` only look codes up in the catalog. See `docs/gauss-diagnostic-reasoning.md` and `docs/gauss-repair-planning.md` for how this knowledge is consumed.

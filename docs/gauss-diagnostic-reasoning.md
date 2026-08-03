@@ -4,7 +4,7 @@
 
 `scripts/gauss_execution_diagnostics.py` (`v0.54.0`, catalog knowledge expanded in `v0.55.0`) is a deterministic, evidence-bound layer that reasons over an existing execution result to answer: *what verified causes might explain this, what evidence is still missing, and what should be inspected next?*
 
-It never answers: *what exact code should replace the current code?* That question belongs to a future, distinct, not-yet-implemented Repair Planning stage.
+It never answers: *what exact code should replace the current code?* That question belongs to the downstream Repair Planning stage (`scripts/gauss_repair_planner.py`, `v0.56.0`), which itself stops at a bounded strategy and never applies a change either -- see `docs/gauss-repair-planning.md`. Diagnosis's own responsibilities are unchanged by that layer's addition: `diagnose` still does not propose a strategy, does not rank repair actions, and does not know `gauss_repair_planner` exists (no import in either direction beyond the planner reusing `diagnose_execution(...)` internally).
 
 ## Position in the Reasoning Pipeline
 
@@ -12,9 +12,10 @@ It never answers: *what exact code should replace the current code?* That questi
 Execution
   -> Evidence Collection      (gauss_execution_workflow.py / gauss_code_execution.py)
   -> Interpretation           (gauss_execution_interpreter.py, v0.51.0)
-  -> Verified Knowledge       (gauss_error_catalog.py, v0.51.0-v0.53.0)
+  -> Verified Knowledge       (gauss_error_catalog.py, v0.51.0-v0.56.0)
   -> Diagnosis                (gauss_execution_diagnostics.py, v0.54.0 -- this layer)
-  -> Repair Planning          (future, not implemented)
+  -> Repair Planning          (gauss_repair_planner.py, v0.56.0)
+  -> Repair Application       (future, not implemented)
 ```
 
 Each stage consumes the one before it and adds a narrower kind of claim:
@@ -23,7 +24,8 @@ Each stage consumes the one before it and adds a narrower kind of claim:
 |---|---|---|
 | Interpretation | What happened? (completed / failed / timed out / blocked; which cataloged error code, if any) | Why did it happen? What should I check next? |
 | Diagnosis | What verified causes may explain it? What evidence is missing? What should be inspected next? | What exact code fixes it? |
-| Repair (future) | What specific change would address a confirmed cause? | — |
+| Repair Planning | What bounded strategy should be considered? What evidence/approval are needed first? | What exact code should be applied? |
+| Repair Application (future) | What specific, approved change was applied? | — |
 
 `diagnose` internally calls `interpret_execution(...)` — the same pure function `interpret` calls — rather than re-deriving `execution_phase`/`failure_type`/etc. a second, possibly divergent way. This is the only place the two commands share logic; neither silently invokes the other's CLI command, and neither mutates state as a side effect of the other.
 

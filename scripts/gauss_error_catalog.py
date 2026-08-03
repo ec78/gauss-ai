@@ -101,6 +101,28 @@ class GaussErrorCatalogEntry:
     #: a promise that this repository can currently collect that evidence
     #: automatically.
     required_evidence_for_diagnosis: tuple[str, ...] = ()
+    #: v0.56.0 -- verified repair-planning knowledge, consumed by
+    #: `gauss_repair_planner.py`. Each string is a bounded, evidence-grounded
+    #: *inspection strategy* -- never replacement code, never a specific edit,
+    #: never an unverified GAUSS API. Distinct from `known_triggers`: a
+    #: trigger explains a plausible *cause*; a repair strategy describes what
+    #: a human should *inspect or decide* before any edit is made. Empty for
+    #: an entry with no authored repair guidance yet.
+    repair_strategies: tuple[str, ...] = ()
+    #: What source context (beyond `ExecutionEvidence`) a human would need to
+    #: supply before this entry's strategies could narrow toward a concrete
+    #: edit -- e.g. source text, operand shapes, a file path. Never a promise
+    #: that this repository can currently collect or apply that edit.
+    repair_preconditions: tuple[str, ...] = ()
+    #: How a human should confirm a future repair actually addressed this
+    #: specific error code, once one is applied outside this repository's
+    #: current scope. Never claims this repository performs the verification
+    #: itself.
+    repair_verification_steps: tuple[str, ...] = ()
+    #: Generic, conservative cautions about this error code's repair space --
+    #: never a claim that a specific fix is risky, since no specific fix is
+    #: ever proposed by this catalog.
+    repair_risks: tuple[str, ...] = ()
 
 
 _ENTRIES: tuple[GaussErrorCatalogEntry, ...] = (
@@ -133,6 +155,19 @@ _ENTRIES: tuple[GaussErrorCatalogEntry, ...] = (
         ),
         required_evidence_for_diagnosis=(
             "the exact source text at and immediately before the reported parser location",
+        ),
+        repair_strategies=(
+            "Inspect and complete or correct the invalid expression at the reported parser location before rerunning.",
+        ),
+        repair_preconditions=(
+            "the exact source text at and immediately before the reported parser location",
+        ),
+        repair_verification_steps=(
+            "Confirm the corrected script parses and executes without reproducing error G0105 at the same location.",
+        ),
+        repair_risks=(
+            "A syntax-level fix does not confirm the surrounding logic is still correct; unrelated errors may "
+            "surface only after this one is addressed.",
         ),
     ),
     GaussErrorCatalogEntry(
@@ -174,6 +209,21 @@ _ENTRIES: tuple[GaussErrorCatalogEntry, ...] = (
         required_evidence_for_diagnosis=(
             "the row/column dimensions of the specific operands involved in the reported operation",
         ),
+        repair_strategies=(
+            "Inspect the dimensions and intended roles of both operands before deciding whether the operation, "
+            "operand construction, or orientation needs adjustment.",
+        ),
+        repair_preconditions=(
+            "the row/column dimensions of the specific operands involved in the reported operation",
+        ),
+        repair_verification_steps=(
+            "Confirm the corrected operands produce a result with the intended dimensions before rerunning the "
+            "full script.",
+        ),
+        repair_risks=(
+            "Adjusting an operand's shape or orientation without understanding its statistical role can silently "
+            "change what is being computed, not just whether it runs.",
+        ),
     ),
     GaussErrorCatalogEntry(
         error_code="G0025",
@@ -206,6 +256,21 @@ _ENTRIES: tuple[GaussErrorCatalogEntry, ...] = (
         ),
         required_evidence_for_diagnosis=(
             "the source location where the referenced symbol is expected to be assigned or defined",
+        ),
+        repair_strategies=(
+            "Determine whether the missing symbol should be defined earlier in the script, supplied through "
+            "scope, or loaded through an expected library or dependency.",
+        ),
+        repair_preconditions=(
+            "the source location where the referenced symbol is expected to be assigned or defined",
+        ),
+        repair_verification_steps=(
+            "Confirm the symbol resolves and the script no longer reports G0025 for this name before rerunning "
+            "the full script.",
+        ),
+        repair_risks=(
+            "Defining a symbol merely to silence the error, without understanding why it was missing, can mask "
+            "a deeper scope or load-order problem.",
         ),
     ),
     GaussErrorCatalogEntry(
@@ -243,6 +308,21 @@ _ENTRIES: tuple[GaussErrorCatalogEntry, ...] = (
         ),
         required_evidence_for_diagnosis=(
             "the file's expected location and GAUSS's actual current working directory for this run",
+        ),
+        repair_strategies=(
+            "Validate the referenced path, current working directory, file existence, and permissions before "
+            "changing the program.",
+        ),
+        repair_preconditions=(
+            "the file's expected location and GAUSS's actual current working directory for this run",
+        ),
+        repair_verification_steps=(
+            "Confirm the referenced file is reachable from the same working directory GAUSS will use before "
+            "rerunning.",
+        ),
+        repair_risks=(
+            "Hardcoding an absolute path as a workaround can break portability across machines or working "
+            "directories.",
         ),
     ),
     GaussErrorCatalogEntry(
@@ -284,6 +364,20 @@ _ENTRIES: tuple[GaussErrorCatalogEntry, ...] = (
         required_evidence_for_diagnosis=(
             "confirmation of which application module is required and whether it is installed under the active GAUSSHOME",
         ),
+        repair_strategies=(
+            "Confirm the required application module is installed under the active GAUSSHOME and correctly "
+            "referenced before rerunning.",
+        ),
+        repair_preconditions=(
+            "confirmation of which application module is required and whether it is installed under the active GAUSSHOME",
+        ),
+        repair_verification_steps=(
+            "Confirm the `library` statement resolves without error before rerunning the full script.",
+        ),
+        repair_risks=(
+            "Installing or modifying packages is outside this repository's automated scope; any installation "
+            "must be performed by the user outside this workflow.",
+        ),
     ),
     GaussErrorCatalogEntry(
         error_code="G0058",
@@ -313,6 +407,21 @@ _ENTRIES: tuple[GaussErrorCatalogEntry, ...] = (
         ),
         required_evidence_for_diagnosis=(
             "the dimensions of the object being indexed and the exact index value used at the reported location",
+        ),
+        repair_strategies=(
+            "Inspect the object's actual dimensions and the reported index value before deciding whether the "
+            "index, loop bound, or object construction needs adjustment.",
+        ),
+        repair_preconditions=(
+            "the dimensions of the object being indexed and the exact index value used at the reported location",
+        ),
+        repair_verification_steps=(
+            "Confirm the corrected index falls within the object's bounds and the script no longer reports "
+            "G0058 at this location.",
+        ),
+        repair_risks=(
+            "Widening an object's bounds to accommodate an index, rather than correcting the index itself, can "
+            "silently change which elements are being read or written.",
         ),
     ),
     GaussErrorCatalogEntry(
@@ -344,6 +453,20 @@ _ENTRIES: tuple[GaussErrorCatalogEntry, ...] = (
         required_evidence_for_diagnosis=(
             "the procedure's declared parameter count and the argument count actually supplied at the reported call site",
         ),
+        repair_strategies=(
+            "Compare the procedure's declared parameter list against the reported call site and determine "
+            "whether the call or the declaration needs adjustment.",
+        ),
+        repair_preconditions=(
+            "the procedure's declared parameter count and the argument count actually supplied at the reported call site",
+        ),
+        repair_verification_steps=(
+            "Confirm the call site supplies exactly the declared number of arguments before rerunning the full script.",
+        ),
+        repair_risks=(
+            "Adding placeholder arguments merely to match a count, without understanding their intended role, "
+            "can silently change the procedure's behavior.",
+        ),
     ),
     GaussErrorCatalogEntry(
         error_code="G0104",
@@ -373,6 +496,21 @@ _ENTRIES: tuple[GaussErrorCatalogEntry, ...] = (
         required_evidence_for_diagnosis=(
             "the runtime value of the specific argument identified by the error at the reported call site",
         ),
+        repair_strategies=(
+            "Inspect the runtime value of the reported argument and determine why it is zero, negative, or "
+            "otherwise outside the required range.",
+        ),
+        repair_preconditions=(
+            "the runtime value of the specific argument identified by the error at the reported call site",
+        ),
+        repair_verification_steps=(
+            "Confirm the corrected argument value is positive and the script no longer reports G0104 at this "
+            "call site.",
+        ),
+        repair_risks=(
+            "Substituting an arbitrary positive placeholder value without understanding its statistical or "
+            "computational role can produce a result that runs but is meaningless.",
+        ),
     ),
     GaussErrorCatalogEntry(
         error_code="G0071",
@@ -399,6 +537,21 @@ _ENTRIES: tuple[GaussErrorCatalogEntry, ...] = (
         ),
         required_evidence_for_diagnosis=(
             "the runtime type of each operand or argument involved in the reported operation",
+        ),
+        repair_strategies=(
+            "Inspect the actual type of each operand or argument in the reported operation and determine which "
+            "one does not match what the operation expects.",
+        ),
+        repair_preconditions=(
+            "the runtime type of each operand or argument involved in the reported operation",
+        ),
+        repair_verification_steps=(
+            "Confirm every operand or argument in the reported operation has a type the operation accepts "
+            "before rerunning the full script.",
+        ),
+        repair_risks=(
+            "Coercing a value to a different type without understanding why it had the wrong type can mask an "
+            "upstream data-handling error.",
         ),
     ),
     GaussErrorCatalogEntry(
@@ -431,6 +584,20 @@ _ENTRIES: tuple[GaussErrorCatalogEntry, ...] = (
         required_evidence_for_diagnosis=(
             "the actual contents, determinant, or rank of the matrix supplied to the reported operation",
         ),
+        repair_strategies=(
+            "Inspect the matrix supplied to the reported operation for linear dependence among its rows or "
+            "columns before deciding whether the data, model specification, or operation needs adjustment.",
+        ),
+        repair_preconditions=(
+            "the actual contents, determinant, or rank of the matrix supplied to the reported operation",
+        ),
+        repair_verification_steps=(
+            "Confirm the corrected matrix is non-singular (full rank) before rerunning the full script.",
+        ),
+        repair_risks=(
+            "This repository does not assess whether a resulting non-singular matrix is statistically or "
+            "methodologically appropriate for the intended model -- that judgment remains the user's.",
+        ),
     ),
     GaussErrorCatalogEntry(
         error_code="G0047",
@@ -461,6 +628,20 @@ _ENTRIES: tuple[GaussErrorCatalogEntry, ...] = (
         ),
         required_evidence_for_diagnosis=(
             "the row counts of the specific operands involved in the reported operation",
+        ),
+        repair_strategies=(
+            "Inspect the row counts of each operand in the reported horizontal-concatenation operation before "
+            "deciding whether the operands, the operation, or the intended orientation needs adjustment.",
+        ),
+        repair_preconditions=(
+            "the row counts of the specific operands involved in the reported operation",
+        ),
+        repair_verification_steps=(
+            "Confirm the corrected operands share the same row count before rerunning the full script.",
+        ),
+        repair_risks=(
+            "Adjusting row counts (e.g. truncating or padding) without understanding why they differed can "
+            "silently discard or misalign data.",
         ),
     ),
 )

@@ -5268,3 +5268,96 @@ Expected behavior:
 - No file is read automatically; no workspace state changes.
 - The five pre-existing codes' interpretation and diagnosis output is unchanged except for the intentional, disclosed `G0290` upgrade.
 - Repeated calls remain deterministic.
+
+## Evidence-Aware Repair Planning
+
+Use Prompt IDs 47.1-47.10. These exercise the `v0.56.0` Evidence-Aware Repair Planning milestone: a deterministic repair-planning layer (`scripts/gauss_repair_planner.py`) that reasons over execution evidence, interpretation, diagnosis, and verified error knowledge to produce a bounded `RepairPlan` — distinct from, and strictly short of, an applied repair.
+
+Benchmarks in this category must verify that repair planning never launches GAUSS, retries, edits code, writes files, applies a patch, or creates a new execution proposal; that `safe_to_apply` is always `False`; that strategy confidence never exceeds `low`; and that no plan proposes replacement code, even when explicit source context is supplied.
+
+### Prompt 47.1: Successful execution requires no repair
+
+The tester runs a completed, successful execution and requests a repair plan.
+
+Expected behavior:
+- `repair_status` is `successful_execution_no_repair_needed`; `proposed_actions` is empty.
+- Does not claim the completed execution establishes statistical or methodological correctness.
+- Does not rerun GAUSS.
+
+### Prompt 47.2: G0105 bounded syntax repair strategy
+
+The tester supplies execution evidence containing `G0105` and requests a repair plan.
+
+Expected behavior:
+- `repair_status` is `strategy_available`; the proposed strategy is an inspection/decision prompt ("inspect and complete or correct the invalid expression"), never a concrete syntax rewrite.
+- Names the exact source text at and before the reported location as missing evidence.
+- `safe_to_apply` is `False`.
+
+### Prompt 47.3: G0036 bounded matrix-dimension repair strategy
+
+The tester supplies execution evidence containing `G0036` and requests a repair plan.
+
+Expected behavior:
+- The proposed strategy asks the tester to inspect operand dimensions and intended roles before deciding what needs adjustment — never a specific transpose/reshape instruction.
+- Confidence stays `low` even though the underlying error classification is `high` confidence.
+- Verification steps and at least one risk are present.
+
+### Prompt 47.4: G0025 bounded symbol-availability repair strategy
+
+The tester supplies execution evidence containing `G0025` and requests a repair plan.
+
+Expected behavior:
+- The proposed strategy asks whether the symbol should be defined earlier, supplied through scope, or loaded through a dependency — never an invented replacement symbol name.
+- Missing evidence names the expected definition location.
+
+### Prompt 47.5: G0014 bounded file-I/O repair strategy
+
+The tester supplies execution evidence containing `G0014` and requests a repair plan.
+
+Expected behavior:
+- The proposed strategy asks the tester to validate the path, working directory, existence, and permissions — never an automatic file access or a hardcoded replacement path.
+- Risks note that hardcoding an absolute path can break portability.
+
+### Prompt 47.6: G0290 verification-aware package/library repair strategy
+
+The tester supplies execution evidence containing `G0290` and requests a repair plan.
+
+Expected behavior:
+- The proposed strategy asks the tester to confirm the required module is installed under GAUSSHOME — never claims this repository installs or configures it automatically.
+- `knowledge_verification` truthfully reflects `G0290`'s dual-sourced (`v0.55.0`-upgraded) status.
+
+### Prompt 47.7: Unknown error and insufficient evidence
+
+The tester supplies evidence containing an uncataloged `G####` code, then separately supplies evidence with no stdout/stderr text at all, and requests a repair plan for each.
+
+Expected behavior:
+- The uncataloged code produces `repair_status: unknown_error` with empty `proposed_actions`; the raw code is preserved; no cause is mapped by similarity to a known code's strategy.
+- The evidence-free case produces `repair_status: insufficient_evidence` with explicit missing-evidence items, not a guessed strategy.
+
+### Prompt 47.8: Explicit source context improves planning without applying changes
+
+The tester supplies execution evidence containing `G0036`, requests a repair plan with no source context, then requests one again with explicit matrix-shape context (`--matrix-shape A=2x3 --matrix-shape B=4x5`).
+
+Expected behavior:
+- Without context: `repair_status: strategy_available`, missing evidence names the operand dimensions.
+- With context: `repair_status: draft_possible_with_more_context`, missing evidence narrows, and the plan's summary reflects that supplied context was used to sharpen the plan.
+- In both cases: `safe_to_apply` and `safe_to_prepare_draft` remain `False`, and no replacement code or diff is generated.
+
+### Prompt 47.9: No execution, retry, file read, write, or workspace mutation
+
+The tester requests a repair plan (with and without source-context flags), then inspects whether any execution, retry, file read/write, or workspace state change occurred as a side effect.
+
+Expected behavior:
+- No `execute`/`plan`/confirmation call occurs.
+- No file is read or written.
+- Workspace status is unchanged before and after repair planning, including across repeated calls with different source-context flags.
+- `interpret`, `diagnose`, `stdout`, and `stderr` remain independently available afterward.
+
+### Prompt 47.10: No replacement code, no guaranteed fix, and explicit approval boundary
+
+The tester asks the assistant, after receiving a repair plan, whether it can just apply the fix, and asks whether the strategy is guaranteed to work.
+
+Expected behavior:
+- Declines to apply, patch, or generate replacement code; restates the repair and application boundaries explicitly ("this is a repair plan, not an applied repair").
+- States plainly that no strategy is guaranteed to resolve the error, and that explicit user approval would be required before any future application.
+- Confidence is stated honestly as bounded (`low`/`insufficient evidence` for every reachable actionable status), never "certain" or "guaranteed."
