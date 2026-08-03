@@ -4,6 +4,17 @@ This file records notable changes to the GAUSS AI framework.
 
 ## [Unreleased]
 
+- Planned `v0.58.0` Repair Application Safety Design: a design-only milestone (`planning/v0.58.0-repair-application-safety-design.md`, `docs/gauss-repair-application-safety.md`) defining the complete safety architecture a future repair-application feature would require. No implementation code was added.
+- Defined a four-layer approval separation (strategy / draft / application / rerun approval), explicitly prohibited from ever collapsing into a single confirmation.
+- Defined an identity model (11 distinct future identities — `source_artifact_id`, `source_content_hash`, `repair_draft_id`, `repair_draft_digest`, `repair_application_id`, etc.), none reusing an orchestration ID.
+- Defined source-content-hash binding as the authoritative signal for stale-source detection, re-verified immediately before any future write, with a hard reject-not-merge rule.
+- Designed a future `RepairDraft` model using structured, bounded line-range edits (recommended over unified diffs or whole-file replacement, to avoid patch-apply fuzzy-matching in a safety-critical path).
+- Defined draft validation rules, an all-or-nothing application gate, a backup/rollback model, an audit/provenance model, and an invalidation-rules table.
+- Reached and justified a persistence recommendation: a process-local prototype for a first implementation, with durable *audit* (not durable session, not durable approval) recommended starting at implementation Phase 5.
+- Produced a 22-entry security threat table, each entry marked mitigated-by-design or explicitly unresolved.
+- Proposed a six-phase implementation roadmap and a future `49.x` benchmark category — neither implemented nor evaluated by this milestone.
+- No code, test, execution behavior, interpreter classification, diagnostic classification, repair-planning behavior, or approval-store behavior changed. `scripts/gauss_repair_planner.py` and `scripts/gauss_repair_approval.py` have zero diff; `safe_to_apply`/`safe_to_prepare_draft` remain unchanged.
+
 - Added `v0.57.0` Repair Approval Mechanism (Design Phase): a new deterministic approval layer (`scripts/gauss_repair_approval.py`) that records an explicit human accept/decline decision for a specific `RepairPlan` — strictly short of enabling any application.
 - Added `gauss_repair_planner.repair_plan_digest(plan) -> str`, a SHA-256 fingerprint over a `RepairPlan`'s full identifying content (fixed field order, mirrors `gauss_runtime_orchestration.compute_request_hash`'s own convention). Any change to any field of the plan produces a different digest.
 - Added `ApprovalDecision` enum (`approved`/`declined`), `ApprovalRecord` dataclass, `RepairApprovalStore` (in-memory only, process-local, not durable), and `ApprovalConflictError`.

@@ -10,6 +10,8 @@
 
 Read that twice if you take one thing from this document: **an "approved" repair plan is exactly as unapplied as a plan nobody has looked at.** The only difference is that a human decision now exists on record.
 
+**This module's own approval is strategy-level and process-local, and that is unchanged by `v0.58.0`.** `v0.58.0` designed — but did not implement — three further, separate approvals a future application would require (draft approval, application approval, and rerun approval; see `docs/gauss-repair-application-safety.md`). Approving a `RepairPlan` today does not authorize, and will never by itself authorize, generating a draft or applying anything — a future implementation would require its own, separately-displayed, separately-confirmed approval for each of those steps, tied to its own digest, never inferred from this module's own `ApprovalRecord`.
+
 ## Position in the Reasoning Pipeline
 
 ```
@@ -20,7 +22,7 @@ Execution
   -> Diagnosis                (gauss_execution_diagnostics.py, v0.54.0-v0.55.0)
   -> Repair Planning          (gauss_repair_planner.py, v0.56.0)
   -> Approval                 (gauss_repair_approval.py, v0.57.0 -- this layer)
-  -> Repair Application       (future, not implemented)
+  -> Repair Application       (designed in v0.58.0, not implemented)
 ```
 
 | Stage | Answers | Does not answer |
@@ -104,7 +106,7 @@ approval_boundary: This records an explicit human decision about a specific repa
 
 ## Limitations
 
-- Approval is strategy-level, same as the plan it records a decision about — no application mechanism exists anywhere in this repository to consume an approval decision.
+- Approval is strategy-level, same as the plan it records a decision about — no application mechanism exists anywhere in this repository to consume an approval decision. `v0.58.0` designed what that mechanism, and the further approvals it would require, should look like (`docs/gauss-repair-application-safety.md`) — none of it is implemented.
 - No durable or cross-process persistence: an approval recorded in one adapter process is invisible to another, and is gone when the process exits or `reset` runs.
 - No revocation UI in the CLI yet (`revoke` exists at the module/API level, tested there, but is not wired to a CLI command this milestone — kept out of scope per "smallest coherent change").
 - No batch approval, no approval expiry/TTL, no approval history beyond the single current decision per digest.
