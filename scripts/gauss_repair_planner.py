@@ -5,6 +5,7 @@ Position in the reasoning pipeline:
 
     Execution evidence -> Interpretation -> Verified error knowledge
         -> Diagnosis -> Repair Planning (this module)
+        -> Approval (gauss_repair_approval.py, v0.57.0)
         -> (Repair Application, future, not implemented)
 
 This module answers "what bounded repair strategy should be considered, what
@@ -34,6 +35,8 @@ avoid duplicating existing models.
 from __future__ import annotations
 
 import enum
+import hashlib
+import json
 from dataclasses import dataclass
 
 import gauss_error_catalog as catalog
@@ -196,6 +199,60 @@ class RepairPlan:
     #: `VerificationStatus` values (as strings) from the matched catalog
     #: entry, if any -- empty when no cataloged entry was matched.
     knowledge_verification: tuple[str, ...]
+
+
+def repair_plan_digest(plan: RepairPlan) -> str:
+    """Deterministic SHA-256 fingerprint over a `RepairPlan`'s full
+    identifying content, in fixed field order -- mirrors
+    `gauss_runtime_orchestration.compute_request_hash`'s own convention
+    (canonical dict -> `json.dumps(..., sort_keys=False)` -> SHA-256), rather
+    than inventing a second hashing scheme for this repository.
+
+    Any change to any field -- including a single word of a strategy,
+    assumption, or risk -- produces a different digest, so an approval
+    recorded against one plan can never silently apply to a plan that has
+    since changed (e.g. because different source context was supplied).
+    Consumed by `gauss_repair_approval.py`, v0.57.0; this function itself
+    performs no approval logic and holds no state."""
+    canonical = {
+        "repair_status": plan.repair_status,
+        "confidence": plan.confidence,
+        "summary": plan.summary,
+        "repair_strategy": plan.repair_strategy,
+        "proposed_actions": [
+            {
+                "action_id": a.action_id,
+                "action_type": a.action_type,
+                "description": a.description,
+                "target": a.target,
+                "preconditions": list(a.preconditions),
+                "evidence_basis": a.evidence_basis,
+                "confidence": a.confidence,
+                "is_concrete_edit": a.is_concrete_edit,
+                "requires_source_context": a.requires_source_context,
+                "requires_user_approval": a.requires_user_approval,
+            }
+            for a in plan.proposed_actions
+        ],
+        "target_scope": plan.target_scope,
+        "source_context_used": plan.source_context_used,
+        "supporting_evidence": list(plan.supporting_evidence),
+        "assumptions": list(plan.assumptions),
+        "missing_evidence": list(plan.missing_evidence),
+        "risks": list(plan.risks),
+        "verification_steps": list(plan.verification_steps),
+        "questions_to_answer": list(plan.questions_to_answer),
+        "requires_user_input": plan.requires_user_input,
+        "requires_explicit_approval": plan.requires_explicit_approval,
+        "safe_to_prepare_draft": plan.safe_to_prepare_draft,
+        "safe_to_apply": plan.safe_to_apply,
+        "repair_boundary": plan.repair_boundary,
+        "source_error_code": plan.source_error_code,
+        "source_error_category": plan.source_error_category,
+        "knowledge_verification": list(plan.knowledge_verification),
+    }
+    serialized = json.dumps(canonical, sort_keys=False, ensure_ascii=True, separators=(",", ":"))
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
 def _context_relevant(entry: "catalog.GaussErrorCatalogEntry", source_context: SourceContext | None) -> bool:

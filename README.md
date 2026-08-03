@@ -6,7 +6,7 @@ Rather than creating a single, monolithic chatbot, this project defines a collec
 
 ## Current Status
 
-Current milestone: `v0.56.0` - Evidence-Aware Repair Planning. A new, deterministic repair-planning layer (`scripts/gauss_repair_planner.py`) consumes execution evidence, interpretation, diagnosis, and the verified error catalog to answer *what bounded repair strategy should be considered, what evidence and approval are needed first, and how should a future repair be verified* — strictly short of applying a change. `safe_to_apply` is structurally always `False`; every proposed action is an inspection prompt, never a concrete edit or replacement code, even when the caller supplies explicit source context (e.g. matrix shapes, a code snippet). All 11 cataloged error codes now carry bounded repair strategies. All ten `47.x` Evidence-Aware Repair Planning benchmarks were evaluated: 10/10 Passed at 4.0, 0 Critical/Major/Minor defects. See [docs/gauss-repair-planning.md](docs/gauss-repair-planning.md).
+Current milestone: `v0.57.0` - Repair Approval Mechanism (Design Phase). A new, deterministic approval layer (`scripts/gauss_repair_approval.py`) records an explicit human accept/decline decision for a specific repair plan, hash-bound to a new `repair_plan_digest(...)` fingerprint over the plan's full content. Recording a decision does not enable applying anything: `safe_to_apply` and `safe_to_prepare_draft` are `False` on every `ApprovalRecord`, exactly as they are `False` on every `RepairPlan` — no code path anywhere sets either to `True`. A decision is never silently overwritten (re-approving without an explicit `revoke` raises `ApprovalConflictError`), and a plan that changes in any way produces a different digest, so a stale approval simply is not found against the new plan. All ten `48.x` Repair Approval Mechanism benchmarks were evaluated: 10/10 Passed at 4.0, 0 Critical/Major/Minor defects. See [docs/gauss-repair-approval.md](docs/gauss-repair-approval.md).
 
 Recommended reasoning sequence once execution evidence exists:
 
@@ -14,13 +14,16 @@ Recommended reasoning sequence once execution evidence exists:
 2. `interpret` — what happened?
 3. `diagnose` — what verified causes may explain it?
 4. `repair-plan` — what bounded strategy should be considered, and what's needed before any future change?
-5. `stdout` / `stderr` — inspect captured process text explicitly, when needed
-6. `outputs` — inspect output-file metadata
-7. `read <path>` — explicitly read a needed file
-8. `provenance` — inspect execution provenance
-9. `reset` — before a new single-shot attempt
+5. `approve-repair <plan_digest>` / `decline-repair <plan_digest>` — record an explicit human decision about that exact plan
+6. `stdout` / `stderr` — inspect captured process text explicitly, when needed
+7. `outputs` — inspect output-file metadata
+8. `read <path>` — explicitly read a needed file
+9. `provenance` — inspect execution provenance
+10. `reset` — before a new single-shot attempt
 
-`repair-plan` does not modify code, does not rerun GAUSS, and does not guarantee a fix; it requires explicit evidence and would require future user approval before any application. A completed, successful execution never establishes statistical or methodological correctness at any stage of this sequence.
+`repair-plan` does not modify code, does not rerun GAUSS, and does not guarantee a fix. `approve-repair`/`decline-repair` record a decision only — they do not modify code, do not rerun GAUSS, and do not enable any future step to do so either; no application mechanism exists anywhere in this repository. A completed, successful execution never establishes statistical or methodological correctness at any stage of this sequence.
+
+Previous milestone: `v0.56.0` - Evidence-Aware Repair Planning. A new, deterministic repair-planning layer (`scripts/gauss_repair_planner.py`) consumes execution evidence, interpretation, diagnosis, and the verified error catalog to answer *what bounded repair strategy should be considered, what evidence and approval are needed first, and how should a future repair be verified* — strictly short of applying a change. `safe_to_apply` is structurally always `False`; every proposed action is an inspection prompt, never a concrete edit or replacement code, even when the caller supplies explicit source context (e.g. matrix shapes, a code snippet). All 11 cataloged error codes now carry bounded repair strategies. All ten `47.x` Evidence-Aware Repair Planning benchmarks were evaluated: 10/10 Passed at 4.0, 0 Critical/Major/Minor defects. See [docs/gauss-repair-planning.md](docs/gauss-repair-planning.md).
 
 Previous milestone: `v0.55.0` - Verified Diagnostic Coverage Expansion. The verified GAUSS error catalog grew from 5 to 11 entries: six new real-runtime-verified codes (`G0058` Index out of range, `G0159` Wrong number of parameters, `G0104` Argument must be positive, `G0071` Type mismatch, `G0048` Matrix singular, `G0047` Rows don't match), spanning three new semantic categories (Indexing/Subscript, Argument Validation, Type Mismatch) plus the first entry in the previously-empty Numerical category, and `G0290` ("Library not found") was upgraded from documentation-only to dual-sourced after a real reproduction (`library optmum;` against this installation's actual, confirmed-absent package). Every addition is backed by direct `tgauss.exe -b` reproduction — this repository's strongest evidence tier — with zero speculative entries. Cause-level diagnostic confidence remains capped at `low` for every catalog-derived cause, unchanged by the expansion. All ten `46.x` Verified Diagnostic Coverage Expansion benchmarks were evaluated: 10/10 Passed at 4.0, 0 Critical/Major/Minor defects. See [docs/gauss-error-catalog.md](docs/gauss-error-catalog.md).
 

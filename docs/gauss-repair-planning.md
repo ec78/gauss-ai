@@ -6,15 +6,18 @@
 
 It never answers: *here is the exact code to apply.* That question belongs to a future, distinct, not-yet-implemented Repair Application stage. Even when the caller supplies explicit source context, this module never generates replacement code, a diff, or a patch — it only sharpens which inspection question is most relevant and narrows what's still missing.
 
+As of `v0.57.0`, `requires_explicit_approval` is consumed by a new downstream layer, `scripts/gauss_repair_approval.py` — see `docs/gauss-repair-approval.md`. This does not change repair planning's own responsibilities in any way: `gauss_repair_planner.py` still knows nothing about approval beyond exposing `repair_plan_digest(...)`, a pure identity function over its own `RepairPlan` output, which the approval layer consumes without this module importing anything back from it.
+
 ## Position in the Reasoning Pipeline
 
 ```
 Execution
   -> Evidence Collection      (gauss_execution_workflow.py / gauss_code_execution.py)
   -> Interpretation           (gauss_execution_interpreter.py, v0.51.0)
-  -> Verified Knowledge       (gauss_error_catalog.py, v0.51.0-v0.55.0)
+  -> Verified Knowledge       (gauss_error_catalog.py, v0.51.0-v0.56.0)
   -> Diagnosis                (gauss_execution_diagnostics.py, v0.54.0-v0.55.0)
   -> Repair Planning          (gauss_repair_planner.py, v0.56.0 -- this layer)
+  -> Approval                 (gauss_repair_approval.py, v0.57.0)
   -> Repair Application       (future, not implemented)
 ```
 
@@ -137,11 +140,11 @@ All 11 cataloged codes carry this knowledge as of `v0.56.0`. Every strategy is p
 
 ## Approval Boundary
 
-`requires_explicit_approval` is `True` exactly when a plan has at least one proposed, code-specific `RepairAction` (`strategy_available` or `draft_possible_with_more_context`); `False` for every other status, since there is nothing yet to approve. This is purely forward-looking — this milestone implements no approval mechanism, application workflow, or persistence of an approval decision; the field only documents that *if* this plan ever proceeded toward an applied change, approval would be required first.
+`requires_explicit_approval` is `True` exactly when a plan has at least one proposed, code-specific `RepairAction` (`strategy_available` or `draft_possible_with_more_context`); `False` for every other status, since there is nothing yet to approve. As of `v0.57.0`, this field is consumed by `gauss_repair_approval.py`'s `RepairApprovalStore`, which records an explicit accept/decline decision hash-bound to this plan's own `repair_plan_digest(...)` — see `docs/gauss-repair-approval.md`. Recording a decision does not change anything about the plan itself, and does not flip `safe_to_apply` or `safe_to_prepare_draft`.
 
 ## Application Boundary
 
-`safe_to_apply` is **always `False`** in this milestone — a critical, structurally-tested invariant (`test_21_safe_to_apply_always_false` checks it across every reachable status). `safe_to_prepare_draft` is likewise always `False`: no draft-generation capability exists yet, even when source context is rich enough to narrow a plan to `draft_possible_with_more_context`. Every `RepairAction.is_concrete_edit` is always `False`, and no `action_type` is ever `"edit"`, `"apply"`, `"patch"`, `"rewrite"`, or `"replace"` (`test_33_no_edit_or_apply_action_types`).
+`safe_to_apply` is **always `False`**, in every version through `v0.57.0` — a critical, structurally-tested invariant (`test_21_safe_to_apply_always_false` checks it across every reachable status; `gauss_repair_approval.py`'s own `ApprovalRecord.safe_to_apply` is likewise always `False`, tested independently). `safe_to_prepare_draft` is likewise always `False`: no draft-generation capability exists yet, even when source context is rich enough to narrow a plan to `draft_possible_with_more_context`, and even after a plan is approved. Every `RepairAction.is_concrete_edit` is always `False`, and no `action_type` is ever `"edit"`, `"apply"`, `"patch"`, `"rewrite"`, or `"replace"` (`test_33_no_edit_or_apply_action_types`).
 
 `repair_boundary` is a fixed, always-present string: *"This is a repair plan, not an applied repair. No code was modified. GAUSS was not rerun. User approval would be required before any future repair application."*
 
@@ -201,6 +204,7 @@ execute
 interpret
 diagnose
 repair-plan
+approve-repair <plan_digest> / decline-repair <plan_digest>   (explicit decision only; see docs/gauss-repair-approval.md)
 stdout / stderr         (explicitly, when needed)
 outputs
 read <path>              (explicitly, when needed)
@@ -221,9 +225,9 @@ reset                     (before a new single-shot attempt)
 ## Limitations
 
 - Repair planning is strategy-level only — it never produces an applied repair, a patch, or replacement code, regardless of how much source context is supplied.
-- No repair-application workflow exists yet; `requires_explicit_approval` documents a future requirement, not an implemented approval mechanism.
+- No repair-application workflow exists yet. As of `v0.57.0`, `requires_explicit_approval` is consumed by a real, tested approval-recording mechanism (`docs/gauss-repair-approval.md`) — but recording a decision still does not enable applying anything; no consumer of an approval decision exists.
 - No automatic editing, retry, or rerun.
-- No durable session integration; a repair plan is available only for the current adapter session's captured result, cleared by `reset`.
+- No durable session integration; a repair plan (and any approval decision recorded against it) is available only for the current adapter session, cleared by `reset`.
 - Source context must be supplied explicitly through the bounded CLI flags (or directly to `plan_repair(...)`); it is never read from a file or inferred.
 - Unknown GAUSS error codes remain generic (`unknown_error` status, no proposed actions).
 - No statistical or methodological validity assessment.

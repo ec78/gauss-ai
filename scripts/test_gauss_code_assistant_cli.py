@@ -1015,6 +1015,118 @@ def test_63_repair_plan_rejects_unrecognized_option() -> None:
         adapter.close()
 
 
+def _plan_digest_from(out: list[str]) -> str:
+    return [line.split(": ", 1)[1] for line in out if line.startswith("plan_digest:")][0]
+
+
+def test_64_approve_repair_before_a_plan_exists() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        out = _joined(_run(adapter, "approve-repair somehash"))
+        check("approve-repair before a repair plan exists reports no_repair_plan", "ERROR no_repair_plan" in out)
+        adapter.close()
+
+
+def test_65_approve_repair_after_a_plan_exists() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _failed_run_with_stderr(adapter, "error G0036 : Matrix dimensions are incompatible\n")
+        plan_out = _run(adapter, "repair-plan")
+        digest = _plan_digest_from(plan_out)
+        out = _joined(_run(adapter, f"approve-repair {digest}"))
+        check("approval recorded", "decision: approved" in out)
+        check("plan_digest echoed back matches", f"plan_digest: {digest}" in out)
+        check("safe_to_apply still false", "safe_to_apply: false" in out)
+        check("safe_to_prepare_draft still false", "safe_to_prepare_draft: false" in out)
+        check("approval boundary disclosed", "APPROVAL_BOUNDARY" in out)
+        adapter.close()
+
+
+def test_66_approve_repair_stale_digest_rejected() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _failed_run_with_stderr(adapter, "error G0036 : Matrix dimensions are incompatible\n")
+        _run(adapter, "repair-plan")
+        out = _joined(_run(adapter, "approve-repair 0000000000000000000000000000000000000000000000000000000000000000"))
+        check("stale/incorrect digest rejected", "ERROR stale_or_incorrect_digest" in out)
+        check("current_plan_digest disclosed for guidance", "current_plan_digest:" in out)
+        adapter.close()
+
+
+def test_67_approve_repair_stale_after_source_context_changes_plan() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _failed_run_with_stderr(adapter, "error G0036 : Matrix dimensions are incompatible\n")
+        first_out = _run(adapter, "repair-plan")
+        first_digest = _plan_digest_from(first_out)
+        _run(adapter, "repair-plan --matrix-shape A=2x3 --matrix-shape B=4x5")
+        out = _joined(_run(adapter, f"approve-repair {first_digest}"))
+        check("digest from a superseded plan is rejected as stale", "ERROR stale_or_incorrect_digest" in out)
+        adapter.close()
+
+
+def test_68_decline_repair_path() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _failed_run_with_stderr(adapter, "error G0025 : Undefined symbol: 'x'\n")
+        plan_out = _run(adapter, "repair-plan")
+        digest = _plan_digest_from(plan_out)
+        out = _joined(_run(adapter, f"decline-repair {digest}"))
+        check("decline recorded", "decision: declined" in out)
+        check("safe_to_apply still false after decline", "safe_to_apply: false" in out)
+        adapter.close()
+
+
+def test_69_re_approve_without_revoke_reports_conflict() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _failed_run_with_stderr(adapter, "error G0014 : File not found 'x.txt'\n")
+        plan_out = _run(adapter, "repair-plan")
+        digest = _plan_digest_from(plan_out)
+        _run(adapter, f"approve-repair {digest}")
+        out = _joined(_run(adapter, f"approve-repair {digest}"))
+        check("re-approving without revoke reports a conflict, not a silent overwrite", "ERROR approval_conflict" in out)
+        adapter.close()
+
+
+def test_70_approve_repair_missing_argument() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _failed_run_with_stderr(adapter, "error G0290 : Library not found\n")
+        _run(adapter, "repair-plan")
+        out = _joined(_run(adapter, "approve-repair"))
+        check("approve-repair with no digest argument reports usage error", "ERROR usage" in out)
+        adapter.close()
+
+
+def test_71_reset_clears_repair_plan_and_approval_state() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _failed_run_with_stderr(adapter, "error G0036 : Matrix dimensions are incompatible\n")
+        plan_out = _run(adapter, "repair-plan")
+        digest = _plan_digest_from(plan_out)
+        _run(adapter, f"approve-repair {digest}")
+        _run(adapter, "reset")
+        out = _joined(_run(adapter, f"approve-repair {digest}"))
+        check("approve-repair after reset reports no_repair_plan, consistent with repair-plan's own reset behavior", "ERROR no_repair_plan" in out)
+        adapter.close()
+
+
+def test_72_repair_planning_regression_unaffected_by_approval_layer() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        out = _joined(_run(adapter, "repair-plan"))
+        check("successful-execution repair-plan output unchanged by the new approval layer", "repair_status: successful_execution_no_repair_needed" in out)
+        check("plan_digest still rendered even for a no-repair-needed plan", "plan_digest:" in out)
+        adapter.close()
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

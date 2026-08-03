@@ -33,6 +33,7 @@ import gauss_code_assistant_workflow as mvp  # noqa: E402
 import gauss_execution_diagnostics as diagnostics  # noqa: E402
 import gauss_execution_interpreter as interpreter  # noqa: E402
 import gauss_execution_workflow as wf  # noqa: E402
+import gauss_repair_approval as repair_approval  # noqa: E402
 import gauss_repair_planner as repair_planner  # noqa: E402
 import gauss_orchestration_state_store as store_mod  # noqa: E402
 import gauss_workspace as workspace_mod  # noqa: E402
@@ -194,6 +195,13 @@ class InteractiveMvpAdapter:
         self.mvp_session: mvp.MvpWorkflowSession | None = None
         self.pending_request: PendingRequest | None = None
         self.last_result: mvp.WorkflowResult | None = None
+        # v0.57.0: the most recent repair plan this adapter session computed
+        # (whatever `repair-plan`'s own args produced) -- `approve-repair`/
+        # `decline-repair` operate against this exact plan, never a
+        # recomputed one, since a caller's source-context flags are not
+        # otherwise remembered between calls.
+        self.last_repair_plan: repair_planner.RepairPlan | None = None
+        self._repair_approval_store = repair_approval.RepairApprovalStore()
         self._turn_counter = 0
 
     # ------------------------------------------------------------------
@@ -257,6 +265,10 @@ class InteractiveMvpAdapter:
                 return True, self._diagnose()
             if command == "repair-plan":
                 return True, self._repair_plan(args)
+            if command == "approve-repair":
+                return True, self._approve_repair(args)
+            if command == "decline-repair":
+                return True, self._decline_repair(args)
             if command == "read":
                 return True, self._read(args)
             if command == "provenance":
@@ -275,7 +287,7 @@ class InteractiveMvpAdapter:
 
     def _help(self) -> list[str]:
         return [
-            "GAUSS Code Assistant Interactive MVP Adapter (v0.56.0 alpha)",
+            "GAUSS Code Assistant Interactive MVP Adapter (v0.57.0 alpha)",
             f"Execution backend: {self.backend_label}",
             "Commands:",
             "  help",
@@ -293,6 +305,8 @@ class InteractiveMvpAdapter:
             "  diagnose",
             "  repair-plan [--source-text TEXT] [--matrix-shape NAME=RxC ...] [--path PATH ...]",
             "              [--procedure NAME] [--args SUMMARY] [--line-start N] [--line-end N]",
+            "  approve-repair <plan_digest>",
+            "  decline-repair <plan_digest>",
             "  read <relative-path>",
             "  provenance",
             "  status",
@@ -765,11 +779,16 @@ class InteractiveMvpAdapter:
         source_context = parsed if not parsed.is_empty() else None
         evidence = self._build_execution_evidence()
         plan = repair_planner.plan_repair(evidence, source_context=source_context)
+        # v0.57.0: this exact plan object (not a recomputed one) is what
+        # approve-repair/decline-repair validate a supplied digest against.
+        self.last_repair_plan = plan
+        plan_digest = repair_planner.repair_plan_digest(plan)
         lines = [
             "REAL_WORKFLOW: Repair planning from existing evidence, interpretation, and diagnosis only.",
             "REPAIR_PLAN_BOUNDARY: No GAUSS launch, no execute, no plan, no retry, no code edit, no file write, "
             "no patch application, no new execution proposal, no workspace mutation.",
             f"repair_status: {plan.repair_status}",
+            f"plan_digest: {plan_digest}",
             f"confidence: {plan.confidence}",
             f"summary: {plan.summary}",
             f"source_context_used: {str(plan.source_context_used).lower()}",
@@ -821,7 +840,50 @@ class InteractiveMvpAdapter:
                 "application_boundary: No patch was applied. No file was modified. GAUSS was not rerun.",
             ]
         )
+        if plan.requires_explicit_approval:
+            lines.append(
+                f"next_step: run 'approve-repair {plan_digest}' or 'decline-repair {plan_digest}' to record an "
+                "explicit decision (this records a decision only -- it does not apply anything)."
+            )
         return lines
+
+    def _record_repair_decision(self, args: list[str], *, decision: "repair_approval.ApprovalDecision", command_name: str) -> list[str]:
+        if self.last_repair_plan is None:
+            return ["ERROR no_repair_plan: run 'repair-plan' first."]
+        if not args:
+            return [f"ERROR usage: {command_name} <plan_digest>"]
+        supplied_digest = args[0]
+        actual_digest = repair_planner.repair_plan_digest(self.last_repair_plan)
+        if supplied_digest != actual_digest:
+            return [
+                "ERROR stale_or_incorrect_digest: supplied plan_digest does not match the current repair plan.",
+                f"current_plan_digest: {actual_digest}",
+                "guidance: run 'repair-plan' again to see the current digest, or re-supply the exact digest shown there.",
+            ]
+        try:
+            if decision == repair_approval.ApprovalDecision.APPROVED:
+                record = self._repair_approval_store.approve(self.last_repair_plan, recorded_at=str(self._clock()))
+            else:
+                record = self._repair_approval_store.decline(self.last_repair_plan, recorded_at=str(self._clock()))
+        except repair_approval.ApprovalConflictError as exc:
+            return [f"ERROR approval_conflict: {exc}"]
+        return [
+            "REAL_WORKFLOW: Repair-plan approval recorded from the current repair plan only.",
+            "APPROVAL_BOUNDARY: No code was modified. No file was written. No patch was applied. No draft was "
+            "prepared. GAUSS was not rerun.",
+            f"decision: {record.decision}",
+            f"plan_digest: {record.plan_digest}",
+            f"recorded_at: {record.recorded_at}",
+            f"safe_to_apply: {str(record.safe_to_apply).lower()}",
+            f"safe_to_prepare_draft: {str(record.safe_to_prepare_draft).lower()}",
+            f"approval_boundary: {record.approval_boundary}",
+        ]
+
+    def _approve_repair(self, args: list[str]) -> list[str]:
+        return self._record_repair_decision(args, decision=repair_approval.ApprovalDecision.APPROVED, command_name="approve-repair")
+
+    def _decline_repair(self, args: list[str]) -> list[str]:
+        return self._record_repair_decision(args, decision=repair_approval.ApprovalDecision.DECLINED, command_name="decline-repair")
 
     def _read(self, args: list[str]) -> list[str]:
         if self.active_workspace_id is None:
@@ -911,6 +973,8 @@ class InteractiveMvpAdapter:
         self.last_result = None
         self.last_process_metadata = ExecutionProcessMetadata(backend=self.backend_label)
         self.last_captured_output = CapturedProcessOutput()
+        self.last_repair_plan = None
+        self._repair_approval_store = repair_approval.RepairApprovalStore()
         return [
             "ADAPTER: Cleared active request, proposal, confirmation, and result.",
             "workspace_retained: true",
@@ -1108,7 +1172,7 @@ class InteractiveMvpAdapter:
 
 
 def run_repl(adapter: InteractiveMvpAdapter) -> int:
-    print("GAUSS Code Assistant Interactive MVP Adapter (v0.56.0 alpha)")
+    print("GAUSS Code Assistant Interactive MVP Adapter (v0.57.0 alpha)")
     print(f"Execution backend: {adapter.backend_label}")
     if adapter.runner_backend == REAL_GAUSS_BACKEND:
         print("Real GAUSS execution is enabled only after hash-bound confirm + execute.")

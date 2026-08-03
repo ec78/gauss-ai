@@ -15,8 +15,8 @@ Use this dashboard to understand coverage by milestone, prompt range, expert cat
 
 ## Dashboard Metadata
 
-- Current milestone: `v0.56.0` - Evidence-Aware Repair Planning.
-- Captures evaluation state through: `v0.56.0`'s addition of a deterministic repair-planning layer (`scripts/gauss_repair_planner.py`), consuming execution evidence, interpretation, diagnosis, and the verified error catalog to produce a bounded `RepairPlan` with `safe_to_apply` structurally always `False`, and its ten `47.x` benchmarks.
+- Current milestone: `v0.57.0` - Repair Approval Mechanism (Design Phase).
+- Captures evaluation state through: `v0.57.0`'s addition of a deterministic approval layer (`scripts/gauss_repair_approval.py`), consuming a `RepairPlan` and a new `repair_plan_digest(...)` fingerprint to record an explicit, hash-bound, non-overwriting human accept/decline decision that never enables application (`safe_to_apply`/`safe_to_prepare_draft` structurally always `False`), and its ten `48.x` benchmarks.
 - Evaluation model: manual benchmark evaluation with tracking guard. No runtime scoring engine exists.
 - Runtime scoring engine: Not implemented.
 - Benchmark prompts source: `evaluations/benchmark-prompts.md`.
@@ -29,15 +29,15 @@ Use this dashboard to understand coverage by milestone, prompt range, expert cat
 
 ## Current Evaluation State
 
-Captured by running `scripts/check_evaluation_tracking.py --json` against the repository state after `v0.56.0` added and evaluated the `47.x` Evidence-Aware Repair Planning benchmarks:
+Captured by running `scripts/check_evaluation_tracking.py --json` against the repository state after `v0.57.0` added and evaluated the `48.x` Repair Approval Mechanism benchmarks:
 
-- Prompt IDs: 434.
-- Coverage rows: 434.
-- Run files referenced: 421.
-- Index entries: 426.
+- Prompt IDs: 444.
+- Coverage rows: 444.
+- Run files referenced: 431.
+- Index entries: 436.
 - Tracking errors: 0.
-- Documented (historical) tracking warnings: 3 (unchanged from `v0.52.0`-`v0.55.0`).
-- Current active-category ("Not Run" in the highest-numbered active category) warnings: 0 - all ten `47.x` prompts were evaluated and `Passed` immediately (see `evaluations/runs/2026-08-02-code-assistant-evidence-aware-repair-planning-run-001.md` through `-010.md`).
+- Documented (historical) tracking warnings: 3 (unchanged from `v0.52.0`-`v0.56.0`).
+- Current active-category ("Not Run" in the highest-numbered active category) warnings: 0 - all ten `48.x` prompts were evaluated and `Passed` immediately (see `evaluations/runs/2026-08-03-code-assistant-repair-approval-mechanism-run-001.md` through `-010.md`).
 - Default tracking guard (`check_evaluation_tracking.py`): PASS.
 - JSON tracking guard (`check_evaluation_tracking.py --json`): `overall_pass: true`.
 - Strict tracking guard (`check_evaluation_tracking.py --strict`): FAIL - expected, because strict mode promotes the documented historical warnings.
@@ -107,6 +107,7 @@ Important:
 | 45.x | Evidence-Based Diagnostic Reasoning (`v0.54.0`) | Deterministic diagnostic layer over execution evidence, interpretation, and the verified error catalog: bounded possible causes, confidence ceiling, missing-evidence disclosure, and the repair boundary | 10 | 10 | 10/10 Passed (4.0) | All prompts run and passed for `scripts/gauss_execution_diagnostics.py`, evaluated during `v0.54.0` against the pure engine and, for the boundary-critical prompt (45.9), the full integrated CLI. No real GAUSS invocation was performed for this category. Every cataloged-code diagnosis is capped at `low` cause-level confidence regardless of category-level classification confidence; `possible_causes` is structurally empty for uncataloged codes; `repair_boundary` is a fixed, always-present disclosure. Zero Critical, Major, or Minor defects. |
 | 46.x | Verified Diagnostic Coverage Expansion (`v0.55.0`) | Real-runtime-verified catalog expansion (5 -> 11 entries): six new codes across three new categories plus the first `numerical` entry, `G0290`'s upgrade to dual-sourced, and truthful non-addition of `G0117`/an uncoded `csvRead` failure | 10 | 10 | 10/10 Passed (4.0) | All prompts run and passed for the expanded `scripts/gauss_error_catalog.py`, evaluated during `v0.55.0` against direct engine execution and the real CLI. All six new codes (`G0058`, `G0159`, `G0104`, `G0071`, `G0048`, `G0047`) were reproduced against a real GAUSS 26.1.1 installation via `tgauss.exe -b` in this milestone's own bounded, safe probe (15 scenarios, disposable scratch directories, no package/license/config changes); `G0290` was independently reproduced the same way and upgraded from documentation-only to dual-sourced. Cause-level confidence remains capped at `low` for every new code, identical to the five pre-existing codes. Zero Critical, Major, or Minor defects. |
 | 47.x | Evidence-Aware Repair Planning (`v0.56.0`) | Deterministic repair-planning layer over execution evidence, interpretation, diagnosis, and the verified error catalog: bounded repair strategies, conservative confidence, explicit source-context narrowing, and the structural application boundary (`safe_to_apply` always `False`) | 10 | 10 | 10/10 Passed (4.0) | All prompts run and passed for `scripts/gauss_repair_planner.py`, evaluated during `v0.56.0` against the pure engine and, for the boundary-critical prompt (47.9), the full integrated CLI. No real GAUSS invocation was performed for this category. All 11 cataloged codes carry a bounded, inspection-only repair strategy; strategy confidence never exceeds `low` regardless of the underlying error classification's own confidence or whether relevant source context was supplied; `safe_to_apply` and `safe_to_prepare_draft` are `False` for every reachable status; no `RepairAction.is_concrete_edit` is ever `True`. Zero Critical, Major, or Minor defects. |
+| 48.x | Repair Approval Mechanism (`v0.57.0`) | Deterministic, process-local approval layer over a `RepairPlan`: hash-bound (`repair_plan_digest`) accept/decline recording, non-overwriting conflict protection, and the structural non-application boundary (`safe_to_apply`/`safe_to_prepare_draft` always `False` on every record) | 10 | 10 | 10/10 Passed (4.0) | All prompts run and passed for `scripts/gauss_repair_approval.py`, evaluated during `v0.57.0` against the pure engine and, for the boundary-critical prompts (48.4, 48.8, 48.9), the full integrated CLI. No real GAUSS invocation was performed for this category. Any change to a plan's content produces a different digest, so a stale approval is never found against a changed plan; re-recording a decision without an explicit `revoke(...)` raises `ApprovalConflictError` rather than silently overwriting; approval never mutates the underlying `RepairPlan`'s own safety fields. Zero Critical, Major, or Minor defects. |
 
 Counts above are taken directly from `evaluations/benchmark-coverage.md` and `evaluations/runs/INDEX.md`. Categories `1.x` through `10.x` predate stable Prompt ID conventions in places and are summarized as "early baseline" or historical where a prompt has never been run; these were not invented to force full coverage, and their `Not Run` prompts remain genuinely not run today.
 

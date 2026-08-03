@@ -414,6 +414,39 @@ def test_40_no_duplicate_action_ids() -> None:
         check(f"{entry.error_code} has no duplicate action_id", len(ids) == len(set(ids)))
 
 
+def test_41_repair_plan_digest_deterministic() -> None:
+    p = rp.plan_repair(_failed("error G0036 : Matrix dimensions are incompatible\n"))
+    check("digest is deterministic across repeated calls", rp.repair_plan_digest(p) == rp.repair_plan_digest(p))
+
+
+def test_42_repair_plan_digest_stable_across_independent_computation() -> None:
+    p1 = rp.plan_repair(_failed("error G0025 : Undefined symbol: 'x'\n"))
+    p2 = rp.plan_repair(_failed("error G0025 : Undefined symbol: 'x'\n"))
+    check("two independently computed identical plans share a digest", rp.repair_plan_digest(p1) == rp.repair_plan_digest(p2))
+
+
+def test_43_repair_plan_digest_changes_with_source_context() -> None:
+    no_context = rp.plan_repair(_failed("error G0036 : Matrix dimensions are incompatible\n"))
+    with_context = rp.plan_repair(
+        _failed("error G0036 : Matrix dimensions are incompatible\n"),
+        source_context=rp.SourceContext(matrix_shapes=("A=2x3", "B=4x5")),
+    )
+    check("digest changes when relevant source context narrows the plan", rp.repair_plan_digest(no_context) != rp.repair_plan_digest(with_context))
+
+
+def test_44_repair_plan_digest_changes_with_error_code() -> None:
+    g0036 = rp.plan_repair(_failed("error G0036 : Matrix dimensions are incompatible\n"))
+    g0025 = rp.plan_repair(_failed("error G0025 : Undefined symbol: 'x'\n"))
+    check("digest differs for genuinely different plans", rp.repair_plan_digest(g0036) != rp.repair_plan_digest(g0025))
+
+
+def test_45_repair_plan_digest_is_a_sha256_hex_string() -> None:
+    p = rp.plan_repair(_evidence())
+    digest = rp.repair_plan_digest(p)
+    check("digest is 64 hex characters (sha256)", len(digest) == 64)
+    check("digest contains only lowercase hex characters", all(c in "0123456789abcdef" for c in digest))
+
+
 def run_tests() -> int:
     tests = [(name, fn) for name, fn in sorted(globals().items()) if name.startswith("test_") and callable(fn)]
     for name, fn in tests:

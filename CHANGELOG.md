@@ -4,6 +4,18 @@ This file records notable changes to the GAUSS AI framework.
 
 ## [Unreleased]
 
+- Added `v0.57.0` Repair Approval Mechanism (Design Phase): a new deterministic approval layer (`scripts/gauss_repair_approval.py`) that records an explicit human accept/decline decision for a specific `RepairPlan` — strictly short of enabling any application.
+- Added `gauss_repair_planner.repair_plan_digest(plan) -> str`, a SHA-256 fingerprint over a `RepairPlan`'s full identifying content (fixed field order, mirrors `gauss_runtime_orchestration.compute_request_hash`'s own convention). Any change to any field of the plan produces a different digest.
+- Added `ApprovalDecision` enum (`approved`/`declined`), `ApprovalRecord` dataclass, `RepairApprovalStore` (in-memory only, process-local, not durable), and `ApprovalConflictError`.
+- `ApprovalRecord.safe_to_apply` and `.safe_to_prepare_draft` are structurally always `False` — approving a plan never enables application or draft preparation. No code path anywhere sets either to `True`.
+- A decision is never silently overwritten: recording a second decision for the same digest without an explicit `revoke(...)` call first raises `ApprovalConflictError`.
+- Added the CLI `approve-repair <plan_digest>` and `decline-repair <plan_digest>` commands, operating against the adapter's own `last_repair_plan`; a stale or incorrect digest is rejected with the correct current digest shown for guidance. `repair-plan`'s own output now includes `plan_digest` and, when approval is relevant, a `next_step` line naming the exact commands to run.
+- `reset` now also clears `last_repair_plan` and creates a fresh, empty `RepairApprovalStore`, consistent with how it already clears `interpret`/`diagnose`/`repair-plan` availability.
+- Added `scripts/test_gauss_repair_approval.py` (14 tests: digest/store scenarios, boundary/purity, conflict/revoke behavior), 5 new digest tests in `scripts/test_gauss_repair_planner.py`, and 9 new CLI tests.
+- Added ten `48.x` Repair Approval Mechanism evaluation run files and updated benchmark coverage, run index, and evaluation dashboard to show 10/10 Passed at 4.0.
+- Added `planning/v0.57.0-repair-approval-mechanism-design.md`, `release-notes-v0.57.0.md`, and `docs/gauss-repair-approval.md`.
+- Updated `docs/gauss-repair-planning.md` to reference the new downstream approval layer without changing repair-planning's own responsibilities.
+- No interpreter, diagnostic, or repair-planning classification changed; no execution, workspace, or confirmation behavior changed; no patch-application, draft-preparation, or automatic source-context-collection capability was introduced.
 - Added `v0.56.0` Evidence-Aware Repair Planning: a new deterministic repair-planning layer (`scripts/gauss_repair_planner.py`) that reasons over execution evidence, interpretation, diagnosis, and the verified GAUSS error catalog to produce a bounded, evidence-only `RepairPlan` — strictly short of applying a change.
 - Added `RepairStatus` enum (`successful_execution_no_repair_needed`, `not_applicable`, `timeout`, `strategy_available`, `draft_possible_with_more_context`, `blocked_by_missing_source`, `unknown_error`, `insufficient_evidence`) and `RepairPlan`/`RepairAction` dataclasses. Confidence reuses `DiagnosticConfidence` directly rather than duplicating it.
 - Added a new, optional `SourceContext` dataclass (`code_text`, `line_start`/`line_end`, `matrix_shapes`, `referenced_paths`, `procedure_name`, `argument_summary`) accepted only from explicit caller input — never read from a file or inferred.
