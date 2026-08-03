@@ -223,13 +223,21 @@ def test_16_g0014_file_not_found_interpreted() -> None:
 
 
 def test_17_g0290_library_not_found_interpreted() -> None:
+    # v0.55.0: G0290 was reproduced against a real GAUSS runtime this
+    # milestone (planning/v0.55.0-verified-diagnostic-coverage-expansion.md)
+    # and upgraded from documentation-only to dual-sourced -- this is an
+    # intentional, evidence-driven classification change from v0.54.0's own
+    # test, not a regression. See CHANGELOG.md / release-notes-v0.55.0.md.
     result = interp.interpret_execution(
         _evidence(execution_status="failed", stderr_text="error G0290 : Library not found\n")
     )
     check("G0290 code preserved", result.error_code == "G0290")
     check("G0290 category", result.failure_type == catalog.GaussErrorCategory.PACKAGE_OR_LIBRARY.value)
     check("G0290 phase is startup", result.execution_phase == "startup")
-    check("G0290 is documentation-only verified", result.verification_status == ("official_documentation",))
+    check(
+        "G0290 is now dual-sourced (real runtime + official documentation) as of v0.55.0",
+        result.verification_status == ("real_runtime", "official_documentation"),
+    )
 
 
 def test_18_timeout_wording_distinguishes_simulated_from_observed() -> None:
@@ -263,6 +271,85 @@ def test_20_no_hardcoded_error_knowledge_outside_catalog() -> None:
         "interpreter source contains no literal GAUSS error-code strings outside the catalog import",
         not any(code in source for code in catalog.known_error_codes()),
     )
+
+
+def test_21_g0058_index_out_of_range_interpreted() -> None:
+    result = interp.interpret_execution(
+        _evidence(execution_status="failed", stderr_text="error G0058 : Index out of range\n")
+    )
+    check("G0058 code preserved", result.error_code == "G0058")
+    check("G0058 category", result.failure_type == catalog.GaussErrorCategory.INDEXING_SUBSCRIPT.value)
+    check("G0058 is real-runtime verified", result.verification_status == ("real_runtime",))
+    check("G0058 does not claim a specific index fix", "change the index" not in result.next_step.lower())
+
+
+def test_22_g0159_wrong_number_of_parameters_interpreted() -> None:
+    result = interp.interpret_execution(
+        _evidence(
+            execution_status="failed",
+            stderr_text="error G0159 : Wrong number of parameters ''myproc2' expected 2 arguments, received 1'\n",
+        )
+    )
+    check("G0159 code preserved", result.error_code == "G0159")
+    check("G0159 category", result.failure_type == catalog.GaussErrorCategory.ARGUMENT_VALIDATION.value)
+    check("G0159 is real-runtime verified", result.verification_status == ("real_runtime",))
+
+
+def test_23_g0104_argument_must_be_positive_interpreted() -> None:
+    result = interp.interpret_execution(
+        _evidence(execution_status="failed", stderr_text="error G0104 : Argument must be positive\n")
+    )
+    check("G0104 code preserved", result.error_code == "G0104")
+    check("G0104 category", result.failure_type == catalog.GaussErrorCategory.ARGUMENT_VALIDATION.value)
+    check("G0104 is real-runtime verified", result.verification_status == ("real_runtime",))
+
+
+def test_24_g0071_type_mismatch_interpreted() -> None:
+    result = interp.interpret_execution(
+        _evidence(execution_status="failed", stderr_text="error G0071 : Type mismatch\n")
+    )
+    check("G0071 code preserved", result.error_code == "G0071")
+    check("G0071 category", result.failure_type == catalog.GaussErrorCategory.TYPE_MISMATCH.value)
+    check("G0071 is real-runtime verified", result.verification_status == ("real_runtime",))
+
+
+def test_25_g0048_matrix_singular_interpreted() -> None:
+    result = interp.interpret_execution(
+        _evidence(execution_status="failed", stderr_text="error G0048 : Matrix singular\n")
+    )
+    check("G0048 code preserved", result.error_code == "G0048")
+    check("G0048 category", result.failure_type == catalog.GaussErrorCategory.NUMERICAL.value)
+    check("G0048 is real-runtime verified", result.verification_status == ("real_runtime",))
+    check("Numerical category now has a cataloged entry", result.failure_type == "numerical")
+
+
+def test_26_g0047_rows_dont_match_interpreted() -> None:
+    result = interp.interpret_execution(
+        _evidence(execution_status="failed", stderr_text="error G0047 : Rows don't match\n")
+    )
+    check("G0047 code preserved", result.error_code == "G0047")
+    check("G0047 category", result.failure_type == catalog.GaussErrorCategory.MATRIX_DIMENSION.value)
+    check("G0047 is real-runtime verified", result.verification_status == ("real_runtime",))
+    check("G0047 is a distinct code from G0036 despite the shared category", result.error_code != "G0036")
+
+
+def test_27_existing_five_codes_do_not_regress_after_expansion() -> None:
+    for code, stderr_text, expected_category in (
+        ("G0105", "error G0105 : Bad expression or missing arguments\n", catalog.GaussErrorCategory.PARSE_SYNTAX),
+        ("G0036", "error G0036 : Matrix dimensions are incompatible\n", catalog.GaussErrorCategory.MATRIX_DIMENSION),
+        ("G0025", "error G0025 : Undefined symbol: 'x'\n", catalog.GaussErrorCategory.RUNTIME_COMPUTATION),
+        ("G0014", "error G0014 : File not found 'x.txt'\n", catalog.GaussErrorCategory.FILE_IO),
+    ):
+        result = interp.interpret_execution(_evidence(execution_status="failed", stderr_text=stderr_text))
+        check(f"{code} error_code unchanged", result.error_code == code)
+        check(f"{code} category unchanged", result.failure_type == expected_category.value)
+        check(f"{code} confidence remains high", result.confidence == "high")
+
+
+def test_28_new_catalog_entries_resolve_case_insensitively() -> None:
+    for code in ("g0058", "G0058", " g0058 "):
+        entry = catalog.lookup_error(code)
+        check(f"{code!r} resolves to G0058", entry is not None and entry.error_code == "G0058")
 
 
 def run_tests() -> int:

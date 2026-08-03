@@ -757,6 +757,57 @@ def test_46_reset_clears_diagnostic_availability() -> None:
         adapter.close()
 
 
+def _failed_run_with_stderr(adapter: "cli.InteractiveMvpAdapter", stderr_text: str) -> None:
+    """v0.55.0 helper: drives a real `request --fake-failure` / `plan` /
+    `confirm` / `execute` sequence (so `execution_status` is genuinely
+    'failed', exactly as the existing --fake-failure fixture already
+    produces), then overrides only the captured stderr text so `interpret`/
+    `diagnose` can be exercised against each new v0.55.0 catalog code through
+    the adapter's real evidence-assembly path, without adding a dedicated
+    fake-runner mode per code."""
+    _run(adapter, "workspace create")
+    _run(adapter, "request --fake-failure x = ;")
+    _run(adapter, "plan")
+    assert adapter.mvp_session is not None
+    assert adapter.mvp_session.proposal_outcome is not None
+    assert adapter.mvp_session.proposal_outcome.proposal is not None
+    request_hash = adapter.mvp_session.proposal_outcome.proposal.request_hash
+    _run(adapter, f"confirm {request_hash}")
+    _run(adapter, "execute")
+    adapter.last_captured_output = cli.CapturedProcessOutput(stdout="Program execute failed\n", stderr=stderr_text)
+
+
+def test_47_interpret_and_diagnose_handle_each_v0_55_0_new_code() -> None:
+    new_codes = {
+        "G0058": "error G0058 : Index out of range\n",
+        "G0159": "error G0159 : Wrong number of parameters ''p' expected 2 arguments, received 1'\n",
+        "G0104": "error G0104 : Argument must be positive\n",
+        "G0071": "error G0071 : Type mismatch\n",
+        "G0048": "error G0048 : Matrix singular\n",
+        "G0047": "error G0047 : Rows don't match\n",
+    }
+    for code, stderr_text in new_codes.items():
+        with tempfile.TemporaryDirectory() as tmp:
+            adapter = _new_adapter(tmp)
+            _failed_run_with_stderr(adapter, stderr_text)
+            interpret_out = _joined(_run(adapter, "interpret"))
+            check(f"interpret reports {code}", f"error_code: {code}" in interpret_out)
+            diagnose_out = _joined(_run(adapter, "diagnose"))
+            check(f"diagnose reports source_error_code {code}", f"source_error_code: {code}" in diagnose_out)
+            check(f"diagnose for {code} finds at least one possible cause", "possible_cause_count: 0" not in diagnose_out)
+            adapter.close()
+
+
+def test_48_unknown_code_remains_generic_after_catalog_expansion() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _failed_run_with_stderr(adapter, "error G7777 : Never cataloged\n")
+        out = _joined(_run(adapter, "diagnose"))
+        check("uncataloged code after expansion is still unknown_error", "diagnostic_status: unknown_error" in out)
+        check("no possible causes fabricated for an uncataloged code", "possible_cause_count: 0" in out)
+        adapter.close()
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

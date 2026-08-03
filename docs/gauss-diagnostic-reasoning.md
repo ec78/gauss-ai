@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`scripts/gauss_execution_diagnostics.py` (`v0.54.0`) is a deterministic, evidence-bound layer that reasons over an existing execution result to answer: *what verified causes might explain this, what evidence is still missing, and what should be inspected next?*
+`scripts/gauss_execution_diagnostics.py` (`v0.54.0`, catalog knowledge expanded in `v0.55.0`) is a deterministic, evidence-bound layer that reasons over an existing execution result to answer: *what verified causes might explain this, what evidence is still missing, and what should be inspected next?*
 
 It never answers: *what exact code should replace the current code?* That question belongs to a future, distinct, not-yet-implemented Repair Planning stage.
 
@@ -97,7 +97,17 @@ No numeric/percentage scoring exists anywhere in this module.
 - `diagnostic_questions: tuple[str, ...]` — bounded, closed-ended questions.
 - `required_evidence_for_diagnosis: tuple[str, ...]` — what would be needed to raise cause-level confidence.
 
-An entry with no verified trigger knowledge yet (there are none as of `v0.54.0` — all five cataloged codes have at least one `known_trigger`) would simply have empty tuples here, producing an `insufficient_evidence` diagnosis for that code rather than a padded, speculative one. See `docs/gauss-error-catalog.md` for the full per-code listing.
+An entry with no verified trigger knowledge yet (there are none as of `v0.55.0` — all eleven cataloged codes have at least one `known_trigger`) would simply have empty tuples here, producing an `insufficient_evidence` diagnosis for that code rather than a padded, speculative one. See `docs/gauss-error-catalog.md` for the full per-code listing.
+
+### Broader Coverage Does Not Mean More Certainty (`v0.55.0`)
+
+`v0.55.0` grew the catalog from 5 to 11 verified codes, all through the same evidence discipline described above. This changes *how many* execution results this engine can diagnose at all — it does not change *how confidently* it diagnoses any single one:
+
+- Broader catalog coverage never raises the cause-confidence ceiling described above. Every one of the six newly added codes' catalog-derived causes is still capped at `low`, exactly like the five pre-existing codes (`test_38_all_new_entries_produce_no_repair_shaped_output` and the per-code tests in `scripts/test_gauss_execution_diagnostics.py` assert this directly).
+- Cause-level confidence remains entirely separate from error-code (category) confidence — a newly cataloged code such as `G0058` (Index out of range) can be reported with `high` confidence that an index was genuinely out of range, while every specific cause of *why* still stays `low`, same as `G0036` always has.
+- Diagnosis still never reasons beyond the evidence supplied for a single execution result — more cataloged codes means more results this engine can recognize, not more inference within any one of them.
+- Unknown codes remain unknown after expansion: growing the catalog does not cause any uncataloged code to inherit a nearby code's causes by similarity (`test_40_unknown_code_still_unknown_after_catalog_expansion`).
+- Diagnosis still does not repair code, regardless of how much verified knowledge backs a given cause.
 
 ## Missing-Evidence Handling
 
@@ -162,7 +172,7 @@ reset                    (before a new single-shot attempt)
 - `diagnose` does not establish methodological or statistical correctness.
 - Cause confidence may be, and typically is, lower than the error-classification confidence it's derived from.
 - Unknown GAUSS error codes never inherit a known code's causes.
-- A documentation-only-verified code (`G0290`) never has its diagnosis implied to be runtime-confirmed.
+- A documentation-only-verified code never has its diagnosis implied to be runtime-confirmed (as of `v0.55.0`, no cataloged code is currently documentation-only — `G0290` was upgraded to dual-sourced this release — but the rule and its test coverage remain in place for any future documentation-only addition).
 
 ## Limitations
 
@@ -172,4 +182,5 @@ reset                    (before a new single-shot attempt)
 - Unknown GAUSS error codes remain generic (`unknown_error` status, no causes).
 - No durable session integration; a diagnosis is available only for the current adapter session's captured result, cleared on `reset`.
 - No statistical or methodological validity assessment.
-- `G0290` remains documentation-only until a real runtime reproduction is recorded in this repository.
+- The six codes added in `v0.55.0` (`G0058`, `G0159`, `G0104`, `G0071`, `G0048`, `G0047`) are real-runtime-verified only; none has yet been independently cross-checked against official Aptech documentation in this repository.
+- Many real GAUSS runtime failures still have no cataloged code at all and remain classified generically; some (e.g. certain package-source-level errors such as `csvRead`'s "file not found" message) are not even reported in the `error G####` format this catalog's lookup depends on — see `docs/gauss-error-catalog.md`'s "Considered But Not Added" section.

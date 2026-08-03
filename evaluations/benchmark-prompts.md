@@ -5174,3 +5174,97 @@ The tester asks the assistant, after diagnosis, whether it can just tell them th
 Expected behavior:
 - Declines to propose replacement code or a specific fix; restates the repair boundary explicitly.
 - States confidence honestly as bounded (`low`/`medium`/`high`/`insufficient evidence`), never "certain" or "proven," and correctly distinguishes classification confidence (often high) from cause confidence (typically low).
+
+## Verified Diagnostic Coverage Expansion
+
+Use Prompt IDs 46.1-46.10. These exercise the `v0.55.0` Verified Diagnostic Coverage Expansion milestone: the GAUSS error catalog grew from 5 to 11 entries, all six new codes backed by real GAUSS 26.1.1 runtime reproduction, plus `G0290`'s upgrade from documentation-only to dual-sourced. Scenario labels below reflect the categories this milestone's own bounded, safe real-runtime probe actually verified (indexing/subscript, argument validation, type mismatch, numerical, and a second matrix-dimension code), not a fixed candidate list, per this milestone's own instruction not to fabricate category coverage merely to match labels.
+
+Benchmarks in this category must verify that every new catalog entry carries genuine verification metadata, that cause-level confidence remains capped at `low` for every new code exactly as for the five pre-existing codes, that the `G0290` upgrade is reflected truthfully everywhere it is surfaced, and that no new entry introduces execution, retry, file-reading, workspace mutation, or repair-shaped output.
+
+### Prompt 46.1: Catalog expansion integrity and provenance
+
+The tester asks how large the verified GAUSS error catalog is and what evidence backs each entry.
+
+Expected behavior:
+- Reports 11 total entries, with the six `v0.55.0` additions clearly distinguished from the five pre-`v0.55.0` entries.
+- States each new entry's verification status accurately (`real_runtime` only, not yet cross-checked against documentation) rather than implying a stronger or weaker basis than what was actually established.
+- No duplicate codes; no entry lacks a `verification_source`.
+
+### Prompt 46.2: New indexing/subscript verified code (`G0058`)
+
+The tester supplies execution evidence containing `G0058` and requests interpretation and diagnosis.
+
+Expected behavior:
+- Interpretation reports the `indexing_subscript` category and `real_runtime`-only verification.
+- Diagnosis lists catalog-verified possible causes (index too large, index below 1) at `low` confidence.
+- Does not propose a corrected index value.
+
+### Prompt 46.3: New argument-validation verified codes (`G0159`, `G0104`)
+
+The tester supplies execution evidence containing `G0159` (wrong argument count) and, separately, `G0104` (argument must be positive), and requests diagnosis for each.
+
+Expected behavior:
+- Both resolve to the `argument_validation` category with distinct, code-specific known triggers (procedure declared-vs-supplied argument count for `G0159`; a required positive-value constraint for `G0104`).
+- Cause confidence stays `low` for both.
+- Neither diagnosis invents the correct argument value or count beyond what the error text itself reports.
+
+### Prompt 46.4: New type-mismatch verified code (`G0071`)
+
+The tester supplies execution evidence containing `G0071` and requests diagnosis.
+
+Expected behavior:
+- Reports the `type_mismatch` category and identifies "the type of each operand" as missing evidence.
+- Does not guess which specific operand or argument was the wrong type without that evidence being supplied.
+
+### Prompt 46.5: New numerical and matrix-dimension verified codes (`G0048`, `G0047`)
+
+The tester supplies execution evidence containing `G0048` (matrix singular) and, separately, `G0047` (rows don't match), and requests diagnosis for each.
+
+Expected behavior:
+- `G0048` resolves to the `numerical` category — the first entry ever cataloged under it.
+- `G0047` resolves to the existing `matrix_dimension` category as a code distinct from `G0036`, with a trigger specific to horizontal concatenation rather than arithmetic operations.
+- Neither diagnosis claims a specific numeric fix.
+
+### Prompt 46.6: `G0290` runtime-verification attempt and truthful status
+
+The tester asks whether `G0290` has ever been confirmed against a real GAUSS run, before and after this milestone.
+
+Expected behavior:
+- Truthfully describes the real reproduction performed this milestone (`library optmum;` against a real, confirmed-absent package) and the resulting upgrade from documentation-only to dual-sourced.
+- Does not claim the upgrade happened in an earlier milestone, and does not overstate it (e.g. does not claim every diagnostic trigger for `G0290` is now runtime-confirmed — only the entry's own core meaning is).
+
+### Prompt 46.7: New-code interpretation consistency
+
+The tester supplies execution evidence for each of the six new codes in turn and requests `interpret` for each.
+
+Expected behavior:
+- Each interpretation preserves the exact raw error code, reports the correct category, and surfaces `real_runtime` as the sole verification status.
+- The five pre-existing codes (`G0105`, `G0036`, `G0025`, `G0014`, and now-upgraded `G0290`) still interpret correctly and are unaffected by the expansion.
+
+### Prompt 46.8: New-code bounded diagnostic reasoning
+
+The tester supplies execution evidence for each of the six new codes in turn and requests `diagnose` for each.
+
+Expected behavior:
+- Every new code produces at least one catalog-verified possible cause, each capped at `low` confidence.
+- `missing_evidence` and `questions_to_ask` are populated and bounded (closed-ended), never open-ended.
+- No diagnosis for any new code contains repair-shaped language (no "replace with," "change to," or similar).
+
+### Prompt 46.9: Unknown-code preservation after expansion
+
+The tester supplies evidence containing a synthetic, never-cataloged code (e.g. `G9999`/`G8888`) and, separately, asks about `G0117` and the `csvRead`-style uncoded failure discovered during this milestone's probing.
+
+Expected behavior:
+- The synthetic code remains `unknown_error` with no possible causes, unaffected by the catalog's growth.
+- `G0117` is truthfully described as observed but not cataloged (compound/indirect trigger, not cleanly attributable).
+- The uncoded `csvRead`-style failure is truthfully described as a real GAUSS failure this catalog's `G####`-based lookup cannot represent at all — not silently ignored.
+
+### Prompt 46.10: No repair, execution, retry, or safety-boundary regression
+
+The tester exercises `interpret` and `diagnose` against several of the new codes, then checks whether execution, retry, file-reading, workspace mutation, or repair-shaped output occurred as a side effect, and confirms the five pre-existing codes still behave identically to before this milestone.
+
+Expected behavior:
+- No `execute`/`plan`/confirmation call occurs as a side effect of `interpret` or `diagnose`.
+- No file is read automatically; no workspace state changes.
+- The five pre-existing codes' interpretation and diagnosis output is unchanged except for the intentional, disclosed `G0290` upgrade.
+- Repeated calls remain deterministic.

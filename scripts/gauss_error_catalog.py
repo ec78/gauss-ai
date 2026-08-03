@@ -31,6 +31,19 @@ class GaussErrorCategory(enum.Enum):
     STARTUP_OR_LICENSING = "startup_or_licensing"
     USER_INTERRUPTION = "user_interruption"
     TIMEOUT = "timeout"
+    #: v0.55.0 -- an index/subscript value fell outside an object's valid
+    #: bounds. Distinct from MATRIX_DIMENSION, which covers two operands
+    #: disagreeing with each other, not a single index against one object.
+    INDEXING_SUBSCRIPT = "indexing_subscript"
+    #: v0.55.0 -- a procedure or built-in function call supplied an
+    #: unexpected number of arguments, or an argument value outside a
+    #: required range (e.g. a required-positive constraint). Covers both
+    #: "procedure invocation" and "argument count or argument type" failure
+    #: shapes named in this milestone's own scope.
+    ARGUMENT_VALIDATION = "argument_validation"
+    #: v0.55.0 -- an operation received an operand or argument of an
+    #: unexpected type (e.g. a string where a numeric value was expected).
+    TYPE_MISMATCH = "type_mismatch"
     UNKNOWN = "unknown"
 
 
@@ -242,17 +255,25 @@ _ENTRIES: tuple[GaussErrorCatalogEntry, ...] = (
             "GAUSSHOME directory."
         ),
         execution_phase="startup",
-        confidence="medium",
+        confidence="high",
         recommended_next_step=(
             "Confirm the required GAUSS application/library is installed under GAUSSHOME for the active GAUSS "
             "version before rerunning."
         ),
-        verification_status=(VerificationStatus.OFFICIAL_DOCUMENTATION,),
+        # v0.55.0: reproduced against a real GAUSS runtime -- upgraded from
+        # documentation-only to dual-sourced. Runtime text and documentation
+        # agree; no discrepancy to record.
+        verification_status=(VerificationStatus.REAL_RUNTIME, VerificationStatus.OFFICIAL_DOCUMENTATION),
         verification_source=(
-            "Official documentation only -- not yet reproduced against a real GAUSS runtime in this repository. "
-            "Aptech support content documents G0290 as 'Library not found', occurring when a required "
-            "application `.lcg` library file is missing from the active GAUSSHOME installation (e.g. an "
-            "uninstalled application module such as `optmum`, `comt`, or `tsmt`)."
+            "Real runtime: reproduced via `tgauss.exe -b` (`planning/v0.55.0-verified-diagnostic-coverage-"
+            "expansion.md`) using `library optmum;` in an isolated scratch directory against this repository's "
+            "real GAUSS 26.1.1 installation, whose `pkgs/` directory does not include `optmum` (confirmed "
+            "installed modules: cmlmt, coint, comt, dccelib, gml, maxlikmt, optmt, pubtable, qardl, quaids, "
+            "timeseries, tsmt, tspdlib), consistently producing \"error G0290 : Library not found "
+            "'<path>\\optmum.lcg'\". Official documentation: Aptech support content documents G0290 as 'Library "
+            "not found', occurring when a required application `.lcg` library file is missing from the active "
+            "GAUSSHOME installation (e.g. an uninstalled application module such as `optmum`, `comt`, or "
+            "`tsmt`) -- the runtime-observed title matches the documented title exactly; no discrepancy."
         ),
         known_triggers=(
             "the required GAUSS application/library module is not installed under the active GAUSSHOME",
@@ -262,6 +283,184 @@ _ENTRIES: tuple[GaussErrorCatalogEntry, ...] = (
         ),
         required_evidence_for_diagnosis=(
             "confirmation of which application module is required and whether it is installed under the active GAUSSHOME",
+        ),
+    ),
+    GaussErrorCatalogEntry(
+        error_code="G0058",
+        category=GaussErrorCategory.INDEXING_SUBSCRIPT,
+        title="Index out of range",
+        generic_explanation=(
+            "Execution reached runtime before GAUSS reported that an index value fell outside the valid bounds "
+            "of the object being indexed."
+        ),
+        execution_phase="runtime",
+        confidence="high",
+        recommended_next_step="Inspect the reported index value and the object's actual dimensions.",
+        verification_status=(VerificationStatus.REAL_RUNTIME,),
+        verification_source=(
+            "Real runtime: reproduced via `tgauss.exe -b` (`planning/v0.55.0-verified-diagnostic-coverage-"
+            "expansion.md`) using both `x = ones(2,2); print x[5,5];` and `x = ones(2,2); print x[-1,1];`, "
+            "each consistently producing 'error G0058 : Index out of range'. Not yet independently corroborated "
+            "against official Aptech documentation in this repository."
+        ),
+        known_triggers=(
+            "an index value greater than the object's number of rows or columns",
+            "an index value less than 1 (GAUSS uses 1-based indexing; a zero or negative index is out of range)",
+        ),
+        diagnostic_questions=(
+            "What are the row/column dimensions of the object being indexed?",
+            "Is the reported index value within the range 1 to the object's row/column count?",
+        ),
+        required_evidence_for_diagnosis=(
+            "the dimensions of the object being indexed and the exact index value used at the reported location",
+        ),
+    ),
+    GaussErrorCatalogEntry(
+        error_code="G0159",
+        category=GaussErrorCategory.ARGUMENT_VALIDATION,
+        title="Wrong number of parameters",
+        generic_explanation=(
+            "Execution reached runtime before GAUSS reported that a procedure was called with a different "
+            "number of arguments than its own declaration accepts."
+        ),
+        execution_phase="runtime",
+        confidence="high",
+        recommended_next_step="Inspect the procedure's declared parameter list and the exact call site reported.",
+        verification_status=(VerificationStatus.REAL_RUNTIME,),
+        verification_source=(
+            "Real runtime: reproduced via `tgauss.exe -b` (`planning/v0.55.0-verified-diagnostic-coverage-"
+            "expansion.md`) using `proc(1) = myproc2(a, b); retp(a+b); endp; y = myproc2(1);`, consistently "
+            "producing \"error G0159 : Wrong number of parameters ''myproc2' expected 2 arguments, received "
+            "1'\". Not yet independently corroborated against official Aptech documentation in this repository."
+        ),
+        known_triggers=(
+            "a procedure call supplying fewer arguments than the procedure's `proc` declaration requires",
+            "a procedure call supplying more arguments than the procedure's `proc` declaration accepts",
+        ),
+        diagnostic_questions=(
+            "How many parameters does the called procedure's `proc` statement declare?",
+            "How many arguments does the reported call site actually supply?",
+        ),
+        required_evidence_for_diagnosis=(
+            "the procedure's declared parameter count and the argument count actually supplied at the reported call site",
+        ),
+    ),
+    GaussErrorCatalogEntry(
+        error_code="G0104",
+        category=GaussErrorCategory.ARGUMENT_VALIDATION,
+        title="Argument must be positive",
+        generic_explanation=(
+            "Execution reached runtime before GAUSS reported that a supplied argument did not satisfy a "
+            "required strictly-positive-value constraint."
+        ),
+        execution_phase="runtime",
+        confidence="high",
+        recommended_next_step="Inspect the actual value of the reported argument at the point of the call.",
+        verification_status=(VerificationStatus.REAL_RUNTIME,),
+        verification_source=(
+            "Real runtime: reproduced via `tgauss.exe -b` (`planning/v0.55.0-verified-diagnostic-coverage-"
+            "expansion.md`) using `x = eye(-1);`, consistently producing 'error G0104 : Argument must be "
+            "positive'. Not yet independently corroborated against official Aptech documentation in this "
+            "repository."
+        ),
+        known_triggers=(
+            "a zero or negative value supplied where a function or procedure requires a strictly positive "
+            "value (e.g. a matrix-construction dimension such as `eye`'s size argument)",
+        ),
+        diagnostic_questions=(
+            "What is the actual runtime value of the reported argument at the point of the call, and is it positive?",
+        ),
+        required_evidence_for_diagnosis=(
+            "the runtime value of the specific argument identified by the error at the reported call site",
+        ),
+    ),
+    GaussErrorCatalogEntry(
+        error_code="G0071",
+        category=GaussErrorCategory.TYPE_MISMATCH,
+        title="Type mismatch",
+        generic_explanation=(
+            "Execution reached runtime before GAUSS reported that an operation received an operand or argument "
+            "of an unexpected type (for example a string where a numeric value was required)."
+        ),
+        execution_phase="runtime",
+        confidence="high",
+        recommended_next_step="Inspect the actual type of each operand or argument in the reported operation.",
+        verification_status=(VerificationStatus.REAL_RUNTIME,),
+        verification_source=(
+            "Real runtime: reproduced via `tgauss.exe -b` (`planning/v0.55.0-verified-diagnostic-coverage-"
+            "expansion.md`) using `x = sqrt(\"abc\");`, consistently producing 'error G0071 : Type mismatch'. "
+            "Not yet independently corroborated against official Aptech documentation in this repository."
+        ),
+        known_triggers=(
+            "a string value supplied where a numeric scalar or matrix argument was required",
+        ),
+        diagnostic_questions=(
+            "What is the actual type (string, scalar, matrix) of each operand or argument in the reported operation?",
+        ),
+        required_evidence_for_diagnosis=(
+            "the runtime type of each operand or argument involved in the reported operation",
+        ),
+    ),
+    GaussErrorCatalogEntry(
+        error_code="G0048",
+        category=GaussErrorCategory.NUMERICAL,
+        title="Matrix singular",
+        generic_explanation=(
+            "Execution reached runtime before GAUSS reported that a matrix operation requiring inversion (or an "
+            "equivalent operation) could not be completed because the supplied matrix is singular."
+        ),
+        execution_phase="runtime",
+        confidence="high",
+        recommended_next_step=(
+            "Inspect the matrix supplied to the reported operation for linear dependence among its rows or columns."
+        ),
+        verification_status=(VerificationStatus.REAL_RUNTIME,),
+        verification_source=(
+            "Real runtime: reproduced via `tgauss.exe -b` (`planning/v0.55.0-verified-diagnostic-coverage-"
+            "expansion.md`) using `x = ones(2,2); y = inv(x);`, consistently producing 'error G0048 : Matrix "
+            "singular'. Not yet independently corroborated against official Aptech documentation in this "
+            "repository."
+        ),
+        known_triggers=(
+            "a matrix supplied to `inv` or an equivalent inversion-requiring operation has linearly dependent "
+            "rows or columns (a zero, or near-zero, determinant)",
+        ),
+        diagnostic_questions=(
+            "Does the matrix supplied to the reported operation have linearly dependent rows or columns?",
+        ),
+        required_evidence_for_diagnosis=(
+            "the actual contents, determinant, or rank of the matrix supplied to the reported operation",
+        ),
+    ),
+    GaussErrorCatalogEntry(
+        error_code="G0047",
+        category=GaussErrorCategory.MATRIX_DIMENSION,
+        title="Rows don't match",
+        generic_explanation=(
+            "Execution reached runtime before GAUSS reported that a horizontal concatenation was attempted "
+            "between operands with different numbers of rows."
+        ),
+        execution_phase="runtime",
+        confidence="high",
+        recommended_next_step=(
+            "Inspect the row counts of each operand in the reported horizontal-concatenation operation."
+        ),
+        verification_status=(VerificationStatus.REAL_RUNTIME,),
+        verification_source=(
+            "Real runtime: reproduced via `tgauss.exe -b` (`planning/v0.55.0-verified-diagnostic-coverage-"
+            "expansion.md`) using `x = ones(2,2); y = ones(3,3); z = x~y;`, consistently producing 'error G0047 "
+            ": Rows don't match'. Not yet independently corroborated against official Aptech documentation in "
+            "this repository. Distinct code from `G0036` (arithmetic/Kronecker dimension mismatch) -- this "
+            "code is specific to the horizontal-concatenation (`~`) operator."
+        ),
+        known_triggers=(
+            "a horizontal concatenation (`~`) attempted between operands with different numbers of rows",
+        ),
+        diagnostic_questions=(
+            "What are the row counts of each operand in the reported horizontal-concatenation operation?",
+        ),
+        required_evidence_for_diagnosis=(
+            "the row counts of the specific operands involved in the reported operation",
         ),
     ),
 )

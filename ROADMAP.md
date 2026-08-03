@@ -627,13 +627,31 @@ See `planning/v0.54.0-evidence-based-diagnostic-reasoning.md`.
 - **Tests added.** 31 new tests in `scripts/test_gauss_execution_diagnostics.py` (core engine, boundary/purity, catalog-knowledge integrity) and 13 new CLI tests. Full existing regression suite unaffected.
 - **Still deferred.** Repair planning/application, autonomous correction, automatic retry, durable `ExecutionSession` integration, multi-attempt workspaces, Claude Code/Codex chat integration, and cloud execution remain out of scope.
 
+## v0.55.0: Verified Diagnostic Coverage Expansion
+
+See `planning/v0.55.0-verified-diagnostic-coverage-expansion.md`.
+
+- **Evaluation milestone completed.** All ten `46.x` Verified Diagnostic Coverage Expansion benchmarks were evaluated: 10/10 Passed at 4.0, 0 Critical, 0 Major, 0 Minor.
+- **Catalog grew from 5 to 11 entries, entirely through real GAUSS runtime reproduction.** A bounded, safe probe (15 small scripts run via `tgauss.exe -b` in disposable scratch directories, no package install/removal, no license/config changes) reproduced six new codes: `G0058` (Index out of range), `G0159` (Wrong number of parameters), `G0104` (Argument must be positive), `G0071` (Type mismatch), `G0048` (Matrix singular), `G0047` (Rows don't match).
+- **Three new semantic categories added, one previously-empty category populated.** `indexing_subscript`, `argument_validation`, and `type_mismatch` are new `GaussErrorCategory` values; `numerical` (previously empty since `v0.53.0`) now has its first entry (`G0048`). `matrix_dimension` gained a second, distinct code (`G0047`, specific to horizontal concatenation) alongside `G0036`.
+- **`G0290` upgraded from documentation-only to dual-sourced.** Reproduced via `library optmum;` against this installation's real, confirmed-absent package (`optmum` is not among the 13 modules under `pkgs/`), matching official documentation's title exactly with no discrepancy. Both the interpreter's and diagnostic engine's own tests for `G0290` were updated to assert this new, evidence-driven classification — an intentional supersession of `v0.53.0`/`v0.54.0`'s own documentation-only assertions, not a regression.
+- **Cause-level confidence ceiling unchanged.** Every catalog-derived cause for all six new codes stays at `low`, identical to the five pre-existing codes — catalog breadth never substitutes for missing source-code-content evidence.
+- **One code investigated but deliberately not added.** `G0117` ("Invalid argument") was genuinely observed but only via an indirect, compound trigger (an uncoded dataframe-indexing message preceding it); the exact condition mapping to `G0117` specifically was not isolated cleanly enough to state a non-speculative `known_trigger`. A separate, uncoded runtime failure format (`csvRead` "file not found," no `G####` code at all) was also discovered and documented as a known gap rather than forced into the existing schema.
+- **No interpreter or diagnostic-engine logic changed.** Both continue to look codes up in the catalog only; no new hardcoded knowledge, no new CLI command, no new eligibility/confirmation/workspace/repair-boundary behavior.
+- **Tests added.** A new `scripts/test_gauss_error_catalog.py` (18 catalog-integrity tests), 8 new interpreter tests, 9 new diagnostic-engine tests, 2 new CLI tests. Full existing regression suite re-run and passing, including the two intentionally-updated `G0290` tests.
+- **Still deferred.** Repair planning/application, autonomous correction, automatic retry, durable `ExecutionSession` integration, multi-attempt workspaces, Claude Code/Codex chat integration, and cloud execution remain out of scope.
+
 ## Future Candidate: Diagnostic Evaluation and Refinement (Not Yet Authorized)
 
-Not planned or scoped. `v0.54.0`'s own `45.x` evaluation found zero unresolved defects, so this is a lower-priority candidate than a catalog-knowledge expansion — but if a future manual alpha-testing pass against real, varied failures surfaces gaps in diagnostic cause coverage or wording, that refinement work would land here, strictly bounded to the existing diagnosis/repair separation (no code repair, no autonomous reasoning).
+Not planned or scoped. `v0.54.0`'s own `45.x` evaluation and `v0.55.0`'s own `46.x` evaluation both found zero unresolved defects — if a future manual alpha-testing pass against real, varied failures surfaces gaps in diagnostic cause coverage or wording, that refinement work would land here, strictly bounded to the existing diagnosis/repair separation (no code repair, no autonomous reasoning).
+
+## Future Candidate: Further Diagnostic Coverage Expansion (Not Yet Authorized)
+
+Not planned or scoped. `v0.55.0` found real-runtime evidence for `G0058`/`G0159`/`G0104`/`G0071`/`G0048`/`G0047` from a bounded, 15-scenario probe; a similarly bounded future probe (startup/licensing scenarios, additional argument/type variants, or cross-checking the six new `v0.55.0` codes against official Aptech documentation) could plausibly expand coverage further, but only where genuine evidence supports it — never to hit a target catalog size.
 
 ## Future Candidate: Repair Planning (Not Yet Authorized)
 
-Not planned, scoped, or implemented. This is explicitly the next stage after Diagnosis in this project's own staged pipeline (Execution → Evidence Collection → Interpretation → Verified Knowledge → Diagnosis → Repair Planning), but `v0.54.0` implements Diagnosis only and stops there deliberately — no repair-planning design document, data model, or code exists yet. Any future work here would still need to preserve the same repair boundary principle already enforced today: a repair *proposal* (if ever implemented) would remain distinct from an *applied* repair, and neither would be authorized as part of extending diagnosis itself.
+Not planned, scoped, or implemented. This is explicitly the next stage after Diagnosis in this project's own staged pipeline (Execution → Evidence Collection → Interpretation → Verified Knowledge → Diagnosis → Repair Planning), but `v0.54.0`/`v0.55.0` implement and expand Diagnosis only and stop there deliberately — no repair-planning design document, data model, or code exists yet. Any future work here would still need to preserve the same repair boundary principle already enforced today: a repair *proposal* (if ever implemented) would remain distinct from an *applied* repair, and neither would be authorized as part of extending diagnosis itself.
 
 ## Future Candidate: Durable Execution Session Integration (Deferred)
 

@@ -132,12 +132,16 @@ def test_06_g0014_bounded_diagnosis() -> None:
 
 
 def test_07_g0290_bounded_diagnosis() -> None:
+    # v0.55.0: G0290 was reproduced against a real GAUSS runtime this
+    # milestone and upgraded from documentation-only to dual-sourced; see
+    # test_31_g0290_now_dual_sourced_after_v055_runtime_verification for the
+    # dedicated regression test covering the transition itself.
     a = diag.diagnose_execution(_failed("error G0290 : Library not found\n"))
     check("category is package_or_library", a.source_error_category == catalog.GaussErrorCategory.PACKAGE_OR_LIBRARY.value)
-    check("knowledge_verification is documentation-only", a.knowledge_verification == ("official_documentation",))
+    check("knowledge_verification is now dual-sourced", a.knowledge_verification == ("real_runtime", "official_documentation"))
     check(
-        "limitations disclose no runtime confirmation",
-        any("not yet" in limitation.lower() and "runtime" in limitation.lower() for limitation in a.limitations),
+        "limitations no longer disclose an unresolved runtime-confirmation gap for G0290",
+        not any("not yet" in limitation.lower() and "runtime" in limitation.lower() for limitation in a.limitations),
     )
 
 
@@ -332,12 +336,113 @@ def test_30_unknown_codes_do_not_inherit_known_code_causes() -> None:
     check("no known-code trigger text leaked into an unknown-code assessment", not any(title in a.summary for title in all_known_titles))
 
 
-def test_31_documentation_only_verification_remains_labeled_correctly() -> None:
+def test_31_g0290_now_dual_sourced_after_v055_runtime_verification() -> None:
+    # v0.55.0: G0290 was reproduced against a real GAUSS runtime this
+    # milestone and upgraded from documentation-only to dual-sourced. This
+    # intentionally supersedes v0.54.0's own documentation-only assertion --
+    # see CHANGELOG.md / release-notes-v0.55.0.md for the exact reason.
     entry = catalog.lookup_error("G0290")
     assert entry is not None
-    check("G0290 verification_status is documentation-only", entry.verification_status == (catalog.VerificationStatus.OFFICIAL_DOCUMENTATION,))
+    check(
+        "G0290 verification_status is now dual-sourced",
+        entry.verification_status == (catalog.VerificationStatus.REAL_RUNTIME, catalog.VerificationStatus.OFFICIAL_DOCUMENTATION),
+    )
     a = diag.diagnose_execution(_failed("error G0290 : Library not found\n"))
-    check("G0290 diagnosis never claims real_runtime verification", "real_runtime" not in a.knowledge_verification)
+    check("G0290 diagnosis now truthfully reports real_runtime verification", "real_runtime" in a.knowledge_verification)
+    check(
+        "G0290 no longer carries the pre-v0.55.0 'not yet reproduced' limitation wording",
+        not any("not yet reproduced against a real GAUSS runtime" in item for item in a.limitations),
+    )
+
+
+# ---------------------------------------------------------------------------
+# v0.55.0 -- new catalog codes
+# ---------------------------------------------------------------------------
+
+
+def test_32_g0058_index_out_of_range_bounded_diagnosis() -> None:
+    a = diag.diagnose_execution(_failed("error G0058 : Index out of range\n"))
+    check("G0058 diagnosed status", a.diagnostic_status == diag.DiagnosticStatus.DIAGNOSED.value)
+    check("G0058 has possible causes", len(a.possible_causes) > 0)
+    check("G0058 causes stay at low confidence", all(c.confidence == diag.DiagnosticConfidence.LOW.value for c in a.possible_causes))
+    check("G0058 missing evidence disclosed", len(a.missing_evidence) > 0)
+    check("G0058 diagnosis never proposes a corrected index", not any("change the index" in c.description.lower() for c in a.possible_causes))
+    check("G0058 repair boundary present", a.repair_boundary == diag.REPAIR_BOUNDARY_STATEMENT)
+
+
+def test_33_g0159_wrong_number_of_parameters_bounded_diagnosis() -> None:
+    a = diag.diagnose_execution(
+        _failed("error G0159 : Wrong number of parameters ''myproc2' expected 2 arguments, received 1'\n")
+    )
+    check("G0159 diagnosed status", a.diagnostic_status == diag.DiagnosticStatus.DIAGNOSED.value)
+    check("G0159 has possible causes", len(a.possible_causes) > 0)
+    check("G0159 causes stay at low confidence", all(c.confidence == diag.DiagnosticConfidence.LOW.value for c in a.possible_causes))
+    check("G0159 questions_to_ask populated", len(a.questions_to_ask) > 0)
+
+
+def test_34_g0104_argument_must_be_positive_bounded_diagnosis() -> None:
+    a = diag.diagnose_execution(_failed("error G0104 : Argument must be positive\n"))
+    check("G0104 diagnosed status", a.diagnostic_status == diag.DiagnosticStatus.DIAGNOSED.value)
+    check("G0104 has possible causes", len(a.possible_causes) > 0)
+    check("G0104 causes stay at low confidence", all(c.confidence == diag.DiagnosticConfidence.LOW.value for c in a.possible_causes))
+
+
+def test_35_g0071_type_mismatch_bounded_diagnosis() -> None:
+    a = diag.diagnose_execution(_failed("error G0071 : Type mismatch\n"))
+    check("G0071 diagnosed status", a.diagnostic_status == diag.DiagnosticStatus.DIAGNOSED.value)
+    check("G0071 has possible causes", len(a.possible_causes) > 0)
+    check("G0071 causes stay at low confidence", all(c.confidence == diag.DiagnosticConfidence.LOW.value for c in a.possible_causes))
+
+
+def test_36_g0048_matrix_singular_bounded_diagnosis() -> None:
+    a = diag.diagnose_execution(_failed("error G0048 : Matrix singular\n"))
+    check("G0048 diagnosed status", a.diagnostic_status == diag.DiagnosticStatus.DIAGNOSED.value)
+    check("G0048 has possible causes", len(a.possible_causes) > 0)
+    check("G0048 causes stay at low confidence", all(c.confidence == diag.DiagnosticConfidence.LOW.value for c in a.possible_causes))
+    check("G0048 source_error_category is numerical", a.source_error_category == "numerical")
+
+
+def test_37_g0047_rows_dont_match_bounded_diagnosis() -> None:
+    a = diag.diagnose_execution(_failed("error G0047 : Rows don't match\n"))
+    check("G0047 diagnosed status", a.diagnostic_status == diag.DiagnosticStatus.DIAGNOSED.value)
+    check("G0047 has possible causes", len(a.possible_causes) > 0)
+    check("G0047 causes stay at low confidence", all(c.confidence == diag.DiagnosticConfidence.LOW.value for c in a.possible_causes))
+
+
+def test_38_all_new_entries_produce_no_repair_shaped_output() -> None:
+    banned_terms = ("replace with", "change to", "fix by", "correct code", "rewrite as")
+    for code, stderr_text in (
+        ("G0058", "error G0058 : Index out of range\n"),
+        ("G0159", "error G0159 : Wrong number of parameters ''p' expected 2 arguments, received 1'\n"),
+        ("G0104", "error G0104 : Argument must be positive\n"),
+        ("G0071", "error G0071 : Type mismatch\n"),
+        ("G0048", "error G0048 : Matrix singular\n"),
+        ("G0047", "error G0047 : Rows don't match\n"),
+    ):
+        a = diag.diagnose_execution(_failed(stderr_text))
+        text = " ".join(
+            [a.summary] + [c.description for c in a.possible_causes] + list(a.recommended_diagnostic_steps)
+        ).lower()
+        for term in banned_terms:
+            check(f"{code} diagnosis contains no {term!r}", term not in text)
+
+
+def test_39_existing_five_codes_diagnosis_does_not_regress() -> None:
+    for code, stderr_text in (
+        ("G0105", "error G0105 : Bad expression or missing arguments\n"),
+        ("G0036", "error G0036 : Matrix dimensions are incompatible\n"),
+        ("G0025", "error G0025 : Undefined symbol: 'x'\n"),
+        ("G0014", "error G0014 : File not found 'x.txt'\n"),
+    ):
+        a = diag.diagnose_execution(_failed(stderr_text))
+        check(f"{code} still diagnosed after expansion", a.diagnostic_status == diag.DiagnosticStatus.DIAGNOSED.value)
+        check(f"{code} still produces catalog-verified causes", all(c.is_catalog_verified for c in a.possible_causes))
+
+
+def test_40_unknown_code_still_unknown_after_catalog_expansion() -> None:
+    a = diag.diagnose_execution(_failed("error G8888 : Not a real code\n"))
+    check("synthetic G8888 remains unknown_error status", a.diagnostic_status == diag.DiagnosticStatus.UNKNOWN_ERROR.value)
+    check("synthetic G8888 has no possible causes", a.possible_causes == ())
 
 
 def run_tests() -> int:
