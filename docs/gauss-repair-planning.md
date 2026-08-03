@@ -8,7 +8,9 @@ It never answers: *here is the exact code to apply.* That question belongs to a 
 
 As of `v0.57.0`, `requires_explicit_approval` is consumed by a new downstream layer, `scripts/gauss_repair_approval.py` — see `docs/gauss-repair-approval.md`. This does not change repair planning's own responsibilities in any way: `gauss_repair_planner.py` still knows nothing about approval beyond exposing `repair_plan_digest(...)`, a pure identity function over its own `RepairPlan` output, which the approval layer consumes without this module importing anything back from it.
 
-As of `v0.58.0`, the safety architecture for the *next* downstream layer — Repair Application — has been designed (`planning/v0.58.0-repair-application-safety-design.md`, `docs/gauss-repair-application-safety.md`). No code exists for it. This module still knows nothing about drafts, source hashes, or application, and will not until (and unless) a future, separately authorized implementation milestone changes that; this document's own claims about repair planning's responsibilities are unaffected.
+As of `v0.58.0`, the safety architecture for a further downstream layer — Repair Application — was designed (`planning/v0.58.0-repair-application-safety-design.md`, `docs/gauss-repair-application-safety.md`).
+
+As of `v0.59.0`, Phase 1 of that design is implemented: `scripts/gauss_repair_draft.py` provides immutable source-identity and `RepairDraft` models plus deterministic structural validation — see `docs/gauss-repair-draft.md`. This module still knows nothing about drafts; a `RepairDraft` references a `repair_plan_digest` value as a plain string, and this module has no awareness that anything downstream consumes it. This document's own claims about repair planning's responsibilities are unaffected.
 
 ## Position in the Reasoning Pipeline
 
@@ -20,6 +22,7 @@ Execution
   -> Diagnosis                (gauss_execution_diagnostics.py, v0.54.0-v0.55.0)
   -> Repair Planning          (gauss_repair_planner.py, v0.56.0 -- this layer)
   -> Approval                 (gauss_repair_approval.py, v0.57.0)
+  -> Repair Draft              (gauss_repair_draft.py, v0.59.0)
   -> Repair Application       (designed in v0.58.0, not implemented)
 ```
 

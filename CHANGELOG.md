@@ -4,6 +4,17 @@ This file records notable changes to the GAUSS AI framework.
 
 ## [Unreleased]
 
+- Added `v0.59.0` Source Identity and Repair Draft Foundation: implements Phase 1 of the `v0.58.0` design — immutable `SourceArtifact`/`SourceIdentity`/`EditScope`/`RepairDraft` models and deterministic structural validation (`scripts/gauss_repair_draft.py`). No patch generation, file editing, or application.
+- Added `repair_draft_digest(draft)` and `source_identity_digest(identity)`, both following the exact canonical-JSON/SHA-256 convention `repair_plan_digest` already established. `repair_draft_id` is deliberately excluded from the digest (content identity, not instance identity).
+- Added `validate_repair_draft(draft, current_source_identity=None)`: ten pure, I/O-free structural checks (workspace/hash matching, UTF-8-only encoding, well-formed and bounded [≤200-line] edit ranges, structural single-file/immutability/determinism guarantees, no-generated-code detection).
+- Added the CLI `repair-draft`/`show-repair-draft` commands, requiring an existing repair plan and every content/hash/range value explicitly; both display full non-application disclosure.
+- `safe_to_apply`/`safe_to_prepare_draft` remain structurally `False` on every draft, with no code path in the new module able to change either.
+- Added `scripts/test_gauss_repair_draft.py` (41 tests) and 11 new CLI tests.
+- Added a `49.x` Repair Draft Foundation benchmark category (ten prompts, matching coverage rows) deliberately left `Not Run` — no evaluation results fabricated.
+- Added `planning/v0.59.0-source-identity-and-repair-draft.md`, `release-notes-v0.59.0.md`, and `docs/gauss-repair-draft.md`.
+- Updated `docs/gauss-repair-planning.md` to reference the new downstream draft layer without changing repair-planning's own responsibilities.
+- No interpreter, diagnostic, repair-planning, or approval-store behavior changed. `scripts/gauss_repair_planner.py` and `scripts/gauss_repair_approval.py` have zero diff.
+
 - Planned `v0.58.0` Repair Application Safety Design: a design-only milestone (`planning/v0.58.0-repair-application-safety-design.md`, `docs/gauss-repair-application-safety.md`) defining the complete safety architecture a future repair-application feature would require. No implementation code was added.
 - Defined a four-layer approval separation (strategy / draft / application / rerun approval), explicitly prohibited from ever collapsing into a single confirmation.
 - Defined an identity model (11 distinct future identities — `source_artifact_id`, `source_content_hash`, `repair_draft_id`, `repair_draft_digest`, `repair_application_id`, etc.), none reusing an orchestration ID.

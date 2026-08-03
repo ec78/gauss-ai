@@ -1127,6 +1127,179 @@ def test_72_repair_planning_regression_unaffected_by_approval_layer() -> None:
         adapter.close()
 
 
+_DRAFT_ARGS = [
+    "--path", "model.gss",
+    "--content-hash", "a" * 64,
+    "--size", "200",
+    "--line-start", "5",
+    "--line-end", "5",
+    "--operation", "insert missing semicolon",
+    "--description", "Insert a missing statement terminator at the reported line.",
+]
+
+
+def _repair_draft_from(adapter: "cli.InteractiveMvpAdapter") -> list[str]:
+    return _run(adapter, "repair-draft " + " ".join(f'"{a}"' if " " in a else a for a in _DRAFT_ARGS))
+
+
+def test_73_repair_draft_before_plan_exists() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        out = _joined(_run(adapter, "repair-draft"))
+        check("repair-draft before repair-plan reports no_repair_plan", "ERROR no_repair_plan" in out)
+        adapter.close()
+
+
+def test_74_show_repair_draft_before_draft_exists() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        _run(adapter, "repair-plan")
+        out = _joined(_run(adapter, "show-repair-draft"))
+        check("show-repair-draft before repair-draft reports no_repair_draft", "ERROR no_repair_draft" in out)
+        adapter.close()
+
+
+def test_75_repair_draft_after_repair_plan() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        _run(adapter, "repair-plan")
+        out = _joined(_repair_draft_from(adapter))
+        check("draft boundary disclosed", "DRAFT_BOUNDARY" in out)
+        check("draft_digest present", "draft_digest:" in out)
+        check("safe_to_apply false", "safe_to_apply: false" in out)
+        check("safe_to_prepare_draft false", "safe_to_prepare_draft: false" in out)
+        check("validation passed", "validation_all_passed: true" in out)
+        for line in (
+            "disclosure: This is NOT an applied repair.",
+            "disclosure: No files were modified.",
+            "disclosure: No patch exists.",
+            "disclosure: No code has been generated.",
+            "disclosure: No approval to edit files exists.",
+        ):
+            check(f"disclosure present: {line!r}", line in out)
+        adapter.close()
+
+
+def test_76_show_repair_draft_after_creation() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        _run(adapter, "repair-plan")
+        first = _joined(_repair_draft_from(adapter))
+        second = _joined(_run(adapter, "show-repair-draft"))
+        check("show-repair-draft matches the just-created draft's own output", first == second)
+        adapter.close()
+
+
+def test_77_repair_draft_uses_active_workspace_by_default() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        _run(adapter, "repair-plan")
+        out = _joined(_repair_draft_from(adapter))
+        check("workspace_id defaults to the active workspace", f"workspace_id: {adapter.active_workspace_id}" in out)
+        adapter.close()
+
+
+def test_78_repair_draft_missing_required_option() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        _run(adapter, "repair-plan")
+        out = _joined(_run(adapter, "repair-draft --path model.gss"))
+        check("missing required options reported", "ERROR usage: missing required repair-draft option" in out)
+        adapter.close()
+
+
+def test_79_repair_draft_rejects_unrecognized_option() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        _run(adapter, "repair-plan")
+        out = _joined(_run(adapter, "repair-draft --not-a-real-flag"))
+        check("unrecognized repair-draft option reports an error", "ERROR usage" in out)
+        adapter.close()
+
+
+def test_80_repeated_repair_draft_construction_same_inputs_same_digest() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        _run(adapter, "repair-plan")
+        out1 = _joined(_repair_draft_from(adapter))
+        out2 = _joined(_repair_draft_from(adapter))
+        digest1 = [line.split(": ", 1)[1] for line in out1.splitlines() if line.startswith("draft_digest:")][0]
+        digest2 = [line.split(": ", 1)[1] for line in out2.splitlines() if line.startswith("draft_digest:")][0]
+        check("repeated construction with identical inputs produces identical draft digests", digest1 == digest2)
+        adapter.close()
+
+
+def test_81_repair_draft_does_not_mutate_workspace_or_filesystem() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        _run(adapter, "repair-plan")
+        status_before = adapter.registry.get_workspace(adapter.active_workspace_id).status
+        workspace_root = Path(adapter.registry.get_workspace(adapter.active_workspace_id).root_path)
+        entries_before = set(workspace_root.rglob("*")) if workspace_root.exists() else set()
+        _repair_draft_from(adapter)
+        _run(adapter, "show-repair-draft")
+        status_after = adapter.registry.get_workspace(adapter.active_workspace_id).status
+        entries_after = set(workspace_root.rglob("*")) if workspace_root.exists() else set()
+        check("workspace status unchanged by repair-draft/show-repair-draft", status_before == status_after)
+        check("no new filesystem entries created by repair-draft/show-repair-draft", entries_before == entries_after)
+        adapter.close()
+
+
+def test_82_reset_clears_repair_draft_availability() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        _run(adapter, "repair-plan")
+        _repair_draft_from(adapter)
+        _run(adapter, "reset")
+        out = _joined(_run(adapter, "show-repair-draft"))
+        check("show-repair-draft unavailable after reset", "ERROR no_repair_draft" in out)
+        adapter.close()
+
+
+def test_83_repair_draft_never_calls_execute_or_mutates_approval_store() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        _run(adapter, "repair-plan")
+        approval_len_before = len(adapter._repair_approval_store)  # noqa: SLF001
+        _repair_draft_from(adapter)
+        approval_len_after = len(adapter._repair_approval_store)  # noqa: SLF001
+        check("repair-draft does not add any approval record", approval_len_before == approval_len_after)
+        adapter.close()
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

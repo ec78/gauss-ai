@@ -34,6 +34,7 @@ import gauss_execution_diagnostics as diagnostics  # noqa: E402
 import gauss_execution_interpreter as interpreter  # noqa: E402
 import gauss_execution_workflow as wf  # noqa: E402
 import gauss_repair_approval as repair_approval  # noqa: E402
+import gauss_repair_draft as repair_draft_mod  # noqa: E402
 import gauss_repair_planner as repair_planner  # noqa: E402
 import gauss_orchestration_state_store as store_mod  # noqa: E402
 import gauss_workspace as workspace_mod  # noqa: E402
@@ -202,6 +203,12 @@ class InteractiveMvpAdapter:
         # otherwise remembered between calls.
         self.last_repair_plan: repair_planner.RepairPlan | None = None
         self._repair_approval_store = repair_approval.RepairApprovalStore()
+        # v0.59.0: the most recent repair draft this adapter session
+        # constructed -- process-local only, exactly like last_repair_plan;
+        # no draft is ever persisted, and no draft-approval mechanism reads
+        # this field (drafting has no consumer yet).
+        self.last_repair_draft: repair_draft_mod.RepairDraft | None = None
+        self._draft_counter = 0
         self._turn_counter = 0
 
     # ------------------------------------------------------------------
@@ -269,6 +276,10 @@ class InteractiveMvpAdapter:
                 return True, self._approve_repair(args)
             if command == "decline-repair":
                 return True, self._decline_repair(args)
+            if command == "repair-draft":
+                return True, self._repair_draft(args)
+            if command == "show-repair-draft":
+                return True, self._show_repair_draft(args)
             if command == "read":
                 return True, self._read(args)
             if command == "provenance":
@@ -287,7 +298,7 @@ class InteractiveMvpAdapter:
 
     def _help(self) -> list[str]:
         return [
-            "GAUSS Code Assistant Interactive MVP Adapter (v0.57.0 alpha)",
+            "GAUSS Code Assistant Interactive MVP Adapter (v0.59.0 alpha)",
             f"Execution backend: {self.backend_label}",
             "Commands:",
             "  help",
@@ -307,6 +318,10 @@ class InteractiveMvpAdapter:
             "              [--procedure NAME] [--args SUMMARY] [--line-start N] [--line-end N]",
             "  approve-repair <plan_digest>",
             "  decline-repair <plan_digest>",
+            "  repair-draft --path PATH --content-hash SHA256 --size N --line-start N --line-end N",
+            "               --operation TEXT --description TEXT [--workspace-id ID] [--encoding utf-8]",
+            "               [--procedure NAME] [--symbol NAME]",
+            "  show-repair-draft",
             "  read <relative-path>",
             "  provenance",
             "  status",
@@ -885,6 +900,207 @@ class InteractiveMvpAdapter:
     def _decline_repair(self, args: list[str]) -> list[str]:
         return self._record_repair_decision(args, decision=repair_approval.ApprovalDecision.DECLINED, command_name="decline-repair")
 
+    def _parse_repair_draft_args(self, args: list[str]) -> dict[str, object] | str:
+        """Parses a small, bounded set of explicit repair-draft flags.
+        Returns a field dict on success, or an error message string on
+        invalid input. Never reads a file -- every value comes directly from
+        the flags the caller typed; `content_hash`/`size` in particular must
+        be supplied by the caller, since this module (and this CLI) perform
+        no I/O of their own."""
+        relative_path: str | None = None
+        content_hash: str | None = None
+        size: int | None = None
+        line_start: int | None = None
+        line_end: int | None = None
+        operation: str | None = None
+        description: str | None = None
+        workspace_id: str | None = None
+        encoding = "utf-8"
+        procedure: str | None = None
+        symbol: str | None = None
+
+        i = 0
+        while i < len(args):
+            token = args[i]
+            if token == "--path" and i + 1 < len(args):
+                relative_path = args[i + 1]
+                i += 2
+            elif token == "--content-hash" and i + 1 < len(args):
+                content_hash = args[i + 1]
+                i += 2
+            elif token == "--size" and i + 1 < len(args):
+                try:
+                    size = int(args[i + 1])
+                except ValueError:
+                    return f"ERROR usage: --size requires an integer, got {args[i + 1]!r}"
+                i += 2
+            elif token == "--line-start" and i + 1 < len(args):
+                try:
+                    line_start = int(args[i + 1])
+                except ValueError:
+                    return f"ERROR usage: --line-start requires an integer, got {args[i + 1]!r}"
+                i += 2
+            elif token == "--line-end" and i + 1 < len(args):
+                try:
+                    line_end = int(args[i + 1])
+                except ValueError:
+                    return f"ERROR usage: --line-end requires an integer, got {args[i + 1]!r}"
+                i += 2
+            elif token == "--operation" and i + 1 < len(args):
+                operation = args[i + 1]
+                i += 2
+            elif token == "--description" and i + 1 < len(args):
+                description = args[i + 1]
+                i += 2
+            elif token == "--workspace-id" and i + 1 < len(args):
+                workspace_id = args[i + 1]
+                i += 2
+            elif token == "--encoding" and i + 1 < len(args):
+                encoding = args[i + 1]
+                i += 2
+            elif token == "--procedure" and i + 1 < len(args):
+                procedure = args[i + 1]
+                i += 2
+            elif token == "--symbol" and i + 1 < len(args):
+                symbol = args[i + 1]
+                i += 2
+            else:
+                return f"ERROR usage: unrecognized repair-draft option {token!r}"
+
+        if workspace_id is None:
+            workspace_id = self.active_workspace_id
+        missing = [
+            name
+            for name, value in (
+                ("--path", relative_path),
+                ("--content-hash", content_hash),
+                ("--size", size),
+                ("--line-start", line_start),
+                ("--line-end", line_end),
+                ("--operation", operation),
+                ("--description", description),
+            )
+            if value is None
+        ]
+        if workspace_id is None:
+            missing.append("--workspace-id (no active workspace to default to)")
+        if missing:
+            return f"ERROR usage: missing required repair-draft option(s): {', '.join(missing)}"
+
+        return {
+            "workspace_id": workspace_id,
+            "relative_path": relative_path,
+            "content_hash": content_hash,
+            "size": size,
+            "encoding": encoding,
+            "line_start": line_start,
+            "line_end": line_end,
+            "operation": operation,
+            "description": description,
+            "procedure": procedure,
+            "symbol": symbol,
+        }
+
+    def _render_repair_draft(self, draft: "repair_draft_mod.RepairDraft") -> list[str]:
+        digest = repair_draft_mod.repair_draft_digest(draft)
+        validation = repair_draft_mod.validate_repair_draft(draft)
+        lines = [
+            "REAL_WORKFLOW: Repair-draft construction and structural validation only.",
+            "DRAFT_BOUNDARY: No file was read or written. No patch exists. No code was generated. No approval "
+            "to edit files exists.",
+            f"repair_draft_id: {draft.repair_draft_id}",
+            f"repair_plan_digest: {draft.repair_plan_digest}",
+            f"draft_digest: {digest}",
+            f"workspace_id: {draft.source_identity.artifact.workspace_id}",
+            f"relative_path: {draft.source_identity.artifact.relative_path}",
+            f"file_type: {draft.source_identity.artifact.file_type}",
+            f"source_content_hash: {draft.source_identity.content_hash}",
+            f"source_size: {draft.source_identity.size}",
+            f"source_encoding: {draft.source_identity.encoding}",
+            f"edit_line_range: [{draft.edit_scope.line_start}, {draft.edit_scope.line_end}]",
+            f"target_procedure: {draft.edit_scope.target_procedure}",
+            f"target_symbol: {draft.edit_scope.target_symbol}",
+            f"intended_operation: {draft.edit_scope.intended_operation}",
+            f"proposed_change_description: {draft.proposed_change_description}",
+        ]
+        lines.append("assumptions:")
+        for item in draft.assumptions:
+            lines.append(f"  - {item}")
+        lines.append("risks:")
+        for item in draft.risks:
+            lines.append(f"  - {item}")
+        lines.append("verification_steps:")
+        for item in draft.verification_steps:
+            lines.append(f"  - {item}")
+        lines.extend(
+            [
+                f"generated_at: {draft.generated_at}",
+                f"generated_by: {draft.generated_by}",
+                f"approval_required: {str(draft.approval_required).lower()}",
+                f"safe_to_prepare_draft: {str(draft.safe_to_prepare_draft).lower()}",
+                f"safe_to_apply: {str(draft.safe_to_apply).lower()}",
+                f"draft_boundary: {draft.draft_boundary}",
+                f"validation_all_passed: {str(validation.all_passed).lower()}",
+            ]
+        )
+        if validation.failed_checks:
+            lines.append(f"validation_failed_checks: {', '.join(validation.failed_checks)}")
+        lines.append("validation_checks:")
+        for item in validation.checks:
+            lines.append(f"  - {item.check}: {'pass' if item.passed else 'FAIL'} -- {item.detail}")
+        lines.extend(
+            [
+                "disclosure: This is NOT an applied repair.",
+                "disclosure: No files were modified.",
+                "disclosure: No patch exists.",
+                "disclosure: No code has been generated.",
+                "disclosure: No approval to edit files exists.",
+            ]
+        )
+        return lines
+
+    def _repair_draft(self, args: list[str]) -> list[str]:
+        if self.last_repair_plan is None:
+            return ["ERROR no_repair_plan: run 'repair-plan' first."]
+        parsed = self._parse_repair_draft_args(args)
+        if isinstance(parsed, str):
+            return [parsed]
+        self._draft_counter += 1
+        artifact = repair_draft_mod.SourceArtifact(
+            workspace_id=str(parsed["workspace_id"]),
+            relative_path=str(parsed["relative_path"]),
+            file_type=Path(str(parsed["relative_path"])).suffix,
+        )
+        identity = repair_draft_mod.SourceIdentity(
+            artifact=artifact,
+            content_hash=str(parsed["content_hash"]),
+            size=int(parsed["size"]),  # type: ignore[arg-type]
+            encoding=str(parsed["encoding"]),
+            observed_at=str(self._clock()),
+        )
+        scope = repair_draft_mod.EditScope(
+            line_start=int(parsed["line_start"]),  # type: ignore[arg-type]
+            line_end=int(parsed["line_end"]),  # type: ignore[arg-type]
+            intended_operation=str(parsed["operation"]),
+            target_procedure=parsed["procedure"] and str(parsed["procedure"]),
+            target_symbol=parsed["symbol"] and str(parsed["symbol"]),
+        )
+        draft = repair_draft_mod.build_repair_draft(
+            repair_draft_id=f"draft-{self._draft_counter}",
+            repair_plan_digest=repair_planner.repair_plan_digest(self.last_repair_plan),
+            source_identity=identity,
+            edit_scope=scope,
+            proposed_change_description=str(parsed["description"]),
+            generated_at=str(self._clock()),
+        )
+        self.last_repair_draft = draft
+        return self._render_repair_draft(draft)
+
+    def _show_repair_draft(self, args: list[str]) -> list[str]:
+        if self.last_repair_draft is None:
+            return ["ERROR no_repair_draft: run 'repair-draft' first."]
+        return self._render_repair_draft(self.last_repair_draft)
+
     def _read(self, args: list[str]) -> list[str]:
         if self.active_workspace_id is None:
             return ["ERROR no_workspace: run 'workspace create' first."]
@@ -975,6 +1191,7 @@ class InteractiveMvpAdapter:
         self.last_captured_output = CapturedProcessOutput()
         self.last_repair_plan = None
         self._repair_approval_store = repair_approval.RepairApprovalStore()
+        self.last_repair_draft = None
         return [
             "ADAPTER: Cleared active request, proposal, confirmation, and result.",
             "workspace_retained: true",
@@ -1172,7 +1389,7 @@ class InteractiveMvpAdapter:
 
 
 def run_repl(adapter: InteractiveMvpAdapter) -> int:
-    print("GAUSS Code Assistant Interactive MVP Adapter (v0.57.0 alpha)")
+    print("GAUSS Code Assistant Interactive MVP Adapter (v0.59.0 alpha)")
     print(f"Execution backend: {adapter.backend_label}")
     if adapter.runner_backend == REAL_GAUSS_BACKEND:
         print("Real GAUSS execution is enabled only after hash-bound confirm + execute.")

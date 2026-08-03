@@ -450,6 +450,16 @@ Some early runs predate stable Prompt ID assignment. Where a run does not match 
 | 48.8 | Repair Approval Mechanism | No execution, file write, or workspace mutation from approval | Passed | [2026-08-03-code-assistant-repair-approval-mechanism-run-008.md](runs/2026-08-03-code-assistant-repair-approval-mechanism-run-008.md) | 4.0 | Full 72-test CLI suite re-verified; no propose/confirm/execute/file-write call inside approval methods. |
 | 48.9 | Repair Approval Mechanism | Reset clears repair-plan and approval state | Passed | [2026-08-03-code-assistant-repair-approval-mechanism-run-009.md](runs/2026-08-03-code-assistant-repair-approval-mechanism-run-009.md) | 4.0 | Fresh RepairApprovalStore after reset; no residual decision reachable. |
 | 48.10 | Repair Approval Mechanism | Truthfulness — approval is not application | Passed | [2026-08-03-code-assistant-repair-approval-mechanism-run-010.md](runs/2026-08-03-code-assistant-repair-approval-mechanism-run-010.md) | 4.0 | ApprovalDecision has only approved/declined; fixed boundary text refutes any "is it fixed" framing. |
+| 49.1 | Repair Draft Foundation | Draft construction requires an existing repair plan | Not Run | N/A | N/A | None. |
+| 49.2 | Repair Draft Foundation | Explicit source identity, no auto-collection | Not Run | N/A | N/A | None. |
+| 49.3 | Repair Draft Foundation | Digest determinism and content-vs-instance identity | Not Run | N/A | N/A | None. |
+| 49.4 | Repair Draft Foundation | Hash mismatch is detected, not silently accepted | Not Run | N/A | N/A | None. |
+| 49.5 | Repair Draft Foundation | Workspace/path mismatch is detected | Not Run | N/A | N/A | None. |
+| 49.6 | Repair Draft Foundation | Edit range validation | Not Run | N/A | N/A | None. |
+| 49.7 | Repair Draft Foundation | UTF-8-only declared encoding | Not Run | N/A | N/A | None. |
+| 49.8 | Repair Draft Foundation | No patch, diff, or generated code is representable | Not Run | N/A | N/A | None. |
+| 49.9 | Repair Draft Foundation | Immutability and no filesystem mutation | Not Run | N/A | N/A | None. |
+| 49.10 | Repair Draft Foundation | Truthfulness — a draft is not an approval, an application, or a fix | Not Run | N/A | N/A | None. |
 
 ## Completed Runs Not Directly Covered By Current Stable Prompts
 
