@@ -33,6 +33,8 @@ import gauss_code_assistant_workflow as mvp  # noqa: E402
 import gauss_execution_diagnostics as diagnostics  # noqa: E402
 import gauss_execution_interpreter as interpreter  # noqa: E402
 import gauss_execution_workflow as wf  # noqa: E402
+import gauss_repair_application_approval as application_approval  # noqa: E402
+import gauss_repair_application_gate as application_gate  # noqa: E402
 import gauss_repair_approval as repair_approval  # noqa: E402
 import gauss_repair_draft as repair_draft_mod  # noqa: E402
 import gauss_repair_draft_approval as draft_approval  # noqa: E402
@@ -213,6 +215,12 @@ class InteractiveMvpAdapter:
         # v0.60.0: process-local store of draft-approval decisions -- exactly
         # as durable (i.e. not) as _repair_approval_store already is.
         self._draft_approval_store = draft_approval.DraftApprovalStore()
+        # v0.61.0: process-local store of application-approval decisions --
+        # exactly as durable (i.e. not) as the other two approval stores.
+        # Binds to the same draft digest draft approval itself binds to,
+        # never a separately-computed "application digest" (see
+        # gauss_repair_application_approval.py's own module docstring).
+        self._application_approval_store = application_approval.ApplicationApprovalStore()
         self._turn_counter = 0
 
     # ------------------------------------------------------------------
@@ -290,6 +298,14 @@ class InteractiveMvpAdapter:
                 return True, self._decline_repair_draft(args)
             if command == "show-repair-draft-approval":
                 return True, self._show_repair_draft_approval(args)
+            if command == "approve-repair-application":
+                return True, self._approve_repair_application(args)
+            if command == "decline-repair-application":
+                return True, self._decline_repair_application(args)
+            if command == "show-repair-application-approval":
+                return True, self._show_repair_application_approval(args)
+            if command == "check-repair-application-gate":
+                return True, self._check_repair_application_gate(args)
             if command == "read":
                 return True, self._read(args)
             if command == "provenance":
@@ -308,7 +324,7 @@ class InteractiveMvpAdapter:
 
     def _help(self) -> list[str]:
         return [
-            "GAUSS Code Assistant Interactive MVP Adapter (v0.60.0 alpha)",
+            "GAUSS Code Assistant Interactive MVP Adapter (v0.61.0 alpha)",
             f"Execution backend: {self.backend_label}",
             "Commands:",
             "  help",
@@ -335,6 +351,10 @@ class InteractiveMvpAdapter:
             "  approve-repair-draft <draft_digest>",
             "  decline-repair-draft <draft_digest>",
             "  show-repair-draft-approval",
+            "  approve-repair-application <draft_digest>",
+            "  decline-repair-application <draft_digest>",
+            "  show-repair-application-approval",
+            "  check-repair-application-gate [--current-content-hash SHA256]",
             "  read <relative-path>",
             "  provenance",
             "  status",
@@ -1171,6 +1191,132 @@ class InteractiveMvpAdapter:
             return ["ERROR no_draft_approval: run 'approve-repair-draft' or 'decline-repair-draft' first."]
         return self._render_draft_approval_record(record)
 
+    def _render_application_approval_record(self, record: "application_approval.ApplicationApprovalRecord") -> list[str]:
+        return [
+            "REAL_WORKFLOW: Repair-application approval recorded from the current repair draft only.",
+            "APPLICATION_APPROVAL_BOUNDARY: No code was modified. No file was written. No patch was applied. No "
+            "execution occurred. The application transaction itself remains unimplemented.",
+            f"decision: {record.decision}",
+            f"draft_digest: {record.draft_digest}",
+            f"repair_draft_id: {record.repair_draft_id}",
+            f"recorded_at: {record.recorded_at}",
+            f"safe_to_apply: {str(record.safe_to_apply).lower()}",
+            f"safe_to_prepare_draft: {str(record.safe_to_prepare_draft).lower()}",
+            f"approval_boundary: {record.approval_boundary}",
+        ]
+
+    def _record_repair_application_decision(
+        self, args: list[str], *, decision: "application_approval.ApplicationApprovalDecision", command_name: str
+    ) -> list[str]:
+        if self.last_repair_draft is None:
+            return ["ERROR no_repair_draft: run 'repair-draft' first."]
+        if not args:
+            return [f"ERROR usage: {command_name} <draft_digest>"]
+        supplied_digest = args[0]
+        actual_digest = repair_draft_mod.repair_draft_digest(self.last_repair_draft)
+        if supplied_digest != actual_digest:
+            return [
+                "ERROR stale_or_incorrect_digest: supplied draft_digest does not match the current repair draft.",
+                f"current_draft_digest: {actual_digest}",
+                "guidance: run 'repair-draft' or 'show-repair-draft' again to see the current digest, or "
+                "re-supply the exact digest shown there.",
+            ]
+        try:
+            if decision == application_approval.ApplicationApprovalDecision.APPROVED:
+                record = self._application_approval_store.approve(self.last_repair_draft, recorded_at=str(self._clock()))
+            else:
+                record = self._application_approval_store.decline(self.last_repair_draft, recorded_at=str(self._clock()))
+        except application_approval.ApplicationApprovalConflictError as exc:
+            return [f"ERROR application_approval_conflict: {exc}"]
+        return self._render_application_approval_record(record)
+
+    def _approve_repair_application(self, args: list[str]) -> list[str]:
+        return self._record_repair_application_decision(
+            args, decision=application_approval.ApplicationApprovalDecision.APPROVED, command_name="approve-repair-application"
+        )
+
+    def _decline_repair_application(self, args: list[str]) -> list[str]:
+        return self._record_repair_application_decision(
+            args, decision=application_approval.ApplicationApprovalDecision.DECLINED, command_name="decline-repair-application"
+        )
+
+    def _show_repair_application_approval(self, args: list[str]) -> list[str]:
+        if self.last_repair_draft is None:
+            return ["ERROR no_repair_draft: run 'repair-draft' first."]
+        record = self._application_approval_store.get_decision(self.last_repair_draft)
+        if record is None:
+            return ["ERROR no_application_approval: run 'approve-repair-application' or 'decline-repair-application' first."]
+        return self._render_application_approval_record(record)
+
+    def _parse_gate_args(self, args: list[str]) -> dict[str, object] | str:
+        """Parses the one optional gate flag. Returns a field dict on
+        success, or an error message string on invalid input. Never reads a
+        file -- a "current" content hash is only ever what the caller
+        explicitly asserts, exactly like every other hash value in the
+        repair-draft/approval layers."""
+        current_content_hash: str | None = None
+        i = 0
+        while i < len(args):
+            token = args[i]
+            if token == "--current-content-hash" and i + 1 < len(args):
+                current_content_hash = args[i + 1]
+                i += 2
+            else:
+                return f"ERROR usage: unrecognized check-repair-application-gate option {token!r}"
+        return {"current_content_hash": current_content_hash}
+
+    def _check_repair_application_gate(self, args: list[str]) -> list[str]:
+        if self.last_repair_plan is None:
+            return ["ERROR no_repair_plan: run 'repair-plan' first."]
+        if self.last_repair_draft is None:
+            return ["ERROR no_repair_draft: run 'repair-draft' first."]
+        parsed = self._parse_gate_args(args)
+        if isinstance(parsed, str):
+            return [parsed]
+        current_content_hash = parsed["current_content_hash"]
+        current_source_identity: "repair_draft_mod.SourceIdentity | None" = None
+        if current_content_hash is not None:
+            bound_identity = self.last_repair_draft.source_identity
+            current_source_identity = repair_draft_mod.SourceIdentity(
+                artifact=bound_identity.artifact,
+                content_hash=current_content_hash,
+                size=bound_identity.size,
+                encoding=bound_identity.encoding,
+                line_range=bound_identity.line_range,
+                observed_at=str(self._clock()),
+            )
+        workspace_status: str | None = None
+        if self.active_workspace_id is not None:
+            workspace_status = self.registry.get_workspace(self.active_workspace_id).status.value
+        strategy_record = self._repair_approval_store.get_decision(self.last_repair_plan)
+        draft_record = self._draft_approval_store.get_decision(self.last_repair_draft)
+        application_record = self._application_approval_store.get_decision(self.last_repair_draft)
+        result = application_gate.evaluate_application_gate(
+            repair_plan=self.last_repair_plan,
+            repair_approval_record=strategy_record,
+            repair_draft=self.last_repair_draft,
+            draft_approval_record=draft_record,
+            application_approval_record=application_record,
+            current_source_identity=current_source_identity,
+            workspace_status=workspace_status,
+        )
+        lines = [
+            "REAL_WORKFLOW: Application-gate precondition re-verification only.",
+            f"gate_boundary: {result.gate_boundary}",
+            f"draft_digest: {result.draft_digest}",
+            f"all_passed: {str(result.all_passed).lower()}",
+        ]
+        for c in result.checks:
+            lines.append(f"  check[{c.check}]: {'pass' if c.passed else 'FAIL'} -- {c.detail}")
+        if result.failed_checks:
+            lines.append(f"failed_checks: {', '.join(result.failed_checks)}")
+        lines.append(f"not_applicable_checks: {', '.join(result.not_applicable_checks)}")
+        lines.append(
+            "disclosure: A passing gate result does not authorize applying anything. No application "
+            "transaction exists in this repository."
+        )
+        return lines
+
     def _read(self, args: list[str]) -> list[str]:
         if self.active_workspace_id is None:
             return ["ERROR no_workspace: run 'workspace create' first."]
@@ -1263,6 +1409,7 @@ class InteractiveMvpAdapter:
         self._repair_approval_store = repair_approval.RepairApprovalStore()
         self.last_repair_draft = None
         self._draft_approval_store = draft_approval.DraftApprovalStore()
+        self._application_approval_store = application_approval.ApplicationApprovalStore()
         return [
             "ADAPTER: Cleared active request, proposal, confirmation, and result.",
             "workspace_retained: true",
@@ -1460,7 +1607,7 @@ class InteractiveMvpAdapter:
 
 
 def run_repl(adapter: InteractiveMvpAdapter) -> int:
-    print("GAUSS Code Assistant Interactive MVP Adapter (v0.60.0 alpha)")
+    print("GAUSS Code Assistant Interactive MVP Adapter (v0.61.0 alpha)")
     print(f"Execution backend: {adapter.backend_label}")
     if adapter.runner_backend == REAL_GAUSS_BACKEND:
         print("Real GAUSS execution is enabled only after hash-bound confirm + execute.")

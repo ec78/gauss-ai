@@ -1450,6 +1450,230 @@ def test_95_repair_planning_and_approval_regression_unaffected_by_draft_approval
         adapter.close()
 
 
+def _plan_draft_and_approve_draft(adapter: "cli.InteractiveMvpAdapter") -> str:
+    """Drives request -> plan -> confirm -> execute -> repair-plan ->
+    repair-draft -> approve-repair-draft, returning the draft's own digest."""
+    digest = _plan_and_draft(adapter)
+    _run(adapter, f"approve-repair-draft {digest}")
+    return digest
+
+
+def _plan_draft_approve_strategy_and_draft(adapter: "cli.InteractiveMvpAdapter") -> str:
+    """Drives the full chain through strategy-level approval as well
+    (request -> plan -> confirm -> execute -> repair-plan -> approve-repair
+    -> repair-draft -> approve-repair-draft), returning the draft's own
+    digest. Needed for gate tests where STRATEGY_APPROVAL_EXISTS must pass
+    too, unlike `_plan_draft_and_approve_draft`, which leaves the
+    strategy-level plan unapproved."""
+    request_hash = _plan_success(adapter)
+    _run(adapter, f"confirm {request_hash}")
+    _run(adapter, "execute")
+    plan_out = _joined(_run(adapter, "repair-plan"))
+    plan_digest = [line.split(": ", 1)[1] for line in plan_out.splitlines() if line.startswith("plan_digest:")][0]
+    _run(adapter, f"approve-repair {plan_digest}")
+    draft_out = _repair_draft_from(adapter)
+    digest = _draft_digest_from(draft_out)
+    _run(adapter, f"approve-repair-draft {digest}")
+    return digest
+
+
+def test_96_approve_repair_application_before_draft_exists() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        _run(adapter, "repair-plan")
+        out = _joined(_run(adapter, "approve-repair-application somehash"))
+        check("approve-repair-application before a draft exists reports no_repair_draft", "ERROR no_repair_draft" in out)
+        adapter.close()
+
+
+def test_97_approve_repair_application_after_draft_approved() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        digest = _plan_draft_and_approve_draft(adapter)
+        out = _joined(_run(adapter, f"approve-repair-application {digest}"))
+        check("application approval recorded", "decision: approved" in out)
+        check("draft_digest echoed back matches", f"draft_digest: {digest}" in out)
+        check("safe_to_apply still false", "safe_to_apply: false" in out)
+        check("safe_to_prepare_draft still false", "safe_to_prepare_draft: false" in out)
+        check("application approval boundary disclosed", "APPLICATION_APPROVAL_BOUNDARY" in out)
+        check("approval_boundary states approved", "has been approved" in out)
+        check("approval_boundary discloses the transaction remains unimplemented", "remains unimplemented" in out)
+        adapter.close()
+
+
+def test_98_decline_repair_application_path() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        digest = _plan_draft_and_approve_draft(adapter)
+        out = _joined(_run(adapter, f"decline-repair-application {digest}"))
+        check("decline recorded", "decision: declined" in out)
+        check("decline boundary does not claim approval", "has been approved" not in out.split("approval_boundary:")[1])
+        adapter.close()
+
+
+def test_99_approve_repair_application_stale_digest_rejected() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _plan_draft_and_approve_draft(adapter)
+        out = _joined(_run(adapter, "approve-repair-application 0000000000000000000000000000000000000000000000000000000000000000"))
+        check("stale/incorrect digest rejected", "ERROR stale_or_incorrect_digest" in out)
+        check("current_draft_digest disclosed for guidance", "current_draft_digest:" in out)
+        adapter.close()
+
+
+def test_100_re_approve_repair_application_without_revoke_reports_conflict() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        digest = _plan_draft_and_approve_draft(adapter)
+        _run(adapter, f"approve-repair-application {digest}")
+        out = _joined(_run(adapter, f"approve-repair-application {digest}"))
+        check("re-approving without revoke reports a conflict, not a silent overwrite", "ERROR application_approval_conflict" in out)
+        adapter.close()
+
+
+def test_101_approve_repair_application_missing_argument() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _plan_draft_and_approve_draft(adapter)
+        out = _joined(_run(adapter, "approve-repair-application"))
+        check("approve-repair-application with no digest argument reports usage error", "ERROR usage" in out)
+        adapter.close()
+
+
+def test_102_show_repair_application_approval_before_decision_exists() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _plan_draft_and_approve_draft(adapter)
+        out = _joined(_run(adapter, "show-repair-application-approval"))
+        check("show-repair-application-approval before any decision reports no_application_approval", "ERROR no_application_approval" in out)
+        adapter.close()
+
+
+def test_103_show_repair_application_approval_after_decision() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        digest = _plan_draft_and_approve_draft(adapter)
+        _run(adapter, f"approve-repair-application {digest}")
+        first = _joined(_run(adapter, "show-repair-application-approval"))
+        second = _joined(_run(adapter, "show-repair-application-approval"))
+        check("repeated show-repair-application-approval is deterministic", first == second)
+        check("shows the approved decision", "decision: approved" in first)
+        adapter.close()
+
+
+def test_104_check_repair_application_gate_before_repair_plan() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        out = _joined(_run(adapter, "check-repair-application-gate"))
+        check("check-repair-application-gate before repair-plan reports no_repair_plan", "ERROR no_repair_plan" in out)
+        adapter.close()
+
+
+def test_105_check_repair_application_gate_before_repair_draft() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        _run(adapter, "repair-plan")
+        out = _joined(_run(adapter, "check-repair-application-gate"))
+        check("check-repair-application-gate before repair-draft reports no_repair_draft", "ERROR no_repair_draft" in out)
+        adapter.close()
+
+
+def test_106_check_repair_application_gate_without_approvals_fails_every_approval_check() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _plan_and_draft(adapter)
+        out = _joined(_run(adapter, "check-repair-application-gate"))
+        check("gate reports all_passed false with no draft/application approval recorded", "all_passed: false" in out)
+        check("draft_approval_exists fails", "draft_approval_exists]: FAIL" in out)
+        check("application_approval_exists fails", "application_approval_exists]: FAIL" in out)
+        check("not_applicable_checks disclosed", "not_applicable_checks: backup_prepared" in out)
+        check("gate never claims authorization", "does not authorize applying anything" in out)
+        adapter.close()
+
+
+def test_107_check_repair_application_gate_fully_approved_and_fresh_passes() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        digest = _plan_draft_approve_strategy_and_draft(adapter)
+        _run(adapter, f"approve-repair-application {digest}")
+        content_hash = "a" * 64
+        out = _joined(_run(adapter, f"check-repair-application-gate --current-content-hash {content_hash}"))
+        check("gate passes once every layer is approved and source hash is confirmed fresh", "all_passed: true" in out)
+        check("no failed_checks line when all_passed is true", "failed_checks:" not in out)
+        adapter.close()
+
+
+def test_108_check_repair_application_gate_stale_source_hash_fails() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        digest = _plan_draft_approve_strategy_and_draft(adapter)
+        _run(adapter, f"approve-repair-application {digest}")
+        stale_hash = "b" * 64
+        out = _joined(_run(adapter, f"check-repair-application-gate --current-content-hash {stale_hash}"))
+        check("gate fails when the supplied current content hash no longer matches the draft", "all_passed: false" in out)
+        check("source_hash_matches reported as FAIL", "source_hash_matches]: FAIL" in out)
+        adapter.close()
+
+
+def test_109_reset_clears_repair_application_approval_state() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        digest = _plan_draft_and_approve_draft(adapter)
+        _run(adapter, f"approve-repair-application {digest}")
+        _run(adapter, "reset")
+        out = _joined(_run(adapter, "approve-repair-application " + digest))
+        check("approve-repair-application after reset reports no_repair_draft, consistent with repair-draft's own reset behavior", "ERROR no_repair_draft" in out)
+        adapter.close()
+
+
+def test_110_repair_application_approval_does_not_mutate_workspace_or_filesystem() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        digest = _plan_draft_and_approve_draft(adapter)
+        status_before = adapter.registry.get_workspace(adapter.active_workspace_id).status
+        workspace_root = Path(adapter.registry.get_workspace(adapter.active_workspace_id).root_path)
+        entries_before = set(workspace_root.rglob("*")) if workspace_root.exists() else set()
+        _run(adapter, f"approve-repair-application {digest}")
+        _run(adapter, "show-repair-application-approval")
+        _run(adapter, "check-repair-application-gate")
+        status_after = adapter.registry.get_workspace(adapter.active_workspace_id).status
+        entries_after = set(workspace_root.rglob("*")) if workspace_root.exists() else set()
+        check("workspace status unchanged by application-approval/gate commands", status_before == status_after)
+        check("no new filesystem entries created by application-approval/gate commands", entries_before == entries_after)
+        adapter.close()
+
+
+def test_111_repair_application_approval_does_not_mutate_other_approval_stores() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        digest = _plan_draft_and_approve_draft(adapter)
+        strategy_len_before = len(adapter._repair_approval_store)  # noqa: SLF001
+        draft_len_before = len(adapter._draft_approval_store)  # noqa: SLF001
+        _run(adapter, f"approve-repair-application {digest}")
+        strategy_len_after = len(adapter._repair_approval_store)  # noqa: SLF001
+        draft_len_after = len(adapter._draft_approval_store)  # noqa: SLF001
+        check("approving an application does not add a strategy-level approval record", strategy_len_before == strategy_len_after)
+        check("approving an application does not add a draft-level approval record", draft_len_before == draft_len_after)
+        adapter.close()
+
+
+def test_112_repair_planning_and_prior_layers_regression_unaffected_by_application_layer() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        out = _joined(_run(adapter, "repair-plan"))
+        check("successful-execution repair-plan output unchanged by the new application-approval layer", "repair_status: successful_execution_no_repair_needed" in out)
+        adapter.close()
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

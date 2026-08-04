@@ -22,7 +22,9 @@ Execution
   -> Approval (strategy)      (gauss_repair_approval.py, v0.57.0)
   -> Repair Draft              (gauss_repair_draft.py, v0.59.0)
   -> Repair Draft Approval    (gauss_repair_draft_approval.py, v0.60.0 -- this layer)
-  -> Repair Application       (designed in v0.58.0, not implemented)
+  -> Repair Application Approval  (gauss_repair_application_approval.py, v0.61.0)
+  -> Repair Application Gate       (gauss_repair_application_gate.py, v0.61.0)
+  -> Repair Application       (application transaction itself, still not implemented)
 ```
 
 | Stage | Answers | Does not answer |
@@ -31,6 +33,7 @@ Execution
 | Approval (strategy) | Did a human accept or decline this specific plan? | Should a draft be prepared? |
 | Repair Draft | What bounded, immutable, structurally-validated edit is proposed against an exact source state? | Is this edit approved? Should it be applied? |
 | Repair Draft Approval | Did a human accept, decline, or revoke a decision about this specific, unmodified draft? | Should this draft be applied? |
+| Repair Application Approval | Did a human authorize applying this specific draft? | Is it currently safe to apply it? |
 | Repair Application (future) | What specific, approved change was applied? | — |
 
 ## Architecture
@@ -65,9 +68,9 @@ None. This module never imports `gauss_repair_planner.py` and never inspects a `
 
 Direct and exclusive: every operation in this module takes a `RepairDraft` object and immediately reduces it to `repair_draft_digest(draft)` for storage and lookup. Nothing about a draft's own fields — `edit_scope`, `source_identity`, `assumptions`, `risks` — is inspected or duplicated here.
 
-## Relationship to Future Repair Application
+## Relationship to Repair Application Approval and the Gate
 
-None yet. No code anywhere reads a `DraftApprovalRecord` toward constructing, validating, or applying anything. `safe_to_apply`/`safe_to_prepare_draft` remain `False` on every record with no code path capable of changing either — approving a draft is exactly as inert, in terms of actual application, as never approving one at all. See `planning/v0.58.0-repair-application-safety-design.md` for what a future implementation would still need: application approval (a fourth, still-separate layer), the application transaction itself, backup/rollback, and audit.
+As of `v0.61.0`, `gauss_repair_application_gate.py` reads a `DraftApprovalRecord` (already looked up by the caller) as one of ten preconditions in its pure `evaluate_application_gate(...)` check — but only to confirm it exists and is `approved` for the current draft digest; nothing here is re-derived or duplicated. No code anywhere applies a repair as a result. `safe_to_apply`/`safe_to_prepare_draft` remain `False` on every `DraftApprovalRecord` with no code path capable of changing either — approving a draft is exactly as inert, in terms of actual application, as never approving one at all. See `docs/gauss-repair-application-approval.md` for the fourth approval layer (application approval, `v0.61.0`) and the gate check, and `planning/v0.58.0-repair-application-safety-design.md` for what a future implementation would still need beyond that: the application transaction itself, backup/rollback, and audit.
 
 ## CLI Usage
 

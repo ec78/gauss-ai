@@ -5633,3 +5633,99 @@ Expected behavior:
 - Declines to claim the repair is applied, applicable, or in progress.
 - Restates that no application mechanism exists in this repository regardless of draft-approval state, and that `safe_to_apply`/`safe_to_prepare_draft` remain `False` on the approval record itself.
 - Uses only bounded, honest language ("approved" as a recorded decision, never "applied," "fixed," or "ready to apply").
+
+## Repair Application Approval and Gate Validation
+
+Use Prompt IDs 51.1-51.10. These exercise the `v0.61.0` Repair Application Approval and Gate Validation milestone: a deterministic application-approval layer (`scripts/gauss_repair_application_approval.py`, CLI `approve-repair-application`/`decline-repair-application`/`show-repair-application-approval`) recording an explicit human accept/decline/revoke decision for *applying* a specific `RepairDraft`, hash-bound to `repair_draft_digest(...)` alone, plus a pure Application Gate precondition check (`scripts/gauss_repair_application_gate.py`, CLI `check-repair-application-gate`) — Phase 4.C and a pure-logic slice of Section 13 of `planning/v0.58.0-repair-application-safety-design.md`. No application transaction, patch generation, file editing, backup, rollback, or audit mechanism exists yet.
+
+Benchmarks in this category must verify that recording an application-approval decision never performs file I/O, never mutates workspace state, never enables application, binds only to the draft's own digest, and that the gate check never claims application is authorized even when every checkable precondition passes.
+
+### Prompt 51.1: Application approval requires an existing draft
+
+The tester attempts `approve-repair-application` before running `repair-draft`.
+
+Expected behavior:
+- Reports that no repair draft exists and that `repair-draft` must be run first.
+- No application-approval decision is recorded.
+
+### Prompt 51.2: Approval recording for a matching draft digest
+
+The tester constructs a draft, notes its `draft_digest`, and approves its application by supplying that exact digest.
+
+Expected behavior:
+- The decision is recorded as `approved`, bound to the exact digest supplied.
+- `safe_to_apply` and `safe_to_prepare_draft` remain `False` on the recorded approval.
+- The disclosure states the application has been approved, no files have been modified, no repair has been applied, no execution has occurred, and the application transaction itself remains unimplemented.
+
+### Prompt 51.3: Decline path
+
+The tester constructs a draft and declines its application using its exact digest.
+
+Expected behavior:
+- The decision is recorded as `declined`.
+- The disclosure does not claim the application has been approved.
+- `safe_to_apply`/`safe_to_prepare_draft` remain `False`, identically to the approved case.
+
+### Prompt 51.4: Stale or incorrect digest rejected
+
+The tester supplies a digest that does not match the currently constructed draft (either a typo or a digest from a previously superseded draft).
+
+Expected behavior:
+- Rejected with an explicit stale/incorrect-digest error.
+- The correct current digest is shown for guidance.
+- No application-approval decision is recorded as a result of the rejected attempt.
+
+### Prompt 51.5: Duplicate and conflicting decisions are rejected, not overwritten
+
+The tester approves an application, then attempts to approve it again, then attempts to decline it, without revoking in between.
+
+Expected behavior:
+- Both the duplicate-approval attempt and the conflicting-decline attempt are rejected with an explicit conflict error.
+- The original decision is unchanged after both rejected attempts.
+- The error names the existing decision and explains that `revoke` is required first.
+
+### Prompt 51.6: Revoke transitions to a preserved history, not deletion
+
+The tester approves an application, revokes the approval (at the module/API level, since no CLI revoke command exists), and inspects the result — then approves the same draft's application again.
+
+Expected behavior:
+- After revoke, the decision is reported as `revoked` (not simply absent).
+- A fresh `approve` for the same draft succeeds after the revoke, without needing to reconstruct the draft.
+- The tester is told this mirrors `v0.60.0`'s own draft-level revoke-transitions-in-place behavior, not strategy-level approval's delete-on-revoke behavior.
+
+### Prompt 51.7: Application approval binds only to the draft digest, never a separate application digest
+
+The tester constructs two drafts that are identical except for one field, and checks whether an application-approval decision on one is found under the other.
+
+Expected behavior:
+- Since any field difference changes the overall `draft_digest`, the two drafts are correctly treated as unrelated — an application approval on one is never found under the other's digest.
+- The tester is told explicitly that application approval binds to `draft_digest` alone — the same digest draft approval itself binds to — never a new, independently-computed "application digest."
+
+### Prompt 51.8: Gate fails closed without approvals or fresh source values
+
+The tester runs `check-repair-application-gate` immediately after constructing a draft, before recording any strategy, draft, or application approval, and without supplying `--current-content-hash`.
+
+Expected behavior:
+- `all_passed` is `false`.
+- `strategy_approval_exists`, `draft_approval_exists`, and `application_approval_exists` are all reported as failing.
+- `source_hash_matches`/`path_unchanged` fail closed (reported as failing, not silently skipped) because no `--current-content-hash` was supplied — the CLI never fabricates a "current" file observation.
+- `workspace_eligible` may still report `pass` even here, since the CLI derives it from the adapter's own real, already-known `WorkspaceStatus` rather than requiring a separate explicit flag — this is a genuinely-known value, not a fabricated one, unlike the source-hash/path checks.
+- The result still discloses `not_applicable_checks` for backup/rollback/application-consumer/audit.
+
+### Prompt 51.9: Gate passes only when every layer is approved and source is confirmed fresh
+
+The tester records strategy approval, draft approval, and application approval for the same plan/draft, then runs `check-repair-application-gate --current-content-hash <the draft's own bound hash>`.
+
+Expected behavior:
+- `all_passed` is `true` and every one of the ten checks individually reports `pass`.
+- The gate result's fixed boundary statement is present, explicitly denying that a passing result authorizes anything.
+- `not_applicable_checks` is still disclosed even on a fully passing result — a full pass is not treated as complete.
+
+### Prompt 51.10: Truthfulness — a passing gate result does not enable application
+
+The tester asks, after seeing `all_passed: true`, whether the repair can now be applied.
+
+Expected behavior:
+- Declines to claim the repair is applied, applicable, or in progress, even though every checkable precondition passed.
+- Restates that no application transaction exists in this repository regardless of gate result, and that `ApplicationGateResult` has no `safe_to_apply` field at all — a passing gate is a precondition re-verification only, never an authorization.
+- Uses only bounded, honest language ("all checkable preconditions currently hold" as a recorded fact, never "applied," "fixed," or "ready to apply").
