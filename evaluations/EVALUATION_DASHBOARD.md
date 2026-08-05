@@ -15,8 +15,8 @@ Use this dashboard to understand coverage by milestone, prompt range, expert cat
 
 ## Dashboard Metadata
 
-- Current milestone: `v0.61.0` - Repair Application Approval and Gate Validation.
-- Captures evaluation state through: `v0.61.0`'s addition of a deterministic application-approval layer (`scripts/gauss_repair_application_approval.py`) and a pure application-gate precondition check (`scripts/gauss_repair_application_gate.py`, Phase 4.C and a pure-logic slice of Section 13 of the `v0.58.0` design) and its ten `51.x` benchmark prompts — fully evaluated (10/10 Passed at 4.0), unlike `v0.59.0`'s `49.x` and `v0.60.0`'s `50.x`, which were deliberately left `Not Run` as foundation-only milestones.
+- Current milestone: `v0.62.0` - Bounded Single-File Repair Application Transaction.
+- Captures evaluation state through: `v0.62.0`'s addition of the first module in this repository's history capable of writing to a real file (`scripts/gauss_repair_application.py`, Section 14 of the `v0.58.0` design, bounded to one existing UTF-8 `.gss` file, one workspace, one already-approved `RepairDraft`) and its ten `52.x` benchmark prompts — fully evaluated (10/10 Passed at 4.0) against real, executed evidence including a genuine on-disk file modification.
 - Evaluation model: manual benchmark evaluation with tracking guard. No runtime scoring engine exists.
 - Runtime scoring engine: Not implemented.
 - Benchmark prompts source: `evaluations/benchmark-prompts.md`.
@@ -29,15 +29,15 @@ Use this dashboard to understand coverage by milestone, prompt range, expert cat
 
 ## Current Evaluation State
 
-Captured by running `scripts/check_evaluation_tracking.py --json` against the repository state after `v0.61.0` added and fully evaluated the `51.x` Repair Application Approval and Gate Validation benchmark prompts:
+Captured by running `scripts/check_evaluation_tracking.py --json` against the repository state after `v0.62.0` added and fully evaluated the `52.x` Repair Application Transaction benchmark prompts:
 
-- Prompt IDs: 474.
-- Coverage rows: 474.
-- Run files referenced: 441.
-- Index entries: 446.
+- Prompt IDs: 484.
+- Coverage rows: 484.
+- Run files referenced: 451.
+- Index entries: 456.
 - Tracking errors: 0.
-- Documented (historical) tracking warnings: 3 (unchanged from `v0.52.0`-`v0.60.0`).
-- Current active-category ("Not Run" in the highest-numbered active category) warnings: 0 - all ten `51.x` prompts were genuinely evaluated (10/10 Passed), so the guard's active-category check has nothing to flag. The `49.x`/`50.x` prompts (`v0.59.0`/`v0.60.0`) remain `Not Run` in `benchmark-coverage.md` and are still counted in the totals above, but are no longer the highest-numbered active category, so they no longer produce this specific warning — the same convention that already applied to `49.x` once `50.x` shipped.
+- Documented (historical) tracking warnings: 3 (unchanged from `v0.52.0`-`v0.61.0`).
+- Current active-category ("Not Run" in the highest-numbered active category) warnings: 0 - all ten `52.x` prompts were genuinely evaluated (10/10 Passed), so the guard's active-category check has nothing to flag. The `49.x`/`50.x` prompts (`v0.59.0`/`v0.60.0`) remain `Not Run` in `benchmark-coverage.md` and are still counted in the totals above, but are no longer the highest-numbered active category, so they no longer produce this specific warning.
 - Default tracking guard (`check_evaluation_tracking.py`): PASS.
 - JSON tracking guard (`check_evaluation_tracking.py --json`): `overall_pass: true`.
 - Strict tracking guard (`check_evaluation_tracking.py --strict`): FAIL - expected, because strict mode promotes the documented historical warnings.
@@ -111,6 +111,7 @@ Important:
 | 49.x | Repair Draft Foundation (`v0.59.0`) | Immutable source-identity and `RepairDraft` models plus deterministic structural validation over an intended, bounded edit — never a patch, diff, or generated code | 10 | 0 | 0/10 -- Not Run | Prompts added alongside `scripts/gauss_repair_draft.py` but deliberately left unevaluated, per this milestone's own explicit instruction not to fabricate evaluation results. Evaluation is expected in a future milestone. |
 | 50.x | Repair Draft Approval (`v0.60.0`) | Deterministic, process-local draft-approval layer over a `RepairDraft`: hash-bound (`repair_draft_digest` alone) accept/decline/revoke recording, non-overwriting conflict protection, and the structural non-application boundary | 10 | 0 | 0/10 -- Not Run | Prompts added alongside `scripts/gauss_repair_draft_approval.py` but deliberately left unevaluated, per that milestone's own explicit instruction not to fabricate evaluation results. Evaluation was not required for `50.x` and remains `Not Run`; unlike `49.x`, this category is no longer the guard's "current active category" now that `51.x` exists, so its `Not Run` rows no longer produce the guard's active-category warning (they remain counted in the historical `Not Run` total). |
 | 51.x | Repair Application Approval and Gate Validation (`v0.61.0`) | Deterministic, process-local application-approval layer over a `RepairDraft` (hash-bound to `repair_draft_digest` alone, never a separate application digest) plus a pure Application Gate precondition check combining all three approval layers, a freshly-supplied current source identity, and a freshly-supplied workspace status into ten named checks with no `safe_to_apply` field anywhere | 10 | 10 | 10/10 Passed (4.0) | All prompts run and passed for `scripts/gauss_repair_application_approval.py` and `scripts/gauss_repair_application_gate.py`, evaluated during `v0.61.0` against the real CLI path and, for `51.7`, direct module-level evidence. No real GAUSS invocation was performed for this category. `source_hash_matches`/`path_unchanged` fail closed when no fresh value is supplied; `workspace_eligible` is derived from the adapter's own real, already-known `WorkspaceStatus` and so is not required to fail closed the same way (documented explicitly, not a defect). Four Section-13 preconditions (backup, rollback, application consumer, audit) are disclosed as `not_applicable_checks` on every result, passing or failing alike, since no supporting mechanism exists yet. Zero Critical, Major, or Minor defects. |
+| 52.x | Repair Application Transaction (`v0.62.0`) | The first module in this repository's history capable of writing to a real file: a bounded, fail-closed, single-`.gss`-file transaction (source re-validation, gate re-evaluation, workspace-contained never-overwritten backup, in-memory candidate construction/validation, atomic replace, post-write hash verification) with no automatic rollback, retry, or rerun | 10 | 10 | 10/10 Passed (4.0) | All prompts run and passed for `scripts/gauss_repair_application.py`, evaluated during `v0.62.0` against real, on-disk, temp-directory-backed workspaces and genuine `.gss` files — a real file was actually created, read, hashed, and modified during evaluation, not simulated. No GAUSS was invoked. Covers a full successful application (real file content verified post-write), stale-source blocking, gate-failure blocking, backup uniqueness/never-overwrite/never-delete (including survival past a later block), every candidate-validation failure, injected atomic-replace and post-write-hash-mismatch failures (both correctly reported as `failed`, distinct from `blocked`), workspace-escape and wrong-file-type blocking, structural absence of any rerun-shaped field, and truthful, fixed boundary text that never claims correctness or execution. Zero Critical, Major, or Minor defects. |
 
 Counts above are taken directly from `evaluations/benchmark-coverage.md` and `evaluations/runs/INDEX.md`. Categories `1.x` through `10.x` predate stable Prompt ID conventions in places and are summarized as "early baseline" or historical where a prompt has never been run; these were not invented to force full coverage, and their `Not Run` prompts remain genuinely not run today.
 

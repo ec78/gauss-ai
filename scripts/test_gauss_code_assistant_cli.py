@@ -11,6 +11,7 @@ fake runner, and the real existing MVP workflow facade. No test runs GAUSS.
 
 from __future__ import annotations
 
+import hashlib
 import sys
 import tempfile
 from pathlib import Path
@@ -1671,6 +1672,173 @@ def test_112_repair_planning_and_prior_layers_regression_unaffected_by_applicati
         _run(adapter, "execute")
         out = _joined(_run(adapter, "repair-plan"))
         check("successful-execution repair-plan output unchanged by the new application-approval layer", "repair_status: successful_execution_no_repair_needed" in out)
+        adapter.close()
+
+
+def _plan_draft_approve_all_with_real_file(
+    adapter: "cli.InteractiveMvpAdapter", *, relative_path: str = "model.gss", text: str = "x = 2 + 2\nprint x;\n",
+    line_start: int = 1, line_end: int = 1, approve_application: bool = True,
+) -> "tuple[str, Path, str]":
+    """Drives the full chain through strategy, draft, and application
+    approval -- and, unlike every earlier repair-draft helper in this file,
+    backs the draft's own `--content-hash` with a REAL file actually written
+    into the workspace, since `apply-repair` genuinely reads and hashes the
+    target. Returns (draft_digest, target_path, original_text)."""
+    _run(adapter, "workspace create")
+    assert adapter.active_workspace_id is not None
+    workspace = adapter.registry.get_workspace(adapter.active_workspace_id)
+    target = Path(workspace.root_path) / relative_path
+    target.write_bytes(text.encode("utf-8"))
+    real_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+    _run(adapter, "request --fake-failure x = ;")
+    plan = _run(adapter, "plan")
+    request_hash = [line.split(": ", 1)[1] for line in plan if line.startswith("request_hash:")][0]
+    _run(adapter, f"confirm {request_hash}")
+    _run(adapter, "execute")
+    plan_out = _joined(_run(adapter, "repair-plan"))
+    plan_digest = [line.split(": ", 1)[1] for line in plan_out.splitlines() if line.startswith("plan_digest:")][0]
+    _run(adapter, f"approve-repair {plan_digest}")
+
+    draft_out = _run(
+        adapter,
+        f"repair-draft --path {relative_path} --content-hash {real_hash} "
+        f'--size {len(text.encode("utf-8"))} --line-start {line_start} --line-end {line_end} '
+        f'--operation "insert missing semicolon" --description "Insert a missing statement terminator."',
+    )
+    digest = _draft_digest_from(draft_out)
+    _run(adapter, f"approve-repair-draft {digest}")
+    if approve_application:
+        _run(adapter, f"approve-repair-application {digest}")
+    return digest, target, text
+
+
+def test_113_apply_repair_before_draft_exists() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        _run(adapter, "repair-plan")
+        out = _joined(_run(adapter, 'apply-repair somehash --replacement-text "x;"'))
+        check("apply-repair before a draft exists reports no_repair_draft", "ERROR no_repair_draft" in out)
+        adapter.close()
+
+
+def test_114_apply_repair_full_success_modifies_file_and_creates_backup() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        digest, target, original_text = _plan_draft_approve_all_with_real_file(adapter)
+        out = _joined(_run(adapter, f'apply-repair {digest} --replacement-text "x = 2 + 2;"'))
+        check("outcome is applied", "outcome: applied" in out)
+        check("file_modified is true", "file_modified: true" in out)
+        check("backup_created is true", "backup_created: true" in out)
+        check("rerun_performed is false", "rerun_performed: false" in out)
+        check("target file was actually modified on disk", target.read_text(encoding="utf-8") == "x = 2 + 2;\nprint x;\n")
+        check("application_boundary discloses backup preserved", "backup" in out.split("application_boundary:")[1].split("\n")[0].lower())
+        adapter.close()
+
+
+def test_115_apply_repair_stale_digest_rejected() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _plan_draft_approve_all_with_real_file(adapter)
+        out = _joined(_run(adapter, 'apply-repair 0000000000000000000000000000000000000000000000000000000000000000 --replacement-text "x;"'))
+        check("stale/incorrect digest rejected", "ERROR stale_or_incorrect_digest" in out)
+        check("current_draft_digest disclosed for guidance", "current_draft_digest:" in out)
+        adapter.close()
+
+
+def test_116_apply_repair_missing_replacement_text_argument() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        digest, _target, _text = _plan_draft_approve_all_with_real_file(adapter)
+        out = _joined(_run(adapter, f"apply-repair {digest}"))
+        check("apply-repair without --replacement-text reports usage error", "ERROR usage" in out)
+        adapter.close()
+
+
+def test_117_apply_repair_blocked_when_application_not_approved() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        digest, _target, _text = _plan_draft_approve_all_with_real_file(adapter, approve_application=False)
+        out = _joined(_run(adapter, f'apply-repair {digest} --replacement-text "x;"'))
+        check("outcome is blocked", "outcome: blocked" in out)
+        check("reason names gate_failed", "gate_failed" in out)
+        adapter.close()
+
+
+def test_118_show_application_result_before_any_application() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _plan_draft_approve_all_with_real_file(adapter)
+        out = _joined(_run(adapter, "show-application-result"))
+        check("show-application-result before any apply-repair reports no_application_result", "ERROR no_application_result" in out)
+        adapter.close()
+
+
+def test_119_show_application_result_after_application_deterministic() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        digest, _target, _text = _plan_draft_approve_all_with_real_file(adapter)
+        _run(adapter, f'apply-repair {digest} --replacement-text "x = 2 + 2;"')
+        first = _joined(_run(adapter, "show-application-result"))
+        second = _joined(_run(adapter, "show-application-result"))
+        check("repeated show-application-result is deterministic", first == second)
+        check("shows the applied outcome", "outcome: applied" in first)
+        adapter.close()
+
+
+def test_120_reset_clears_application_result_state() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        digest, _target, _text = _plan_draft_approve_all_with_real_file(adapter)
+        _run(adapter, f'apply-repair {digest} --replacement-text "x = 2 + 2;"')
+        _run(adapter, "reset")
+        out = _joined(_run(adapter, "show-application-result"))
+        check("show-application-result after reset reports no_application_result", "ERROR no_application_result" in out)
+        adapter.close()
+
+
+def test_121_apply_repair_does_not_mutate_strategy_or_draft_approval_stores() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        digest, _target, _text = _plan_draft_approve_all_with_real_file(adapter)
+        strategy_len_before = len(adapter._repair_approval_store)  # noqa: SLF001
+        draft_len_before = len(adapter._draft_approval_store)  # noqa: SLF001
+        application_len_before = len(adapter._application_approval_store)  # noqa: SLF001
+        _run(adapter, f'apply-repair {digest} --replacement-text "x = 2 + 2;"')
+        check("applying does not add a strategy-level approval record", strategy_len_before == len(adapter._repair_approval_store))  # noqa: SLF001
+        check("applying does not add a draft-level approval record", draft_len_before == len(adapter._draft_approval_store))  # noqa: SLF001
+        check("applying does not add an application-approval record", application_len_before == len(adapter._application_approval_store))  # noqa: SLF001
+        adapter.close()
+
+
+def test_122_apply_repair_never_touches_workspace_status_or_other_files() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        digest, target, _text = _plan_draft_approve_all_with_real_file(adapter)
+        status_before = adapter.registry.get_workspace(adapter.active_workspace_id).status
+        entries_before = set(Path(adapter.registry.get_workspace(adapter.active_workspace_id).root_path).rglob("*"))
+        _run(adapter, f'apply-repair {digest} --replacement-text "x = 2 + 2;"')
+        status_after = adapter.registry.get_workspace(adapter.active_workspace_id).status
+        entries_after = set(Path(adapter.registry.get_workspace(adapter.active_workspace_id).root_path).rglob("*"))
+        check("workspace status unchanged by apply-repair", status_before == status_after)
+        new_entries = entries_after - entries_before
+        check("exactly one new filesystem entry (the backup) was created", len(new_entries) == 1)
+        if new_entries:
+            check("the one new entry is a backup file, not a new directory", next(iter(new_entries)).is_file())
+        adapter.close()
+
+
+def test_123_repair_planning_and_prior_layers_regression_unaffected_by_application_transaction_layer() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        out = _joined(_run(adapter, "repair-plan"))
+        check("successful-execution repair-plan output unchanged by the new application-transaction layer", "repair_status: successful_execution_no_repair_needed" in out)
         adapter.close()
 
 

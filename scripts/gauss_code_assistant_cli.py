@@ -33,6 +33,7 @@ import gauss_code_assistant_workflow as mvp  # noqa: E402
 import gauss_execution_diagnostics as diagnostics  # noqa: E402
 import gauss_execution_interpreter as interpreter  # noqa: E402
 import gauss_execution_workflow as wf  # noqa: E402
+import gauss_repair_application as application_transaction  # noqa: E402
 import gauss_repair_application_approval as application_approval  # noqa: E402
 import gauss_repair_application_gate as application_gate  # noqa: E402
 import gauss_repair_approval as repair_approval  # noqa: E402
@@ -221,6 +222,12 @@ class InteractiveMvpAdapter:
         # never a separately-computed "application digest" (see
         # gauss_repair_application_approval.py's own module docstring).
         self._application_approval_store = application_approval.ApplicationApprovalStore()
+        # v0.62.0: the most recent repair-application transaction result --
+        # process-local only, exactly like every other repair-layer field.
+        # This adapter never writes to a file except through
+        # gauss_repair_application.apply_repair(...); no other command
+        # touches a source file's bytes.
+        self.last_application_result: application_transaction.ApplicationResult | None = None
         self._turn_counter = 0
 
     # ------------------------------------------------------------------
@@ -306,6 +313,10 @@ class InteractiveMvpAdapter:
                 return True, self._show_repair_application_approval(args)
             if command == "check-repair-application-gate":
                 return True, self._check_repair_application_gate(args)
+            if command == "apply-repair":
+                return True, self._apply_repair(args)
+            if command == "show-application-result":
+                return True, self._show_application_result(args)
             if command == "read":
                 return True, self._read(args)
             if command == "provenance":
@@ -324,7 +335,7 @@ class InteractiveMvpAdapter:
 
     def _help(self) -> list[str]:
         return [
-            "GAUSS Code Assistant Interactive MVP Adapter (v0.61.0 alpha)",
+            "GAUSS Code Assistant Interactive MVP Adapter (v0.62.0 alpha)",
             f"Execution backend: {self.backend_label}",
             "Commands:",
             "  help",
@@ -355,6 +366,8 @@ class InteractiveMvpAdapter:
             "  decline-repair-application <draft_digest>",
             "  show-repair-application-approval",
             "  check-repair-application-gate [--current-content-hash SHA256]",
+            "  apply-repair <draft_digest> --replacement-text TEXT",
+            "  show-application-result",
             "  read <relative-path>",
             "  provenance",
             "  status",
@@ -1317,6 +1330,106 @@ class InteractiveMvpAdapter:
         )
         return lines
 
+    def _parse_apply_repair_args(self, args: list[str]) -> "tuple[str, str] | str":
+        """Parses `<draft_digest> --replacement-text TEXT`. Returns
+        `(draft_digest, replacement_text)` on success, or an error message
+        string on invalid input. The replacement text is never read from a
+        file, generated, or inferred -- it must be supplied explicitly by
+        the caller, exactly like every other content value in the
+        repair-draft/approval layers."""
+        if not args:
+            return "ERROR usage: apply-repair <draft_digest> --replacement-text TEXT"
+        draft_digest = args[0]
+        remaining = args[1:]
+        replacement_text: str | None = None
+        i = 0
+        while i < len(remaining):
+            token = remaining[i]
+            if token == "--replacement-text" and i + 1 < len(remaining):
+                replacement_text = remaining[i + 1]
+                i += 2
+            else:
+                return f"ERROR usage: unrecognized apply-repair option {token!r}"
+        if replacement_text is None:
+            return "ERROR usage: apply-repair <draft_digest> --replacement-text TEXT"
+        return draft_digest, replacement_text
+
+    def _render_application_result(self, result: "application_transaction.ApplicationResult") -> list[str]:
+        lines = [
+            "REAL_WORKFLOW: Repair application transaction executed against the real workspace filesystem.",
+            f"application_boundary: {result.application_boundary}",
+            f"application_id: {result.application_id}",
+            f"draft_digest: {result.draft_digest}",
+            f"workspace_id: {result.workspace_id}",
+            f"relative_path: {result.relative_path}",
+            f"outcome: {result.outcome}",
+            f"reason: {result.reason}",
+            f"pre_application_content_hash: {result.pre_application_content_hash}",
+            f"post_application_content_hash: {result.post_application_content_hash}",
+            f"applied_at: {result.applied_at}",
+        ]
+        if result.backup is not None:
+            lines.extend(
+                [
+                    f"backup_relative_path: {result.backup.relative_path}",
+                    f"backup_content_hash: {result.backup.content_hash}",
+                    f"backup_size: {result.backup.size}",
+                ]
+            )
+        else:
+            lines.append("backup: none (blocked before any backup was created)")
+        lines.append("checks:")
+        for c in result.checks:
+            lines.append(f"  - {c.check}: {'pass' if c.passed else 'FAIL'} -- {c.detail}")
+        lines.extend(
+            [
+                f"file_modified: {str(result.outcome == 'applied').lower()}",
+                f"backup_created: {str(result.backup is not None).lower()}",
+                "rerun_performed: false",
+                "next_step: a separate, explicit rerun confirmation (request/plan/confirm/execute) is required "
+                "before executing the repaired code; this command never triggers one.",
+            ]
+        )
+        return lines
+
+    def _apply_repair(self, args: list[str]) -> list[str]:
+        if self.last_repair_plan is None:
+            return ["ERROR no_repair_plan: run 'repair-plan' first."]
+        if self.last_repair_draft is None:
+            return ["ERROR no_repair_draft: run 'repair-draft' first."]
+        parsed = self._parse_apply_repair_args(args)
+        if isinstance(parsed, str):
+            return [parsed]
+        supplied_digest, replacement_text = parsed
+        actual_digest = repair_draft_mod.repair_draft_digest(self.last_repair_draft)
+        if supplied_digest != actual_digest:
+            return [
+                "ERROR stale_or_incorrect_digest: supplied draft_digest does not match the current repair draft.",
+                f"current_draft_digest: {actual_digest}",
+                "guidance: run 'repair-draft' or 'show-repair-draft' again to see the current digest, or "
+                "re-supply the exact digest shown there.",
+            ]
+        strategy_record = self._repair_approval_store.get_decision(self.last_repair_plan)
+        draft_record = self._draft_approval_store.get_decision(self.last_repair_draft)
+        application_record = self._application_approval_store.get_decision(self.last_repair_draft)
+        result = application_transaction.apply_repair(
+            repair_plan=self.last_repair_plan,
+            repair_approval_record=strategy_record,
+            repair_draft=self.last_repair_draft,
+            draft_approval_record=draft_record,
+            application_approval_record=application_record,
+            replacement_text=replacement_text,
+            workspace_registry=self.registry,
+            clock=self._clock,
+        )
+        self.last_application_result = result
+        return self._render_application_result(result)
+
+    def _show_application_result(self, args: list[str]) -> list[str]:
+        if self.last_application_result is None:
+            return ["ERROR no_application_result: run 'apply-repair' first."]
+        return self._render_application_result(self.last_application_result)
+
     def _read(self, args: list[str]) -> list[str]:
         if self.active_workspace_id is None:
             return ["ERROR no_workspace: run 'workspace create' first."]
@@ -1410,6 +1523,7 @@ class InteractiveMvpAdapter:
         self.last_repair_draft = None
         self._draft_approval_store = draft_approval.DraftApprovalStore()
         self._application_approval_store = application_approval.ApplicationApprovalStore()
+        self.last_application_result = None
         return [
             "ADAPTER: Cleared active request, proposal, confirmation, and result.",
             "workspace_retained: true",
@@ -1607,7 +1721,7 @@ class InteractiveMvpAdapter:
 
 
 def run_repl(adapter: InteractiveMvpAdapter) -> int:
-    print("GAUSS Code Assistant Interactive MVP Adapter (v0.61.0 alpha)")
+    print("GAUSS Code Assistant Interactive MVP Adapter (v0.62.0 alpha)")
     print(f"Execution backend: {adapter.backend_label}")
     if adapter.runner_backend == REAL_GAUSS_BACKEND:
         print("Real GAUSS execution is enabled only after hash-bound confirm + execute.")
