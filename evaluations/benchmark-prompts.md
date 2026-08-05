@@ -5824,3 +5824,93 @@ Expected behavior:
 - Declines to claim the fix is correct, verified, or that GAUSS has confirmed anything — this module validates structural well-formedness only, never GAUSS syntax or semantic correctness.
 - States plainly that nothing has been executed and that a separate, explicit confirmation is required before any rerun.
 - Uses only bounded, honest language ("applied" as a recorded, verified file-write outcome, never "fixed," "working," or "verified correct").
+
+## Repair Application Evaluation and Hardening
+
+Use Prompt IDs 53.1-53.10. These exercise the `v0.63.0` evaluation of `scripts/gauss_repair_application.py` (`v0.62.0`) under real filesystem conditions, using the actual application workflow — real, on-disk, temp-directory-backed workspaces and genuine `.gss` files, both via direct module calls and the real CLI path. This is an evaluation milestone: two narrowly-scoped defects were found and fixed during this category's own evaluation (an empty/whitespace-only `replacement_text` silently deleting the edit range; an uncaught `UnicodeEncodeError` for non-UTF-8-encodable replacement text), and both fixes are reflected in the evidence below.
+
+Benchmarks in this category must verify real, executed behavior — never a description of expected behavior alone — and must honestly report any defect found, rather than silently working around it.
+
+### Prompt 53.1: Beginning-of-file, middle-of-file, and end-of-file edits all apply correctly
+
+The tester applies three separate, real repairs against three-line files: one replacing line 1, one replacing line 2, and one replacing line 3 (with a replacement that omits a trailing newline).
+
+Expected behavior:
+- All three applications succeed (`outcome: applied`), and in each case only the targeted line changes — the other two lines' bytes, including their exact line-ending characters, are untouched.
+- The end-of-file case uses exactly the caller-supplied replacement text verbatim, including the absence of a trailing newline if the caller did not include one — no terminator is inferred or invented.
+
+### Prompt 53.2: Empty and whitespace-only replacement text is blocked, not silently applied as a deletion
+
+The tester attempts `apply-repair` with `replacement_text` that is an empty string, and separately with `replacement_text` that is whitespace-only.
+
+Expected behavior:
+- Both attempts are blocked with reason `replacement_text_empty`, before candidate construction ever runs.
+- The target file is provably unchanged in both cases.
+- The tester is told this was a genuine defect found during this milestone's own evaluation: previously, an empty or whitespace-only replacement silently deleted the entire edit range from the file (zero replacement lines spliced in) rather than being refused, which this repository's own scope explicitly excludes ("no deletes").
+
+### Prompt 53.3: Unicode content applies correctly; non-UTF-8-encodable replacement text is blocked, not an uncaught exception
+
+The tester applies a repair against a file containing multi-byte UTF-8 content (accented characters, CJK characters) with a Unicode replacement, and separately attempts a repair with `replacement_text` containing a lone UTF-16 surrogate (not representable in UTF-8).
+
+Expected behavior:
+- The Unicode application succeeds; the resulting file decodes cleanly as UTF-8, with all original multi-byte content on untouched lines preserved exactly and the new Unicode replacement content present.
+- The non-encodable attempt is blocked with reason `candidate_not_utf8_encodable` — never an uncaught exception propagating out of the transaction.
+- The tester is told this was the second genuine defect found during this milestone's own evaluation: previously, this exact scenario raised an uncaught `UnicodeEncodeError` straight out of `apply_repair(...)`, violating the module's own fail-closed design.
+
+### Prompt 53.4: Stale source hash and workspace mismatch both block cleanly before any write
+
+The tester mutates the real target file's content after the draft was constructed, and separately constructs a draft referencing a workspace ID that does not exist in the registry.
+
+Expected behavior:
+- Both attempts are blocked (`stale_source` and a `source_read_failed:workspace_not_found` reason respectively), with the target file's real bytes provably unchanged in both cases.
+- Neither scenario creates a backup, since both block at the very first check.
+
+### Prompt 53.5: Path mismatch blocks cleanly before any write
+
+The tester constructs a draft declaring a relative path that does not exist in the workspace (a genuine path/file mismatch, distinct from a workspace-ID mismatch).
+
+Expected behavior:
+- The attempt is blocked with a `source_read_failed:file_not_found` reason.
+- No backup is created; no file anywhere in the workspace is modified.
+
+### Prompt 53.6: Backup creation and backup collision handling
+
+The tester applies a real repair and inspects the resulting backup file's real, on-disk content and hash, and separately pre-creates a file at the exact path the transaction would choose for its backup before applying a repair.
+
+Expected behavior:
+- The backup file's real content is byte-for-byte the pre-application text, with a correctly verified content hash.
+- On a name collision, the transaction chooses a different, still-unique backup name via its own numeric-suffix retry logic — the pre-existing file at the original candidate name is confirmed untouched afterward.
+
+### Prompt 53.7: Atomic replacement failure, interrupted-transaction behavior, and post-write hash verification
+
+The tester injects an atomic-replace failure and, separately, a scenario where the bytes actually written diverge from what the transaction validated.
+
+Expected behavior:
+- Both scenarios report `outcome: failed` (a write was genuinely attempted), each with its own specific reason (`atomic_replace_failed` / `post_write_hash_mismatch`) — distinct from `blocked`.
+- The target file's real bytes are confirmed unchanged after the replace-failure scenario; no orphaned temporary file remains in the workspace afterward.
+- The backup remains available as the recovery path in both cases; no automatic rollback, retry, or rerun occurs.
+
+### Prompt 53.8: Repeated and sequential application attempts
+
+The tester applies a real repair successfully, then attempts to apply the *same* (now-stale) draft again, and separately constructs a fresh second draft against the newly-modified real content and applies that.
+
+Expected behavior:
+- The repeated attempt against the same stale draft blocks with `stale_source`.
+- The fresh second draft, correctly bound to the file's new real content, applies successfully, producing its own distinct backup — two separate, real backup files exist on disk afterward, and the file's final real content reflects both edits in sequence.
+
+### Prompt 53.9: `ApplicationResult` correctness and target-file integrity after blocked operations
+
+The tester inspects every field of a real `ApplicationResult` for a successful application, and separately confirms the real target file's bytes are unchanged across every blocked scenario collected during this milestone's evaluation.
+
+Expected behavior:
+- Every field (`application_id`, `draft_digest`, `workspace_id`, `relative_path`, pre/post hashes, `backup`, `outcome`, `checks`) matches real, independently-computed values — not merely internally self-consistent ones.
+- Across every blocked scenario evaluated in this category, the target file's real bytes before and after the blocked call are identical, confirmed directly rather than assumed from the `blocked` outcome alone.
+
+### Prompt 53.10: Proof of no side effects — no rerun, approvals unmutated, planning artifacts unchanged
+
+The tester inspects the real adapter's own state immediately before and after a real `apply-repair` call.
+
+Expected behavior:
+- `adapter.last_repair_plan` and `adapter.last_repair_draft` are the exact same objects after the call as before it (no mutation, no replacement).
+- The strategy-approval, draft-approval, and application-approval stores all report the same length before and after the call — applying a repair adds no new approval record to any store.
+- No execution occurred as a side effect (`last_process_metadata.gauss_ran` is unaffected by `apply-repair`), and every response discloses `rerun_performed: false` unconditionally.

@@ -131,9 +131,11 @@ class ApplicationTransactionCheck(enum.Enum):
     BACKUP_UNIQUE = "backup_unique"
     BACKUP_WRITTEN = "backup_written"
     BACKUP_HASH_VERIFIED = "backup_hash_verified"
+    REPLACEMENT_TEXT_NON_EMPTY = "replacement_text_non_empty"
     CANDIDATE_RANGE_WELL_FORMED = "candidate_range_well_formed"
     CANDIDATE_NON_EMPTY = "candidate_non_empty"
     CANDIDATE_CHANGED = "candidate_changed"
+    CANDIDATE_ENCODABLE = "candidate_encodable"
     CANDIDATE_WITHIN_SIZE_CEILING = "candidate_within_size_ceiling"
     CANDIDATE_NO_NUL_BYTES = "candidate_no_nul_bytes"
     CANDIDATE_WITHIN_LINE_BOUND = "candidate_within_line_bound"
@@ -454,6 +456,22 @@ def apply_repair(
         return blocked("backup_hash_mismatch", backup=backup_identity, pre_hash=pre_hash)
 
     # -- Step 4 & 5: construct and validate the repaired candidate (pure, in-memory) --
+    # Found during v0.63.0 evaluation (Prompt 53.2): an empty or whitespace-only
+    # replacement_text silently deletes the entire edit range from the file
+    # (zero replacement lines spliced in) rather than being refused -- a line
+    # deletion this milestone's own scope explicitly excludes ("no deletes").
+    # Checked explicitly, before candidate construction, so the deletion never
+    # happens in the first place.
+    replacement_non_empty = bool(replacement_text.strip())
+    record(
+        ApplicationTransactionCheck.REPLACEMENT_TEXT_NON_EMPTY, replacement_non_empty,
+        "replacement text is non-empty"
+        if replacement_non_empty
+        else "replacement text is empty or whitespace-only -- refusing to silently delete the edit range's content",
+    )
+    if not replacement_non_empty:
+        return blocked("replacement_text_empty", backup=backup_identity, pre_hash=pre_hash)
+
     candidate_content, construct_reason = _construct_candidate(original_content, repair_draft.edit_scope, replacement_text)
     range_ok = candidate_content is not None
     record(
@@ -479,7 +497,18 @@ def apply_repair(
     if not changed:
         return blocked("candidate_unchanged", backup=backup_identity, pre_hash=pre_hash)
 
-    candidate_bytes = candidate_content.encode("utf-8")
+    # Found during v0.63.0 evaluation (Prompt 53.3): replacement_text containing
+    # a lone UTF-16 surrogate (or any other content not representable in UTF-8)
+    # previously raised an uncaught UnicodeEncodeError out of apply_repair(...)
+    # entirely, instead of a clean, fail-closed `blocked` result. Encoding is
+    # now attempted explicitly and converted into an ordinary blocked check.
+    try:
+        candidate_bytes = candidate_content.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        record(ApplicationTransactionCheck.CANDIDATE_ENCODABLE, False, f"candidate content could not be encoded as UTF-8: {exc}")
+        return blocked("candidate_not_utf8_encodable", backup=backup_identity, pre_hash=pre_hash)
+    record(ApplicationTransactionCheck.CANDIDATE_ENCODABLE, True, "candidate content encodes cleanly as UTF-8")
+
     within_size = len(candidate_bytes) <= MAX_CANDIDATE_BYTES
     record(
         ApplicationTransactionCheck.CANDIDATE_WITHIN_SIZE_CEILING, within_size,

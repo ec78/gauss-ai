@@ -39,7 +39,7 @@ Execution
 9. **Record an immutable `ApplicationResult`.**
 10. **Stop.** No rerun is triggered anywhere.
 
-Sixteen named checks are recorded along the way (`ApplicationTransactionCheck`); the first failure halts the transaction immediately, so `ApplicationResult.checks` contains only the checks actually reached — its length is itself meaningful, verified evidence of exactly how far a given attempt got.
+Eighteen named checks are recorded along the way (`ApplicationTransactionCheck`); the first failure halts the transaction immediately, so `ApplicationResult.checks` contains only the checks actually reached — its length is itself meaningful, verified evidence of exactly how far a given attempt got. Two of the eighteen — `REPLACEMENT_TEXT_NON_EMPTY` and `CANDIDATE_ENCODABLE` — were added during `v0.63.0`'s real-filesystem evaluation, after that evaluation found an empty/whitespace-only replacement was silently applied as a line deletion, and a non-UTF-8-encodable replacement raised an uncaught exception instead of a clean `blocked` result. See `planning/v0.63.0-repair-application-evaluation.md` for the full evaluation record.
 
 ## Outcomes
 

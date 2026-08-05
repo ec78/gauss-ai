@@ -128,7 +128,7 @@ def test_01_successful_application_applies_and_verifies() -> None:
         check("target file was actually modified", chain.current_bytes() == b"x = 2 + 2;\nprint x;\ny = 5;\n")
         check("post hash matches the new file content", result.post_application_content_hash == hashlib.sha256(chain.current_bytes()).hexdigest())
         check("pre hash matches the original content", result.pre_application_content_hash == chain.real_hash)
-        check("all 16 checks reported", len(result.checks) == 16)
+        check("all 18 checks reported", len(result.checks) == 18)
         check("every check passed", all(c.passed for c in result.checks))
 
 
@@ -215,12 +215,16 @@ def test_08_candidate_range_out_of_bounds_blocks() -> None:
         check("the backup remains on disk despite the block", backup_path.exists())
 
 
-def test_09_candidate_empty_blocks() -> None:
+def test_09_whitespace_only_replacement_blocks_as_empty() -> None:
+    # v0.63.0 evaluation finding (Prompt 53.2): a whitespace-only replacement
+    # is now caught by the dedicated REPLACEMENT_TEXT_NON_EMPTY check before
+    # candidate construction even runs -- previously this silently deleted the
+    # edit range's content instead of being refused.
     with tempfile.TemporaryDirectory() as tmp:
         chain = _Chain(tmp, line_start=1, line_end=3)
         result = chain.apply(replacement_text="   \n")
         check("outcome is blocked", result.outcome == "blocked")
-        check("reason is candidate_empty", result.reason == "candidate_empty")
+        check("reason is replacement_text_empty", result.reason == "replacement_text_empty")
         check("target file unchanged", chain.current_bytes() == chain.original_text.encode("utf-8"))
 
 
@@ -467,6 +471,93 @@ def test_27_determinism_of_backup_naming_given_identical_clock() -> None:
         result2 = chain2.apply()
         check("identical scenarios with identical clocks produce identical backup relative_path", result1.backup.relative_path == result2.backup.relative_path)
         check("identical scenarios produce identical pre/post hashes", (result1.pre_application_content_hash, result1.post_application_content_hash) == (result2.pre_application_content_hash, result2.post_application_content_hash))
+
+
+# ---------------------------------------------------------------------------
+# v0.63.0 evaluation-discovered regression tests
+# ---------------------------------------------------------------------------
+
+
+def test_28_empty_string_replacement_blocks_before_candidate_construction() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        chain = _Chain(tmp, line_start=2, line_end=2)
+        result = chain.apply(replacement_text="")
+        check("outcome is blocked", result.outcome == "blocked")
+        check("reason is replacement_text_empty", result.reason == "replacement_text_empty")
+        check("target file unchanged (no silent line deletion)", chain.current_bytes() == chain.original_text.encode("utf-8"))
+        check("REPLACEMENT_TEXT_NON_EMPTY is the failing check", result.checks[-1].check == "replacement_text_non_empty" and result.checks[-1].passed is False)
+
+
+def test_29_non_utf8_encodable_replacement_blocks_cleanly_without_raising() -> None:
+    # Previously an uncaught UnicodeEncodeError propagated out of
+    # apply_repair(...) entirely for a lone UTF-16 surrogate in
+    # replacement_text; this must now be a clean, fail-closed `blocked` result.
+    with tempfile.TemporaryDirectory() as tmp:
+        chain = _Chain(tmp, line_start=1, line_end=1)
+        result = chain.apply(replacement_text="x = 1\ud800;\n")
+        check("outcome is blocked, not an uncaught exception", result.outcome == "blocked")
+        check("reason is candidate_not_utf8_encodable", result.reason == "candidate_not_utf8_encodable")
+        check("target file unchanged", chain.current_bytes() == chain.original_text.encode("utf-8"))
+        check("CANDIDATE_ENCODABLE is the failing check", result.checks[-1].check == "candidate_encodable" and result.checks[-1].passed is False)
+
+
+def test_30_middle_of_file_edit_preserves_surrounding_lines() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        chain = _Chain(tmp, text="a = 1;\nb = 2;\nc = 3;\n", line_start=2, line_end=2)
+        result = chain.apply(replacement_text="b = 999;\n")
+        check("outcome is applied", result.outcome == "applied")
+        check("first and third lines unchanged, second line replaced", chain.current_bytes() == b"a = 1;\nb = 999;\nc = 3;\n")
+
+
+def test_31_end_of_file_edit_applies_exactly_the_supplied_replacement() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        chain = _Chain(tmp, text="a = 1;\nb = 2;\nc = 3;\n", line_start=3, line_end=3)
+        result = chain.apply(replacement_text="c = 999;")  # deliberately no trailing newline
+        check("outcome is applied", result.outcome == "applied")
+        check("exact replacement used verbatim, no inferred trailing newline", chain.current_bytes() == b"a = 1;\nb = 2;\nc = 999;")
+
+
+def test_32_unicode_content_applies_and_decodes_cleanly() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        original = "// café naïve\nx = 1;\nprint \"你好\";\n"
+        chain = _Chain(tmp, text=original, line_start=2, line_end=2)
+        result = chain.apply(replacement_text="x = 2; // ééé\n")
+        check("outcome is applied", result.outcome == "applied")
+        decoded = chain.current_bytes().decode("utf-8")
+        check("unicode content on untouched lines is preserved exactly", "café naïve" in decoded and "你好" in decoded)
+        check("unicode replacement content is present", "ééé" in decoded)
+
+
+def test_33_repeated_legitimate_two_step_application_produces_two_distinct_backups() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        chain = _Chain(tmp, text="a = 1;\nb = 2;\n", line_start=1, line_end=1)
+        result1 = chain.apply(replacement_text="a = 100;\n", clock=lambda: 1000.0)
+        check("first application succeeds", result1.outcome == "applied")
+        check("first edit applied, second line untouched", chain.current_bytes() == b"a = 100;\nb = 2;\n")
+
+        new_text = chain.current_bytes().decode("utf-8")
+        new_hash = hashlib.sha256(new_text.encode("utf-8")).hexdigest()
+        artifact2 = rd.SourceArtifact(workspace_id=chain.workspace.workspace_id, relative_path=chain.relative_path, file_type=".gss")
+        identity2 = rd.SourceIdentity(artifact=artifact2, content_hash=new_hash, size=len(new_text.encode("utf-8")), encoding="utf-8")
+        scope2 = rd.EditScope(line_start=2, line_end=2, intended_operation="second edit")
+        draft2 = rd.build_repair_draft(
+            repair_draft_id="draft-2", repair_plan_digest=rp.repair_plan_digest(chain.plan),
+            source_identity=identity2, edit_scope=scope2,
+            proposed_change_description="second probe edit", generated_at="t1",
+        )
+        draft_record2 = da.DraftApprovalStore().approve(draft2, recorded_at="t1")
+        application_record2 = aa.ApplicationApprovalStore().approve(draft2, recorded_at="t1")
+        result2 = app.apply_repair(
+            repair_plan=chain.plan, repair_approval_record=chain.plan_record, repair_draft=draft2,
+            draft_approval_record=draft_record2, application_approval_record=application_record2,
+            replacement_text="b = 200;\n", workspace_registry=chain.registry,
+            clock=lambda: 2000.0, id_factory=lambda: "app-2",
+        )
+        check("second application succeeds", result2.outcome == "applied")
+        check("both edits present after two sequential applications", chain.current_bytes() == b"a = 100;\nb = 200;\n")
+        check("second application produced its own, distinct backup", result2.backup.relative_path != result1.backup.relative_path)
+        backups = [p for p in Path(chain.workspace.root_path).glob("*.bak")]
+        check("exactly two backup files exist on disk", len(backups) == 2)
 
 
 def run_tests() -> int:
