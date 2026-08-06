@@ -41,6 +41,7 @@ import gauss_repair_draft as repair_draft_mod  # noqa: E402
 import gauss_repair_draft_approval as draft_approval  # noqa: E402
 import gauss_repair_planner as repair_planner  # noqa: E402
 import gauss_orchestration_state_store as store_mod  # noqa: E402
+import gauss_verification_execution as verification_mod  # noqa: E402
 import gauss_workspace as workspace_mod  # noqa: E402
 import gauss_workspace_file_reader as file_reader_mod  # noqa: E402
 
@@ -228,6 +229,14 @@ class InteractiveMvpAdapter:
         # gauss_repair_application.apply_repair(...); no other command
         # touches a source file's bytes.
         self.last_application_result: application_transaction.ApplicationResult | None = None
+        # v0.64.0: the most recent verification-execution request this
+        # adapter session built, plus a snapshot of the ORIGINAL execution's
+        # own interpretation captured immediately before verification
+        # overwrites last_result/last_process_metadata/last_captured_output
+        # -- without this snapshot, a later comparison would have nothing
+        # left to compare the verification run against.
+        self.last_verification_request: verification_mod.VerificationExecutionRequest | None = None
+        self._original_execution_interpretation: interpreter.ExecutionInterpretation | None = None
         self._turn_counter = 0
 
     # ------------------------------------------------------------------
@@ -317,6 +326,10 @@ class InteractiveMvpAdapter:
                 return True, self._apply_repair(args)
             if command == "show-application-result":
                 return True, self._show_application_result(args)
+            if command == "verify-repair":
+                return True, self._verify_repair(args)
+            if command == "show-verification-request":
+                return True, self._show_verification_request(args)
             if command == "read":
                 return True, self._read(args)
             if command == "provenance":
@@ -335,7 +348,7 @@ class InteractiveMvpAdapter:
 
     def _help(self) -> list[str]:
         return [
-            "GAUSS Code Assistant Interactive MVP Adapter (v0.62.0 alpha)",
+            "GAUSS Code Assistant Interactive MVP Adapter (v0.64.0 alpha)",
             f"Execution backend: {self.backend_label}",
             "Commands:",
             "  help",
@@ -368,6 +381,8 @@ class InteractiveMvpAdapter:
             "  check-repair-application-gate [--current-content-hash SHA256]",
             "  apply-repair <draft_digest> --replacement-text TEXT",
             "  show-application-result",
+            "  verify-repair [--fake-success|--fake-failure|--fake-timeout|--fake-unknown-error]",
+            "  show-verification-request",
             "  read <relative-path>",
             "  provenance",
             "  status",
@@ -1430,6 +1445,177 @@ class InteractiveMvpAdapter:
             return ["ERROR no_application_result: run 'apply-repair' first."]
         return self._render_application_result(self.last_application_result)
 
+    def _parse_verify_repair_args(self, args: list[str]) -> str:
+        """Optional fake-result mode flag, mirroring 'request's own flags,
+        so a tester can genuinely exercise every comparison case (same
+        error, different error, success-after-error). Defaults to
+        --fake-success -- the natural "did the repair work?" expectation,
+        never fabricated as an assumption."""
+        mapping = {
+            "--fake-success": "success", "--fake-failure": "failure",
+            "--fake-timeout": "timeout", "--fake-unknown-error": "unknown_error",
+        }
+        if not args:
+            return "success"
+        token = args[0]
+        if token not in mapping:
+            return f"ERROR usage: unrecognized verify-repair option {token!r}"
+        return mapping[token]
+
+    def _verify_repair(self, args: list[str]) -> list[str]:
+        if self.last_application_result is None:
+            return ["ERROR no_application_result: run 'apply-repair' first."]
+        parsed = self._parse_verify_repair_args(args)
+        if parsed.startswith("ERROR "):
+            return [parsed]
+        fake_result = parsed
+
+        try:
+            request = verification_mod.build_verification_execution_request(
+                self.last_application_result,
+                reason="Verify whether the repaired source now executes differently than the original failing run.",
+                clock=self._clock,
+            )
+        except verification_mod.RepairNotAppliedError as exc:
+            return [f"ERROR repair_not_applied: {exc}"]
+
+        # Snapshot the ORIGINAL execution's own interpretation before any
+        # state below is overwritten by the verification run -- this is the
+        # only way a later comparison can still see what the original run
+        # reported (last_result/last_process_metadata/last_captured_output
+        # are the SAME fields the verification run's own execute() call
+        # will reuse and overwrite next).
+        self._original_execution_interpretation = (
+            interpreter.interpret_execution(self._build_execution_evidence()) if self.last_result is not None else None
+        )
+
+        workspace = self.registry.get_workspace(request.workspace_id)
+        proposal_result = verification_mod.propose_verification_execution(
+            request,
+            execution_workflow=self.execution_workflow,
+            workspace_root_path=workspace.root_path,
+            session_id=self.adapter_session_id,
+            request_id=f"verify-{self._turn_counter + 1}",
+            executable_path=self.real_gauss_executable or DEFAULT_EXECUTABLE,
+            gauss_version=self.gauss_version,
+            timeout_seconds=30.0,
+        )
+        self._turn_counter += 1
+        self.last_verification_request = request
+
+        lines = list(verification_mod.VERIFICATION_DISCLOSURE)
+        lines.extend(
+            [
+                "REAL_WORKFLOW: propose_verification_execution -> ExecutionWorkflow.propose_execution "
+                "(the SAME method any ordinary execution proposal uses).",
+                f"verification_execution_id: {request.verification_execution_id}",
+                f"repair_application_id: {request.repair_application_id}",
+                f"workspace_id: {request.workspace_id}",
+                f"relative_path: {request.relative_path}",
+                f"expected_post_repair_hash: {request.expected_post_repair_hash}",
+            ]
+        )
+
+        if proposal_result.outcome.blocked:
+            lines.extend(
+                [
+                    "blocked: true",
+                    f"failure_category: {proposal_result.outcome.failure_category}",
+                    f"failure_reason: {proposal_result.outcome.failure_reason}",
+                    "No execution occurred.",
+                ]
+            )
+            return lines
+
+        proposal = proposal_result.outcome.proposal
+        assert proposal is not None
+
+        # Mirror GaussCodeAssistantWorkflow.propose(...)'s own bookkeeping
+        # so the pre-existing, UNMODIFIED confirm/execute CLI commands keep
+        # working exactly as they already do for an ordinary execution --
+        # this repeats no proposal logic; propose_execution() already ran
+        # inside propose_verification_execution() above.
+        self.mvp_session = mvp.MvpWorkflowSession()
+        self.mvp_session.request_summary = f"Verification execution for repair application {request.repair_application_id}"
+        self.mvp_session.orchestration_instance_id = proposal_result.outcome.orchestration_instance_id
+        self.mvp_session.workspace_id = None
+        self.mvp_session.proposal_outcome = proposal_result.outcome
+        self.mvp_session.stage = mvp.CodeAssistantStage.PLAN_PROPOSED
+        self.pending_request = PendingRequest(
+            request_id=proposal.request_id,
+            summary=self.mvp_session.request_summary,
+            code=f"<verification target: {request.workspace_id}/{request.relative_path}>",
+            fake_result=fake_result,
+        )
+        self.last_result = None
+        self.last_process_metadata = ExecutionProcessMetadata(backend=self.backend_label)
+        self.last_captured_output = CapturedProcessOutput()
+
+        lines.extend(
+            [
+                "blocked: false",
+                f"orchestration_instance_id: {proposal.orchestration_instance_id}",
+                f"request_hash: {proposal.request_hash}",
+                f"plan_digest: {proposal.plan_digest}",
+                f"working_directory: {proposal.working_directory}",
+                f"executable_path: {proposal.executable_path}",
+                f"timeout_seconds: {proposal.timeout_seconds}",
+                "confirmation_required: run 'confirm <request_hash>' then 'execute' -- the SAME commands "
+                "used for any ordinary execution.",
+                f"next_step: run 'confirm {proposal.request_hash}' to proceed with this exact verification "
+                "execution plan.",
+            ]
+        )
+        return lines
+
+    def _show_verification_request(self, args: list[str]) -> list[str]:
+        if self.last_verification_request is None:
+            return ["ERROR no_verification_request: run 'verify-repair' first."]
+        request = self.last_verification_request
+        lines = list(verification_mod.VERIFICATION_DISCLOSURE)
+        lines.extend(
+            [
+                f"verification_execution_id: {request.verification_execution_id}",
+                f"repair_application_id: {request.repair_application_id}",
+                f"application_result_id: {request.application_result_id}",
+                f"workspace_id: {request.workspace_id}",
+                f"relative_path: {request.relative_path}",
+                f"expected_post_repair_hash: {request.expected_post_repair_hash}",
+                f"reason: {request.reason}",
+                f"created_at: {request.created_at}",
+            ]
+        )
+        verification_executed = (
+            self.mvp_session is not None
+            and self.mvp_session.stage in (mvp.CodeAssistantStage.EXECUTED, mvp.CodeAssistantStage.RESPONDED)
+            and self.last_result is not None
+        )
+        if verification_executed and self._original_execution_interpretation is not None:
+            verification_interpretation = interpreter.interpret_execution(self._build_execution_evidence())
+            summary = verification_mod.compare_execution_outcomes(
+                self._original_execution_interpretation, verification_interpretation
+            )
+            lines.extend(
+                [
+                    "comparison_available: true",
+                    f"original_outcome: {summary.original_outcome}",
+                    f"verification_outcome: {summary.verification_outcome}",
+                    f"same_outcome: {str(summary.same_outcome).lower()}",
+                    f"comparison: {summary.comparison}",
+                    f"observation: {summary.observation}",
+                    "disclosure: This comparison reports evidence only. It does not conclude the repair is "
+                    "correct, assign a success probability, or infer statistical correctness.",
+                ]
+            )
+        elif verification_executed:
+            lines.append(
+                "comparison_available: false (no original execution evidence was captured before this "
+                "verification run started)"
+            )
+        else:
+            lines.append("comparison_available: false (run 'confirm' then 'execute' to complete the verification execution first)")
+        return lines
+
     def _read(self, args: list[str]) -> list[str]:
         if self.active_workspace_id is None:
             return ["ERROR no_workspace: run 'workspace create' first."]
@@ -1524,6 +1710,8 @@ class InteractiveMvpAdapter:
         self._draft_approval_store = draft_approval.DraftApprovalStore()
         self._application_approval_store = application_approval.ApplicationApprovalStore()
         self.last_application_result = None
+        self.last_verification_request = None
+        self._original_execution_interpretation = None
         return [
             "ADAPTER: Cleared active request, proposal, confirmation, and result.",
             "workspace_retained: true",
@@ -1721,7 +1909,7 @@ class InteractiveMvpAdapter:
 
 
 def run_repl(adapter: InteractiveMvpAdapter) -> int:
-    print("GAUSS Code Assistant Interactive MVP Adapter (v0.62.0 alpha)")
+    print("GAUSS Code Assistant Interactive MVP Adapter (v0.64.0 alpha)")
     print(f"Execution backend: {adapter.backend_label}")
     if adapter.runner_backend == REAL_GAUSS_BACKEND:
         print("Real GAUSS execution is enabled only after hash-bound confirm + execute.")

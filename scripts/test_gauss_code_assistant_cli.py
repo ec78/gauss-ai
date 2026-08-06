@@ -1842,6 +1842,152 @@ def test_123_repair_planning_and_prior_layers_regression_unaffected_by_applicati
         adapter.close()
 
 
+# ---------------------------------------------------------------------------
+# v0.64.0 Verification Execution Workflow
+# ---------------------------------------------------------------------------
+
+
+def _apply_repair_via_cli(
+    adapter: "cli.InteractiveMvpAdapter", *, relative_path: str = "model.gss", text: str = "x = 2 + 2\nprint x;\n",
+) -> "tuple[object, Path, str]":
+    """Drives the full real chain through a successful apply-repair call
+    (real file, real hashes, every approval layer) and returns
+    (adapter.last_application_result, target_path, repaired_text)."""
+    digest, target, _original_text = _plan_draft_approve_all_with_real_file(adapter, relative_path=relative_path, text=text)
+    _run(adapter, f'apply-repair {digest} --replacement-text "x = 2 + 2;"')
+    assert adapter.last_application_result is not None
+    assert adapter.last_application_result.outcome == "applied"
+    return adapter.last_application_result, target, target.read_text(encoding="utf-8")
+
+
+def test_124_verify_repair_before_application_result_exists() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        out = _joined(_run(adapter, "verify-repair"))
+        check("verify-repair before any apply-repair reports no_application_result", "ERROR no_application_result" in out)
+        adapter.close()
+
+
+def test_125_verify_repair_full_success_and_comparison_succeeded_after_failure() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _apply_repair_via_cli(adapter)
+        verify_out = _joined(_run(adapter, "verify-repair --fake-success"))
+        check("verify-repair discloses ordinary execution", "This is an ordinary execution." in verify_out)
+        check("verify-repair discloses repair success is not inferred", "Repair success is NOT inferred" in verify_out)
+        check("verify-repair proposal not blocked", "blocked: false" in verify_out)
+        request_hash = [line.split(": ", 1)[1] for line in verify_out.splitlines() if line.startswith("request_hash:")][0]
+
+        confirm_out = _joined(_run(adapter, f"confirm {request_hash}"))
+        check("confirm (unmodified command) reaches confirmed", "current_state: confirmed" in confirm_out)
+        execute_out = _joined(_run(adapter, "execute"))
+        check("execute (unmodified command) reports completed", "execution_status: completed" in execute_out)
+
+        show_out = _joined(_run(adapter, "show-verification-request"))
+        check("comparison_available true", "comparison_available: true" in show_out)
+        check("comparison is succeeded_after_failure", "comparison: succeeded_after_failure" in show_out)
+        check(
+            "observation matches the task's own worked example",
+            "The repaired code executed successfully whereas the original execution failed with G0105." in show_out,
+        )
+        check("evidence-only disclosure present", "does not conclude the repair is correct" in show_out)
+        adapter.close()
+
+
+def test_126_verify_repair_same_error_comparison() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _apply_repair_via_cli(adapter)
+        verify_out = _joined(_run(adapter, "verify-repair --fake-failure"))
+        request_hash = [line.split(": ", 1)[1] for line in verify_out.splitlines() if line.startswith("request_hash:")][0]
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        show_out = _joined(_run(adapter, "show-verification-request"))
+        check("comparison is same_error (fake-failure reproduces G0105 both times)", "comparison: same_error" in show_out)
+        check("observation matches the task's own worked example", "The repair did not change the observed execution outcome." in show_out)
+        adapter.close()
+
+
+def test_127_verify_repair_different_error_comparison() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _apply_repair_via_cli(adapter)
+        verify_out = _joined(_run(adapter, "verify-repair --fake-unknown-error"))
+        request_hash = [line.split(": ", 1)[1] for line in verify_out.splitlines() if line.startswith("request_hash:")][0]
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        show_out = _joined(_run(adapter, "show-verification-request"))
+        check("comparison is different_error (G0105 originally, G9999 on verification)", "comparison: different_error" in show_out)
+        check("observation matches the task's own worked example", "The repair changed execution behavior, but a different runtime error occurred." in show_out)
+        adapter.close()
+
+
+def test_128_show_verification_request_before_verify_repair() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        out = _joined(_run(adapter, "show-verification-request"))
+        check("show-verification-request before verify-repair reports no_verification_request", "ERROR no_verification_request" in out)
+        adapter.close()
+
+
+def test_129_show_verification_request_before_execution_completes() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _apply_repair_via_cli(adapter)
+        _run(adapter, "verify-repair --fake-success")
+        out = _joined(_run(adapter, "show-verification-request"))
+        check("comparison_available is false before confirm/execute run", "comparison_available: false" in out)
+        adapter.close()
+
+
+def test_130_verify_repair_stale_source_blocks() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _result, target, _text = _apply_repair_via_cli(adapter)
+        target.write_bytes(b"mutated again after the repair was applied\n")
+        out = _joined(_run(adapter, "verify-repair --fake-success"))
+        check("verify-repair blocks on a stale post-repair hash", "blocked: true" in out)
+        check("failure_category names verification_source_stale", "verification_source_stale" in out)
+        adapter.close()
+
+
+def test_131_verify_repair_does_not_mutate_approval_stores_or_repair_draft() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _apply_repair_via_cli(adapter)
+        draft_before = adapter.last_repair_draft
+        strategy_len_before = len(adapter._repair_approval_store)  # noqa: SLF001
+        draft_len_before = len(adapter._draft_approval_store)  # noqa: SLF001
+        application_len_before = len(adapter._application_approval_store)  # noqa: SLF001
+        _run(adapter, "verify-repair --fake-success")
+        check("last_repair_draft is the SAME object after verify-repair", adapter.last_repair_draft is draft_before)
+        check("strategy approval store length unchanged", len(adapter._repair_approval_store) == strategy_len_before)  # noqa: SLF001
+        check("draft approval store length unchanged", len(adapter._draft_approval_store) == draft_len_before)  # noqa: SLF001
+        check("application approval store length unchanged", len(adapter._application_approval_store) == application_len_before)  # noqa: SLF001
+        adapter.close()
+
+
+def test_132_reset_clears_verification_state() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _apply_repair_via_cli(adapter)
+        _run(adapter, "verify-repair --fake-success")
+        _run(adapter, "reset")
+        out = _joined(_run(adapter, "show-verification-request"))
+        check("show-verification-request after reset reports no_verification_request", "ERROR no_verification_request" in out)
+        adapter.close()
+
+
+def test_133_verify_repair_regression_ordinary_execution_unaffected() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        out = _joined(_run(adapter, "execute"))
+        check("ordinary execution output unaffected by the new verification-execution layer", "execution_status: completed" in out)
+        adapter.close()
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

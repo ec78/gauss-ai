@@ -5914,3 +5914,89 @@ Expected behavior:
 - `adapter.last_repair_plan` and `adapter.last_repair_draft` are the exact same objects after the call as before it (no mutation, no replacement).
 - The strategy-approval, draft-approval, and application-approval stores all report the same length before and after the call — applying a repair adds no new approval record to any store.
 - No execution occurred as a side effect (`last_process_metadata.gauss_ran` is unaffected by `apply-repair`), and every response discloses `rerun_performed: false` unconditionally.
+
+## Verification Execution Workflow
+
+Use Prompt IDs 54.1-54.10. These exercise the `v0.64.0` Verification Execution Workflow milestone: `scripts/gauss_verification_execution.py` executes an already-applied repair's resulting source through the existing, unmodified execution pipeline and collects evidence. It is not automatic repair validation, automatic repair acceptance, autonomous retry, autonomous repair, or autonomous planning.
+
+Benchmarks in this category must verify that verification produces a genuine, ordinary `ExecutionProposal`/`ProposalOutcome` (never a repair-specific type), that confirmation and execution reuse the pre-existing, unmodified CLI commands, and that the resulting comparison reports evidence only — never a correctness verdict.
+
+### Prompt 54.1: VerificationExecutionRequest references only an ApplicationResult, never a RepairDraft
+
+The tester constructs a `VerificationExecutionRequest` from a real, successful `ApplicationResult` and inspects both the request's own fields and the module's source for any path capable of referencing a `RepairDraft`.
+
+Expected behavior:
+- Every field (`workspace_id`, `relative_path`, `expected_post_repair_hash`) is read directly off the `ApplicationResult`, matching real, independently-verifiable values.
+- No field on `VerificationExecutionRequest`, and no parameter on `build_verification_execution_request(...)`, is capable of holding a `RepairDraft` object — confirmed structurally, not merely by absence of use.
+
+### Prompt 54.2: Verification is rejected for a non-applied ApplicationResult
+
+The tester attempts to build a verification request from an `ApplicationResult` whose `outcome` is `blocked` or `failed`.
+
+Expected behavior:
+- `build_verification_execution_request(...)` raises `RepairNotAppliedError` immediately, before any execution machinery is touched.
+- The tester is told there is nothing to verify for a repair that was never actually applied.
+
+### Prompt 54.3: Verification produces a genuine, ordinary ExecutionProposal — never a repair-specific type
+
+The tester calls `propose_verification_execution(...)` against a real, successfully-repaired file and inspects the returned object's own Python type.
+
+Expected behavior:
+- `result.outcome` is a genuine `gauss_execution_workflow.ProposalOutcome`; `result.outcome.proposal` is a genuine `gauss_execution_workflow.ExecutionProposal` — the exact same types any ordinary execution proposal produces, confirmed via `isinstance`, not merely by field-shape similarity.
+- The proposal's `working_directory` targets the real workspace's own root path, and its `code_digest` matches the real repaired file's own content digest — proving the actual, current, on-disk repaired content is what gets proposed for execution.
+
+### Prompt 54.4: Stale source hash blocks the verification proposal before any execution
+
+The tester mutates the repaired file's real content again after a successful application, then attempts `verify-repair`.
+
+Expected behavior:
+- The proposal is blocked with `failure_category: verification_source_stale`, before `ExecutionWorkflow.propose_execution(...)` is ever called.
+- No execution occurs; the tester is told the repaired file changed again since the repair was applied, and re-verification against the new content would require a fresh repair cycle.
+
+### Prompt 54.5: Confirmation and execution reuse the pre-existing, unmodified CLI commands
+
+The tester runs `verify-repair`, then `confirm <request_hash>`, then `execute` — the exact same `confirm`/`execute` commands used for any ordinary execution — and confirms no verification-specific confirmation or execution code path exists.
+
+Expected behavior:
+- `confirm`/`execute` succeed against the verification proposal with no special-casing; their own output is indistinguishable in structure from an ordinary execution's confirm/execute output.
+- The tester confirms, by inspecting `gauss_verification_execution.py`'s own source, that it defines no repair-specific execution engine, runner, proposal type, confirmation type, or session type.
+
+### Prompt 54.6: Comparison — the repaired code succeeds where the original failed
+
+The tester verifies a repair whose original execution failed with `G0105`, using `--fake-success` for the verification run.
+
+Expected behavior:
+- The comparison reports `comparison: succeeded_after_failure`.
+- The observation reads: "The repaired code executed successfully whereas the original execution failed with G0105." — matching the milestone's own worked example exactly.
+
+### Prompt 54.7: Comparison — the repair does not change the observed outcome
+
+The tester verifies a repair whose original execution failed with `G0105`, using `--fake-failure` (which reproduces the same `G0105` error) for the verification run.
+
+Expected behavior:
+- The comparison reports `comparison: same_error`.
+- The observation reads: "The repair did not change the observed execution outcome." — matching the milestone's own worked example exactly.
+
+### Prompt 54.8: Comparison — the repair changes behavior but a different error occurs
+
+The tester verifies a repair whose original execution failed with `G0105`, using `--fake-unknown-error` (a different, uncataloged code) for the verification run.
+
+Expected behavior:
+- The comparison reports `comparison: different_error`.
+- The observation reads: "The repair changed execution behavior, but a different runtime error occurred." — matching the milestone's own worked example exactly.
+
+### Prompt 54.9: ComparisonSummary reports evidence only — no verdict, no probability, no correctness claim
+
+The tester inspects a completed `ComparisonSummary` for any field or wording that could be read as a correctness verdict.
+
+Expected behavior:
+- No field named `repair_correct`, `success_probability`, `confidence_score`, `verdict`, or similar exists anywhere on `ComparisonSummary` — confirmed structurally.
+- The CLI's own `show-verification-request` output includes an explicit disclosure that the comparison "does not conclude the repair is correct, assign a success probability, or infer statistical correctness."
+
+### Prompt 54.10: Architectural proof — repair and execution modules remain fully independent
+
+The tester inspects `git diff --stat` for `scripts/gauss_execution_workflow.py` and `scripts/gauss_repair_application.py` after this milestone, and inspects which module(s) import both.
+
+Expected behavior:
+- Both `scripts/gauss_execution_workflow.py` and `scripts/gauss_repair_application.py` show zero diff from this milestone.
+- `scripts/gauss_verification_execution.py` is the only module in the entire repository that imports both `gauss_repair_application` and `gauss_execution_workflow` — and it does so only to translate one into inputs for the other, proving "repair knows nothing about execution, execution knows nothing about repair, verification is only an adapter between them."
