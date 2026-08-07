@@ -6000,3 +6000,89 @@ The tester inspects `git diff --stat` for `scripts/gauss_execution_workflow.py` 
 Expected behavior:
 - Both `scripts/gauss_execution_workflow.py` and `scripts/gauss_repair_application.py` show zero diff from this milestone.
 - `scripts/gauss_verification_execution.py` is the only module in the entire repository that imports both `gauss_repair_application` and `gauss_execution_workflow` — and it does so only to translate one into inputs for the other, proving "repair knows nothing about execution, execution knows nothing about repair, verification is only an adapter between them."
+
+## Verification Review
+
+Use Prompt IDs 55.1-55.10. These exercise the `v0.65.0` Verification Review and Outcome Recording milestone: `scripts/gauss_verification_review.py` records what a human concluded after inspecting a completed verification execution's own `ComparisonSummary` evidence. It never infers that conclusion automatically, never mutates any approval store, and never triggers execution, planning, repair, or rollback.
+
+Benchmarks in this category must verify that a review references only a completed Verification Execution, that `decision` is always caller-supplied and never derived from the evidence itself, that a duplicate review is refused rather than silently replaced, and that the review layer has zero observable side effects on any other part of the pipeline.
+
+### Prompt 55.1: VerificationReview references only a completed Verification Execution, never the underlying objects
+
+The tester records a real review against a real, completed verification and inspects the resulting `VerificationReview`'s own fields and the module's source for any path capable of referencing a `RepairDraft`, `RepairPlan`, `ApplicationResult`, `VerificationExecutionRequest`, or `ComparisonSummary` object directly.
+
+Expected behavior:
+- `VerificationReview` carries only `verification_execution_id` (a string) and `comparison_summary_digest` (a computed content fingerprint) as reference fields — confirmed via `hasattr` checks that no field named `repair_draft`, `application_result`, `verification_execution_request`, or `comparison_summary` exists on the record.
+- No parameter anywhere on `VerificationReviewStore.accept(...)`/`.reject(...)`/`.mark_inconclusive(...)` is capable of holding a `RepairDraft` object.
+
+### Prompt 55.2: Reviewing an incomplete verification is refused, never inferred
+
+The tester runs `verify-repair` but does not run `confirm`/`execute`, then attempts `review-verification --decision accepted`.
+
+Expected behavior:
+- The CLI reports `ERROR verification_not_completed`, refusing the review outright.
+- Direct module use with `comparison_summary=None` (or any non-`ComparisonSummary` object) raises `ComparisonNotAvailableError` immediately, before any record is constructed.
+
+### Prompt 55.3: `decision` is always caller-supplied, never derived from the evidence
+
+The tester records `accepted`, `rejected`, and `inconclusive` reviews against the SAME underlying `ComparisonSummary` evidence (holding the evidence fixed, varying only the caller's own decision).
+
+Expected behavior:
+- All three decisions succeed against the identical evidence — proving the module places no constraint relating `decision` to `ComparisonSummary.comparison`/`observation`, and inspecting the module's own source confirms no code path reads `comparison_summary.comparison` to select a `decision` value.
+- Each resulting `VerificationReview.decision` exactly equals what the caller supplied, nothing else.
+
+### Prompt 55.4: `comparison_summary_digest` is a genuine, deterministic content fingerprint
+
+The tester computes `comparison_summary_digest(...)` twice against two independently-constructed `ComparisonSummary` objects with identical field values, then again against one with a single differing field.
+
+Expected behavior:
+- The two identical-content summaries produce the exact same 64-character hex digest, despite being different Python object instances.
+- Changing any single field (e.g. `observation`) changes the digest.
+
+### Prompt 55.5: Duplicate review handling — a second review for the same verification is refused
+
+The tester records an `accepted` review for a completed verification, then attempts a second review (with a different decision, `rejected`) for the exact same `verification_execution_id`.
+
+Expected behavior:
+- The second attempt raises `DuplicateVerificationReviewError` (module level) / reports `ERROR duplicate_review` (real CLI level), and no record is overwritten.
+- `show-verification-review` afterward still reports the original `accepted` decision, byte-for-byte unchanged.
+
+### Prompt 55.6: No revoke operation exists — a deliberate scope boundary, not an oversight
+
+The tester inspects `VerificationReviewStore`'s own public API and this milestone's own task specification for any revoke/replace capability.
+
+Expected behavior:
+- `VerificationReviewStore` has no `revoke` method — confirmed via `hasattr`.
+- The only way to record a different decision for a given verification is a full adapter `reset`, which clears the entire session, not a targeted replace.
+
+### Prompt 55.7: The required disclosure is present, fixed, and identical regardless of decision
+
+The tester records one review of each decision type and inspects each one's own `boundary` field and the real CLI's `review-verification`/`show-verification-review` output.
+
+Expected behavior:
+- `boundary` is byte-for-byte identical across `accepted`/`rejected`/`inconclusive` records.
+- The real CLI output includes, verbatim: "This review records a human conclusion." and "The system is not determining whether the repair is correct." — exactly the milestone's own required disclosure text.
+
+### Prompt 55.8: Reviewing does not mutate any approval store or prior repair/application state
+
+The tester completes a full real chain (plan → draft → all three approvals → apply-repair → verify-repair → confirm → execute) against a real, on-disk temp workspace, records the lengths of every approval store and the identity of `last_repair_draft`/`last_application_result`, then calls `review-verification`.
+
+Expected behavior:
+- Every approval store's length is unchanged after `review-verification`.
+- `last_repair_draft` and `last_application_result` are the SAME objects (identity-checked, not merely equal) after `review-verification`.
+
+### Prompt 55.9: Reviewing does not trigger execution
+
+The tester records the adapter's `mvp_session.stage` and `last_result` immediately before calling `review-verification`, then compares them immediately after.
+
+Expected behavior:
+- `mvp_session.stage` is unchanged — no new proposal, confirmation, or execution occurred.
+- `last_result` is the SAME object (identity-checked) — no new execution was performed as a side effect of recording a review.
+
+### Prompt 55.10: Architectural proof — verification and repair modules remain fully independent of the review layer
+
+The tester inspects `git diff --stat` for `scripts/gauss_verification_execution.py` and `scripts/gauss_repair_application.py` after this milestone, and inspects which non-CLI module(s) import `gauss_verification_review`.
+
+Expected behavior:
+- Both `scripts/gauss_verification_execution.py` and `scripts/gauss_repair_application.py` show zero diff from this milestone.
+- No module other than `scripts/gauss_code_assistant_cli.py` (the repository's top-level orchestrator, which legitimately imports every layer it dispatches to, exactly as `54.10` already established for the prior milestone) imports `gauss_verification_review` — confirming the review layer depends on verification, and verification remains completely unaware the review layer exists.

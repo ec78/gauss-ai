@@ -1988,6 +1988,193 @@ def test_133_verify_repair_regression_ordinary_execution_unaffected() -> None:
         adapter.close()
 
 
+# ---------------------------------------------------------------------------
+# v0.65.0 Verification Review and Outcome Recording
+# ---------------------------------------------------------------------------
+
+
+def _complete_verification_via_cli(adapter: "cli.InteractiveMvpAdapter", *, fake_mode: str = "--fake-success") -> None:
+    """Drives apply-repair -> verify-repair -> confirm -> execute so a real,
+    completed verification (and therefore a real ComparisonSummary) exists
+    for review-verification/show-verification-review to act on."""
+    _apply_repair_via_cli(adapter)
+    verify_out = _joined(_run(adapter, f"verify-repair {fake_mode}"))
+    request_hash = [line.split(": ", 1)[1] for line in verify_out.splitlines() if line.startswith("request_hash:")][0]
+    _run(adapter, f"confirm {request_hash}")
+    _run(adapter, "execute")
+
+
+def test_134_review_verification_before_verify_repair() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        out = _joined(_run(adapter, "review-verification --decision accepted"))
+        check("review-verification before verify-repair reports no_verification_request", "ERROR no_verification_request" in out)
+        adapter.close()
+
+
+def test_135_review_verification_before_execution_completes() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _apply_repair_via_cli(adapter)
+        _run(adapter, "verify-repair --fake-success")
+        out = _joined(_run(adapter, "review-verification --decision accepted"))
+        check("review-verification before confirm/execute reports verification_not_completed", "ERROR verification_not_completed" in out)
+        adapter.close()
+
+
+def test_136_review_verification_accepted() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _complete_verification_via_cli(adapter, fake_mode="--fake-success")
+        out = _joined(_run(adapter, 'review-verification --decision accepted --notes "Repair confirmed working" --reviewed-by tester1'))
+        check("review discloses human-conclusion framing", "This review records a human conclusion." in out)
+        check("review discloses system is not determining correctness", "The system is not determining whether the repair is correct." in out)
+        check("decision recorded as accepted", "decision: accepted" in out)
+        check("notes carried through", "notes: Repair confirmed working" in out)
+        check("reviewed_by carried through", "reviewed_by: tester1" in out)
+        check("review_id present", "review_id: " in out)
+        check("comparison_summary_digest present", "comparison_summary_digest: " in out)
+        adapter.close()
+
+
+def test_137_review_verification_rejected() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _complete_verification_via_cli(adapter, fake_mode="--fake-failure")
+        out = _joined(_run(adapter, "review-verification --decision rejected"))
+        check("decision recorded as rejected", "decision: rejected" in out)
+        adapter.close()
+
+
+def test_138_review_verification_inconclusive() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _complete_verification_via_cli(adapter, fake_mode="--fake-unknown-error")
+        out = _joined(_run(adapter, "review-verification --decision inconclusive"))
+        check("decision recorded as inconclusive", "decision: inconclusive" in out)
+        adapter.close()
+
+
+def test_139_review_verification_invalid_decision_rejected() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _complete_verification_via_cli(adapter)
+        out = _joined(_run(adapter, "review-verification --decision maybe"))
+        check("an invalid decision value is rejected with a usage error", "ERROR usage" in out)
+        adapter.close()
+
+
+def test_140_review_verification_missing_decision_rejected() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _complete_verification_via_cli(adapter)
+        out = _joined(_run(adapter, "review-verification"))
+        check("a missing --decision is rejected with a usage error", "ERROR usage" in out)
+        adapter.close()
+
+
+def test_141_duplicate_review_verification_rejected() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _complete_verification_via_cli(adapter)
+        _run(adapter, "review-verification --decision accepted")
+        out = _joined(_run(adapter, "review-verification --decision rejected"))
+        check("a second review for the same verification reports a duplicate error", "ERROR duplicate_review" in out)
+        first_out = _joined(_run(adapter, "show-verification-review"))
+        check("the original accepted decision is unchanged after the rejected duplicate attempt", "decision: accepted" in first_out)
+        adapter.close()
+
+
+def test_142_show_verification_review_before_review_recorded() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _complete_verification_via_cli(adapter)
+        out = _joined(_run(adapter, "show-verification-review"))
+        check("show-verification-review before review-verification reports no_verification_review", "ERROR no_verification_review" in out)
+        adapter.close()
+
+
+def test_143_show_verification_review_before_verify_repair() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        out = _joined(_run(adapter, "show-verification-review"))
+        check("show-verification-review before verify-repair reports no_verification_request", "ERROR no_verification_request" in out)
+        adapter.close()
+
+
+def test_144_show_verification_review_after_review_recorded() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _complete_verification_via_cli(adapter)
+        review_out = _joined(_run(adapter, "review-verification --decision accepted --reviewed-by tester2"))
+        show_out = _joined(_run(adapter, "show-verification-review"))
+        review_id = [line.split(": ", 1)[1] for line in review_out.splitlines() if line.startswith("review_id:")][0]
+        check("show-verification-review reports the exact same review_id just recorded", f"review_id: {review_id}" in show_out)
+        check("show-verification-review reports the same decision", "decision: accepted" in show_out)
+        check("show-verification-review reports the same reviewed_by", "reviewed_by: tester2" in show_out)
+        adapter.close()
+
+
+def test_145_review_verification_does_not_mutate_approval_stores_or_repair_draft() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _complete_verification_via_cli(adapter)
+        draft_before = adapter.last_repair_draft
+        application_result_before = adapter.last_application_result
+        strategy_len_before = len(adapter._repair_approval_store)  # noqa: SLF001
+        draft_len_before = len(adapter._draft_approval_store)  # noqa: SLF001
+        application_len_before = len(adapter._application_approval_store)  # noqa: SLF001
+        _run(adapter, "review-verification --decision accepted")
+        check("last_repair_draft is the SAME object after review-verification", adapter.last_repair_draft is draft_before)
+        check("last_application_result is the SAME object after review-verification", adapter.last_application_result is application_result_before)
+        check("strategy approval store length unchanged", len(adapter._repair_approval_store) == strategy_len_before)  # noqa: SLF001
+        check("draft approval store length unchanged", len(adapter._draft_approval_store) == draft_len_before)  # noqa: SLF001
+        check("application approval store length unchanged", len(adapter._application_approval_store) == application_len_before)  # noqa: SLF001
+        adapter.close()
+
+
+def test_146_review_verification_does_not_trigger_execution() -> None:
+    """A review must never itself start a new execution -- confirmed by
+    checking the mvp_session stage (and thus the execution machinery) is
+    completely untouched by review-verification, which reads existing
+    interpretation state only."""
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _complete_verification_via_cli(adapter)
+        stage_before = adapter.mvp_session.stage
+        last_result_before = adapter.last_result
+        _run(adapter, "review-verification --decision accepted")
+        check("mvp_session.stage unchanged after review-verification", adapter.mvp_session.stage == stage_before)
+        check("last_result unchanged after review-verification (no new execution occurred)", adapter.last_result is last_result_before)
+        adapter.close()
+
+
+def test_147_reset_clears_verification_review_state() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _complete_verification_via_cli(adapter)
+        _run(adapter, "review-verification --decision accepted")
+        _run(adapter, "reset")
+        out = _joined(_run(adapter, "show-verification-request"))
+        check("reset clears the verification request (review is unreachable without it)", "ERROR no_verification_request" in out)
+        check("verification review store is empty after reset", len(adapter._verification_review_store) == 0)  # noqa: SLF001
+        adapter.close()
+
+
+def test_148_show_verification_request_unaffected_by_review_layer() -> None:
+    """Regression: the v0.64.0 show-verification-request command's own
+    output must be byte-for-byte unaffected by the v0.65.0 refactor that
+    factored its comparison computation into a shared helper."""
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _complete_verification_via_cli(adapter, fake_mode="--fake-success")
+        out = _joined(_run(adapter, "show-verification-request"))
+        check("comparison_available true", "comparison_available: true" in out)
+        check("comparison is succeeded_after_failure", "comparison: succeeded_after_failure" in out)
+        check("evidence-only disclosure present", "does not conclude the repair is correct" in out)
+        adapter.close()
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

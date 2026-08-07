@@ -42,6 +42,7 @@ import gauss_repair_draft_approval as draft_approval  # noqa: E402
 import gauss_repair_planner as repair_planner  # noqa: E402
 import gauss_orchestration_state_store as store_mod  # noqa: E402
 import gauss_verification_execution as verification_mod  # noqa: E402
+import gauss_verification_review as review_mod  # noqa: E402
 import gauss_workspace as workspace_mod  # noqa: E402
 import gauss_workspace_file_reader as file_reader_mod  # noqa: E402
 
@@ -237,6 +238,12 @@ class InteractiveMvpAdapter:
         # left to compare the verification run against.
         self.last_verification_request: verification_mod.VerificationExecutionRequest | None = None
         self._original_execution_interpretation: interpreter.ExecutionInterpretation | None = None
+        # v0.65.0: process-local store of verification-review decisions --
+        # exactly as durable (i.e. not) as the other three approval/decision
+        # stores. Reviewing requires an already-completed verification
+        # (a real ComparisonSummary); there is no revoke operation (see
+        # gauss_verification_review.py's own module docstring).
+        self._verification_review_store = review_mod.VerificationReviewStore()
         self._turn_counter = 0
 
     # ------------------------------------------------------------------
@@ -330,6 +337,10 @@ class InteractiveMvpAdapter:
                 return True, self._verify_repair(args)
             if command == "show-verification-request":
                 return True, self._show_verification_request(args)
+            if command == "review-verification":
+                return True, self._review_verification(args)
+            if command == "show-verification-review":
+                return True, self._show_verification_review(args)
             if command == "read":
                 return True, self._read(args)
             if command == "provenance":
@@ -348,7 +359,7 @@ class InteractiveMvpAdapter:
 
     def _help(self) -> list[str]:
         return [
-            "GAUSS Code Assistant Interactive MVP Adapter (v0.64.0 alpha)",
+            "GAUSS Code Assistant Interactive MVP Adapter (v0.65.0 alpha)",
             f"Execution backend: {self.backend_label}",
             "Commands:",
             "  help",
@@ -383,6 +394,8 @@ class InteractiveMvpAdapter:
             "  show-application-result",
             "  verify-repair [--fake-success|--fake-failure|--fake-timeout|--fake-unknown-error]",
             "  show-verification-request",
+            "  review-verification --decision {accepted|rejected|inconclusive} [--notes TEXT] [--reviewed-by NAME]",
+            "  show-verification-review",
             "  read <relative-path>",
             "  provenance",
             "  status",
@@ -1568,6 +1581,25 @@ class InteractiveMvpAdapter:
         )
         return lines
 
+    def _verification_executed(self) -> bool:
+        return (
+            self.mvp_session is not None
+            and self.mvp_session.stage in (mvp.CodeAssistantStage.EXECUTED, mvp.CodeAssistantStage.RESPONDED)
+            and self.last_result is not None
+        )
+
+    def _current_comparison_summary(self) -> "verification_mod.ComparisonSummary | None":
+        """Recomputes the comparison for the CURRENT verification run, if
+        one has actually completed -- reused by both `show-verification-
+        request` (v0.64.0) and `review-verification`/`show-verification-
+        review` (v0.65.0) so a review can only ever be built against a
+        genuinely completed verification. Pure read; never mutates adapter
+        state."""
+        if not self._verification_executed() or self._original_execution_interpretation is None:
+            return None
+        verification_interpretation = interpreter.interpret_execution(self._build_execution_evidence())
+        return verification_mod.compare_execution_outcomes(self._original_execution_interpretation, verification_interpretation)
+
     def _show_verification_request(self, args: list[str]) -> list[str]:
         if self.last_verification_request is None:
             return ["ERROR no_verification_request: run 'verify-repair' first."]
@@ -1585,16 +1617,8 @@ class InteractiveMvpAdapter:
                 f"created_at: {request.created_at}",
             ]
         )
-        verification_executed = (
-            self.mvp_session is not None
-            and self.mvp_session.stage in (mvp.CodeAssistantStage.EXECUTED, mvp.CodeAssistantStage.RESPONDED)
-            and self.last_result is not None
-        )
-        if verification_executed and self._original_execution_interpretation is not None:
-            verification_interpretation = interpreter.interpret_execution(self._build_execution_evidence())
-            summary = verification_mod.compare_execution_outcomes(
-                self._original_execution_interpretation, verification_interpretation
-            )
+        summary = self._current_comparison_summary()
+        if summary is not None:
             lines.extend(
                 [
                     "comparison_available: true",
@@ -1607,7 +1631,7 @@ class InteractiveMvpAdapter:
                     "correct, assign a success probability, or infer statistical correctness.",
                 ]
             )
-        elif verification_executed:
+        elif self._verification_executed():
             lines.append(
                 "comparison_available: false (no original execution evidence was captured before this "
                 "verification run started)"
@@ -1615,6 +1639,86 @@ class InteractiveMvpAdapter:
         else:
             lines.append("comparison_available: false (run 'confirm' then 'execute' to complete the verification execution first)")
         return lines
+
+    def _parse_review_verification_args(self, args: list[str]) -> "dict[str, str] | str":
+        """Parses `--decision {accepted|rejected|inconclusive} [--notes TEXT]
+        [--reviewed-by NAME]`. Returns a dict on success, or an error message
+        string on invalid input. `decision` is always a value the human
+        caller supplies -- this parser never infers it from any evidence."""
+        parsed: dict[str, str] = {"decision": "", "notes": "", "reviewed_by": "interactive-cli-user"}
+        i = 0
+        while i < len(args):
+            token = args[i]
+            if token == "--decision" and i + 1 < len(args):
+                parsed["decision"] = args[i + 1]
+                i += 2
+            elif token == "--notes" and i + 1 < len(args):
+                parsed["notes"] = args[i + 1]
+                i += 2
+            elif token == "--reviewed-by" and i + 1 < len(args):
+                parsed["reviewed_by"] = args[i + 1]
+                i += 2
+            else:
+                return f"ERROR usage: unrecognized review-verification option {token!r}"
+        if parsed["decision"] not in {d.value for d in review_mod.ReviewDecision}:
+            return (
+                "ERROR usage: review-verification --decision {accepted|rejected|inconclusive} "
+                "[--notes TEXT] [--reviewed-by NAME]"
+            )
+        return parsed
+
+    def _review_verification(self, args: list[str]) -> list[str]:
+        if self.last_verification_request is None:
+            return ["ERROR no_verification_request: run 'verify-repair' first."]
+        parsed = self._parse_review_verification_args(args)
+        if isinstance(parsed, str):
+            return [parsed]
+        summary = self._current_comparison_summary()
+        if summary is None:
+            return [
+                "ERROR verification_not_completed: run 'confirm' then 'execute' to complete the "
+                "verification execution before reviewing it.",
+            ]
+        verification_execution_id = self.last_verification_request.verification_execution_id
+        decision = review_mod.ReviewDecision(parsed["decision"])
+        method = {
+            review_mod.ReviewDecision.ACCEPTED: self._verification_review_store.accept,
+            review_mod.ReviewDecision.REJECTED: self._verification_review_store.reject,
+            review_mod.ReviewDecision.INCONCLUSIVE: self._verification_review_store.mark_inconclusive,
+        }[decision]
+        try:
+            record = method(
+                verification_execution_id=verification_execution_id,
+                comparison_summary=summary,
+                reviewed_by=parsed["reviewed_by"],
+                reviewed_at=str(self._clock()),
+                notes=parsed["notes"],
+            )
+        except review_mod.DuplicateVerificationReviewError as exc:
+            return [f"ERROR duplicate_review: {exc}"]
+        return self._render_verification_review(record)
+
+    def _render_verification_review(self, record: "review_mod.VerificationReview") -> list[str]:
+        return [
+            "This review records a human conclusion.",
+            "The system is not determining whether the repair is correct.",
+            f"review_id: {record.review_id}",
+            f"verification_execution_id: {record.verification_execution_id}",
+            f"comparison_summary_digest: {record.comparison_summary_digest}",
+            f"decision: {record.decision}",
+            f"notes: {record.notes}",
+            f"reviewed_by: {record.reviewed_by}",
+            f"reviewed_at: {record.reviewed_at}",
+            f"boundary: {record.boundary}",
+        ]
+
+    def _show_verification_review(self, args: list[str]) -> list[str]:
+        if self.last_verification_request is None:
+            return ["ERROR no_verification_request: run 'verify-repair' first."]
+        record = self._verification_review_store.get_review(self.last_verification_request.verification_execution_id)
+        if record is None:
+            return ["ERROR no_verification_review: run 'review-verification' first."]
+        return self._render_verification_review(record)
 
     def _read(self, args: list[str]) -> list[str]:
         if self.active_workspace_id is None:
@@ -1712,6 +1816,7 @@ class InteractiveMvpAdapter:
         self.last_application_result = None
         self.last_verification_request = None
         self._original_execution_interpretation = None
+        self._verification_review_store = review_mod.VerificationReviewStore()
         return [
             "ADAPTER: Cleared active request, proposal, confirmation, and result.",
             "workspace_retained: true",
@@ -1909,7 +2014,7 @@ class InteractiveMvpAdapter:
 
 
 def run_repl(adapter: InteractiveMvpAdapter) -> int:
-    print("GAUSS Code Assistant Interactive MVP Adapter (v0.64.0 alpha)")
+    print("GAUSS Code Assistant Interactive MVP Adapter (v0.65.0 alpha)")
     print(f"Execution backend: {adapter.backend_label}")
     if adapter.runner_backend == REAL_GAUSS_BACKEND:
         print("Real GAUSS execution is enabled only after hash-bound confirm + execute.")
