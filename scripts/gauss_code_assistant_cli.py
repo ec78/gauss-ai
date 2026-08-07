@@ -41,6 +41,7 @@ import gauss_repair_draft as repair_draft_mod  # noqa: E402
 import gauss_repair_draft_approval as draft_approval  # noqa: E402
 import gauss_repair_planner as repair_planner  # noqa: E402
 import gauss_orchestration_state_store as store_mod  # noqa: E402
+import gauss_repair_session_summary as session_summary_mod  # noqa: E402
 import gauss_verification_execution as verification_mod  # noqa: E402
 import gauss_verification_review as review_mod  # noqa: E402
 import gauss_workspace as workspace_mod  # noqa: E402
@@ -341,6 +342,8 @@ class InteractiveMvpAdapter:
                 return True, self._review_verification(args)
             if command == "show-verification-review":
                 return True, self._show_verification_review(args)
+            if command == "show-repair-session":
+                return True, self._show_repair_session(args)
             if command == "read":
                 return True, self._read(args)
             if command == "provenance":
@@ -359,7 +362,7 @@ class InteractiveMvpAdapter:
 
     def _help(self) -> list[str]:
         return [
-            "GAUSS Code Assistant Interactive MVP Adapter (v0.65.0 alpha)",
+            "GAUSS Code Assistant Interactive MVP Adapter (v0.66.0 alpha)",
             f"Execution backend: {self.backend_label}",
             "Commands:",
             "  help",
@@ -396,6 +399,7 @@ class InteractiveMvpAdapter:
             "  show-verification-request",
             "  review-verification --decision {accepted|rejected|inconclusive} [--notes TEXT] [--reviewed-by NAME]",
             "  show-verification-review",
+            "  show-repair-session",
             "  read <relative-path>",
             "  provenance",
             "  status",
@@ -1720,6 +1724,117 @@ class InteractiveMvpAdapter:
             return ["ERROR no_verification_review: run 'review-verification' first."]
         return self._render_verification_review(record)
 
+    def _show_repair_session(self, args: list[str]) -> list[str]:
+        """Read-only composition of the current session's own evidence --
+        v0.66.0. Gathers whichever objects the session already has,
+        recomputing interpretation/diagnosis/comparison the exact same way
+        `_interpret()`/`_diagnose()`/`_current_comparison_summary()` already
+        do (no new recomputation logic), then calls the real
+        `build_repair_session_summary(...)`. Never mutates adapter state."""
+        interpretation: "interpreter.ExecutionInterpretation | None" = None
+        diagnosis: "diagnostics.DiagnosticAssessment | None" = None
+        if self.last_result is not None:
+            evidence = self._build_execution_evidence()
+            interpretation = interpreter.interpret_execution(evidence)
+            diagnosis = diagnostics.diagnose_execution(evidence)
+        strategy_approval = (
+            self._repair_approval_store.get_decision(self.last_repair_plan) if self.last_repair_plan is not None else None
+        )
+        draft_approval_record = (
+            self._draft_approval_store.get_decision(self.last_repair_draft) if self.last_repair_draft is not None else None
+        )
+        application_approval_record = (
+            self._application_approval_store.get_decision(self.last_repair_draft)
+            if self.last_repair_draft is not None else None
+        )
+        comparison_summary = self._current_comparison_summary()
+        verification_review = (
+            self._verification_review_store.get_review(self.last_verification_request.verification_execution_id)
+            if self.last_verification_request is not None else None
+        )
+        summary = session_summary_mod.build_repair_session_summary(
+            original_execution=self.last_result,
+            interpretation=interpretation,
+            diagnosis=diagnosis,
+            repair_plan=self.last_repair_plan,
+            strategy_approval=strategy_approval,
+            repair_draft=self.last_repair_draft,
+            draft_approval=draft_approval_record,
+            application_approval=application_approval_record,
+            application_result=self.last_application_result,
+            verification_request=self.last_verification_request,
+            comparison_summary=comparison_summary,
+            verification_review=verification_review,
+            generated_at=str(self._clock()),
+        )
+        return self._render_repair_session_summary(summary)
+
+    def _render_repair_session_summary(self, summary: "session_summary_mod.RepairSessionSummary") -> list[str]:
+        lines = [
+            summary.boundary,
+            f"generated_at: {summary.generated_at}",
+            f"current_status: {summary.current_status}",
+            "== original execution ==",
+        ]
+        if summary.original_execution is not None:
+            lines.append(f"execution_status: {summary.original_execution.execution_status}")
+            lines.append(f"analysis_status: {summary.original_execution.analysis_status}")
+        else:
+            lines.append("not yet occurred")
+        lines.append("== interpretation ==")
+        if summary.interpretation is not None:
+            lines.append(f"completion_status: {summary.interpretation.completion_status}")
+            lines.append(f"error_code: {summary.interpretation.error_code}")
+        else:
+            lines.append("not yet occurred")
+        lines.append("== diagnosis ==")
+        if summary.diagnosis is not None:
+            lines.append(f"diagnostic_status: {summary.diagnosis.diagnostic_status}")
+            lines.append(f"confidence: {summary.diagnosis.confidence}")
+        else:
+            lines.append("not yet occurred")
+        lines.append("== repair planning ==")
+        if summary.repair_plan is not None:
+            lines.append(f"repair_status: {summary.repair_plan.repair_status}")
+            lines.append(f"repair_strategy: {summary.repair_plan.repair_strategy}")
+        else:
+            lines.append("not yet occurred")
+        lines.append("== approvals ==")
+        lines.append(f"strategy_approval: {summary.strategy_approval.decision if summary.strategy_approval is not None else 'none'}")
+        lines.append(f"draft_approval: {summary.draft_approval.decision if summary.draft_approval is not None else 'none'}")
+        lines.append(
+            f"application_approval: {summary.application_approval.decision if summary.application_approval is not None else 'none'}"
+        )
+        lines.append("== application ==")
+        if summary.application_result is not None:
+            lines.append(f"outcome: {summary.application_result.outcome}")
+            lines.append(f"backup_created: {str(summary.application_result.backup is not None).lower()}")
+        else:
+            lines.append("not yet occurred")
+        lines.append("== verification execution ==")
+        if summary.verification_request is not None:
+            lines.append(f"verification_execution_id: {summary.verification_request.verification_execution_id}")
+        else:
+            lines.append("not yet occurred")
+        lines.append("== comparison ==")
+        if summary.comparison_summary is not None:
+            lines.append(f"comparison: {summary.comparison_summary.comparison}")
+            lines.append(f"observation: {summary.comparison_summary.observation}")
+        else:
+            lines.append("not available")
+        lines.append("== verification review ==")
+        if summary.verification_review is not None:
+            lines.append(f"decision: {summary.verification_review.decision}")
+        else:
+            lines.append("not yet recorded")
+        lines.append("== timeline ==")
+        if summary.timeline:
+            for entry in summary.timeline:
+                lines.append(f"  {entry.timestamp}  {entry.stage}: {entry.description}")
+        else:
+            lines.append("  (empty)")
+        return lines
+
     def _read(self, args: list[str]) -> list[str]:
         if self.active_workspace_id is None:
             return ["ERROR no_workspace: run 'workspace create' first."]
@@ -2014,7 +2129,7 @@ class InteractiveMvpAdapter:
 
 
 def run_repl(adapter: InteractiveMvpAdapter) -> int:
-    print("GAUSS Code Assistant Interactive MVP Adapter (v0.65.0 alpha)")
+    print("GAUSS Code Assistant Interactive MVP Adapter (v0.66.0 alpha)")
     print(f"Execution backend: {adapter.backend_label}")
     if adapter.runner_backend == REAL_GAUSS_BACKEND:
         print("Real GAUSS execution is enabled only after hash-bound confirm + execute.")

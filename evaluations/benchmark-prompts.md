@@ -6086,3 +6086,82 @@ The tester inspects `git diff --stat` for `scripts/gauss_verification_execution.
 Expected behavior:
 - Both `scripts/gauss_verification_execution.py` and `scripts/gauss_repair_application.py` show zero diff from this milestone.
 - No module other than `scripts/gauss_code_assistant_cli.py` (the repository's top-level orchestrator, which legitimately imports every layer it dispatches to, exactly as `54.10` already established for the prior milestone) imports `gauss_verification_review` — confirming the review layer depends on verification, and verification remains completely unaware the review layer exists.
+
+## Repair Session Summary
+
+Use Prompt IDs 56.1-56.10. These exercise the `v0.66.0` Repair Session Summary milestone: `scripts/gauss_repair_session_summary.py` is a read-only composition of evidence already produced by every prior milestone. It introduces no new workflow, no new approval, no new repair capability, no execution, no planning, no rerun, no rollback, no persistence, no durable session, and no mutation of anything.
+
+Benchmarks in this category must verify the summary holds references to genuinely existing objects (never copies), handles missing stages honestly (never fabricating or inferring one from another), orders its timeline correctly and deterministically, and mutates nothing in the process of composing itself.
+
+### Prompt 56.1: The summary holds the exact same objects, never copies
+
+The tester builds a full, real repair session (execution through verification review) and inspects every populated field on the resulting `RepairSessionSummary` against the original objects supplied.
+
+Expected behavior:
+- Every populated field (`original_execution`, `interpretation`, `diagnosis`, `repair_plan`, `strategy_approval`, `repair_draft`, `draft_approval`, `application_approval`, `application_result`, `verification_request`, `comparison_summary`, `verification_review`) is confirmed identical via Python's `is` operator, not `==` — proving no field is a reconstructed copy.
+
+### Prompt 56.2: Missing stages are handled honestly, never fabricated or inferred
+
+The tester builds a partial session (e.g. only a repair plan and a strategy approval, no draft) and inspects the resulting summary's remaining fields.
+
+Expected behavior:
+- Every field for a stage that did not occur is `None`, never a placeholder object, a synthesized default, or a value copied from an adjacent populated stage.
+- `current_status` reflects only the furthest genuinely populated stage.
+
+### Prompt 56.3: current_status reflects the furthest stage reached, ignoring earlier ones supplied alongside it
+
+The tester builds a session where every stage from execution through verification review is populated simultaneously, then inspects `current_status`.
+
+Expected behavior:
+- `current_status` names the review outcome (the furthest stage), never an earlier stage, even though every earlier stage's object was also supplied.
+
+### Prompt 56.4: Interpretation and diagnosis are always-derivable evidence, not opt-in state
+
+The tester runs only `execute` (never `interpret` or `diagnose` as separate commands) against the real CLI, then runs `show-repair-session`.
+
+Expected behavior:
+- Both the interpretation and diagnosis sections are populated in the summary, and `current_status` reports `diagnosed` — because both are pure, deterministic recomputations of the execution's own already-captured evidence, exactly like `show-verification-request`'s own on-demand comparison recomputation, not new analysis the tester must separately trigger.
+
+### Prompt 56.5: Timeline is fixed pipeline order, independent of call-site argument order
+
+The tester constructs the same full session's worth of objects twice, passing them to `build_repair_session_summary(...)` in normal pipeline order once and in reverse order the second time.
+
+Expected behavior:
+- Both calls produce a `timeline` with stages in the identical fixed pipeline sequence (strategy approval, repair draft, draft approval, application approval, application result, verification request, verification review) — proving the order comes from the module's own fixed logic, never from keyword-argument order.
+
+### Prompt 56.6: Timeline includes only genuinely timestamped stages
+
+The tester builds a session with execution, interpretation, diagnosis, and a repair plan populated, but nothing beyond that, and inspects the resulting timeline.
+
+Expected behavior:
+- The timeline is empty — execution, interpretation, diagnosis, and the repair plan carry no timestamp field anywhere in this architecture, and the module does not fabricate one to include them.
+
+### Prompt 56.7: The Application Gate is deliberately excluded from the summary
+
+The tester inspects `RepairSessionSummary`'s own fields and the real CLI's `show-repair-session` output for any gate-related section.
+
+Expected behavior:
+- No field named `application_gate` or similar exists on `RepairSessionSummary`; `show-repair-session`'s output contains no gate section. Gate re-evaluation still requires the tester to run `check-repair-application-gate` explicitly, since it depends on a freshly-supplied current source identity the summary has no sanctioned way to obtain.
+
+### Prompt 56.8: show-repair-session has no precondition; an empty session is honestly reported, not an error
+
+The tester runs `show-repair-session` as the very first command of a brand-new adapter session.
+
+Expected behavior:
+- No `ERROR` is produced. The output reports `current_status: no_execution`, every section reading `not yet occurred`/`none`/`not available`/`not yet recorded`, and an empty timeline.
+
+### Prompt 56.9: show-repair-session mutates nothing
+
+The tester completes a full real repair-to-review chain, records the identity of every cached object and the length of every approval/review store, calls `show-repair-session`, then re-checks every identity and length.
+
+Expected behavior:
+- Every cached object (`last_repair_draft`, `last_application_result`, `last_verification_request`, `last_result`) is the SAME object (identity-checked) after `show-repair-session`.
+- Every approval/review store's length is unchanged.
+
+### Prompt 56.10: Architectural proof — the summary is the one authorized cross-cutting module
+
+The tester inspects `git diff --stat` for every module the summary reads, and inspects which module(s) import `gauss_repair_session_summary`.
+
+Expected behavior:
+- Every module the summary reads (`gauss_code_assistant_workflow`, `gauss_execution_interpreter`, `gauss_execution_diagnostics`, `gauss_repair_planner`, `gauss_repair_approval`, `gauss_repair_draft`, `gauss_repair_draft_approval`, `gauss_repair_application_approval`, `gauss_repair_application`, `gauss_verification_execution`, `gauss_verification_review`) shows zero diff from this milestone.
+- No module other than `scripts/gauss_code_assistant_cli.py` imports `gauss_repair_session_summary` — confirming nothing in the pipeline depends on, or is aware of, the summary layer.

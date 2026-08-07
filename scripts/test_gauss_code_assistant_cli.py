@@ -2175,6 +2175,137 @@ def test_148_show_verification_request_unaffected_by_review_layer() -> None:
         adapter.close()
 
 
+# ---------------------------------------------------------------------------
+# v0.66.0 Repair Session Summary
+# ---------------------------------------------------------------------------
+
+
+def test_149_show_repair_session_empty_session() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        out = _joined(_run(adapter, "show-repair-session"))
+        check("boundary discloses read-only framing", "read-only summary" in out)
+        check("current_status is no_execution", "current_status: no_execution" in out)
+        check("original execution not yet occurred", "not yet occurred" in out)
+        check("approvals all none", "strategy_approval: none" in out and "draft_approval: none" in out and "application_approval: none" in out)
+        check("timeline empty", "(empty)" in out)
+        adapter.close()
+
+
+def test_150_show_repair_session_after_ordinary_execution_only() -> None:
+    """Interpretation and diagnosis are pure functions of the execution's
+    own already-captured evidence -- exactly like show-verification-
+    request's own on-demand comparison recomputation (v0.64.0/v0.65.0) --
+    so both are always derivable, and reported, once execution has
+    occurred, even though the tester never separately ran 'interpret' or
+    'diagnose'. current_status therefore reports the furthest DERIVABLE
+    stage ('diagnosed'), not merely 'executed'."""
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        request_hash = _plan_success(adapter)
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        out = _joined(_run(adapter, "show-repair-session"))
+        check("current_status is diagnosed", "current_status: diagnosed" in out)
+        check("original execution section populated", "execution_status:" in out)
+        check("interpretation section populated", "completion_status:" in out)
+        check("diagnosis section populated", "diagnostic_status:" in out)
+        check("repair planning not yet occurred", "== repair planning ==\nnot yet occurred" in out)
+        adapter.close()
+
+
+def test_151_show_repair_session_after_full_application_chain() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _apply_repair_via_cli(adapter)
+        out = _joined(_run(adapter, "show-repair-session"))
+        check("current_status is application_applied", "current_status: application_applied" in out)
+        check("strategy_approval is approved", "strategy_approval: approved" in out)
+        check("draft_approval is approved", "draft_approval: approved" in out)
+        check("application_approval is approved", "application_approval: approved" in out)
+        check("application outcome applied", "outcome: applied" in out)
+        check("verification execution not yet occurred", "== verification execution ==\nnot yet occurred" in out)
+        check("comparison not available", "not available" in out)
+        check("verification review not yet recorded", "not yet recorded" in out)
+        adapter.close()
+
+
+def test_152_show_repair_session_after_full_verification_and_review() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _complete_verification_via_cli(adapter, fake_mode="--fake-success")
+        _run(adapter, "review-verification --decision accepted --reviewed-by tester3")
+        out = _joined(_run(adapter, "show-repair-session"))
+        check("current_status is verification_reviewed:accepted", "current_status: verification_reviewed:accepted" in out)
+        check("comparison section populated", "comparison: succeeded_after_failure" in out)
+        check("verification review section populated", "decision: accepted" in out)
+        check("timeline is non-empty", "(empty)" not in out)
+        adapter.close()
+
+
+def test_153_show_repair_session_does_not_mutate_any_state() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _complete_verification_via_cli(adapter)
+        _run(adapter, "review-verification --decision accepted")
+        draft_before = adapter.last_repair_draft
+        application_result_before = adapter.last_application_result
+        verification_request_before = adapter.last_verification_request
+        strategy_len_before = len(adapter._repair_approval_store)  # noqa: SLF001
+        draft_len_before = len(adapter._draft_approval_store)  # noqa: SLF001
+        application_len_before = len(adapter._application_approval_store)  # noqa: SLF001
+        review_len_before = len(adapter._verification_review_store)  # noqa: SLF001
+        last_result_before = adapter.last_result
+        _run(adapter, "show-repair-session")
+        check("last_repair_draft unchanged (same object)", adapter.last_repair_draft is draft_before)
+        check("last_application_result unchanged (same object)", adapter.last_application_result is application_result_before)
+        check("last_verification_request unchanged (same object)", adapter.last_verification_request is verification_request_before)
+        check("last_result unchanged (same object, no new execution)", adapter.last_result is last_result_before)
+        check("strategy store length unchanged", len(adapter._repair_approval_store) == strategy_len_before)  # noqa: SLF001
+        check("draft store length unchanged", len(adapter._draft_approval_store) == draft_len_before)  # noqa: SLF001
+        check("application store length unchanged", len(adapter._application_approval_store) == application_len_before)  # noqa: SLF001
+        check("review store length unchanged", len(adapter._verification_review_store) == review_len_before)  # noqa: SLF001
+        adapter.close()
+
+
+def test_154_show_repair_session_timeline_ordering() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _complete_verification_via_cli(adapter)
+        _run(adapter, "review-verification --decision accepted")
+        out = _joined(_run(adapter, "show-repair-session"))
+        timeline_start = out.index("== timeline ==")
+        timeline_text = out[timeline_start:]
+        stage_positions = [timeline_text.index(stage) for stage in (
+            "strategy_approval", "repair_draft", "draft_approval", "application_approval",
+            "application_result", "verification_request", "verification_review",
+        )]
+        check("timeline stages appear in fixed pipeline order in CLI output", stage_positions == sorted(stage_positions))
+        adapter.close()
+
+
+def test_155_reset_clears_session_state_for_show_repair_session() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _apply_repair_via_cli(adapter)
+        _run(adapter, "reset")
+        out = _joined(_run(adapter, "show-repair-session"))
+        check("current_status is no_execution after reset", "current_status: no_execution" in out)
+        check("approvals all none after reset", "strategy_approval: none" in out)
+        adapter.close()
+
+
+def test_156_show_repair_session_does_not_require_any_prior_stage() -> None:
+    """Unlike every other command in this CLI, show-repair-session has no
+    'run X first' precondition -- an empty session is a valid, honestly
+    reported session, not an error."""
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        out = _joined(_run(adapter, "show-repair-session"))
+        check("no ERROR prefix anywhere in the output", "ERROR" not in out)
+        adapter.close()
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)
