@@ -26,6 +26,7 @@ venv/
 .cache/
 dist/
 build/
+*.egg-info/
 
 # Durable orchestration state store (v0.36.0) -- generated SQLite database,
 # never checked in; tests always use a disposable temporary path instead.

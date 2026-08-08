@@ -1,0 +1,67 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gauss-ai"
+version = "0.67.0"
+description = "GAUSS Code Assistant -- alpha CLI for a governed, human-in-the-loop GAUSS repair workflow."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "Eric Clower" }]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+]
+
+[project.urls]
+Homepage = "https://github.com/ec78/gauss-ai"
+Repository = "https://github.com/ec78/gauss-ai"
+
+[project.scripts]
+gauss-ai = "gauss_ai_cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "scripts" }
+py-modules = [
+    "check_evaluation_tracking",
+    "check_release_readiness",
+    "command_doc_lookup",
+    "gauss_ai_cli",
+    "gauss_ai_config",
+    "gauss_ai_doctor",
+    "gauss_ai_guided_repair",
+    "gauss_ai_init",
+    "gauss_code_assistant_cli",
+    "gauss_code_assistant_workflow",
+    "gauss_code_execution",
+    "gauss_environment_check",
+    "gauss_error_catalog",
+    "gauss_execution_adapter",
+    "gauss_execution_diagnostics",
+    "gauss_execution_interpreter",
+    "gauss_execution_session",
+    "gauss_execution_workflow",
+    "gauss_orchestration_state_store",
+    "gauss_package_inspection",
+    "gauss_repair_application",
+    "gauss_repair_application_approval",
+    "gauss_repair_application_gate",
+    "gauss_repair_approval",
+    "gauss_repair_draft",
+    "gauss_repair_draft_approval",
+    "gauss_repair_planner",
+    "gauss_repair_session_summary",
+    "gauss_runtime_orchestration",
+    "gauss_verification_execution",
+    "gauss_verification_review",
+    "gauss_workspace",
+    "gauss_workspace_file_reader",
+    "validate_all_evidence",
+    "validate_lookup_evidence",
+]

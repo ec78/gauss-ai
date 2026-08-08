@@ -1,12 +1,79 @@
 # GAUSS AI
 
-**GAUSS AI** is an open architecture for building specialized AI agents that assist with GAUSS programming, econometrics, documentation, education, and product development.
+**GAUSS AI** is an open architecture for building specialized AI agents that assist with GAUSS programming, econometrics, documentation, education, and product development. Its flagship, most-implemented product is the **GAUSS Code Assistant** — a governed, human-in-the-loop tool that helps you diagnose and repair GAUSS code, one file at a time, with an explicit approval at every step.
 
-Rather than creating a single, monolithic chatbot, this project defines a collection of focused agents that share a common knowledge base, evaluation framework, and development standards.
+## Current Alpha Status
+
+**Alpha — intended for controlled testing.** As of `v0.67.0`, the GAUSS Code Assistant is installable (`pip install -e .`), has a guided repair command (`gauss-ai repair <file.gss>`), and has been classified **ready for controlled private alpha** (see `planning/v0.67.0-productization-and-alpha-packaging.md` for the full readiness assessment). It is not production software, does not claim GAUSS correctness, and does not run autonomously.
+
+## Key Capabilities
+
+- **Diagnose real GAUSS execution failures** against a verified error catalog (real-runtime-reproduced and/or official-documentation-sourced — see [docs/gauss-error-catalog.md](docs/gauss-error-catalog.md)).
+- **Propose a bounded, single-file repair** — never multi-file, never autonomous, never applied without your explicit approval at every layer.
+- **Apply that repair** through a fail-closed transaction with a mandatory, never-overwritten backup.
+- **Verify the repair** by re-executing the repaired file through the same, unmodified execution pipeline and comparing the evidence — never a fabricated correctness claim.
+- **Record your own review** of that evidence, and summarize the entire session in one place (`gauss-ai repair`'s own closing output, or `show-repair-session`).
+
+## Safety Model
+
+Every approval layer is independent, digest-bound, and never inferred: execution confirmation, strategy approval, draft approval, application approval, the application gate, explicit file reading, and human verification review. The guided `gauss-ai repair` command may simplify *navigation* through these steps, but it never simplifies *authorization* — see [docs/alpha-tester-guide.md](docs/alpha-tester-guide.md)'s "Current safety boundaries" for the complete list, and `planning/v0.67.0-productization-and-alpha-packaging.md` for the tests that prove the guided command cannot bypass any of them.
+
+## Installation
+
+```
+pip install -e .
+gauss-ai version
+```
+
+See [docs/alpha-installation.md](docs/alpha-installation.md) for prerequisites, supported environment, and full configuration details.
+
+## Quickstart (fake mode, no GAUSS required)
+
+```
+gauss-ai init
+gauss-ai doctor
+gauss-ai repair examples/alpha-demo/broken.gss --fake-result failure
+```
+
+Walks you through the entire pipeline — confirm execution, approve a repair strategy, describe and approve a draft, approve applying it, verify, and record your review — in well under 10 minutes. See [docs/alpha-quickstart.md](docs/alpha-quickstart.md) for the full walkthrough.
+
+## Real GAUSS Mode
+
+Once you have a configured, valid **terminal** GAUSS executable (`tgauss`/`tgauss.exe` — never the GUI `gauss.exe`):
+
+```
+gauss-ai config set gauss-executable C:\gauss26\tgauss.exe
+gauss-ai repair <your-file.gss> --runner gauss
+```
+
+Every approval step is identical to fake mode; only the underlying runner changes. Verified against **GAUSS 26.1.1 on Windows** — see [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) for the exact supported scope.
+
+## Guided Repair Workflow
+
+`gauss-ai repair <file.gss>` is orchestration/UI only over the exact same modules the lower-level command-by-command REPL uses (`python scripts/gauss_code_assistant_cli.py`, still fully supported — see the "Recommended reasoning sequence" section below for its full command reference). It hides internal identifiers by default and shows plain-language next steps; digests and trace IDs are still shown at every approval point, since they are what you are actually approving.
+
+## Documentation
+
+- [docs/alpha-installation.md](docs/alpha-installation.md) — prerequisites, install, configuration, first-run setup.
+- [docs/alpha-quickstart.md](docs/alpha-quickstart.md) — under 10 minutes to a successful fake-mode repair.
+- [docs/alpha-troubleshooting.md](docs/alpha-troubleshooting.md) — common setup and workflow problems.
+- [docs/alpha-tester-guide.md](docs/alpha-tester-guide.md) — what to test, safety boundaries, how to report issues.
+- [docs/alpha-feedback-template.md](docs/alpha-feedback-template.md) — structured bug/feedback template.
+- [examples/alpha-demo/](examples/alpha-demo/) — a small, ready-to-run demo scenario.
+
+## Known Limitations
+
+See [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) for the complete, current list. In short: single-file repair only, no autonomous repair, no rerun/rollback beyond the one mandatory backup, no durable sessions, no telemetry, and real execution verified on Windows/GAUSS 26.1.1 only.
+
+## Development / Architecture
+
+Everything below this point is deep implementation and milestone history — useful for contributors and for understanding exactly how a guarantee above is enforced, not required reading to use the tool.
 
 ## Current Status
 
-Current milestone: `v0.66.0` - Repair Session Summary. A read-only composition of evidence already produced by every prior milestone: `scripts/gauss_repair_session_summary.py` introduces no new workflow, no new approval, no new repair capability, no execution, no planning, no rerun, no rollback, no persistence, and no mutation of anything. `RepairSessionSummary` (immutable) holds twelve `Optional` reference fields — original execution, interpretation, diagnosis, repair plan, strategy/draft/application approvals, repair draft, application result, verification request, comparison, and verification review — each the *exact same object* the caller passed in, never a copy (proven by `is` identity, not `==`, throughout the test suite). It is the one deliberate exception to this repository's minimal-dependency rule: its entire purpose is composition across the full pipeline, so it imports every stage's own module, yet contains zero logic beyond composition — no I/O, no hashing, no mutation. `timeline` lists only the seven stages that carry a genuine timestamp, always in fixed pipeline order (never sorted by timestamp value, since timestamps are opaque and frequently identical under a fixed clock); `current_status` names the furthest stage actually reached. The Application Gate is deliberately excluded — it requires a live freshness check, not cached evidence. New CLI command `show-repair-session`, with no precondition: an empty session is honestly reported, not an error. See [docs/gauss-repair-session-summary.md](docs/gauss-repair-session-summary.md).
+Current milestone: `v0.67.0` - Productization and Alpha Packaging. Moves the GAUSS Code Assistant from capability development to an installable alpha product, without touching the core reasoning pipeline (Execution through Repair Session Summary, MVP-complete as of `v0.66.0`) or adding any new reasoning stage, approval layer, or autonomous behavior. `pyproject.toml` (`package-dir` pointed at the existing, untouched `scripts/` directory — no repository restructure) exposes a `gauss-ai` console-script entry point via a new, thin dispatcher (`scripts/gauss_ai_cli.py`) that calls the existing, unmodified `gauss_code_assistant_cli.main(...)` for its REPL path and never duplicates CLI implementation; `python scripts/gauss_code_assistant_cli.py` continues to work exactly as before. New commands: `gauss-ai version` (never launches GAUSS to report it — GAUSS version is parsed from the configured executable's own path string only), `gauss-ai doctor` (read-only PASS/WARN/FAIL environment diagnostics), `gauss-ai init` (idempotent first-run setup; never silently picks among multiple discovered GAUSS executables), `gauss-ai config show`/`set` (four settings plus a display preference, `~/.gauss-ai/config.json`, no secrets, CLI-arg > env-var > config-file > default precedence), and `gauss-ai repair <file.gss>` — a guided workflow that is orchestration/UI only, driving the exact same `InteractiveMvpAdapter.handle_line(...)` sequence the lower-level REPL uses, with every execution confirmation, strategy/draft/application approval, application-gate check, and verification review still requiring real, explicit, per-step confirmation; a dedicated test suite proves it cannot execute, approve, apply, or review anything automatically, cannot read any file other than the one named on its own command line, and never writes outside the workspace it creates (the original file is never modified). A new `examples/alpha-demo/` sample project, four new alpha docs (installation/quickstart/troubleshooting/tester-guide), and an extended feedback template round out the alpha-readiness package. All `57.x` benchmarks evaluated: 10/10 Passed at 4.0. See `planning/v0.67.0-productization-and-alpha-packaging.md` for the full architecture and readiness assessment.
+
+Previous milestone: `v0.66.0` - Repair Session Summary. A read-only composition of evidence already produced by every prior milestone: `scripts/gauss_repair_session_summary.py` introduces no new workflow, no new approval, no new repair capability, no execution, no planning, no rerun, no rollback, no persistence, and no mutation of anything. `RepairSessionSummary` (immutable) holds twelve `Optional` reference fields — original execution, interpretation, diagnosis, repair plan, strategy/draft/application approvals, repair draft, application result, verification request, comparison, and verification review — each the *exact same object* the caller passed in, never a copy (proven by `is` identity, not `==`, throughout the test suite). It is the one deliberate exception to this repository's minimal-dependency rule: its entire purpose is composition across the full pipeline, so it imports every stage's own module, yet contains zero logic beyond composition — no I/O, no hashing, no mutation. `timeline` lists only the seven stages that carry a genuine timestamp, always in fixed pipeline order (never sorted by timestamp value, since timestamps are opaque and frequently identical under a fixed clock); `current_status` names the furthest stage actually reached. The Application Gate is deliberately excluded — it requires a live freshness check, not cached evidence. New CLI command `show-repair-session`, with no precondition: an empty session is honestly reported, not an error. See [docs/gauss-repair-session-summary.md](docs/gauss-repair-session-summary.md).
 
 Previous milestone: `v0.65.0` - Verification Review and Outcome Recording. A human review layer over Verification Execution: `scripts/gauss_verification_review.py` records what a human concluded after inspecting a completed verification's own `ComparisonSummary` evidence — it never infers that conclusion automatically. `VerificationReview` (immutable) references only an already-completed verification via two opaque strings, `verification_execution_id` and a `comparison_summary_digest` (a new SHA-256 content fingerprint over `ComparisonSummary`'s own fields) — never the underlying `ComparisonSummary`, `VerificationExecutionRequest`, `ApplicationResult`, or `RepairDraft` objects directly. `decision` is always caller-supplied, one of `accepted`/`rejected`/`inconclusive`, exposed as three explicit `VerificationReviewStore` methods (`accept`/`reject`/`mark_inconclusive`); unlike every prior approval layer, there is deliberately **no revoke** — a second review for the same verification always raises `DuplicateVerificationReviewError`. A fixed boundary statement ("This review records a human conclusion... The system is not determining whether the repair is correct...") is present on every record and disclosed unconditionally by the CLI. New CLI commands `review-verification --decision {accepted|rejected|inconclusive}`/`show-verification-review`. `scripts/gauss_verification_execution.py` and `scripts/gauss_repair_application.py` both have zero diff. See [docs/gauss-verification-review.md](docs/gauss-verification-review.md).
 

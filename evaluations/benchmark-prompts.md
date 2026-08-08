@@ -6165,3 +6165,94 @@ The tester inspects `git diff --stat` for every module the summary reads, and in
 Expected behavior:
 - Every module the summary reads (`gauss_code_assistant_workflow`, `gauss_execution_interpreter`, `gauss_execution_diagnostics`, `gauss_repair_planner`, `gauss_repair_approval`, `gauss_repair_draft`, `gauss_repair_draft_approval`, `gauss_repair_application_approval`, `gauss_repair_application`, `gauss_verification_execution`, `gauss_verification_review`) shows zero diff from this milestone.
 - No module other than `scripts/gauss_code_assistant_cli.py` imports `gauss_repair_session_summary` — confirming nothing in the pipeline depends on, or is aware of, the summary layer.
+
+## Productization and Alpha Packaging
+
+Use Prompt IDs 57.1-57.10. These exercise the `v0.67.0` Productization and Alpha Packaging milestone: `pyproject.toml` plus a new `gauss-ai` console-script entry point, `version`/`doctor`/`init`/`config`/`repair` commands, and an alpha sample project/documentation set. No new reasoning stage, approval layer, durable session, or autonomous behavior was added; the guided `gauss-ai repair` command is orchestration/UI only over the existing, unmodified pipeline.
+
+Benchmarks in this category must verify real installation success in a disposable environment, correct configuration precedence, correct read-only diagnostics, and — most importantly — that the guided workflow cannot bypass any existing safety boundary.
+
+### Prompt 57.1: Clean-install CLI entry point
+
+The tester creates a disposable virtual environment, runs `pip install -e .` from a real checkout of this repository, and inspects whether the `gauss-ai` console-script entry point was created and is runnable.
+
+Expected behavior:
+- `pip install -e .` succeeds with exit code 0.
+- A `gauss-ai` executable exists in the venv's script directory and runs `gauss-ai version` successfully, printing the package version, Python version, and platform.
+
+### Prompt 57.2: First-run init
+
+The tester runs `gauss-ai init` against an empty configuration, with a scripted (non-interactive) sequence of answers, and inspects the resulting saved configuration.
+
+Expected behavior:
+- The workspace-parent directory, GAUSS executable (if confirmed), and default runner the tester explicitly answered are all saved to `~/.gauss-ai/config.json`.
+- Running `init` a second time with all-Enter/decline answers leaves the first run's saved values unchanged — idempotent, never corrupting.
+- When more than one plausible terminal executable is discovered, none is chosen automatically; the tester must select one by number.
+
+### Prompt 57.3: Doctor without GAUSS configured
+
+The tester runs `gauss-ai doctor` against a configuration with no GAUSS executable set at all.
+
+Expected behavior:
+- `gauss_executable_configured` and `gauss_executable_valid` both report `WARN`, never `FAIL` — an unconfigured executable is an expected, safe alpha state, not an error.
+- Overall status is `WARN`, and the command still exits 0.
+
+### Prompt 57.4: Doctor with valid GAUSS executable
+
+The tester configures a real, terminal-named (`tgauss.exe`) stub executable and runs `gauss-ai doctor`.
+
+Expected behavior:
+- `gauss_executable_configured` and `gauss_executable_valid` both report `PASS`.
+- The stub executable is never launched — its version is parsed from its own path string only, and the check's own message explicitly discloses "GAUSS was not launched."
+- Configuring a GUI-named (`gauss.exe`) executable instead reports `FAIL` with an explanatory message.
+
+### Prompt 57.5: Configuration precedence
+
+The tester sets a value in the config file, then overrides it with an environment variable, then overrides that with an explicit CLI argument, checking the resolved value and its reported source at each layer.
+
+Expected behavior:
+- With only a config-file value set, the resolved source is `config_file`.
+- Adding an environment variable overrides it; resolved source becomes `environment_variable`.
+- Adding an explicit CLI argument overrides both; resolved source becomes `cli_argument`.
+- With nothing set at all, the resolved source is `default`, never misreported as `config_file` merely because the safe default and an absent value happen to coincide.
+
+### Prompt 57.6: Guided fake repair workflow
+
+The tester runs `gauss-ai repair examples/alpha-demo/broken.gss --fake-result failure` against a real, on-disk temp workspace, answering every prompt to reach a full, applied, verified, and reviewed repair.
+
+Expected behavior:
+- The session reaches `current_status: verification_reviewed:accepted` (or whichever decision was typed), with the repair genuinely applied (`outcome: applied`, `backup_created: true`) and a real `succeeded_after_failure` comparison.
+- The original file at its real path is completely unmodified — proven byte-for-byte, not merely "the command didn't complain."
+
+### Prompt 57.7: Guided workflow preserves every approval boundary
+
+The tester runs the guided workflow multiple times, declining at each of the four approval points (execution confirmation, strategy approval, draft approval, application approval) in separate runs, and once via a genuinely stale application-gate scenario.
+
+Expected behavior:
+- Declining execution confirmation leaves `last_result` at `None` — nothing executed.
+- Declining strategy/draft/application approval records an explicit `declined` decision (never silently approved) and halts before the next stage.
+- A genuinely stale workspace file (mutated after drafting) causes the application gate to fail and halts the workflow before `apply-repair` is ever called.
+
+### Prompt 57.8: Installed CLI works outside repository root
+
+The tester runs the installed `gauss-ai` entry point from a working directory that is not the repository root and does not contain `scripts/` at all, and separately imports a core module directly with no `sys.path` manipulation.
+
+Expected behavior:
+- `gauss-ai version`, run from the unrelated directory, succeeds and prints the expected fields.
+- `import gauss_code_assistant_cli` succeeds directly, from the same unrelated directory, with no manual path setup — confirming the package does not depend on the repository's own current working directory.
+
+### Prompt 57.9: Alpha quickstart matches real behavior
+
+The tester follows `docs/alpha-quickstart.md` literally, command by command, against the real `examples/alpha-demo/` files, and compares the real output to what the guide describes.
+
+Expected behavior:
+- Every command in the guide runs successfully as written.
+- The "nothing to repair" path (`working.gss`) and the full repair path (`broken.gss`) both match the guide's own described behavior and stopping points.
+
+### Prompt 57.10: No productization bypass of safety architecture
+
+The tester inspects `git diff --stat` for every core pipeline module (`gauss_code_assistant_cli.py` through `gauss_repair_session_summary.py`) after this milestone, and inspects `scripts/gauss_ai_guided_repair.py`'s own source for any repair, execution, or approval logic of its own.
+
+Expected behavior:
+- Every core pipeline module shows zero diff from this milestone.
+- `gauss_ai_guided_repair.py` defines no `execute`/`apply_repair`/`propose_execution`/`evaluate_application_gate`/`interpret_execution`/`diagnose_execution`/`plan_repair` function of its own — every step is a call into the existing, unmodified adapter.
