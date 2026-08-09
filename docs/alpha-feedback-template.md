@@ -56,11 +56,19 @@ Your own recorded decision (`accepted` / `rejected` / `inconclusive`) and why.
 
 Paste the full output of `show-repair-session` (or the guided command's own closing summary) here. This is the single most useful artifact for reproducing what you saw.
 
+## Exported Diagnostic Bundle
+
+If you ran with `--export-session <path>` (see [docs/reporting-bugs.md](reporting-bugs.md)), attach the resulting JSON file here, or paste its contents. This is the preferred way to share configuration, runner, workspace, and full transcript in one artifact -- prefer it over manually retyping the above sections when available.
+
 ## Error Output
 
 ## Reproduction Steps
 
 Exact commands, in order, from a fresh session.
+
+## Screenshots (optional)
+
+Attach only if something in the terminal output is easier to show than to describe (e.g. formatting/wrapping issues). Not required -- text evidence above is normally sufficient.
 
 ## Severity
 

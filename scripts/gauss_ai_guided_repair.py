@@ -1,5 +1,6 @@
-"""Guided repair workflow for the productized `gauss-ai` CLI (v0.67.0),
-exposed as `gauss-ai repair <file.gss>`.
+"""Guided repair workflow for the productized `gauss-ai` CLI (`v0.67.0`;
+`--export-session` added in `v0.68.0`), exposed as `gauss-ai repair
+<file.gss>`.
 
 This module is orchestration/UI only. It implements no repair engine, no
 execution engine, and no approval logic of its own -- every step drives the
@@ -37,6 +38,7 @@ from pathlib import Path
 from typing import Callable
 
 import gauss_ai_config as config_mod
+import gauss_ai_export as export_mod
 import gauss_code_assistant_cli as cli_mod
 
 
@@ -286,6 +288,7 @@ def run_guided_repair(
     config: "config_mod.GaussAiConfig | None" = None,
     env: dict[str, str] | None = None,
     fake_result: str | None = None,
+    export_session: str | Path | None = None,
 ) -> "cli_mod.InteractiveMvpAdapter | None":
     """Runs the guided sequence against `adapter` if supplied (tests always
     supply their own, so they can inspect its state afterward), otherwise
@@ -297,10 +300,16 @@ def run_guided_repair(
     as `PendingRequest.fake_result` already is everywhere else in this
     codebase) -- it lets fake-mode testing/demo genuinely reach the repair
     pipeline, since the fake runner cannot infer success/failure from real
-    file content."""
+    file content.
+
+    `export_session`, if given, writes a read-only diagnostic bundle (see
+    `gauss_ai_export.py`) at the end of THIS SAME process -- not a durable
+    session; nothing is written anywhere unless this parameter is supplied,
+    and doing so changes no repair decision, only what is recorded to disk
+    afterward."""
     owns_adapter = adapter is None
+    resolved_config = config if config is not None else config_mod.load_config()
     if adapter is None:
-        resolved_config = config if config is not None else config_mod.load_config()
         runner = config_mod.resolve_default_runner(cli_value=cli_runner, config=resolved_config, env=env).value
         gauss_executable = config_mod.resolve_gauss_executable(
             cli_value=cli_gauss_executable, config=resolved_config, env=env
@@ -317,9 +326,32 @@ def run_guided_repair(
             print_fn("Run 'gauss-ai doctor' or 'gauss-ai init' to fix this before retrying.")
             return None
 
+    transcript: list[str] = []
+    real_print_fn = print_fn
+    if export_session is not None:
+        def _recording_print_fn(line: str) -> None:
+            transcript.append(line)
+            real_print_fn(line)
+        print_fn = _recording_print_fn
+
     try:
         _run_guided_sequence(adapter, file_path, prompt_fn=prompt_fn, print_fn=print_fn, fake_result=fake_result)
     finally:
+        if export_session is not None:
+            bundle = export_mod.build_diagnostic_bundle(
+                transcript=transcript,
+                config=resolved_config,
+                runner_backend=adapter.runner_backend,
+                gauss_executable=adapter.real_gauss_executable,
+                workspace_id=adapter.active_workspace_id,
+                workspace_root=(
+                    str(adapter.registry.get_workspace(adapter.active_workspace_id).root_path)
+                    if adapter.active_workspace_id is not None
+                    else None
+                ),
+            )
+            written_path = export_mod.write_diagnostic_bundle(bundle, export_session)
+            real_print_fn(f"Diagnostic bundle written to {written_path}")
         if owns_adapter:
             adapter.close()
     return adapter

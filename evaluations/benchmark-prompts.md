@@ -6256,3 +6256,82 @@ The tester inspects `git diff --stat` for every core pipeline module (`gauss_cod
 Expected behavior:
 - Every core pipeline module shows zero diff from this milestone.
 - `gauss_ai_guided_repair.py` defines no `execute`/`apply_repair`/`propose_execution`/`evaluate_application_gate`/`interpret_execution`/`diagnose_execution`/`plan_repair` function of its own — every step is a call into the existing, unmodified adapter.
+
+## Real Alpha Validation
+
+Use Prompt IDs 58.1-58.10. These exercise the `v0.68.0` Real GAUSS End-to-End Alpha Validation milestone: the complete, installed `gauss-ai` product validated against real GAUSS 26.1.1, exactly as an alpha tester would use it. No new reasoning stage, approval layer, durable session, or autonomous behavior was added — every scenario below drives the exact same, unmodified pipeline `v0.62.0`-`v0.67.0` already shipped.
+
+Every scenario is driven through the installed `gauss-ai` command (a dedicated venv with `pip install -e .` run against this repository), invoked as a subprocess exactly as a real tester's shell would — never a direct Python import. Real GAUSS is used only where explicitly required; every run file states which backend produced its evidence.
+
+### Prompt 58.1: Real GAUSS successful execution via the installed guided CLI
+
+The tester runs `gauss-ai repair <valid-file.gss> --runner gauss` (a real, configured terminal executable) against a genuinely valid GAUSS script, through the installed entry point.
+
+Expected behavior:
+- `execution_backend: REAL_GAUSS` and `gauss_ran: true` are both genuinely reported, with a real, nonzero `duration_seconds`.
+- Diagnosis correctly reports `diagnostic_status: no_failure_detected`; the repair plan reports `successful_execution_no_repair_needed`; the guided command stops immediately after the session summary, with no repair pipeline stage fabricated.
+
+### Prompt 58.2: Real GAUSS G0105 full repair-application-verification-review cycle
+
+The tester runs the full guided workflow against a real file that genuinely reproduces `G0105` against real GAUSS, through every stage: confirm, execute, diagnose, approve strategy, draft, approve draft, approve application, apply, verify (real GAUSS again), confirm, execute, review.
+
+Expected behavior:
+- The real, unmodified GAUSS runtime reports `error G0105 : Bad expression or missing arguments` for the original execution.
+- The repair is genuinely applied (`outcome: applied`, `backup_created: true`), genuinely re-verified against real GAUSS (`comparison: succeeded_after_failure`), and a real human review decision is recorded.
+
+### Prompt 58.3: Real GAUSS G0036 diagnosis via the installed CLI
+
+The tester drives the lower-level REPL (installed `gauss-ai --runner gauss`, no subcommand) through a real execution of the catalog's own exact verified `G0036` trigger.
+
+Expected behavior:
+- Real GAUSS reports `error G0036 : Matrix dimensions are incompatible`; the interpreter and diagnostic layers correctly classify it as `error_code: G0036`, matching the catalog's own claimed verification exactly, with catalog-verified possible causes listed.
+
+### Prompt 58.4: Real GAUSS G0025 diagnosis via the installed CLI
+
+The tester drives the lower-level REPL through a real execution of the catalog's own exact verified `G0025` trigger (`print undefinedvar;`).
+
+Expected behavior:
+- Real GAUSS reports `error G0025 : Undefined symbol: 'undefinedvar'`; the interpreter and diagnostic layers correctly classify it as `error_code: G0025`, matching the catalog's own claimed verification exactly.
+
+### Prompt 58.5: Real GAUSS output-file creation and explicit reading
+
+The tester drives the lower-level REPL through a real execution that writes a real output file (`output file = ... reset; ...; output off;`), then inspects it via `outputs` (metadata only) and `read <path>` (explicit content).
+
+Expected behavior:
+- `outputs` reports the real file's metadata without ever showing its content; `read <path>` shows the real, genuinely-written content only after being explicitly requested, bounded by `content_begin`/`content_end` markers.
+
+### Prompt 58.6: Fake-mode cancelled approval via the installed guided CLI
+
+The tester runs `gauss-ai repair <file> --fake-result failure` and declines at the strategy-approval prompt.
+
+Expected behavior:
+- The strategy decision is recorded as `declined` (never silently approved); `current_status` reports `strategy_declined`; no draft, application, or execution occurs beyond that point.
+
+### Prompt 58.7: Fake-mode blocked application / stale source detection via the installed guided CLI
+
+The tester runs the guided workflow and externally mutates the workspace copy between drafting and application approval, through the installed CLI subprocess.
+
+Expected behavior:
+- The application gate's `source_hash_matches` check fails (`all_passed: false`); `apply-repair` is never reached; the workflow halts and reports the precondition failure clearly.
+
+### Prompt 58.8: Completed-workspace rejection and reset via the installed CLI
+
+The tester drives the lower-level REPL through a completed execution, attempts a second `plan` without a fresh `request`, then runs `reset` followed by a fresh `workspace create`.
+
+Expected behavior:
+- The second `plan` attempt is rejected with a clear stage error; `reset` retains the workspace ID while clearing session state; the subsequent `workspace create` produces a genuinely new, different workspace ID.
+
+### Prompt 58.9: `--export-session` diagnostic bundle from a real GAUSS session
+
+The tester runs a full real-GAUSS guided repair with `--export-session <path>` and inspects the resulting bundle.
+
+Expected behavior:
+- The bundle is valid JSON containing configuration, runner backend (`gauss`), the real configured executable and its path-parsed version, workspace identity, and the complete real session transcript — with no secret-shaped field anywhere, and the terminal output the tester sees is identical to a run without `--export-session`, plus exactly one confirmation line.
+
+### Prompt 58.10: Architectural proof — no core pipeline module touched, fake vs. real never conflated
+
+The tester inspects `git diff --stat` for every core pipeline module after this milestone, and inspects every captured transcript for explicit `FAKE`/`REAL_GAUSS` backend disclosure.
+
+Expected behavior:
+- Every core pipeline module (`gauss_code_assistant_cli.py` through `gauss_repair_session_summary.py`, plus every `gauss_repair_*`/`gauss_verification_*` module) shows zero diff from this milestone.
+- Every captured transcript explicitly discloses `execution_backend: FAKE` or `execution_backend: REAL_GAUSS` and, for real runs, `gauss_ran: true` — no scenario silently substitutes one backend for the other.

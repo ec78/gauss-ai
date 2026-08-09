@@ -1,4 +1,5 @@
-"""Installed entry point for the productized `gauss-ai` CLI (v0.67.0).
+"""Installed entry point for the productized `gauss-ai` CLI (v0.67.0;
+`--export-session` added to `repair` in v0.68.0).
 
 `pip install -e .` exposes this module's `main()` as the `gauss-ai` console
 script (see `pyproject.toml`). It is a thin dispatcher only -- it duplicates
@@ -30,7 +31,7 @@ import gauss_ai_init as init_mod  # noqa: E402
 import gauss_code_assistant_cli as cli_mod  # noqa: E402
 import gauss_environment_check as environment_check_mod  # noqa: E402
 
-__version__ = "0.67.0"
+__version__ = "0.68.0"
 
 
 def _cmd_version(args: list[str]) -> int:
@@ -153,6 +154,14 @@ def _cmd_repair(args: list[str]) -> int:
         "since the fake runner cannot infer success/failure from real file content. Use 'failure' to "
         "demonstrate the repair pipeline in fake mode.",
     )
+    parser.add_argument(
+        "--export-session",
+        default=None,
+        metavar="PATH",
+        help="Write a read-only diagnostic bundle (config, runner, workspace, and the full session "
+        "transcript -- no secrets) to PATH at the end of this run, for attaching to a bug report. "
+        "Not a durable session -- written once, at the end of this same process.",
+    )
     parsed = parser.parse_args(args)
     adapter = guided_repair_mod.run_guided_repair(
         parsed.file,
@@ -160,6 +169,7 @@ def _cmd_repair(args: list[str]) -> int:
         cli_runner=parsed.runner,
         cli_workspace_parent=parsed.workspace_parent,
         fake_result=parsed.fake_result,
+        export_session=parsed.export_session,
     )
     return 0 if adapter is not None else 2
 
@@ -202,7 +212,7 @@ def _print_top_help() -> None:
     print("  gauss-ai init                         Guided first-run setup (idempotent)")
     print("  gauss-ai config show                  Show current configuration")
     print("  gauss-ai config set <key> <value>     Set one configuration value")
-    print("  gauss-ai repair <file.gss>              Guided repair workflow for one file")
+    print("  gauss-ai repair <file.gss> [--export-session PATH]  Guided repair workflow for one file")
     print("  gauss-ai [--runner ...] [...]           Launch the full interactive command set (REPL)")
     print("")
     print("Config keys: gauss-executable, workspace-parent, default-runner, default-timeout-seconds, verbose")

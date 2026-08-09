@@ -5,9 +5,11 @@ A minimal, two-file scenario for exercising the guided repair workflow (`gauss-a
 ## Files
 
 - **`working.gss`** — a valid, minimal GAUSS script (`x = 2 + 2; print x;`). Included as a baseline: running the guided workflow against it demonstrates the "nothing to repair" path (`repair-plan` reports `successful_execution_no_repair_needed`, and the guided command stops immediately after showing the session summary).
-- **`broken.gss`** — the same script with its statement terminator removed from the first line (`x = 2 + 2` instead of `x = 2 + 2;`). This is the exact fault class this repository's verified error catalog documents for `G0105` ("Bad expression or missing arguments") — a missing semicolon on the reported line or the line before it.
+- **`broken.gss`** — an incomplete assignment (`x = ;` instead of `x = 2 + 2;`). This is the **exact** fault class this repository's verified error catalog documents for `G0105` ("Bad expression or missing arguments") — reproduced directly against real GAUSS 26.1.1 as part of `v0.68.0`'s own real-GAUSS alpha validation, not merely inherited from the catalog's own separate verification.
 
-Both files use only GAUSS syntax already verified by this repository's own evidence (`scripts/gauss_error_catalog.py`'s `G0105` entry, reproduced via real `tgauss.exe -b` invocation per `planning/v0.28.0-real-gauss-invocation-research.md`). Neither file contains any destructive operation, file I/O, network access, or package/license activation.
+Both files use only GAUSS syntax already verified by this repository's own evidence (`scripts/gauss_error_catalog.py`'s `G0105` entry). Neither file contains any destructive operation, file I/O, network access, or package/license activation.
+
+**`v0.68.0` correction**: an earlier version of `broken.gss` used `x = 2 + 2` (a valid expression missing only its trailing semicolon) rather than the catalog's own exact verified trigger (`x = ;`, an incomplete right-hand side). Real-GAUSS validation in `v0.68.0` found that the earlier content actually produced a *different*, uncataloged real error (`G0008`, "Syntax error 'print'") rather than `G0105` — the system correctly and safely disclosed this as an uncataloged error with no fabricated cause or repair strategy, but the example itself no longer matched its own documented, real-verified fault class. `broken.gss` was corrected to the catalog's exact verified trigger, and re-confirmed end to end (real execution → diagnosis → repair → real verification → review) against real GAUSS 26.1.1.
 
 ## Expected workflow (fake mode)
 
@@ -23,7 +25,7 @@ The guided command will:
 2. Propose an execution plan from the file's real content and ask you to confirm it.
 3. Execute (fake), interpret, and diagnose the result.
 4. Propose a repair strategy and ask you to approve it.
-5. Ask you to describe the replacement: line `1`, replacement text `x = 2 + 2;`.
+5. Ask you to describe the replacement: line `1`, replacement text `x = 2 + 2;` (the same complete expression `working.gss` already uses).
 6. Ask you to approve the resulting draft, then approve applying it.
 7. Re-verify the application gate's checkable preconditions and apply the repair inside the workspace copy.
 8. Ask whether to verify the repair by executing the repaired file, then ask you to confirm that execution.
