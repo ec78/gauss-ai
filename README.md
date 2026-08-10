@@ -22,6 +22,19 @@ If you are an alpha tester, start at [docs/private-alpha-testing.md](docs/privat
 
 Every approval layer is independent, digest-bound, and never inferred: execution confirmation, strategy approval, draft approval, application approval, the application gate, explicit file reading, and human verification review. The guided `gauss-ai repair` command may simplify *navigation* through these steps, but it never simplifies *authorization* — see [docs/alpha-tester-guide.md](docs/alpha-tester-guide.md)'s "Current safety boundaries" for the complete list, and `planning/v0.67.0-productization-and-alpha-packaging.md` for the tests that prove the guided command cannot bypass any of them.
 
+## What Happens to My Files?
+
+Before you point this at your own code, here is exactly what it does and does not do to your files, in one place:
+
+- **Your original source file is never modified directly.** `gauss-ai repair <file.gss>` copies the named file into a fresh, contained workspace and works there instead.
+- **All repair work happens inside that workspace** — not in place, and not anywhere else on disk.
+- **Explicit approval is required before every stage** — execution, repair strategy, repair draft, and application are each a separate, independent decision; nothing is inferred or defaulted to "yes."
+- **Applying a repair always creates a mandatory, never-overwritten backup** before anything is written.
+- **Verification is evidence-based, not assumed.** The repaired file is re-executed and compared against the original run; the result is a factual comparison, never a fabricated correctness claim.
+- **You decide whether a repair is accepted.** The final verification review (`accepted` / `rejected` / `inconclusive`) is always your own recorded decision, never inferred automatically.
+
+See "Safety Model" above and [docs/alpha-tester-guide.md](docs/alpha-tester-guide.md) for the complete list of safety boundaries this summarizes.
+
 ## Installation
 
 ```
@@ -30,6 +43,49 @@ gauss-ai version
 ```
 
 See [docs/alpha-installation.md](docs/alpha-installation.md) for prerequisites, supported environment, and full configuration details.
+
+## First Time?
+
+If this is your first time using GAUSS AI:
+
+1. Install the package (above).
+2. Run first-run setup and a read-only health check:
+   ```
+   gauss-ai init
+   gauss-ai doctor
+   ```
+3. Try the included fake-mode demo — no GAUSS installation required (see "Typical First Session" below).
+4. Configure your real GAUSS executable: `gauss-ai config set gauss-executable <path to your tgauss/tgauss.exe>`.
+5. Run a repair on one of your own `.gss` files: `gauss-ai repair <your-file.gss> --runner gauss`.
+
+Each step is covered in more detail in the sections below.
+
+## Quick Start Flow
+
+```
+Installation
+     |
+     v
+Fake Mode (no GAUSS required)
+     |
+     v
+Real GAUSS Mode (your own executable)
+     |
+     v
+Your Own Files
+```
+
+Follow the sections below in this order: "Installation" (above) -> "Quickstart" (fake mode) -> "Real GAUSS Mode" -> "Expected Workflow" (your own files).
+
+## Typical First Session
+
+```
+gauss-ai init
+gauss-ai doctor
+gauss-ai repair examples/alpha-demo/broken.gss --fake-result failure
+```
+
+This walks through the entire repair pipeline in fake mode — no GAUSS installation required. Once you've completed it, configure your real GAUSS executable (`gauss-ai config set gauss-executable <path>`) and repair one of your own `.gss` files (`gauss-ai repair <your-file.gss> --runner gauss`). See "Quickstart" below for the full fake-mode walkthrough and "Real GAUSS Mode" for real execution.
 
 ## Quickstart (fake mode, no GAUSS required)
 
@@ -89,7 +145,7 @@ See [docs/reporting-bugs.md](docs/reporting-bugs.md) for the process and [docs/a
 
 See [docs/known-alpha-limitations.md](docs/known-alpha-limitations.md) for a tester-facing summary, or [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) for the complete, per-milestone historical record. In short: single-file repair only, no autonomous repair, no rerun/rollback beyond the one mandatory backup, no durable sessions, no telemetry, and real execution verified on Windows/GAUSS 26.1.1 only.
 
-## Development / Architecture
+## Architecture and Development History
 
 Everything below this point is deep implementation and milestone history — useful for contributors and for understanding exactly how a guarantee above is enforced, not required reading to use the tool.
 
@@ -532,25 +588,11 @@ Expert modules encapsulate reusable domain expertise so multiple specialized age
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for milestone-level planning. The current target is `v0.37.0`, Conversational Execution Workflow Integration, which connects the user-facing real-execution workflow to the durable orchestration controller through one new, dedicated module (`scripts/gauss_execution_workflow.py`) that is now the only permitted boundary between a conversational interaction and the controller — no agent, workflow, or response composer may call the Helper Adapter or execution helper directly. `38.x` benchmarks (30/30 passed at 4.0) validate this behavior, and 3 bounded real GAUSS invocations were run through the complete workflow layer. This milestone adds no new automatic-execution trigger: code presence or execution-adjacent wording alone still never executes, only an explicit, structured execution request together with code produces a plan, and only a fully independently validated, `request_hash`-bound confirmation event can execute it. General-purpose autonomous execution, production readiness, and cross-process resumption of a confirmed-but-not-yet-invoked request all remain unestablished; Advisory Mode remains the assistant's fully-supported default regardless of execution status.
+See [ROADMAP.md](ROADMAP.md) for the full, milestone-by-milestone history. Looking forward from the current `v0.68.0` Private Alpha:
 
-### Phase 1
-
-* Build the GAUSS Code Assistant.
-* Connect authoritative knowledge sources.
-* Develop benchmark evaluations.
-* Improve prompt engineering.
-
-### Phase 2
-
-* Add retrieval and tool integrations.
-* Support package-aware development.
-* Add automated code review.
-* Improve testing and validation.
-
-### Phase 3
-
-* Introduce specialized agents.
-* Support collaborative multi-agent workflows.
-* Integrate with GAUSS development tooling.
-* Expand automated documentation generation.
+* **Private Alpha** (current) — the installable product, validated end to end against real GAUSS, in the hands of a small group of testers.
+* **Real-world testing** — feedback from testers repairing their own `.gss` files, not just the bundled demo.
+* **Usability improvements** — narrowing any confusing wording or friction points real testers surface, without adding new approval layers, reasoning stages, or autonomous behavior.
+* **Expanded verified diagnostics** — growing the verified GAUSS error catalog and repair strategies as new real errors are encountered and reproduced.
+* **Platform expansion** — extending verified real-GAUSS execution beyond the current Windows/GAUSS 26.1.1 scope, as evidence supports it.
+* **Future public beta** — broader availability once private-alpha feedback and platform coverage support it; not yet scheduled or authorized.
