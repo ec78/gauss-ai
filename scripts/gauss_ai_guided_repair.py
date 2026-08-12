@@ -1,15 +1,16 @@
 """Guided repair workflow for the productized `gauss-ai` CLI (`v0.67.0`;
-`--export-session` added in `v0.68.0`), exposed as `gauss-ai repair
-<file.gss>`.
+`--export-session` added in `v0.68.0`; AI-assisted repair-draft candidates
+added in `v0.69.0`), exposed as `gauss-ai repair <file.gss>`.
 
 This module is orchestration/UI only. It implements no repair engine, no
-execution engine, and no approval logic of its own -- every step drives the
-SAME `InteractiveMvpAdapter.handle_line(...)` sequence a manual REPL tester
-would type, one command at a time. Guided UX may simplify navigation; it may
-not simplify authorization -- every approval, confirmation, and review point
-below requires a real, explicit answer from `prompt_fn` (real terminal input
-in normal use; a scripted, injectable callable in tests). No decision is
-ever inferred, defaulted to "yes," or skipped.
+execution engine, no candidate-generation logic, and no approval logic of
+its own -- every step drives the SAME `InteractiveMvpAdapter.handle_line(...)`
+sequence a manual REPL tester would type, one command at a time. Guided UX
+may simplify navigation; it may not simplify authorization -- every
+approval, confirmation, and review point below requires a real, explicit
+answer from `prompt_fn` (real terminal input in normal use; a scripted,
+injectable callable in tests). No decision is ever inferred, defaulted to
+"yes," or skipped.
 
 Sequence (a stage is skipped, with a plain-language explanation, only when
 the pipeline itself reports it does not apply -- e.g. the original execution
@@ -17,11 +18,22 @@ already succeeded, so `repair-plan` reports nothing to repair):
 
     workspace create -> request (from the named file's real content) -> plan
     -> [explicit confirm] -> execute -> interpret -> diagnose -> repair-plan
-    -> [explicit strategy approval] -> repair-draft -> [explicit draft approval]
+    -> [explicit strategy approval] -> suggest-repair-draft
+    -> [explicit candidate accept/edit/reject, or fully manual entry]
+    -> repair-draft -> [explicit draft approval]
     -> [explicit application approval] -> check-repair-application-gate
     -> apply-repair -> [explicit verification confirm] -> verify-repair
     -> confirm -> execute -> [explicit human review] -> review-verification
     -> show-repair-session
+
+`suggest-repair-draft` (v0.69.0) is assistive tooling only, not a new
+pipeline stage: it helps a human arrive at the exact same `repair-draft`/
+`apply-repair` arguments the pipeline already required, faster. Accepting a
+generated candidate still requires an explicit answer here, and the draft
+it produces still requires draft approval, application approval, the
+application gate, and verification/review, exactly as a fully manual draft
+would -- see `gauss_repair_draft_generation.py`'s own module docstring for
+the full boundary.
 
 The only file this module ever reads is the single file the caller named on
 the command line -- that naming IS the explicit authorization, exactly
@@ -174,13 +186,62 @@ def _run_guided_sequence(
         return
     _step_run(adapter, print_fn, f"approve-repair {plan_digest}")
 
+    # v0.69.0: always show the evidence that motivated the repair -- and any
+    # AI-assisted candidate draft(s) it makes possible -- BEFORE asking for
+    # any line-number or free-text input (alpha finding #3). This is
+    # assistive tooling only, not a new approval layer: a candidate becomes
+    # part of a real repair draft only via the SAME repair-draft/apply-
+    # repair commands and the SAME explicit approvals every path below
+    # already required.
     print_fn("")
-    print_fn("To draft a repair, describe the exact replacement for the affected line range.")
-    line_start = _prompt_int(prompt_fn, print_fn, "Line to start replacing (1-based): ")
-    line_end = _prompt_int(prompt_fn, print_fn, "Line to end replacing (1-based, inclusive): ")
-    operation = prompt_fn("Short description of the operation (e.g. 'insert missing semicolon'): ").strip()
-    description = prompt_fn("Longer description of the intended change: ").strip()
-    replacement_text = prompt_fn("Exact replacement text for that line range: ")
+    suggest_out = _step_run(adapter, print_fn, "suggest-repair-draft")
+    candidate_count = int(_extract(suggest_out, "candidate_count:") or "0")
+
+    chosen: "tuple[int, int, str, str, str] | None" = None
+    if candidate_count > 0:
+        if candidate_count == 1:
+            selection = "1"
+        else:
+            print_fn("")
+            selection = prompt_fn(
+                f"{candidate_count} candidate repair drafts were generated above. Choose one to review "
+                f"[1-{candidate_count}], or 'm' for fully manual entry: "
+            ).strip()
+        if selection.isdigit() and 1 <= int(selection) <= candidate_count:
+            idx = int(selection)
+            cand_line_start = int(_extract(suggest_out, f"candidate[{idx}].line_start:") or "0")
+            cand_line_end = int(_extract(suggest_out, f"candidate[{idx}].line_end:") or "0")
+            cand_operation = _extract(suggest_out, f"candidate[{idx}].operation:") or ""
+            cand_description = _extract(suggest_out, f"candidate[{idx}].description:") or ""
+            cand_replacement = _extract(suggest_out, f"candidate[{idx}].proposed_replacement_text:") or ""
+            print_fn("")
+            decision = prompt_fn(
+                "Approve this repair draft candidate? [a]ccept / [e]dit replacement text / "
+                "[r]eject and enter manually: "
+            ).strip().lower()
+            if decision == "a":
+                chosen = (cand_line_start, cand_line_end, cand_operation, cand_description, cand_replacement)
+            elif decision == "e":
+                print_fn(f"Current proposed replacement text: {cand_replacement}")
+                edited = prompt_fn(
+                    "Enter your replacement text for the same line range (press Enter to keep the proposed text): "
+                )
+                final_replacement = edited if edited.strip() else cand_replacement
+                chosen = (cand_line_start, cand_line_end, cand_operation, cand_description, final_replacement)
+            # else ('r' or anything else): fall through to fully manual entry below.
+
+    if chosen is not None:
+        line_start, line_end, operation, description, replacement_text = chosen
+        print_fn("")
+        print_fn(f"Using the accepted candidate: lines [{line_start}, {line_end}], replacement: {replacement_text}")
+    else:
+        print_fn("")
+        print_fn("Manual repair draft entry -- describe the exact replacement for the affected line range.")
+        line_start = _prompt_int(prompt_fn, print_fn, "Line to start replacing (1-based): ")
+        line_end = _prompt_int(prompt_fn, print_fn, "Line to end replacing (1-based, inclusive): ")
+        operation = prompt_fn("Short description of the operation (e.g. 'insert missing semicolon'): ").strip()
+        description = prompt_fn("Longer description of the intended change: ").strip()
+        replacement_text = prompt_fn("Exact replacement text for that line range: ")
 
     content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
     draft_cmd = (
@@ -204,6 +265,8 @@ def _run_guided_sequence(
     _step_run(adapter, print_fn, f"approve-repair-draft {draft_digest}")
 
     print_fn("")
+    print_fn("Exact replacement text that will be applied if you approve:")
+    print_fn(f"    {replacement_text}")
     if not _confirm(prompt_fn, "Approve APPLYING this exact draft to the file?"):
         _step_run(adapter, print_fn, f"decline-repair-application {draft_digest}")
         print_fn("Application declined. Guided repair stopped -- the file was not modified.")

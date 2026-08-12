@@ -48,6 +48,17 @@ def _broken_gss(tmp: str) -> Path:
     return p
 
 
+def _g0105_gss(tmp: str, content: bytes = b"x = ;\nprint x;\n") -> Path:
+    """A source file whose content genuinely matches the v0.69.0
+    AI-assisted candidate generator's own G0105 empty-assignment pattern --
+    distinct from `_broken_gss`, whose content deliberately does NOT match
+    it, so every pre-existing (v0.67.0-era) test keeps exercising the fully
+    manual entry path unchanged."""
+    p = Path(tmp) / "g0105.gss"
+    p.write_bytes(content)
+    return p
+
+
 def _scripted(answers: list[str]):
     queue = list(answers)
 
@@ -363,6 +374,141 @@ def test_18_missing_file_reports_error_and_does_not_create_a_workspace() -> None
             Path(tmp) / "does-not-exist.gss", adapter=adapter, prompt_fn=_scripted([]), print_fn=messages.append,
         )
         check("an error message was printed", any("does not exist" in m or "ERROR" in m for m in messages))
+        adapter.close()
+
+
+# ---------------------------------------------------------------------------
+# v0.69.0 AI-assisted repair-draft candidate generation
+# ---------------------------------------------------------------------------
+
+
+def test_19_candidate_accept_flow_applies_the_generated_replacement_text() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        source = _g0105_gss(tmp)
+        adapter = _new_adapter(tmp)
+        answers = _scripted(
+            ["y", "y", "a", "y", "y", "y", "y", "accepted", ""]
+            #  confirm  strategy  accept  draft  app  verify  confirm  review  notes
+        )
+        guided_mod.run_guided_repair(source, adapter=adapter, prompt_fn=answers, print_fn=lambda *_: None, fake_result="failure")
+        check("application was applied", adapter.last_application_result is not None and adapter.last_application_result.outcome == "applied")
+        assert adapter.active_workspace_id is not None
+        workspace_copy = Path(adapter.registry.get_workspace(adapter.active_workspace_id).root_path) / source.name
+        check("the workspace copy now contains the candidate's own placeholder text", workspace_copy.read_text(encoding="utf-8") == "x = 0;\nprint x;\n")
+        adapter.close()
+
+
+def test_20_candidate_edit_flow_uses_the_users_own_replacement_text() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        source = _g0105_gss(tmp)
+        adapter = _new_adapter(tmp)
+        answers = _scripted(
+            ["y", "y", "e", "x = 42;", "y", "y", "y", "y", "accepted", ""]
+            #  confirm  strategy  edit  new-text  draft  app  verify  confirm  review  notes
+        )
+        guided_mod.run_guided_repair(source, adapter=adapter, prompt_fn=answers, print_fn=lambda *_: None, fake_result="failure")
+        check("application was applied", adapter.last_application_result is not None and adapter.last_application_result.outcome == "applied")
+        assert adapter.active_workspace_id is not None
+        workspace_copy = Path(adapter.registry.get_workspace(adapter.active_workspace_id).root_path) / source.name
+        check("the workspace copy contains the user's edited text, not the candidate's own placeholder", workspace_copy.read_text(encoding="utf-8") == "x = 42;\nprint x;\n")
+        adapter.close()
+
+
+def test_21_candidate_reject_flow_falls_back_to_fully_manual_entry() -> None:
+    """Even when a candidate is available, the user must still be able to
+    reject it and construct a completely different draft manually."""
+    with tempfile.TemporaryDirectory() as tmp:
+        source = _g0105_gss(tmp)
+        adapter = _new_adapter(tmp)
+        answers = _scripted(
+            ["y", "y", "r", "1", "1", "manual op", "manual desc", "x = 99;", "y", "y", "y", "y", "accepted", ""]
+        )
+        guided_mod.run_guided_repair(source, adapter=adapter, prompt_fn=answers, print_fn=lambda *_: None, fake_result="failure")
+        check("application was applied", adapter.last_application_result is not None and adapter.last_application_result.outcome == "applied")
+        assert adapter.active_workspace_id is not None
+        workspace_copy = Path(adapter.registry.get_workspace(adapter.active_workspace_id).root_path) / source.name
+        check("the workspace copy contains the fully manual replacement text, not the candidate's", workspace_copy.read_text(encoding="utf-8") == "x = 99;\nprint x;\n")
+        adapter.close()
+
+
+def test_22_evidence_is_shown_before_manual_entry_even_when_no_candidate_matches() -> None:
+    """Alpha finding #3: the assistant must show the evidence that
+    motivated the repair before asking for line numbers -- true both when a
+    candidate is generated and, as here, when none is."""
+    with tempfile.TemporaryDirectory() as tmp:
+        source = _broken_gss(tmp)  # content does NOT match the G0105 pattern
+        adapter = _new_adapter(tmp)
+        messages: list[str] = []
+        answers = _scripted(["y", "y", "1", "1", "op", "desc", "x = 2 + 2;", "y", "y", "y", "y", "accepted", ""])
+        guided_mod.run_guided_repair(source, adapter=adapter, prompt_fn=answers, print_fn=messages.append, fake_result="failure")
+        evidence_index = next((i for i, m in enumerate(messages) if "GENERATION_BOUNDARY" in m), None)
+        manual_index = next((i for i, m in enumerate(messages) if "Manual repair draft entry" in m), None)
+        check("generation evidence was printed", evidence_index is not None)
+        check("the manual-entry prompt intro was printed", manual_index is not None)
+        if evidence_index is not None and manual_index is not None:
+            check("evidence appears before the manual-entry prompt, not after", evidence_index < manual_index)
+        adapter.close()
+
+
+def test_23_multiple_candidates_prompts_for_a_choice_and_applies_the_chosen_one() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        source = _g0105_gss(tmp, content=b"x = ;\ny = ;\n")
+        adapter = _new_adapter(tmp)
+        answers = _scripted(
+            ["y", "y", "2", "a", "y", "y", "y", "y", "accepted", ""]
+            #  confirm  strategy  choose#2  accept  draft  app  verify  confirm  review  notes
+        )
+        guided_mod.run_guided_repair(source, adapter=adapter, prompt_fn=answers, print_fn=lambda *_: None, fake_result="failure")
+        check("application was applied", adapter.last_application_result is not None and adapter.last_application_result.outcome == "applied")
+        assert adapter.active_workspace_id is not None
+        workspace_copy = Path(adapter.registry.get_workspace(adapter.active_workspace_id).root_path) / source.name
+        final_text = workspace_copy.read_text(encoding="utf-8")
+        check("the second line (the chosen candidate) was replaced", "y = 0;" in final_text)
+        check("the first line (not chosen) is untouched", final_text.splitlines()[0] == "x = ;")
+        adapter.close()
+
+
+def test_24_declining_application_approval_still_blocks_an_accepted_candidate() -> None:
+    """Safety regression through the new candidate path: accepting a
+    generated candidate does not, and must not, weaken the independent
+    application-approval gate."""
+    with tempfile.TemporaryDirectory() as tmp:
+        source = _g0105_gss(tmp)
+        adapter = _new_adapter(tmp)
+        answers = _scripted(["y", "y", "a", "y", "n"])
+        guided_mod.run_guided_repair(source, adapter=adapter, prompt_fn=answers, print_fn=lambda *_: None, fake_result="failure")
+        record = adapter._application_approval_store.get_decision(adapter.last_repair_draft)  # noqa: SLF001
+        check("the recorded application decision is 'declined'", record is not None and record.decision == "declined")
+        check("no application transaction was ever attempted", adapter.last_application_result is None)
+        adapter.close()
+
+
+def test_25_declining_draft_approval_still_blocks_an_accepted_candidate() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        source = _g0105_gss(tmp)
+        adapter = _new_adapter(tmp)
+        answers = _scripted(["y", "y", "a", "n"])
+        guided_mod.run_guided_repair(source, adapter=adapter, prompt_fn=answers, print_fn=lambda *_: None, fake_result="failure")
+        record = adapter._draft_approval_store.get_decision(adapter.last_repair_draft)  # noqa: SLF001
+        check("the recorded draft decision is 'declined'", record is not None and record.decision == "declined")
+        check("no application approval was ever recorded", len(adapter._application_approval_store) == 0)  # noqa: SLF001
+        adapter.close()
+
+
+def test_26_exact_replacement_text_is_shown_again_immediately_before_apply_approval() -> None:
+    """Small, additive safety-visibility improvement: whatever replacement
+    text is about to be applied (candidate-sourced or fully manual) is
+    printed once more right before the highest-stakes approval question."""
+    with tempfile.TemporaryDirectory() as tmp:
+        source = _g0105_gss(tmp)
+        adapter = _new_adapter(tmp)
+        messages: list[str] = []
+        answers = _scripted(["y", "y", "a", "y", "y", "y", "y", "accepted", ""])
+        guided_mod.run_guided_repair(source, adapter=adapter, prompt_fn=answers, print_fn=messages.append, fake_result="failure")
+        recap_index = next((i for i, m in enumerate(messages) if "Exact replacement text that will be applied" in m), None)
+        check("the recap line was printed", recap_index is not None)
+        if recap_index is not None:
+            check("the recap shows the exact accepted candidate text", "x = 0;" in messages[recap_index + 1])
         adapter.close()
 
 

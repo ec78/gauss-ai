@@ -2306,6 +2306,152 @@ def test_156_show_repair_session_does_not_require_any_prior_stage() -> None:
         adapter.close()
 
 
+# ---------------------------------------------------------------------------
+# v0.69.0 AI-assisted repair-draft candidate generation
+# ---------------------------------------------------------------------------
+
+
+def _plan_confirm_execute_repair_plan_approve(adapter: "cli.InteractiveMvpAdapter", code: str) -> str:
+    """Drives workspace create -> request --fake-failure <code> -> plan ->
+    confirm -> execute -> repair-plan -> approve-repair, returning the
+    approved plan's own digest. Stops immediately before drafting -- exactly
+    where 'suggest-repair-draft' is meant to be called. `code` must be safe
+    to pass through a single shlex-tokenized REPL line (no embedded real
+    newlines) -- exactly the same constraint every other request-driving
+    helper in this file already observes."""
+    _run(adapter, "workspace create")
+    _run(adapter, f"request --fake-failure {code}")
+    plan = _run(adapter, "plan")
+    request_hash = [line.split(": ", 1)[1] for line in plan if line.startswith("request_hash:")][0]
+    _run(adapter, f"confirm {request_hash}")
+    _run(adapter, "execute")
+    plan_out = _joined(_run(adapter, "repair-plan"))
+    plan_digest = [line.split(": ", 1)[1] for line in plan_out.splitlines() if line.startswith("plan_digest:")][0]
+    _run(adapter, f"approve-repair {plan_digest}")
+    return plan_digest
+
+
+def test_157_suggest_repair_draft_before_repair_plan_exists() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        out = _joined(_run(adapter, "suggest-repair-draft"))
+        check("reports no_repair_plan", "ERROR no_repair_plan" in out)
+        adapter.close()
+
+
+def test_158_suggest_repair_draft_produces_one_candidate_for_g0105_pattern() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _plan_confirm_execute_repair_plan_approve(adapter, "x = ;")
+        out = _joined(_run(adapter, "suggest-repair-draft"))
+        check("generation_status is candidates_available", "generation_status: candidates_available" in out)
+        check("candidate_count is 1", "candidate_count: 1" in out)
+        check("candidate targets line 1", "candidate[1].line_start: 1" in out)
+        check("candidate proposes x = 0;", "candidate[1].proposed_replacement_text: x = 0;" in out)
+        check("candidate confidence is medium", "candidate[1].confidence: medium" in out)
+        check("result is stored on the adapter", adapter.last_repair_draft_candidates is not None)
+        assert adapter.last_repair_draft_candidates is not None
+        check("stored result has exactly one candidate", len(adapter.last_repair_draft_candidates.candidates) == 1)
+        adapter.close()
+
+
+def test_159_suggest_repair_draft_honest_when_no_pattern_matches() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _plan_confirm_execute_repair_plan_approve(adapter, "x = 2 + 2; print x;")
+        out = _joined(_run(adapter, "suggest-repair-draft"))
+        check("generation_status is no_candidate_available", "generation_status: no_candidate_available" in out)
+        check("candidate_count is 0", "candidate_count: 0" in out)
+        check("discloses manual entry is required", "Manual draft entry" in out)
+        adapter.close()
+
+
+def test_160_reset_clears_repair_draft_candidates() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _plan_confirm_execute_repair_plan_approve(adapter, "x = ;")
+        _run(adapter, "suggest-repair-draft")
+        check("candidates were stored before reset", adapter.last_repair_draft_candidates is not None)
+        _run(adapter, "reset")
+        check("reset clears the stored candidates", adapter.last_repair_draft_candidates is None)
+        adapter.close()
+
+
+def test_161_suggest_repair_draft_never_executes_or_mutates_approval_stores() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        _plan_confirm_execute_repair_plan_approve(adapter, "x = ;")
+        strategy_len_before = len(adapter._repair_approval_store)  # noqa: SLF001
+        result_before = adapter.last_result
+        _run(adapter, "suggest-repair-draft")
+        check("strategy approval store is unaffected", strategy_len_before == len(adapter._repair_approval_store))  # noqa: SLF001
+        check("last_result object identity is unchanged (no re-execution)", adapter.last_result is result_before)
+        check("no repair draft was constructed as a side effect", adapter.last_repair_draft is None)
+        adapter.close()
+
+
+def test_162_accepted_candidate_is_fully_compatible_with_repair_draft_and_apply_repair() -> None:
+    """Proves an AI-suggested candidate's fields, used verbatim, flow through
+    the EXISTING, unmodified repair-draft/apply-repair pipeline exactly like
+    a manually typed draft would -- no special-casing exists anywhere for a
+    candidate-sourced draft."""
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        real_text = "x = ;\nprint x;\n"
+        _run(adapter, "workspace create")
+        assert adapter.active_workspace_id is not None
+        workspace = adapter.registry.get_workspace(adapter.active_workspace_id)
+        target = Path(workspace.root_path) / "model.gss"
+        target.write_bytes(real_text.encode("utf-8"))
+        real_hash = hashlib.sha256(real_text.encode("utf-8")).hexdigest()
+
+        _run(adapter, "request --fake-failure x = ;")
+        plan = _run(adapter, "plan")
+        request_hash = [line.split(": ", 1)[1] for line in plan if line.startswith("request_hash:")][0]
+        _run(adapter, f"confirm {request_hash}")
+        _run(adapter, "execute")
+        plan_out = _joined(_run(adapter, "repair-plan"))
+        plan_digest = [line.split(": ", 1)[1] for line in plan_out.splitlines() if line.startswith("plan_digest:")][0]
+        _run(adapter, f"approve-repair {plan_digest}")
+
+        _run(adapter, "suggest-repair-draft")
+        assert adapter.last_repair_draft_candidates is not None
+        candidate = adapter.last_repair_draft_candidates.candidates[0]
+        check(
+            "candidate line range matches the real file's own affected line",
+            candidate.line_start == 1 and candidate.line_end == 1,
+        )
+
+        draft_out = _run(
+            adapter,
+            f"repair-draft --path model.gss --content-hash {real_hash} "
+            f'--size {len(real_text.encode("utf-8"))} --line-start {candidate.line_start} '
+            f'--line-end {candidate.line_end} --operation "{candidate.suggested_operation}" '
+            f'--description "{candidate.suggested_description}"',
+        )
+        check("draft built from candidate fields validates cleanly", "validation_all_passed: true" in _joined(draft_out))
+        digest = _draft_digest_from(draft_out)
+        _run(adapter, f"approve-repair-draft {digest}")
+        _run(adapter, f"approve-repair-application {digest}")
+        apply_out = _joined(
+            _run(adapter, f'apply-repair {digest} --replacement-text "{candidate.proposed_replacement_text}"')
+        )
+        check("outcome is applied", "outcome: applied" in apply_out)
+        check(
+            "the file now contains exactly the candidate's proposed text",
+            target.read_text(encoding="utf-8") == "x = 0;\nprint x;\n",
+        )
+        adapter.close()
+
+
+def test_163_help_lists_suggest_repair_draft() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        adapter = _new_adapter(tmp)
+        out = _joined(_run(adapter, "help"))
+        check("help lists suggest-repair-draft", "suggest-repair-draft" in out)
+        adapter.close()
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

@@ -78,6 +78,30 @@ def test_01_accepts_a_writable_workspace_parent() -> None:
         check("the directory was actually created", target.is_dir())
 
 
+def test_02b_workspace_parent_write_failure_is_reported_as_not_saved() -> None:
+    """Alpha finding #1: a failed workspace-parent write must explicitly
+    say the value was NOT saved, both inline and in the end-of-run
+    summary -- setup must never silently continue as if it had saved."""
+    with tempfile.TemporaryDirectory() as tmp:
+        config_path = Path(tmp) / "config.json"
+        blocking_file = Path(tmp) / "blocking-file"
+        blocking_file.write_bytes(b"not a directory")
+        bad_target = blocking_file / "workspaces"  # a file component blocks path creation
+        messages: list[str] = []
+        answers = _scripted([str(bad_target), "", "fake"])
+        config = init_mod.run_init(
+            prompt_fn=answers, print_fn=messages.append, config_path=config_path, discovery_fn=_no_candidates
+        )
+        check("the failed path was not saved as workspace_parent", config.workspace_parent != str(bad_target))
+        joined = "\n".join(messages)
+        check("a WARNING about the unwritable path was printed", "WARNING" in joined)
+        check("the inline message explicitly says the value was NOT SAVED", "NOT SAVED" in joined)
+        check(
+            "the end-of-run summary also notes the failure",
+            "could not be used and was NOT saved" in joined,
+        )
+
+
 def test_02_keeps_existing_workspace_parent_on_empty_answer() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         config_path = Path(tmp) / "config.json"
@@ -214,6 +238,19 @@ def test_11_default_runner_invalid_choice_keeps_previous() -> None:
         answers = _scripted(["", "", "not-a-runner"])
         config = init_mod.run_init(prompt_fn=answers, print_fn=lambda *_: None, config_path=config_path, discovery_fn=_no_candidates)
         check("an invalid runner choice is rejected, previous kept", config.default_runner == "fake")
+
+
+def test_11b_runner_prompt_is_preceded_by_an_explanation_of_fake_and_gauss() -> None:
+    """Alpha finding #2: the runner-selection prompt must explain what
+    'fake' and 'gauss' mean before asking, for a first-time user."""
+    with tempfile.TemporaryDirectory() as tmp:
+        config_path = Path(tmp) / "config.json"
+        messages: list[str] = []
+        answers = _scripted(["", "", "fake"])
+        init_mod.run_init(prompt_fn=answers, print_fn=messages.append, config_path=config_path, discovery_fn=_no_candidates)
+        joined = "\n".join(messages).lower()
+        check("the explanation describes 'fake' as not running real GAUSS", "no real gauss is run" in joined)
+        check("the explanation describes 'gauss' as running the real executable", "runs your real, configured gauss executable" in joined)
 
 
 # ---------------------------------------------------------------------------

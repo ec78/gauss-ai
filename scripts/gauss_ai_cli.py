@@ -1,5 +1,7 @@
 """Installed entry point for the productized `gauss-ai` CLI (v0.67.0;
-`--export-session` added to `repair` in v0.68.0).
+`--export-session` added to `repair` in v0.68.0; `repair`'s guided draft
+step gained AI-assisted repair-draft candidates in v0.69.0, with no change
+to this dispatcher's own commands or arguments).
 
 `pip install -e .` exposes this module's `main()` as the `gauss-ai` console
 script (see `pyproject.toml`). It is a thin dispatcher only -- it duplicates
@@ -31,7 +33,7 @@ import gauss_ai_init as init_mod  # noqa: E402
 import gauss_code_assistant_cli as cli_mod  # noqa: E402
 import gauss_environment_check as environment_check_mod  # noqa: E402
 
-__version__ = "0.68.0"
+__version__ = "0.69.0"
 
 
 def _cmd_version(args: list[str]) -> int:

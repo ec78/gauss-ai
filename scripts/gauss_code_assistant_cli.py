@@ -39,6 +39,7 @@ import gauss_repair_application_gate as application_gate  # noqa: E402
 import gauss_repair_approval as repair_approval  # noqa: E402
 import gauss_repair_draft as repair_draft_mod  # noqa: E402
 import gauss_repair_draft_approval as draft_approval  # noqa: E402
+import gauss_repair_draft_generation as draft_gen_mod  # noqa: E402
 import gauss_repair_planner as repair_planner  # noqa: E402
 import gauss_orchestration_state_store as store_mod  # noqa: E402
 import gauss_repair_session_summary as session_summary_mod  # noqa: E402
@@ -210,6 +211,13 @@ class InteractiveMvpAdapter:
         # otherwise remembered between calls.
         self.last_repair_plan: repair_planner.RepairPlan | None = None
         self._repair_approval_store = repair_approval.RepairApprovalStore()
+        # v0.69.0: the most recent repair-draft candidate generation result
+        # this adapter session computed -- process-local only, exactly like
+        # last_repair_plan. Never consumed automatically by any other
+        # command: a candidate only ever reaches repair-draft/apply-repair
+        # through an explicit human accept/edit decision made by the caller
+        # (the guided workflow, or a manual REPL tester).
+        self.last_repair_draft_candidates: draft_gen_mod.RepairDraftGenerationResult | None = None
         # v0.59.0: the most recent repair draft this adapter session
         # constructed -- process-local only, exactly like last_repair_plan;
         # no draft is ever persisted, and no draft-approval mechanism reads
@@ -312,6 +320,8 @@ class InteractiveMvpAdapter:
                 return True, self._approve_repair(args)
             if command == "decline-repair":
                 return True, self._decline_repair(args)
+            if command == "suggest-repair-draft":
+                return True, self._suggest_repair_draft(args)
             if command == "repair-draft":
                 return True, self._repair_draft(args)
             if command == "show-repair-draft":
@@ -382,6 +392,9 @@ class InteractiveMvpAdapter:
             "              [--procedure NAME] [--args SUMMARY] [--line-start N] [--line-end N]",
             "  approve-repair <plan_digest>",
             "  decline-repair <plan_digest>",
+            "  suggest-repair-draft  -- bounded, deterministic candidate repair draft(s) from evidence, "
+            "diagnosis, the",
+            "                          verified error catalog, and the affected source code (proposals only)",
             "  repair-draft --path PATH --content-hash SHA256 --size N --line-start N --line-end N",
             "               --operation TEXT --description TEXT [--workspace-id ID] [--encoding utf-8]",
             "               [--procedure NAME] [--symbol NAME]",
@@ -977,6 +990,62 @@ class InteractiveMvpAdapter:
 
     def _decline_repair(self, args: list[str]) -> list[str]:
         return self._record_repair_decision(args, decision=repair_approval.ApprovalDecision.DECLINED, command_name="decline-repair")
+
+    def _render_repair_draft_candidates(self, result: "draft_gen_mod.RepairDraftGenerationResult") -> list[str]:
+        lines = [
+            "REAL_WORKFLOW: Bounded, deterministic repair-draft candidate generation from existing evidence, "
+            "diagnosis, the verified error catalog, and the affected source code only.",
+            f"GENERATION_BOUNDARY: {result.generation_boundary}",
+            f"generation_status: {result.status}",
+            f"summary: {result.summary}",
+            f"source_error_code: {result.source_error_code}",
+            f"candidate_count: {len(result.candidates)}",
+        ]
+        for item in result.limitations:
+            lines.append(f"limitation: {item}")
+        for index, candidate in enumerate(result.candidates, start=1):
+            lines.extend(
+                [
+                    f"candidate[{index}].candidate_id: {candidate.candidate_id}",
+                    f"candidate[{index}].pattern_id: {candidate.pattern_id}",
+                    f"candidate[{index}].error_code: {candidate.error_code}",
+                    f"candidate[{index}].line_start: {candidate.line_start}",
+                    f"candidate[{index}].line_end: {candidate.line_end}",
+                    f"candidate[{index}].affected_statement: {candidate.affected_statement}",
+                    f"candidate[{index}].proposed_replacement_text: {candidate.proposed_replacement_text}",
+                    f"candidate[{index}].operation: {candidate.suggested_operation}",
+                    f"candidate[{index}].description: {candidate.suggested_description}",
+                    f"candidate[{index}].reasoning: {candidate.reasoning}",
+                    f"candidate[{index}].confidence: {candidate.confidence}",
+                ]
+            )
+        if result.candidates:
+            lines.extend(
+                [
+                    "disclosure: Every candidate above is a PROPOSAL only -- none is applied, approved, "
+                    "drafted, or verified.",
+                    "disclosure: A candidate becomes part of a real repair draft only if you explicitly "
+                    "accept, or accept-and-edit, it -- 'repair-draft'/'apply-repair' still require your own "
+                    "explicit approval at every following step, exactly as before.",
+                ]
+            )
+        else:
+            lines.append(
+                "disclosure: No repair draft candidate was generated. Manual draft entry ('repair-draft ...') "
+                "is required."
+            )
+        return lines
+
+    def _suggest_repair_draft(self, args: list[str]) -> list[str]:
+        if self.last_repair_plan is None:
+            return ["ERROR no_repair_plan: run 'repair-plan' first."]
+        if self.last_result is None:
+            return ["ERROR no_result: run 'execute' before generating a repair draft candidate."]
+        source_code = self.pending_request.code if self.pending_request is not None else None
+        evidence = self._build_execution_evidence()
+        result = draft_gen_mod.generate_repair_draft_candidates(evidence, source_code)
+        self.last_repair_draft_candidates = result
+        return self._render_repair_draft_candidates(result)
 
     def _parse_repair_draft_args(self, args: list[str]) -> dict[str, object] | str:
         """Parses a small, bounded set of explicit repair-draft flags.
@@ -1925,6 +1994,7 @@ class InteractiveMvpAdapter:
         self.last_captured_output = CapturedProcessOutput()
         self.last_repair_plan = None
         self._repair_approval_store = repair_approval.RepairApprovalStore()
+        self.last_repair_draft_candidates = None
         self.last_repair_draft = None
         self._draft_approval_store = draft_approval.DraftApprovalStore()
         self._application_approval_store = application_approval.ApplicationApprovalStore()

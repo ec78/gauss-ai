@@ -47,9 +47,9 @@ gauss-ai repair examples/alpha-demo/broken.gss --fake-result failure
 
 1. **Confirm execution** of the proposed plan (`y`).
 2. **Approve the repair strategy** GAUSS AI proposes after diagnosing the failure (`y`).
-3. **Describe the fix**: line to start replacing (`1`), line to end replacing (`1`), a short operation label (e.g. `insert missing semicolon`), a longer description (e.g. `Add missing semicolon`), and the exact replacement text (`x = 2 + 2;`).
+3. **Review the AI-generated candidate.** `broken.gss`'s content matches this repository's own verified `G0105` pattern exactly, so a candidate repair draft is generated automatically and shown — the detected error, the affected line, a proposed replacement, the reasoning, and a confidence level. Type `a` to accept it as-is (`e` lets you edit the replacement text first; `r` falls back to describing the fix by hand, exactly as every prior alpha release required).
 4. **Approve the resulting draft** (`y`).
-5. **Approve applying** that draft to the file (`y`).
+5. **Approve applying** that draft to the file (`y`) — the exact replacement text about to be written is shown once more right before this question.
 6. **Choose whether to verify** the repair by executing the repaired file (`y`), then **confirm** that verification execution (`y`).
 7. **Record your review** of the verification evidence: `accepted`, `rejected`, or `inconclusive`.
 

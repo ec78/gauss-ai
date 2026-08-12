@@ -51,8 +51,13 @@ def run_init(
 
     # -- workspace parent --------------------------------------------------
     print_fn(f"Approved workspace parent directory (current: {existing.workspace_parent or 'not set'})")
+    print_fn(
+        "  This is the local folder gauss-ai is allowed to create repair workspaces in -- nothing is ever "
+        "written outside it."
+    )
     answer = prompt_fn("  Enter a path to use, or press Enter to keep the current setting: ").strip()
     workspace_parent = existing.workspace_parent
+    workspace_parent_save_failed = False
     if answer:
         candidate = Path(answer).expanduser()
         try:
@@ -63,7 +68,13 @@ def run_init(
             workspace_parent = str(candidate)
             print_fn(f"  OK: {candidate} is writable.")
         except OSError as exc:
-            print_fn(f"  WARNING: {candidate} is not writable ({exc}); keeping the previous setting.")
+            workspace_parent_save_failed = True
+            print_fn(f"  WARNING: {candidate} is not writable ({exc}).")
+            print_fn(
+                f"  NOT SAVED: this path was not saved. The previous setting "
+                f"({existing.workspace_parent or 'not set -- a fresh temporary directory will be used each session'}) "
+                "remains in effect."
+            )
 
     # -- GAUSS executable ----------------------------------------------------
     print_fn("")
@@ -116,6 +127,9 @@ def run_init(
 
     # -- default runner -------------------------------------------------
     print_fn("")
+    print_fn("Default runner -- what 'gauss-ai repair' does when you don't pass --runner explicitly:")
+    print_fn("  fake  -- no real GAUSS is run; safe for trying the tool and for demos (the default).")
+    print_fn("  gauss -- runs your real, configured GAUSS executable.")
     default_runner = existing.default_runner
     answer = prompt_fn(f"  Default runner, 'fake' or 'gauss' (current: {default_runner or 'fake (default)'}): ").strip().lower()
     if answer in config_mod.VALID_RUNNERS:
@@ -134,6 +148,11 @@ def run_init(
 
     print_fn("")
     print_fn(f"Configuration saved to {saved_path}")
+    if workspace_parent_save_failed:
+        print_fn(
+            "NOTE: your requested workspace-parent path could not be used and was NOT saved -- see the "
+            "warning above. Every other setting above was saved normally."
+        )
     print_fn("Next steps:")
     print_fn("  gauss-ai doctor           -- verify this configuration")
     print_fn("  gauss-ai repair <file.gss> -- guided repair of a specific file")

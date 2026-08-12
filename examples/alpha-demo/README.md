@@ -25,7 +25,7 @@ The guided command will:
 2. Propose an execution plan from the file's real content and ask you to confirm it.
 3. Execute (fake), interpret, and diagnose the result.
 4. Propose a repair strategy and ask you to approve it.
-5. Ask you to describe the replacement: line `1`, replacement text `x = 2 + 2;` (the same complete expression `working.gss` already uses).
+5. Show an AI-generated repair-draft candidate (`v0.69.0`) for review -- `broken.gss` matches this repository's own verified `G0105` empty-assignment pattern exactly, so a candidate proposing `x = 0;` on line `1` is generated automatically. Accept it, edit its replacement text, or reject it and describe the replacement by hand instead.
 6. Ask you to approve the resulting draft, then approve applying it.
 7. Re-verify the application gate's checkable preconditions and apply the repair inside the workspace copy.
 8. Ask whether to verify the repair by executing the repaired file, then ask you to confirm that execution.

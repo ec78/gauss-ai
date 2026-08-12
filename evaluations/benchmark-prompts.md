@@ -6335,3 +6335,81 @@ The tester inspects `git diff --stat` for every core pipeline module after this 
 Expected behavior:
 - Every core pipeline module (`gauss_code_assistant_cli.py` through `gauss_repair_session_summary.py`, plus every `gauss_repair_*`/`gauss_verification_*` module) shows zero diff from this milestone.
 - Every captured transcript explicitly discloses `execution_backend: FAKE` or `execution_backend: REAL_GAUSS` and, for real runs, `gauss_ran: true` — no scenario silently substitutes one backend for the other.
+
+## Alpha Feedback Integration and AI-Assisted Repair Draft Generation
+
+Use Prompt IDs 59.1-59.10. These exercise the `v0.69.0` milestone: five real alpha findings from the first private alpha session addressed, and the first version of AI-assisted repair-draft candidate generation (`scripts/gauss_repair_draft_generation.py`) added — without redesigning the safety architecture. The pipeline remains Execution → Interpretation → Diagnosis → Strategy → Draft → Application → Verification → Review; candidate generation is assistive tooling that helps a human arrive at the same `repair-draft`/`apply-repair` arguments faster, never a new approval layer.
+
+Every scenario is driven through the installed `gauss-ai` command (a dedicated venv with `pip install -e .` run against this repository), invoked as a subprocess exactly as a real tester's shell would — never a direct Python import. Real GAUSS is used where a genuine error code needs to be reproduced; every run file states which backend produced its evidence.
+
+### Prompt 59.1: Real GAUSS G0105 candidate ACCEPT full repair cycle
+
+The tester runs the guided workflow against a file that genuinely reproduces `G0105` against real GAUSS, and accepts the single AI-generated candidate as-is.
+
+Expected behavior:
+- The candidate shown matches the task's own worked example shape (detected code/title, affected statement, proposed repair, reason, confidence — capped at `medium`).
+- Accepting it flows unmodified into `repair-draft`/`apply-repair`; the repair is genuinely applied and re-verified against real GAUSS (`comparison: succeeded_after_failure`).
+
+### Prompt 59.2: Real GAUSS G0105 candidate EDIT full repair cycle
+
+The tester runs the same real scenario but chooses to edit the candidate's replacement text before it is drafted.
+
+Expected behavior:
+- The candidate's own proposed text is shown for reference; the user's edited text — not the candidate's original placeholder — is what is actually applied to the file, confirmed by reading the workspace copy's real post-application content.
+
+### Prompt 59.3: Real GAUSS G0036 honest no-candidate fallback
+
+The tester runs the guided workflow against the catalog's own exact verified `G0036` trigger, for which this first version implements no candidate pattern.
+
+Expected behavior:
+- Real GAUSS reports `error G0036 : Matrix dimensions are incompatible`; `generation_status: no_candidate_available` with `candidate_count: 0`; the workflow honestly states no deterministic pattern is implemented yet for this code, and falls through to fully manual entry — no fabricated candidate is ever shown.
+
+### Prompt 59.4: Candidate REJECT falls back to fully manual entry
+
+The tester runs the guided workflow in fake mode against G0105-pattern content, and explicitly rejects the generated candidate.
+
+Expected behavior:
+- The user can still describe a completely different manual replacement; the applied file content matches the user's own manual text, not the candidate's, proving accept/edit/reject/manual are all genuinely available regardless of candidate availability.
+
+### Prompt 59.5: Multiple candidates require an explicit choice
+
+The tester runs the guided workflow against a file with two lines matching the G0105 pattern.
+
+Expected behavior:
+- `candidate_count: 2`; the workflow asks the user to choose which candidate to review before any accept/edit/reject decision; the applied repair matches exactly the chosen candidate's own line range and text, and the other matching line is left untouched.
+
+### Prompt 59.6: `gauss-ai init` workspace-parent failure is explicitly reported as not saved (alpha finding #1)
+
+The tester runs `gauss-ai init` and supplies an unwritable workspace-parent path.
+
+Expected behavior:
+- The inline warning explicitly states the value was NOT SAVED and names the previous setting still in effect; the end-of-run summary also notes the failure — setup never silently continues as if the value had been saved.
+
+### Prompt 59.7: `gauss-ai init` explains fake vs. gauss before asking (alpha finding #2)
+
+The tester runs `gauss-ai init` through the default-runner question.
+
+Expected behavior:
+- Before the prompt, the tool explains that `fake` runs no real GAUSS (safe, the default) and `gauss` runs the real, configured executable — a first-time user is not asked to choose between two unexplained words.
+
+### Prompt 59.8: Evidence is shown before any line-number prompt (alpha finding #3)
+
+The tester inspects the guided workflow's own transcript ordering, both when a candidate is generated and when none is.
+
+Expected behavior:
+- In every case, the detected error code/title and diagnosis evidence (from `suggest-repair-draft`, always run immediately after strategy approval) appear in the transcript before any line-number or free-text prompt — never after.
+
+### Prompt 59.9: An accepted candidate never bypasses any existing approval layer
+
+The tester accepts a generated candidate, then separately declines draft approval and, in a second run, declines application approval.
+
+Expected behavior:
+- In both cases, the decline is recorded exactly as it would be for a fully manual draft (`decision: declined`); no application transaction is ever attempted; accepting a candidate at the drafting step has no effect on any later, independent approval decision.
+
+### Prompt 59.10: Architectural proof — no core pipeline module touched; no fabricated certainty
+
+The tester inspects `git diff --stat` for every core pipeline module after this milestone, and inspects `gauss_repair_draft_generation.py`'s own source and test suite.
+
+Expected behavior:
+- Every core pipeline module (`gauss_repair_application.py`, `gauss_repair_application_approval.py`, `gauss_repair_application_gate.py`, `gauss_repair_draft_approval.py`, `gauss_verification_execution.py`, `gauss_verification_review.py`) shows zero diff from this milestone.
+- `gauss_repair_draft_generation.py` defines no `execute`/`apply_repair`/`evaluate_application_gate`/`build_repair_draft` function of its own, contains no `HIGH` confidence value anywhere, and its generator registry is deliberately limited to a single error code (`G0105`) in this first version.
