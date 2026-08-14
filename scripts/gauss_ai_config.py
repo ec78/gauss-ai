@@ -1,14 +1,25 @@
-"""Local configuration model for the productized `gauss-ai` CLI (v0.67.0).
+"""Local configuration model for the productized `gauss-ai` CLI (v0.67.0;
+conversational-chat settings added in v0.70.0).
 
-Stores exactly four settings and one display preference -- no secrets, no
-license credentials, no passwords, and no arbitrary key/value execution
-mechanism of any kind:
+Stores exactly seven settings and one display preference -- no secrets, no
+license credentials, no passwords, no API keys, and no arbitrary key/value
+execution mechanism of any kind:
 
     gauss_executable        -- path to a terminal (tgauss/tgauss.exe) executable
     default_runner           -- "fake" or "gauss"
     workspace_parent         -- approved parent directory for alpha workspaces
     default_timeout_seconds  -- default execution timeout
+    chat_provider            -- "fake" or "anthropic" (v0.70.0)
+    chat_model                -- model identifier string, provider-specific (v0.70.0)
+    docs_root                -- local root of official GAUSS documentation, for
+                                 conversational grounding only (v0.70.0)
     verbose                  -- whether to show raw digests/IDs by default
+
+An API key/credential is never a field on this model and is never written to
+the config file -- see `gauss_chat_provider.py`'s own module docstring for
+where and how a real provider's credential is read (fresh from an
+environment variable, at call time only, never persisted anywhere this
+module touches).
 
 File location: `~/.gauss-ai/config.json`, computed via `Path.home()` --
 never a hard-coded, user-specific path. Every location this module touches
@@ -46,11 +57,15 @@ CONFIG_DIR_NAME = ".gauss-ai"
 CONFIG_FILE_NAME = "config.json"
 
 VALID_RUNNERS = ("fake", "gauss")
+VALID_CHAT_PROVIDERS = ("fake", "anthropic")
 
 ENV_GAUSS_EXECUTABLE = "GAUSS_EXECUTABLE"
 ENV_DEFAULT_RUNNER = "GAUSS_AI_DEFAULT_RUNNER"
 ENV_WORKSPACE_PARENT = "GAUSS_AI_WORKSPACE_PARENT"
 ENV_TIMEOUT_SECONDS = "GAUSS_AI_TIMEOUT_SECONDS"
+ENV_CHAT_PROVIDER = "GAUSS_AI_CHAT_PROVIDER"
+ENV_CHAT_MODEL = "GAUSS_AI_CHAT_MODEL"
+ENV_DOCS_ROOT = "GAUSS_AI_DOCS_ROOT"
 
 
 def config_dir() -> Path:
@@ -78,6 +93,9 @@ class GaussAiConfig:
     default_runner: str | None = None
     workspace_parent: str | None = None
     default_timeout_seconds: float | None = None
+    chat_provider: str | None = None
+    chat_model: str | None = None
+    docs_root: str | None = None
     verbose: bool = False
 
 
@@ -112,6 +130,9 @@ def load_config(path: str | Path | None = None) -> GaussAiConfig:
         default_runner=data.get("default_runner") or None,
         workspace_parent=data.get("workspace_parent") or None,
         default_timeout_seconds=(float(raw_timeout) if raw_timeout is not None else None),
+        chat_provider=data.get("chat_provider") or None,
+        chat_model=data.get("chat_model") or None,
+        docs_root=data.get("docs_root") or None,
         verbose=bool(data.get("verbose", False)),
     )
 
@@ -230,3 +251,59 @@ def resolve_default_timeout_seconds(
     if config.default_timeout_seconds is not None:
         return ResolvedValue(config.default_timeout_seconds, "config_file")
     return ResolvedValue(30.0, "default")
+
+
+def resolve_chat_provider(
+    *, cli_value: str | None = None, config: GaussAiConfig | None = None, env: dict[str, str] | None = None
+) -> ResolvedValue:
+    """Mirrors `resolve_default_runner(...)` exactly: `"fake"` is the safe
+    default, requiring no network access, no credential, and no external
+    dependency -- identical in spirit to `default_runner` defaulting to
+    `"fake"` rather than `"gauss"`."""
+    env = env if env is not None else os.environ
+    if cli_value:
+        return ResolvedValue(cli_value, "cli_argument")
+    env_val = env.get(ENV_CHAT_PROVIDER, "").strip()
+    if env_val:
+        return ResolvedValue(env_val, "environment_variable")
+    config = config if config is not None else load_config()
+    if config.chat_provider:
+        return ResolvedValue(config.chat_provider, "config_file")
+    return ResolvedValue("fake", "default")
+
+
+def resolve_chat_model(
+    *, cli_value: str | None = None, config: GaussAiConfig | None = None, env: dict[str, str] | None = None
+) -> ResolvedValue:
+    """No default model is asserted -- an unset value (`None`) is a valid,
+    honest outcome; `gauss_chat_provider.AnthropicMessagesProvider` applies
+    its own explicit, documented default only if this resolves to `None`."""
+    env = env if env is not None else os.environ
+    if cli_value:
+        return ResolvedValue(cli_value, "cli_argument")
+    env_val = env.get(ENV_CHAT_MODEL, "").strip()
+    if env_val:
+        return ResolvedValue(env_val, "environment_variable")
+    config = config if config is not None else load_config()
+    if config.chat_model:
+        return ResolvedValue(config.chat_model, "config_file")
+    return ResolvedValue(None, "default")
+
+
+def resolve_docs_root(
+    *, cli_value: str | None = None, config: GaussAiConfig | None = None, env: dict[str, str] | None = None
+) -> ResolvedValue:
+    """No default path is asserted -- this repository bundles no GAUSS
+    documentation; an unset value means conversational grounding against
+    local official documentation is unavailable, honestly, not silently
+    assumed."""
+    env = env if env is not None else os.environ
+    if cli_value:
+        return ResolvedValue(cli_value, "cli_argument")
+    env_val = env.get(ENV_DOCS_ROOT, "").strip()
+    if env_val:
+        return ResolvedValue(env_val, "environment_variable")
+    config = config if config is not None else load_config()
+    if config.docs_root:
+        return ResolvedValue(config.docs_root, "config_file")
+    return ResolvedValue(None, "default")

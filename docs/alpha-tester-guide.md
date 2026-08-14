@@ -7,6 +7,7 @@ Thank you for testing the GAUSS Code Assistant. This guide covers what to test, 
 ## What to test
 
 - **Installation**: `pip install -e .` in a clean environment, then `gauss-ai version`/`gauss-ai doctor`.
+- **Conversational Q&A** (`gauss-ai`, no subcommand — new in `v0.70.0`): a basic question, a follow-up question that relies on context ("show me an example"), a known error code (e.g. "what does G0036 mean?"), a question about a command you know isn't real, and trying to get it to "run" or "execute" something (it should redirect you to `gauss-ai repair`, never actually execute anything). See [docs/conversational-qa.md](conversational-qa.md).
 - **First-run setup**: `gauss-ai init`, including re-running it to confirm it doesn't corrupt prior configuration.
 - **The guided workflow** (`gauss-ai repair <file.gss>`), in both fake mode and (if you have GAUSS installed) real mode:
   - A file with a real, reproducible error (start with `examples/alpha-demo/broken.gss`, then try your own).
@@ -25,8 +26,9 @@ This is an alpha for a **single-file, human-approved repair workflow**. It does 
 - Decide anything on your behalf — every approval, confirmation, and review is yours to make.
 - Guarantee that a proposed repair is correct — verification produces evidence, never a correctness verdict (see "Current safety boundaries" below).
 - Run on macOS or Linux with real GAUSS execution (fake-mode-only testing works anywhere Python 3.10+ does).
-- Persist a session across a process restart (durable sessions are explicitly out of scope for this milestone).
-- Send any data anywhere — there is no telemetry, no analytics, no network reporting of any kind.
+- Persist a session across a process restart (durable sessions — repair or chat — are explicitly out of scope for this milestone).
+- Execute anything, generate a repair, or write a file from a conversational chat session — chat is Q&A only; it redirects you to `gauss-ai repair <file.gss>` for anything execution- or repair-shaped.
+- Send any data anywhere — there is no telemetry, no analytics, no network reporting of any kind. A real chat provider's API key, if you configure one, is read from your own environment variable only, never stored by `gauss-ai` itself.
 
 If you hit one of these, it's expected, not a bug — see [KNOWN_LIMITATIONS.md](../KNOWN_LIMITATIONS.md) for the complete, current list.
 
@@ -39,6 +41,7 @@ Every one of the following remains true regardless of how you invoke the tool (g
 - **No file read without explicit authorization.** The lower-level `read <path>` command is the only way to see file contents; the guided workflow reads only the one file you named on its own command line.
 - **No file written except through the approved application transaction**, which always creates a backup first and never overwrites anything outside the workspace it created.
 - **No fabricated verification outcome.** A verification review's decision (`accepted`/`rejected`/`inconclusive`) is always exactly what you typed — never inferred from the evidence.
+- **No conversational bypass into execution or repair.** Chat (`gauss-ai`, no subcommand) never executes GAUSS code, applies a repair, or writes a file — structurally, not just by prompt wording: the conversational modules import nothing from the execution/repair/verification pipeline at all.
 
 If you ever observe one of these boundaries appear to be crossed, that is a **safety concern** — report it with "Critical" severity (see below) regardless of anything else about the finding.
 

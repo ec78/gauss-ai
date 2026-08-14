@@ -55,14 +55,14 @@ If `gauss-ai` is not found on your `PATH` after installation, your virtual envir
 
 ## Configuration
 
-`gauss-ai` stores at most four settings and one display preference in a single local file: `~/.gauss-ai/config.json` (i.e. `Path.home() / ".gauss-ai" / "config.json"` — never a hard-coded, user-specific path). No secrets, license credentials, or arbitrary key/value data are ever stored there.
+`gauss-ai` stores at most seven settings and one display preference in a single local file: `~/.gauss-ai/config.json` (i.e. `Path.home() / ".gauss-ai" / "config.json"` — never a hard-coded, user-specific path). No secrets, license credentials, API keys, or arbitrary key/value data are ever stored there.
 
 Configuration precedence, most to least authoritative:
 
-1. An explicit CLI argument (e.g. `--gauss-executable`, `--runner`, `--workspace-parent`)
-2. An environment variable (`GAUSS_EXECUTABLE`, `GAUSS_AI_DEFAULT_RUNNER`, `GAUSS_AI_WORKSPACE_PARENT`, `GAUSS_AI_TIMEOUT_SECONDS`)
+1. An explicit CLI argument (e.g. `--gauss-executable`, `--runner`, `--workspace-parent`, `--provider`, `--model`, `--docs-root`)
+2. An environment variable (`GAUSS_EXECUTABLE`, `GAUSS_AI_DEFAULT_RUNNER`, `GAUSS_AI_WORKSPACE_PARENT`, `GAUSS_AI_TIMEOUT_SECONDS`, `GAUSS_AI_CHAT_PROVIDER`, `GAUSS_AI_CHAT_MODEL`, `GAUSS_AI_DOCS_ROOT`)
 3. The local config file
-4. A safe default (`default_runner=fake`, `default_timeout_seconds=30.0`, no configured executable or workspace parent)
+4. A safe default (`default_runner=fake`, `default_timeout_seconds=30.0`, `chat_provider=fake`, no configured executable, workspace parent, chat model, or docs root)
 
 Set values individually:
 
@@ -71,9 +71,11 @@ gauss-ai config show
 gauss-ai config set gauss-executable C:\gauss26\tgauss.exe
 gauss-ai config set workspace-parent C:\Users\you\gauss-ai-workspaces
 gauss-ai config set default-runner fake
+gauss-ai config set chat-provider fake
+gauss-ai config set docs-root C:\path\to\your\gauss-docs\checkout
 ```
 
-`gauss-ai config set gauss-executable <path>` validates the path exists and is a terminal executable before saving — an invalid or GUI path is rejected with a clear error, and nothing is written.
+`gauss-ai config set gauss-executable <path>` validates the path exists and is a terminal executable before saving — an invalid or GUI path is rejected with a clear error, and nothing is written. See [docs/conversational-qa.md](conversational-qa.md) for the three chat-related settings (`chat-provider`, `chat-model`, `docs-root`) in full, including how a real provider's API key is configured (an environment variable, never a config setting).
 
 ## First-run setup
 

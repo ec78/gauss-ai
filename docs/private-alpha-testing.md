@@ -1,8 +1,12 @@
 # Private Alpha Testing
 
-**Status: `v0.68.0` — Private Alpha.** The GAUSS Code Assistant has been validated end to end against real GAUSS 26.1.1, through the installed `gauss-ai` product, exactly as you will use it.
+**Status: `v0.70.0` — Private Alpha.** The GAUSS Code Assistant has been validated end to end against real GAUSS 26.1.1, through the installed `gauss-ai` product, exactly as you will use it. `gauss-ai` (no subcommand) now also launches a conversational GAUSS Q&A assistant — see [docs/conversational-qa.md](conversational-qa.md).
 
 This page is the entry point for this phase. It does not repeat what the other alpha docs already cover — follow the links below in order.
+
+## Alpha feedback status
+
+The first alpha-feedback cycle is complete: five real observations from the first private alpha session (`v0.68.0`) were **addressed in implementation and verified through `v0.69.0`'s own real-GAUSS and installed-CLI evaluation** — this is not a claim that every UX question is now permanently solved, only that these specific findings were fixed and re-tested. A second round of testing (including of the new conversational assistant below) may surface further feedback, exactly as the first round did; that is expected and welcome. See `evaluations/benchmark-prompts.md`'s `59.x` category for the full evidence.
 
 ## 1. Install
 
@@ -10,7 +14,7 @@ This page is the entry point for this phase. It does not repeat what the other a
 
 ## 2. First run
 
-[docs/alpha-quickstart.md](alpha-quickstart.md) — `gauss-ai init` → `gauss-ai doctor` → a full guided repair in under 10 minutes, fake mode first, then real GAUSS.
+[docs/alpha-quickstart.md](alpha-quickstart.md) — `gauss-ai init` → `gauss-ai doctor` → a full guided repair in under 10 minutes, fake mode first, then real GAUSS. Or just run `gauss-ai` with no arguments and ask it a question — see [docs/conversational-qa.md](conversational-qa.md).
 
 ## 3. What real-GAUSS validation actually covered
 
@@ -51,4 +55,4 @@ You will be asked to explicitly confirm execution, approve a repair strategy, de
 
 ## What this phase does not include
 
-Durable sessions, rollback, multi-file repair, cloud execution, new approval layers, new repair intelligence, autonomous repair, automatic retries, telemetry, or analytics. Every guarantee from `v0.62.0` onward (explicit confirmation before execution, independent digest-bound approval at every layer, no file read without explicit authorization, no file write except through the approved application transaction, no fabricated review) was re-proven against real GAUSS in this milestone, not merely assumed to still hold.
+Durable sessions (chat or otherwise), rollback, multi-file repair, cloud execution, new approval layers, new repair intelligence, autonomous repair, automatic retries, telemetry, analytics, conversational execution, or conversational code generation/repair. Every guarantee from `v0.62.0` onward (explicit confirmation before execution, independent digest-bound approval at every layer, no file read without explicit authorization, no file write except through the approved application transaction, no fabricated review) was re-proven against real GAUSS in `v0.68.0`, not merely assumed to still hold, and remains untouched — zero diff — through `v0.70.0`'s new conversational layer.

@@ -24,6 +24,7 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 
+import gauss_ai_chat as chat_mod  # noqa: E402
 import gauss_ai_cli as ai_cli  # noqa: E402
 import gauss_ai_config as config_mod  # noqa: E402
 import gauss_ai_guided_repair as guided_mod  # noqa: E402
@@ -204,43 +205,143 @@ def test_13_repair_returns_nonzero_when_guided_repair_returns_none() -> None:
 
 
 # ---------------------------------------------------------------------------
-# REPL passthrough -- config precedence applied, existing main() untouched
+# 'repl' subcommand -- config precedence applied, existing main() untouched
+#
+# v0.70.0 note: tests 14-16 previously drove this exact behavior through a
+# BARE `ai_cli.main([])`/`ai_cli.main(["--workspace-parent", ...])` call,
+# because bare invocation used to launch the command-by-command REPL
+# directly. That expectation is now genuinely obsolete, not merely
+# inconvenient: v0.70.0's whole purpose is to change the no-subcommand
+# default to conversational chat (see test_20-test_24 below). The REPL
+# itself is completely unchanged and fully preserved -- these three tests
+# now drive it through the new, explicit `repl` subcommand instead, proving
+# the exact same config-precedence and no-reimplementation guarantees as
+# before, just reached by an explicit name rather than an implicit default.
 # ---------------------------------------------------------------------------
 
 
-def test_14_repl_launch_applies_resolved_config_when_no_explicit_flags() -> None:
+def test_14_repl_subcommand_applies_resolved_config_when_no_explicit_flags() -> None:
     captured_argv: list[str] = []
     original = cli_mod.main
     cli_mod.main = lambda argv: (captured_argv.extend(argv), 0)[1]
     try:
         with _isolated_config() as config_path:
             config_mod.save_config(config_mod.GaussAiConfig(workspace_parent="/configured/workspaces"), config_path)
-            ai_cli.main([])
+            ai_cli.main(["repl"])
     finally:
         cli_mod.main = original
     check("--workspace-parent was injected from the config file", "--workspace-parent" in captured_argv and "/configured/workspaces" in captured_argv)
 
 
-def test_15_repl_launch_explicit_cli_flag_overrides_config_file() -> None:
+def test_15_repl_subcommand_explicit_cli_flag_overrides_config_file() -> None:
     captured_argv: list[str] = []
     original = cli_mod.main
     cli_mod.main = lambda argv: (captured_argv.extend(argv), 0)[1]
     try:
         with _isolated_config() as config_path:
             config_mod.save_config(config_mod.GaussAiConfig(workspace_parent="/configured/workspaces"), config_path)
-            ai_cli.main(["--workspace-parent", "/explicit/on/command/line"])
+            ai_cli.main(["repl", "--workspace-parent", "/explicit/on/command/line"])
     finally:
         cli_mod.main = original
     check("explicit CLI arg is passed through unchanged, config value not injected", captured_argv.count("--workspace-parent") == 1)
     check("the explicit value wins", "/explicit/on/command/line" in captured_argv and "/configured/workspaces" not in captured_argv)
 
 
-def test_16_repl_launch_is_the_real_unmodified_gauss_code_assistant_cli_main() -> None:
+def test_16_repl_subcommand_is_the_real_unmodified_gauss_code_assistant_cli_main() -> None:
     """Structural proof this dispatcher never reimplements the REPL --
     _launch_repl's own source calls cli_mod.main(...), nothing else."""
     source = Path(ai_cli.__file__).read_text(encoding="utf-8")
     check("no second run_repl/InteractiveMvpAdapter construction exists in this module", "InteractiveMvpAdapter(" not in source)
     check("_launch_repl calls the existing cli_mod.main", "return cli_mod.main(final_argv)" in source)
+
+
+# ---------------------------------------------------------------------------
+# v0.70.0: bare invocation now launches conversational chat by default
+# ---------------------------------------------------------------------------
+
+
+def test_20_bare_invocation_launches_chat_not_the_repl() -> None:
+    captured: dict[str, object] = {}
+    original = chat_mod.run_chat
+
+    def fake_run_chat(**kwargs):
+        captured["kwargs"] = kwargs
+        return object()
+
+    chat_mod.run_chat = fake_run_chat
+    try:
+        with _isolated_config():
+            exit_code, _out = _capture(ai_cli.main, [])
+    finally:
+        chat_mod.run_chat = original
+    check("exit code 0", exit_code == 0)
+    check("run_chat was called for bare invocation", "kwargs" in captured)
+
+
+def test_21_bare_invocation_with_flags_still_reaches_chat_not_the_repl() -> None:
+    """`gauss-ai --provider fake` (bare + flags) must reach chat, mirroring
+    the pre-v0.70.0 convention that bare + flags fell through to whatever
+    the no-subcommand default was."""
+    captured: dict[str, object] = {}
+    original = chat_mod.run_chat
+
+    def fake_run_chat(**kwargs):
+        captured["kwargs"] = kwargs
+        return object()
+
+    chat_mod.run_chat = fake_run_chat
+    try:
+        with _isolated_config():
+            exit_code, _out = _capture(ai_cli.main, ["--provider", "fake"])
+    finally:
+        chat_mod.run_chat = original
+    check("exit code 0", exit_code == 0)
+    check("--provider was forwarded to run_chat", captured["kwargs"].get("cli_provider") == "fake")
+
+
+def test_22_explicit_chat_subcommand_behaves_identically_to_bare_invocation() -> None:
+    captured: dict[str, object] = {}
+    original = chat_mod.run_chat
+
+    def fake_run_chat(**kwargs):
+        captured["kwargs"] = kwargs
+        return object()
+
+    chat_mod.run_chat = fake_run_chat
+    try:
+        with _isolated_config():
+            exit_code, _out = _capture(ai_cli.main, ["chat", "--model", "some-model"])
+    finally:
+        chat_mod.run_chat = original
+    check("exit code 0", exit_code == 0)
+    check("--model was forwarded to run_chat", captured["kwargs"].get("cli_model") == "some-model")
+
+
+def test_23_chat_returns_nonzero_when_run_chat_returns_none() -> None:
+    original = chat_mod.run_chat
+    chat_mod.run_chat = lambda **kwargs: None
+    try:
+        with _isolated_config():
+            exit_code, _out = _capture(ai_cli.main, ["chat", "--provider", "anthropic"])
+    finally:
+        chat_mod.run_chat = original
+    check("a None return (e.g. configuration error) is a nonzero exit", exit_code == 2)
+
+
+def test_24_config_show_and_set_cover_the_new_chat_settings() -> None:
+    with _isolated_config():
+        exit_code, out = _capture(ai_cli.main, ["config", "show"])
+        check("show exits 0", exit_code == 0)
+        check("chat-provider default shown", "chat-provider: fake (default)" in out)
+        check("docs-root not-set message shown", "docs-root:" in out and "not set" in out)
+
+        exit_code, _out = _capture(ai_cli.main, ["config", "set", "chat-provider", "anthropic"])
+        check("setting chat-provider exits 0", exit_code == 0)
+        exit_code, out = _capture(ai_cli.main, ["config", "show"])
+        check("show reflects the set chat-provider", "chat-provider: anthropic" in out)
+
+        exit_code, _out = _capture(ai_cli.main, ["config", "set", "chat-provider", "not-a-real-provider"])
+        check("an invalid chat-provider value is rejected", exit_code == 1)
 
 
 # ---------------------------------------------------------------------------
@@ -251,7 +352,7 @@ def test_16_repl_launch_is_the_real_unmodified_gauss_code_assistant_cli_main() -
 def test_17_help_lists_all_commands() -> None:
     exit_code, out = _capture(ai_cli.main, ["--help"])
     check("exit code 0", exit_code == 0)
-    for cmd in ("version", "doctor", "init", "config", "repair"):
+    for cmd in ("version", "doctor", "init", "config", "repair", "repl", "chat"):
         check(f"help mentions '{cmd}'", cmd in out)
 
 

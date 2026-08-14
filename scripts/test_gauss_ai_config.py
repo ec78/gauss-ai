@@ -285,15 +285,116 @@ def test_23_resolve_default_timeout_seconds_malformed_env_var_falls_through() ->
 
 
 def test_24_config_never_stores_secrets_or_arbitrary_keys() -> None:
-    """Structural proof: GaussAiConfig has exactly five fields, none of
-    which is secret-shaped, and save_config(...) serializes only those."""
+    """Structural proof: GaussAiConfig has exactly eight fields, none of
+    which is secret-shaped, and save_config(...) serializes only those.
+
+    v0.70.0 note: this test's previous expectation ("exactly five fields")
+    is genuinely obsolete, not merely inconvenient -- `chat_provider`,
+    `chat_model`, and `docs_root` were added as legitimate, non-secret
+    conversational-chat settings (a provider name, a model identifier
+    string, and a local documentation path), following the exact same
+    None-default, CLI>env>config>default precedence pattern as every prior
+    field. No API key or credential field was added; see
+    `gauss_chat_provider.py`'s own module docstring for why a credential is
+    never a field on this model."""
     field_names = {f.name for f in __import__("dataclasses").fields(config_mod.GaussAiConfig)}
     check(
-        "exactly the five documented fields exist",
-        field_names == {"gauss_executable", "default_runner", "workspace_parent", "default_timeout_seconds", "verbose"},
+        "exactly the eight documented fields exist",
+        field_names
+        == {
+            "gauss_executable", "default_runner", "workspace_parent", "default_timeout_seconds",
+            "chat_provider", "chat_model", "docs_root", "verbose",
+        },
     )
     for forbidden in ("password", "secret", "token", "license", "credential", "api_key"):
         check(f"no field name contains {forbidden!r}", not any(forbidden in name for name in field_names))
+
+
+def test_25_resolve_chat_provider_full_precedence_chain() -> None:
+    config = config_mod.GaussAiConfig(chat_provider="anthropic")
+    check(
+        "cli arg wins",
+        config_mod.resolve_chat_provider(
+            cli_value="fake", config=config, env={"GAUSS_AI_CHAT_PROVIDER": "anthropic"}
+        ).value
+        == "fake",
+    )
+    check(
+        "env var wins over config",
+        config_mod.resolve_chat_provider(cli_value=None, config=config, env={"GAUSS_AI_CHAT_PROVIDER": "fake"}).value
+        == "fake",
+    )
+    check(
+        "config file wins over default",
+        config_mod.resolve_chat_provider(cli_value=None, config=config, env={}).value == "anthropic",
+    )
+    check(
+        "safe default ('fake') applies when nothing else is set",
+        config_mod.resolve_chat_provider(cli_value=None, config=config_mod.GaussAiConfig(), env={}).value == "fake",
+    )
+
+
+def test_26_resolve_chat_provider_source_is_default_not_config_file_when_unset() -> None:
+    """Mirrors test_20's own regression proof for default_runner, now for
+    chat_provider."""
+    resolved = config_mod.resolve_chat_provider(cli_value=None, config=config_mod.GaussAiConfig(), env={})
+    check("value is the safe default 'fake'", resolved.value == "fake")
+    check("source is 'default', not 'config_file'", resolved.source == "default")
+
+
+def test_27_resolve_chat_model_full_precedence_chain() -> None:
+    config = config_mod.GaussAiConfig(chat_model="config-model")
+    check(
+        "cli arg wins",
+        config_mod.resolve_chat_model(cli_value="cli-model", config=config, env={"GAUSS_AI_CHAT_MODEL": "env-model"}).value
+        == "cli-model",
+    )
+    check(
+        "env var wins over config",
+        config_mod.resolve_chat_model(cli_value=None, config=config, env={"GAUSS_AI_CHAT_MODEL": "env-model"}).value
+        == "env-model",
+    )
+    check(
+        "config file wins over default",
+        config_mod.resolve_chat_model(cli_value=None, config=config, env={}).value == "config-model",
+    )
+    check(
+        "default is None -- no model is asserted at this layer",
+        config_mod.resolve_chat_model(cli_value=None, config=config_mod.GaussAiConfig(), env={}).value is None,
+    )
+
+
+def test_28_resolve_docs_root_full_precedence_chain() -> None:
+    config = config_mod.GaussAiConfig(docs_root="/config/docs")
+    check(
+        "cli arg wins",
+        config_mod.resolve_docs_root(cli_value="/cli/docs", config=config, env={"GAUSS_AI_DOCS_ROOT": "/env/docs"}).value
+        == "/cli/docs",
+    )
+    check(
+        "env var wins over config",
+        config_mod.resolve_docs_root(cli_value=None, config=config, env={"GAUSS_AI_DOCS_ROOT": "/env/docs"}).value
+        == "/env/docs",
+    )
+    check(
+        "config file wins over default",
+        config_mod.resolve_docs_root(cli_value=None, config=config, env={}).value == "/config/docs",
+    )
+    check(
+        "default is None -- no bundled documentation path is asserted",
+        config_mod.resolve_docs_root(cli_value=None, config=config_mod.GaussAiConfig(), env={}).value is None,
+    )
+
+
+def test_29_chat_settings_round_trip_through_save_and_load() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "config.json"
+        original = config_mod.GaussAiConfig(chat_provider="anthropic", chat_model="claude-sonnet-5", docs_root="/some/docs")
+        config_mod.save_config(original, path)
+        loaded = config_mod.load_config(path)
+        check("chat_provider round-trips", loaded.chat_provider == "anthropic")
+        check("chat_model round-trips", loaded.chat_model == "claude-sonnet-5")
+        check("docs_root round-trips", loaded.docs_root == "/some/docs")
 
 
 def run_tests() -> int:

@@ -1,16 +1,21 @@
 """Installed entry point for the productized `gauss-ai` CLI (v0.67.0;
 `--export-session` added to `repair` in v0.68.0; `repair`'s guided draft
-step gained AI-assisted repair-draft candidates in v0.69.0, with no change
-to this dispatcher's own commands or arguments).
+step gained AI-assisted repair-draft candidates in v0.69.0; the no-
+subcommand default changed from the command-by-command REPL to
+conversational Q&A in v0.70.0, with the prior REPL relocated, unmodified,
+behind a new explicit `repl` subcommand).
 
 `pip install -e .` exposes this module's `main()` as the `gauss-ai` console
 script (see `pyproject.toml`). It is a thin dispatcher only -- it duplicates
-no CLI implementation. `version`/`doctor`/`init`/`config`/`repair` each call
-a small, dedicated module (`gauss_ai_config`, `gauss_ai_doctor`,
-`gauss_ai_init`, `gauss_ai_guided_repair`); the no-subcommand path calls the
-existing, completely unmodified `gauss_code_assistant_cli.main(...)` --
-`python scripts/gauss_code_assistant_cli.py` continues to work exactly as
-before, unaffected by anything in this module.
+no CLI implementation. `version`/`doctor`/`init`/`config`/`repair`/`chat`
+each call a small, dedicated module (`gauss_ai_config`, `gauss_ai_doctor`,
+`gauss_ai_init`, `gauss_ai_guided_repair`, `gauss_ai_chat`); `repl` (and the
+bare/no-subcommand path before `v0.70.0`) calls the existing, completely
+unmodified `gauss_code_assistant_cli.main(...)` -- `python scripts/
+gauss_code_assistant_cli.py` continues to work exactly as before, unaffected
+by anything in this module. As of `v0.70.0`, the no-subcommand default is
+`chat`, not `repl` -- nothing that worked before is removed; it moved
+behind an explicit, discoverable name.
 """
 
 from __future__ import annotations
@@ -26,6 +31,7 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 
+import gauss_ai_chat as chat_mod  # noqa: E402
 import gauss_ai_config as config_mod  # noqa: E402
 import gauss_ai_doctor as doctor_mod  # noqa: E402
 import gauss_ai_guided_repair as guided_repair_mod  # noqa: E402
@@ -33,7 +39,7 @@ import gauss_ai_init as init_mod  # noqa: E402
 import gauss_code_assistant_cli as cli_mod  # noqa: E402
 import gauss_environment_check as environment_check_mod  # noqa: E402
 
-__version__ = "0.69.0"
+__version__ = "0.70.0"
 
 
 def _cmd_version(args: list[str]) -> int:
@@ -87,6 +93,9 @@ def _cmd_config(args: list[str]) -> int:
         print(f"  default-runner: {config.default_runner or 'fake (default)'}")
         print(f"  workspace-parent: {config.workspace_parent or '(not set)'}")
         print(f"  default-timeout-seconds: {config.default_timeout_seconds if config.default_timeout_seconds is not None else '30.0 (default)'}")
+        print(f"  chat-provider: {config.chat_provider or 'fake (default)'}")
+        print(f"  chat-model: {config.chat_model or '(provider default)'}")
+        print(f"  docs-root: {config.docs_root or '(not set -- conversational answers will not be documentation-grounded)'}")
         print(f"  verbose: {config.verbose}")
         return 0
     if sub == "set":
@@ -124,6 +133,15 @@ def _cmd_config(args: list[str]) -> int:
                 print("ERROR: default-timeout-seconds must be a number")
                 return 1
             new_config = dataclasses.replace(config, default_timeout_seconds=timeout)
+        elif key == "chat-provider":
+            if value not in config_mod.VALID_CHAT_PROVIDERS:
+                print(f"ERROR: chat-provider must be one of {config_mod.VALID_CHAT_PROVIDERS}")
+                return 1
+            new_config = dataclasses.replace(config, chat_provider=value)
+        elif key == "chat-model":
+            new_config = dataclasses.replace(config, chat_model=value)
+        elif key == "docs-root":
+            new_config = dataclasses.replace(config, docs_root=value)
         elif key == "verbose":
             if value.lower() not in {"true", "false"}:
                 print("ERROR: verbose must be 'true' or 'false'")
@@ -132,7 +150,7 @@ def _cmd_config(args: list[str]) -> int:
         else:
             print(
                 f"ERROR: unknown config key {key!r}. Supported: gauss-executable, workspace-parent, "
-                "default-runner, default-timeout-seconds, verbose"
+                "default-runner, default-timeout-seconds, chat-provider, chat-model, docs-root, verbose"
             )
             return 2
         saved_path = config_mod.save_config(new_config)
@@ -176,6 +194,18 @@ def _cmd_repair(args: list[str]) -> int:
     return 0 if adapter is not None else 2
 
 
+def _cmd_chat(args: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog="gauss-ai", add_help=True, description="Conversational GAUSS Q&A (default when no subcommand is given)."
+    )
+    parser.add_argument("--provider", default=None, choices=list(config_mod.VALID_CHAT_PROVIDERS))
+    parser.add_argument("--model", default=None)
+    parser.add_argument("--docs-root", default=None)
+    parsed = parser.parse_args(args)
+    engine = chat_mod.run_chat(cli_provider=parsed.provider, cli_model=parsed.model, cli_docs_root=parsed.docs_root)
+    return 0 if engine is not None else 2
+
+
 def _launch_repl(argv: list[str]) -> int:
     """Resolves gauss-ai's own configuration precedence (CLI arg > env var >
     config file > default) for the three settings the underlying REPL
@@ -209,15 +239,20 @@ def _print_top_help() -> None:
     print("gauss-ai -- GAUSS Code Assistant alpha CLI")
     print("")
     print("Commands:")
+    print("  gauss-ai                              Launch conversational GAUSS Q&A (default)")
+    print("  gauss-ai chat [--provider ...] [--model ...] [--docs-root ...]   Same, explicit form")
     print("  gauss-ai version                     Show version and environment info")
     print("  gauss-ai doctor                       Read-only environment diagnostics")
     print("  gauss-ai init                         Guided first-run setup (idempotent)")
     print("  gauss-ai config show                  Show current configuration")
     print("  gauss-ai config set <key> <value>     Set one configuration value")
     print("  gauss-ai repair <file.gss> [--export-session PATH]  Guided repair workflow for one file")
-    print("  gauss-ai [--runner ...] [...]           Launch the full interactive command set (REPL)")
+    print("  gauss-ai repl [--runner ...] [...]      Launch the full command-by-command workflow REPL (advanced)")
     print("")
-    print("Config keys: gauss-executable, workspace-parent, default-runner, default-timeout-seconds, verbose")
+    print(
+        "Config keys: gauss-executable, workspace-parent, default-runner, default-timeout-seconds, "
+        "chat-provider, chat-model, docs-root, verbose"
+    )
     print("Run 'python scripts/gauss_code_assistant_cli.py' directly for the exact same REPL without installing.")
 
 
@@ -238,7 +273,11 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_config(rest)
         if command == "repair":
             return _cmd_repair(rest)
-    return _launch_repl(argv)
+        if command == "chat":
+            return _cmd_chat(rest)
+        if command == "repl":
+            return _launch_repl(rest)
+    return _cmd_chat(argv)
 
 
 if __name__ == "__main__":

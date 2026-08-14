@@ -4,6 +4,8 @@
 
 **Target: under 10 minutes from an installed project to a successful fake-mode repair workflow.** Real GAUSS execution is a short second section below.
 
+This page walks through the guided *repair* workflow. If you just want to ask GAUSS questions conversationally (`gauss-ai`, no subcommand — no configuration required), see [docs/conversational-qa.md](conversational-qa.md) instead; the two are independent and you can try either first.
+
 ## 1. Install (≈1 minute)
 
 ```

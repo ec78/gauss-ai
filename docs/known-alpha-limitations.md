@@ -7,7 +7,16 @@
 - **Single-file repair only.** One `.gss` file per guided session. No multi-file repair exists or is planned for this phase.
 - **No autonomous repair.** Every strategy approval, draft approval, application approval, and verification review requires your own explicit, real-time decision. Nothing is inferred on your behalf.
 - **No rerun or rollback beyond one backup.** `apply-repair` always creates exactly one, never-overwritten backup before writing. There is no automated restore-from-backup, no automatic retry, and no rollback mechanism of any kind.
-- **No durable sessions.** Each `gauss-ai` process is stateless once it exits. There is no way to resume a guided session across a process restart, and `--export-session` does not create one — it writes a one-time, read-only snapshot, not a resumable session.
+- **No durable sessions.** Each `gauss-ai` process is stateless once it exits. There is no way to resume a guided session across a process restart, and `--export-session` does not create one — it writes a one-time, read-only snapshot, not a resumable session. This includes conversational chat: nothing about a chat session is saved anywhere, and there is no way to resume one after exiting.
+
+## Conversational Q&A (new in `v0.70.0`)
+
+- **No conversational execution.** Asking the assistant to "run this" or "execute that" gets a fixed, honest redirect to `gauss-ai repair <file.gss>` — it never executes anything from a chat session.
+- **No conversational code generation, repair, or file modification.** Incidental code examples are fine; turning a conversation directly into an executed script, a repair draft, or a written file is not implemented.
+- **Grounding requires you to configure `docs-root`.** This repository bundles no GAUSS documentation; without a configured local checkout, command/procedure questions are answered from the model's own knowledge (or, with the default fake provider, not answered at all), honestly disclosed as not documentation-grounded either way.
+- **The default provider (`fake`) never synthesizes an answer.** It echoes back retrieved documentation/catalog text, clearly labeled as a template, or honestly says nothing was found. Configure a real provider (`gauss-ai config set chat-provider anthropic` plus your own `ANTHROPIC_API_KEY`) for genuine conversational answers — see [docs/conversational-qa.md](conversational-qa.md).
+- **The real (`anthropic`) provider has not been network-tested by this repository as of `v0.70.0`.** No API key was available in this repository's own development environment; the provider's request/response/error-handling logic is fully unit-tested, but a live round trip against the real API has not been independently confirmed. If you use it and see unexpected behavior, please report it.
+- **Topic detection is a bounded heuristic, not real language understanding.** A question mixing an invented word with a real GAUSS keyword can occasionally ground on the real keyword instead of correctly staying ungrounded — a known, minor limitation, not a fabrication (see `evaluations/runs/2026-08-12-code-assistant-conversational-gauss-qa-foundation-run-005.md` for a documented example).
 
 ## Environment
 

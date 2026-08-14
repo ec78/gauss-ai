@@ -6413,3 +6413,81 @@ The tester inspects `git diff --stat` for every core pipeline module after this 
 Expected behavior:
 - Every core pipeline module (`gauss_repair_application.py`, `gauss_repair_application_approval.py`, `gauss_repair_application_gate.py`, `gauss_repair_draft_approval.py`, `gauss_verification_execution.py`, `gauss_verification_review.py`) shows zero diff from this milestone.
 - `gauss_repair_draft_generation.py` defines no `execute`/`apply_repair`/`evaluate_application_gate`/`build_repair_draft` function of its own, contains no `HIGH` confidence value anywhere, and its generator registry is deliberately limited to a single error code (`G0105`) in this first version.
+
+## Conversational GAUSS Q&A Foundation
+
+Use Prompt IDs 60.1-60.10. These exercise the `v0.70.0` milestone: the first genuine conversational GAUSS Q&A capability (`gauss-ai`, no subcommand), a provider-agnostic `ModelProvider` abstraction, grounding reused directly from `gauss_error_catalog.py` and `command_doc_lookup.py`, bounded process-local multi-turn conversation state, and a structural execution/repair boundary. The pipeline `Execution -> Interpretation -> Diagnosis -> Strategy -> Draft -> Application -> Verification -> Review` is untouched by this milestone.
+
+**Important distinction, stated once here rather than repeated in every prompt**: every scenario below is driven through the installed `gauss-ai` command (a dedicated venv with `pip install -e .`), invoked as a subprocess, using the deterministic `FakeModelProvider` -- because no `ANTHROPIC_API_KEY` is available in this development environment (see `planning/v0.70.0-conversational-gauss-qa-foundation.md`). These prompts evaluate the conversational system's *architecture and honesty*: correct grounding source selection, correct multi-turn context retention, correct execution-boundary enforcement, and correct non-fabrication -- never real-LLM answer quality, which has not been validated against a real provider as of this milestone. Real documentation grounding IS genuinely exercised (a real local GAUSS documentation checkout is configured and used), even though the provider's own prose is template-generated, not model-synthesized.
+
+### Prompt 60.1: Basic syntax/procedure question, grounded in real documentation
+
+The tester runs the installed `gauss-ai chat --docs-root <real local GAUSS docs checkout>` and asks "What does reshape do?"
+
+Expected behavior:
+- The answer is explicitly disclosed as grounded in local official GAUSS documentation, naming `reshape`; the retrieved content (syntax, inputs, outputs, examples) is real, extracted from the actual `.rst` file, not fabricated.
+
+### Prompt 60.2: Follow-up question retains multi-turn context
+
+Immediately after 60.1, in the same session, the tester asks "Show me a simple example."
+
+Expected behavior:
+- The follow-up, which contains no independently detectable GAUSS topic of its own, still grounds correctly by falling back to the previous turn's topic (`reshape`) -- proving `ConversationState.last_topic` genuinely carries context across turns, matching the milestone's own worked example.
+
+### Prompt 60.3: Comparison question across two topics
+
+The tester asks "What's the difference between reshape and vec?"
+
+Expected behavior:
+- The newly mentioned topic (`vec`) is detected and grounds the answer, taking precedence over any stale `last_topic`; the fake-provider limitation (no true comparative synthesis, only single-topic retrieval echo) is honestly disclosed rather than a fabricated comparison being presented as if genuine.
+
+### Prompt 60.4: Known GAUSS error, grounded in the verified catalog
+
+The tester asks "What does error G0036 mean?"
+
+Expected behavior:
+- The answer is explicitly disclosed as grounded in this repository's verified error catalog, naming `G0036`; the content matches `gauss_error_catalog.py`'s own real entry exactly (title, explanation, known triggers) -- no GAUSS launch occurs, and no duplicate error knowledge exists in the conversational layer.
+
+### Prompt 60.5: Unknown/unsupported concept -- no fabrication
+
+The tester asks about a GAUSS-shaped but nonexistent procedure name, and separately an uncataloged error code ("What does G9999 mean?").
+
+Expected behavior:
+- Neither the documentation lookup nor the error catalog produces a fabricated match; the response honestly discloses no grounded information was found (for the nonexistent procedure) or that the code is not yet in the verified catalog (for `G9999`) -- no invented GAUSS syntax or invented error meaning appears anywhere.
+
+### Prompt 60.6: Request for an example -- explicit non-execution disclosure
+
+The tester asks a question whose answer includes GAUSS code (e.g. the `reshape` example from 60.1).
+
+Expected behavior:
+- Any code-shaped content in the answer is followed by a fixed, deterministic "(This example has not been executed in this conversation.)" footer -- appended by the rendering layer regardless of what the provider said, never omitted.
+
+### Prompt 60.7: Question requiring uncertainty
+
+The tester asks a genuinely unanswerable-from-available-evidence question (e.g. "What is the meaning of life?").
+
+Expected behavior:
+- The response is honestly labeled as not grounded in official documentation or the verified error catalog, and (using the fake provider) is honestly disclosed as a placeholder rather than a fabricated general-knowledge answer.
+
+### Prompt 60.8: Execution-trigger attempt is redirected, never silently invoked
+
+The tester asks "Run this." / "Execute that example for me."
+
+Expected behavior:
+- A fixed, honest redirect to `gauss-ai repair <file.gss>` is returned; the model provider is never called for this turn (confirmed via an intentionally-exploding test provider); no execution, workspace, or repair object is created anywhere in the conversational path.
+
+### Prompt 60.9: Evidence/provenance honesty across a mixed session
+
+In one session, the tester asks a documentation-grounded question, a catalog-grounded question, and an ungrounded question in sequence.
+
+Expected behavior:
+- Each of the three answers carries its own correct, distinct disclosure (`official_docs` / `error_catalog` / not grounded) -- the disclosure is computed by the engine from what actually happened, never copied from the previous turn or assumed constant across a session.
+
+### Prompt 60.10: Architectural proof -- installed CLI, zero core-module diff, no fabricated evidence
+
+The tester inspects `git diff --stat` for every core pipeline/safety module after this milestone, confirms `gauss-ai doctor`/`init`/`config`/`repair`/`repl` remain unchanged through the installed CLI, and confirms this benchmark category's own run files state plainly that fake-provider architecture was evaluated, not real-model answer quality.
+
+Expected behavior:
+- Every core pipeline module (`gauss_execution_workflow.py`, every `gauss_repair_*`/`gauss_verification_*` module, `gauss_workspace.py`, `gauss_code_assistant_cli.py`, `gauss_code_assistant_workflow.py`) shows zero diff from this milestone.
+- `gauss-ai doctor`, `gauss-ai init`, `gauss-ai config`, `gauss-ai repair <file.gss>`, and `gauss-ai repl` all continue to work exactly as before through the installed entry point.
+- No run file in this category claims real-LLM answer-quality validation; each states the fake-provider architecture distinction explicitly.
