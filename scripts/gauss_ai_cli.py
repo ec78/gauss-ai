@@ -36,10 +36,11 @@ import gauss_ai_config as config_mod  # noqa: E402
 import gauss_ai_doctor as doctor_mod  # noqa: E402
 import gauss_ai_guided_repair as guided_repair_mod  # noqa: E402
 import gauss_ai_init as init_mod  # noqa: E402
+import gauss_chat_provider as provider_mod  # noqa: E402
 import gauss_code_assistant_cli as cli_mod  # noqa: E402
 import gauss_environment_check as environment_check_mod  # noqa: E402
 
-__version__ = "0.70.0"
+__version__ = "0.71.0"
 
 
 def _cmd_version(args: list[str]) -> int:
@@ -66,9 +67,16 @@ def _cmd_doctor(args: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="gauss-ai doctor", add_help=True, description="Read-only environment diagnostics.")
     parser.add_argument("--gauss-executable", default=None)
     parser.add_argument("--workspace-parent", default=None)
+    parser.add_argument("--chat-provider", default=None, choices=list(config_mod.VALID_CHAT_PROVIDERS))
+    parser.add_argument("--chat-model", default=None)
+    parser.add_argument("--ollama-endpoint", default=None, help="Only meaningful when the chat provider is 'ollama'.")
     parsed = parser.parse_args(args)
     report = doctor_mod.run_doctor(
-        cli_gauss_executable=parsed.gauss_executable, cli_workspace_parent=parsed.workspace_parent
+        cli_gauss_executable=parsed.gauss_executable,
+        cli_workspace_parent=parsed.workspace_parent,
+        cli_chat_provider=parsed.chat_provider,
+        cli_chat_model=parsed.chat_model,
+        cli_ollama_endpoint=parsed.ollama_endpoint,
     )
     for line in doctor_mod.render_report(report):
         print(line)
@@ -81,10 +89,43 @@ def _cmd_init(args: list[str]) -> int:
     return 0
 
 
+def _print_config_help() -> None:
+    print("Usage: gauss-ai config show")
+    print("       gauss-ai config set <key> <value>")
+    print("")
+    print("Keys:")
+    print("  gauss-executable          Path to a terminal (tgauss/tgauss.exe) GAUSS executable")
+    print("  workspace-parent          Approved parent directory for repair workspaces")
+    print("  default-runner            'fake' or 'gauss' -- default execution backend for 'gauss-ai repair'")
+    print("  default-timeout-seconds   Default execution timeout, in seconds")
+    print("  chat-provider             'fake', 'ollama', or 'anthropic' -- which model answers conversational questions")
+    print("  chat-model                Model name/identifier, meaning depends on chat-provider (see below)")
+    print("  docs-root                 Local root of an official GAUSS documentation checkout, for grounding")
+    print("  ollama-endpoint           Local Ollama service URL (default: http://localhost:11434)")
+    print("  verbose                   'true' or 'false' -- show raw digests/IDs by default")
+    print("")
+    print("Chat providers, at a glance:")
+    print("  fake       No real model, no network, no API key. Default. Echoes retrieved evidence only.")
+    print("  ollama     A locally running Ollama model. No API key required. Requires Ollama installed and")
+    print("             running (https://ollama.com), and a model pulled, e.g.: ollama pull qwen2.5-coder:7b")
+    print("             gauss-ai config set chat-provider ollama")
+    print("             gauss-ai config set chat-model qwen2.5-coder:7b")
+    print("  anthropic  Anthropic's cloud API. Requires the ANTHROPIC_API_KEY environment variable to be set")
+    print("             in your own shell -- gauss-ai never stores or reads it from any config file.")
+    print("             gauss-ai config set chat-provider anthropic")
+    print("")
+    print("Documentation grounding (optional, all providers): without docs-root configured, conversational")
+    print("answers about specific GAUSS commands are not grounded in official documentation. See")
+    print("docs/conversational-qa.md and docs/gauss-documentation-setup.md for how to obtain and point at one.")
+    print("")
+    print("Run 'gauss-ai config show' to see your current configuration and its sources, and")
+    print("'gauss-ai doctor' to check whether your configured provider is actually reachable.")
+
+
 def _cmd_config(args: list[str]) -> int:
-    if not args:
-        print("Usage: gauss-ai config show | gauss-ai config set <key> <value>")
-        return 2
+    if not args or args[0] in {"-h", "--help", "help"}:
+        _print_config_help()
+        return 0
     sub = args[0]
     if sub == "show":
         config = config_mod.load_config()
@@ -96,6 +137,7 @@ def _cmd_config(args: list[str]) -> int:
         print(f"  chat-provider: {config.chat_provider or 'fake (default)'}")
         print(f"  chat-model: {config.chat_model or '(provider default)'}")
         print(f"  docs-root: {config.docs_root or '(not set -- conversational answers will not be documentation-grounded)'}")
+        print(f"  ollama-endpoint: {config.ollama_endpoint or f'{provider_mod.DEFAULT_OLLAMA_ENDPOINT} (default, only used when chat-provider is ollama)'}")
         print(f"  verbose: {config.verbose}")
         return 0
     if sub == "set":
@@ -142,6 +184,8 @@ def _cmd_config(args: list[str]) -> int:
             new_config = dataclasses.replace(config, chat_model=value)
         elif key == "docs-root":
             new_config = dataclasses.replace(config, docs_root=value)
+        elif key == "ollama-endpoint":
+            new_config = dataclasses.replace(config, ollama_endpoint=value)
         elif key == "verbose":
             if value.lower() not in {"true", "false"}:
                 print("ERROR: verbose must be 'true' or 'false'")
@@ -150,7 +194,8 @@ def _cmd_config(args: list[str]) -> int:
         else:
             print(
                 f"ERROR: unknown config key {key!r}. Supported: gauss-executable, workspace-parent, "
-                "default-runner, default-timeout-seconds, chat-provider, chat-model, docs-root, verbose"
+                "default-runner, default-timeout-seconds, chat-provider, chat-model, docs-root, "
+                "ollama-endpoint, verbose"
             )
             return 2
         saved_path = config_mod.save_config(new_config)
@@ -196,13 +241,21 @@ def _cmd_repair(args: list[str]) -> int:
 
 def _cmd_chat(args: list[str]) -> int:
     parser = argparse.ArgumentParser(
-        prog="gauss-ai", add_help=True, description="Conversational GAUSS Q&A (default when no subcommand is given)."
+        prog="gauss-ai",
+        add_help=True,
+        description="Conversational GAUSS Q&A (default when no subcommand is given). "
+        "Providers: fake (default, no network/API key), ollama (local, no API key), anthropic (cloud, needs "
+        "ANTHROPIC_API_KEY). Run 'gauss-ai config --help' for the full provider/configuration reference.",
     )
     parser.add_argument("--provider", default=None, choices=list(config_mod.VALID_CHAT_PROVIDERS))
     parser.add_argument("--model", default=None)
     parser.add_argument("--docs-root", default=None)
+    parser.add_argument("--ollama-endpoint", default=None, help="Only meaningful with --provider ollama.")
     parsed = parser.parse_args(args)
-    engine = chat_mod.run_chat(cli_provider=parsed.provider, cli_model=parsed.model, cli_docs_root=parsed.docs_root)
+    engine = chat_mod.run_chat(
+        cli_provider=parsed.provider, cli_model=parsed.model, cli_docs_root=parsed.docs_root,
+        cli_ollama_endpoint=parsed.ollama_endpoint,
+    )
     return 0 if engine is not None else 2
 
 
@@ -246,12 +299,14 @@ def _print_top_help() -> None:
     print("  gauss-ai init                         Guided first-run setup (idempotent)")
     print("  gauss-ai config show                  Show current configuration")
     print("  gauss-ai config set <key> <value>     Set one configuration value")
+    print("  gauss-ai config --help                Full configuration and chat-provider reference")
     print("  gauss-ai repair <file.gss> [--export-session PATH]  Guided repair workflow for one file")
     print("  gauss-ai repl [--runner ...] [...]      Launch the full command-by-command workflow REPL (advanced)")
     print("")
+    print("No API key? Try a local model: gauss-ai config set chat-provider ollama  (see 'gauss-ai config --help')")
     print(
         "Config keys: gauss-executable, workspace-parent, default-runner, default-timeout-seconds, "
-        "chat-provider, chat-model, docs-root, verbose"
+        "chat-provider, chat-model, docs-root, ollama-endpoint, verbose"
     )
     print("Run 'python scripts/gauss_code_assistant_cli.py' directly for the exact same REPL without installing.")
 

@@ -70,7 +70,7 @@ def test_01_accepts_a_writable_workspace_parent() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         config_path = Path(tmp) / "config.json"
         target = Path(tmp) / "workspaces"
-        answers = _scripted([str(target), "", "fake"])
+        answers = _scripted([str(target), "", "fake", ""])
         config = init_mod.run_init(
             prompt_fn=answers, print_fn=lambda *_: None, config_path=config_path, discovery_fn=_no_candidates
         )
@@ -88,7 +88,7 @@ def test_02b_workspace_parent_write_failure_is_reported_as_not_saved() -> None:
         blocking_file.write_bytes(b"not a directory")
         bad_target = blocking_file / "workspaces"  # a file component blocks path creation
         messages: list[str] = []
-        answers = _scripted([str(bad_target), "", "fake"])
+        answers = _scripted([str(bad_target), "", "fake", ""])
         config = init_mod.run_init(
             prompt_fn=answers, print_fn=messages.append, config_path=config_path, discovery_fn=_no_candidates
         )
@@ -108,7 +108,7 @@ def test_02_keeps_existing_workspace_parent_on_empty_answer() -> None:
         existing_ws = Path(tmp) / "existing-workspaces"
         existing_ws.mkdir()
         config_mod.save_config(config_mod.GaussAiConfig(workspace_parent=str(existing_ws)), config_path)
-        answers = _scripted(["", "", "fake"])
+        answers = _scripted(["", "", "fake", ""])
         config = init_mod.run_init(
             prompt_fn=answers, print_fn=lambda *_: None, config_path=config_path, discovery_fn=_no_candidates
         )
@@ -123,7 +123,7 @@ def test_02_keeps_existing_workspace_parent_on_empty_answer() -> None:
 def test_03_no_candidates_found_prompts_for_manual_path_or_skip() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         config_path = Path(tmp) / "config.json"
-        answers = _scripted(["", "", "fake"])  # skip workspace, skip manual executable path, runner
+        answers = _scripted(["", "", "fake", ""])  # skip workspace, skip manual executable path, runner, provider
         config = init_mod.run_init(
             prompt_fn=answers, print_fn=lambda *_: None, config_path=config_path, discovery_fn=_no_candidates
         )
@@ -135,7 +135,7 @@ def test_04_single_candidate_requires_explicit_yes() -> None:
         config_path = Path(tmp) / "config.json"
         p = Path(tmp) / "tgauss.exe"
         p.write_bytes(b"")
-        answers = _scripted(["", "y", "fake"])
+        answers = _scripted(["", "y", "fake", ""])
         config = init_mod.run_init(
             prompt_fn=answers, print_fn=lambda *_: None, config_path=config_path, discovery_fn=_one_candidate(str(p))
         )
@@ -147,7 +147,7 @@ def test_05_single_candidate_declined_leaves_executable_unset() -> None:
         config_path = Path(tmp) / "config.json"
         p = Path(tmp) / "tgauss.exe"
         p.write_bytes(b"")
-        answers = _scripted(["", "n", "fake"])
+        answers = _scripted(["", "n", "fake", ""])
         config = init_mod.run_init(
             prompt_fn=answers, print_fn=lambda *_: None, config_path=config_path, discovery_fn=_one_candidate(str(p))
         )
@@ -163,7 +163,7 @@ def test_06_multiple_candidates_never_silently_chosen_requires_explicit_selectio
         p2.parent.mkdir()
         p1.write_bytes(b"")
         p2.write_bytes(b"")
-        answers = _scripted(["", "2", "fake"])
+        answers = _scripted(["", "2", "fake", ""])
         config = init_mod.run_init(
             prompt_fn=answers, print_fn=lambda *_: None, config_path=config_path,
             discovery_fn=_many_candidates([str(p1), str(p2)]),
@@ -180,7 +180,7 @@ def test_07_multiple_candidates_skipped_with_empty_answer_configures_nothing() -
         p2.parent.mkdir()
         p1.write_bytes(b"")
         p2.write_bytes(b"")
-        answers = _scripted(["", "", "fake"])
+        answers = _scripted(["", "", "fake", ""])
         config = init_mod.run_init(
             prompt_fn=answers, print_fn=lambda *_: None, config_path=config_path,
             discovery_fn=_many_candidates([str(p1), str(p2)]),
@@ -203,7 +203,7 @@ def test_08_gui_executable_candidate_is_never_offered_as_a_choice() -> None:
         # No MULTI/SINGLE-candidate SELECTION prompt should occur -- the
         # GUI-only candidate list must be filtered to empty before prompting,
         # falling through to the "type manually or skip" path instead.
-        answers = _scripted(["", "", "fake"])
+        answers = _scripted(["", "", "fake", ""])
         config = init_mod.run_init(prompt_fn=answers, print_fn=lambda *_: None, config_path=config_path, discovery_fn=discover)
         check("a GUI-only candidate list configures no executable", config.gauss_executable is None)
 
@@ -213,7 +213,7 @@ def test_09_manually_typed_gui_path_is_rejected() -> None:
         config_path = Path(tmp) / "config.json"
         gui = Path(tmp) / "gauss.exe"
         gui.write_bytes(b"")
-        answers = _scripted(["", str(gui), "fake"])
+        answers = _scripted(["", str(gui), "fake", ""])
         config = init_mod.run_init(prompt_fn=answers, print_fn=lambda *_: None, config_path=config_path, discovery_fn=_no_candidates)
         check("a manually typed GUI path is validated and rejected", config.gauss_executable is None)
 
@@ -226,7 +226,7 @@ def test_09_manually_typed_gui_path_is_rejected() -> None:
 def test_10_default_runner_accepts_valid_choice() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         config_path = Path(tmp) / "config.json"
-        answers = _scripted(["", "", "gauss"])
+        answers = _scripted(["", "", "gauss", ""])
         config = init_mod.run_init(prompt_fn=answers, print_fn=lambda *_: None, config_path=config_path, discovery_fn=_no_candidates)
         check("valid runner choice is saved", config.default_runner == "gauss")
 
@@ -235,7 +235,7 @@ def test_11_default_runner_invalid_choice_keeps_previous() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         config_path = Path(tmp) / "config.json"
         config_mod.save_config(config_mod.GaussAiConfig(default_runner="fake"), config_path)
-        answers = _scripted(["", "", "not-a-runner"])
+        answers = _scripted(["", "", "not-a-runner", ""])
         config = init_mod.run_init(prompt_fn=answers, print_fn=lambda *_: None, config_path=config_path, discovery_fn=_no_candidates)
         check("an invalid runner choice is rejected, previous kept", config.default_runner == "fake")
 
@@ -246,7 +246,7 @@ def test_11b_runner_prompt_is_preceded_by_an_explanation_of_fake_and_gauss() -> 
     with tempfile.TemporaryDirectory() as tmp:
         config_path = Path(tmp) / "config.json"
         messages: list[str] = []
-        answers = _scripted(["", "", "fake"])
+        answers = _scripted(["", "", "fake", ""])
         init_mod.run_init(prompt_fn=answers, print_fn=messages.append, config_path=config_path, discovery_fn=_no_candidates)
         joined = "\n".join(messages).lower()
         check("the explanation describes 'fake' as not running real GAUSS", "no real gauss is run" in joined)
@@ -266,11 +266,11 @@ def test_12_running_init_twice_does_not_corrupt_prior_config() -> None:
         ws = Path(tmp) / "workspaces"
 
         first = init_mod.run_init(
-            prompt_fn=_scripted([str(ws), "y", "fake"]), print_fn=lambda *_: None,
+            prompt_fn=_scripted([str(ws), "y", "fake", ""]), print_fn=lambda *_: None,
             config_path=config_path, discovery_fn=_one_candidate(str(p)),
         )
         second = init_mod.run_init(
-            prompt_fn=_scripted(["", "n", ""]), print_fn=lambda *_: None,
+            prompt_fn=_scripted(["", "n", "", ""]), print_fn=lambda *_: None,
             config_path=config_path, discovery_fn=_one_candidate(str(p)),
         )
         check("re-running init with all-Enter/decline preserves the first run's workspace_parent", second.workspace_parent == first.workspace_parent)
@@ -296,12 +296,12 @@ def test_13_running_init_twice_second_run_offers_existing_values_as_defaults() -
             return _p
 
         init_mod.run_init(
-            prompt_fn=recording_prompt_first([str(ws), "n", "gauss"]), print_fn=lambda *_: None,
+            prompt_fn=recording_prompt_first([str(ws), "n", "gauss", ""]), print_fn=lambda *_: None,
             config_path=config_path, discovery_fn=_no_candidates,
         )
         seen_prompts.clear()
         init_mod.run_init(
-            prompt_fn=recording_prompt_first(["", "", ""]), print_fn=lambda *_: None,
+            prompt_fn=recording_prompt_first(["", "", "", ""]), print_fn=lambda *_: None,
             config_path=config_path, discovery_fn=_no_candidates,
         )
         runner_prompt = [p for p in seen_prompts if "Default runner" in p][0]
@@ -317,6 +317,101 @@ def test_14_init_never_activates_license_installs_or_executes() -> None:
     forbidden = ("import subprocess", "pip install", "def execute(", "def activate_license(", "def install(")
     for token in forbidden:
         check(f"init module source does not contain {token!r}", token not in source)
+
+
+# ---------------------------------------------------------------------------
+# v0.71.0 Phase 8: conversational-AI settings must survive re-running init
+# (alpha finding: a bare re-run of init was silently wiping chat_provider/
+# chat_model/docs_root back to None), and the provider-selection step itself
+# ---------------------------------------------------------------------------
+
+
+def test_15_rerunning_init_preserves_chat_settings_not_touched_this_run() -> None:
+    """The exact regression this alpha finding described: every previous
+    field not actively re-asked (docs_root is never re-asked by init) must
+    still survive a bare all-Enter re-run."""
+    with tempfile.TemporaryDirectory() as tmp:
+        config_path = Path(tmp) / "config.json"
+        config_mod.save_config(
+            config_mod.GaussAiConfig(
+                chat_provider="anthropic", chat_model="claude-sonnet-5", docs_root="/some/docs/root",
+                ollama_endpoint="http://localhost:11434",
+            ),
+            config_path,
+        )
+        config = init_mod.run_init(
+            prompt_fn=_scripted(["", "", "", ""]), print_fn=lambda *_: None,
+            config_path=config_path, discovery_fn=_no_candidates,
+        )
+        check("chat_provider survives a bare re-run", config.chat_provider == "anthropic")
+        check("chat_model survives a bare re-run", config.chat_model == "claude-sonnet-5")
+        check("docs_root survives a bare re-run (init never re-asks it)", config.docs_root == "/some/docs/root")
+        check("ollama_endpoint survives a bare re-run", config.ollama_endpoint == "http://localhost:11434")
+
+
+def test_16_provider_prompt_accepts_a_valid_choice() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        config_path = Path(tmp) / "config.json"
+        config = init_mod.run_init(
+            prompt_fn=_scripted(["", "", "fake", "anthropic"]), print_fn=lambda *_: None,
+            config_path=config_path, discovery_fn=_no_candidates,
+        )
+        check("the chosen provider is saved", config.chat_provider == "anthropic")
+
+
+def test_17_provider_prompt_rejects_invalid_choice_and_keeps_previous() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        config_path = Path(tmp) / "config.json"
+        config_mod.save_config(config_mod.GaussAiConfig(chat_provider="fake"), config_path)
+        config = init_mod.run_init(
+            prompt_fn=_scripted(["", "", "", "not-a-real-provider"]), print_fn=lambda *_: None,
+            config_path=config_path, discovery_fn=_no_candidates,
+        )
+        check("an invalid provider choice is rejected, previous kept", config.chat_provider == "fake")
+
+
+def test_18_choosing_ollama_performs_a_read_only_reachability_check_and_prompts_for_a_model() -> None:
+    import gauss_chat_provider as provider_mod
+
+    with tempfile.TemporaryDirectory() as tmp:
+        config_path = Path(tmp) / "config.json"
+        messages: list[str] = []
+        calls: list[str] = []
+
+        real_check = provider_mod.check_ollama_service
+
+        def fake_check(*, endpoint):
+            calls.append(endpoint)
+            return provider_mod.OllamaServiceStatus(reachable=True, models=("qwen2.5-coder:7b",))
+
+        provider_mod.check_ollama_service = fake_check
+        try:
+            config = init_mod.run_init(
+                prompt_fn=_scripted(["", "", "", "ollama", "qwen2.5-coder:7b"]), print_fn=messages.append,
+                config_path=config_path, discovery_fn=_no_candidates,
+            )
+        finally:
+            provider_mod.check_ollama_service = real_check
+        check("ollama was selected", config.chat_provider == "ollama")
+        check("the chosen model was saved", config.chat_model == "qwen2.5-coder:7b")
+        check("a reachability check was actually performed", len(calls) == 1)
+        check("the reachability result was reported to the user", any("reachable" in m.lower() for m in messages))
+
+
+def test_19_workspace_parent_rejects_a_cli_shaped_value() -> None:
+    """Alpha finding #7: 'gauss-ai doctor' typed into the workspace-parent
+    prompt must never be silently accepted as a directory path."""
+    with tempfile.TemporaryDirectory() as tmp:
+        config_path = Path(tmp) / "config.json"
+        messages: list[str] = []
+        config = init_mod.run_init(
+            prompt_fn=_scripted(["gauss-ai doctor", "", "fake", ""]), print_fn=messages.append,
+            config_path=config_path, discovery_fn=_no_candidates,
+        )
+        check("the CLI-shaped value was not saved as workspace_parent", config.workspace_parent != "gauss-ai doctor")
+        joined = "\n".join(messages)
+        check("a WARNING explains why", "WARNING" in joined and "gauss-ai command" in joined)
+        check("the value is explicitly reported as NOT SAVED", "NOT SAVED" in joined)
 
 
 def run_tests() -> int:

@@ -234,6 +234,21 @@ def test_16_execution_intent_never_calls_the_provider() -> None:
     check("returns the fixed boundary message without calling the provider", result.text == engine_mod.EXECUTION_BOUNDARY_MESSAGE)
 
 
+def test_16b_repair_intent_phrasing_found_during_v0_71_0_live_validation_is_redirected() -> None:
+    """v0.71.0 Phase 11 live Ollama validation surfaced a real user phrasing
+    ('Please fix my broken.gss file and apply the change automatically.')
+    that the original, narrower execution-keyword list did not catch --
+    reached the model instead of the boundary redirect. This proves the fix."""
+    engine = engine_mod.ConversationEngine(provider=provider_mod.FakeModelProvider())
+    for phrase in (
+        "Please fix my broken.gss file and apply the change automatically.",
+        "Can you repair this file for me?",
+        "Just apply the fix already.",
+    ):
+        result = engine.ask(phrase)
+        check(f"{phrase!r} is redirected honestly", result.text == engine_mod.EXECUTION_BOUNDARY_MESSAGE)
+
+
 def test_17_module_never_imports_execution_or_repair_pipeline() -> None:
     forbidden_modules = (
         "gauss_execution_workflow", "gauss_repair_application", "gauss_repair_draft",

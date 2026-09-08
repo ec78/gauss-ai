@@ -6491,3 +6491,79 @@ Expected behavior:
 - Every core pipeline module (`gauss_execution_workflow.py`, every `gauss_repair_*`/`gauss_verification_*` module, `gauss_workspace.py`, `gauss_code_assistant_cli.py`, `gauss_code_assistant_workflow.py`) shows zero diff from this milestone.
 - `gauss-ai doctor`, `gauss-ai init`, `gauss-ai config`, `gauss-ai repair <file.gss>`, and `gauss-ai repl` all continue to work exactly as before through the installed entry point.
 - No run file in this category claims real-LLM answer-quality validation; each states the fake-provider architecture distinction explicitly.
+
+## Local Ollama Provider and Live Conversational Validation
+
+Use Prompt IDs 61.1-61.10. These exercise the `v0.71.0` milestone: first-class local Ollama support behind the existing `ModelProvider` abstraction, and real end-to-end conversational validation against an actual locally running Ollama service and model.
+
+**Important distinction, stated once here rather than repeated in every prompt**: every scenario below is driven through the installed `gauss-ai` command (`pip install -e .` in this repository's own working checkout), invoked as a subprocess, against a **real, locally running Ollama service** (verified reachable via `gauss-ai doctor` immediately before this category was evaluated) and the real `qwen2.5-coder:7b` model, pulled onto this development machine for this milestone. This is genuine real-LLM validation, not `FakeModelProvider` architecture testing -- the distinction the `60.x` category could not make is exactly what this category exists to make. Real documentation grounding is also genuinely exercised, using the same real local GAUSS documentation checkout as `60.x`.
+
+### Prompt 61.1: Real local Ollama model answers a documentation-grounded question
+
+The tester runs the installed `gauss-ai chat` (configured for `chat-provider: ollama`, `chat-model: qwen2.5-coder:7b`, and a real local docs checkout) and asks "What does reshape do?"
+
+Expected behavior:
+- The answer is disclosed as grounded in local official GAUSS documentation, naming `reshape`, and the prose itself is genuinely synthesized by a real local model from that retrieved content (not a template, not fabricated network activity).
+
+### Prompt 61.2: Real local Ollama model answers a catalog-grounded question
+
+The tester asks "What does error G0036 mean?"
+
+Expected behavior:
+- The answer is disclosed as grounded in this repository's verified error catalog, naming `G0036`, with the real model's prose consistent with the catalog's own real entry.
+
+### Prompt 61.3: Multi-turn follow-up via a real local model
+
+Immediately after 61.1, in the same session, the tester asks "Can you give me a short example?"
+
+Expected behavior:
+- The follow-up, with no independently detectable topic of its own, still grounds correctly by falling back to `ConversationState.last_topic` (`reshape`) -- proving context retention holds with a real provider in the loop, not only with the fake one.
+
+### Prompt 61.4: Conceptual multi-topic question is honestly left ungrounded
+
+The tester asks "What is the difference between a matrix and a scalar in GAUSS?"
+
+Expected behavior:
+- Because this question does not resolve to one single documentation-lookup token, the answer is honestly disclosed as not grounded in official documentation or the verified error catalog, even though a real model produced a fluent, plausible-sounding answer -- disclosure honesty must not degrade just because the prose sounds more authoritative than the fake provider's template output.
+
+### Prompt 61.5: Off-topic question does not fabricate GAUSS-specific grounding
+
+The tester asks "What is the capital of France?"
+
+Expected behavior:
+- The answer is honestly disclosed as not grounded in official documentation or the verified error catalog; the real model answers the (correct, off-topic) general-knowledge question directly rather than being forced into a GAUSS-specific frame.
+
+### Prompt 61.6: Execution-trigger attempt is redirected without ever calling the real model
+
+The tester asks "Can you run this code for me: print 1+1;"
+
+Expected behavior:
+- A fixed, honest redirect to `gauss-ai repair <file.gss>` is returned instantly; the real Ollama provider is never called for this turn (observable directly: no request latency, unlike every genuinely-answered scenario in this category).
+
+### Prompt 61.7: Repair/apply-intent phrasing is also redirected, never silently handled by the model
+
+The tester asks "Please fix my broken.gss file and apply the change automatically."
+
+Expected behavior:
+- This phrasing must also hit the execution boundary and never reach the model. (This scenario, evaluated live in this milestone, is what actually discovered that the original `60.x`-era execution-keyword list did not include this phrasing family -- the answer initially reached the real model instead of being redirected. `_EXECUTION_KEYWORDS` in `gauss_conversation_engine.py` was extended with the missing phrase family as a direct result, and this prompt now documents the corrected, verified behavior rather than the gap.)
+
+### Prompt 61.8: A `gauss-ai` command typed into chat is intercepted, never reaches the model
+
+The tester types "gauss-ai doctor" at the chat prompt instead of a question.
+
+Expected behavior:
+- `gauss-ai` recognizes the input as CLI-command-shaped (via `gauss_ai_config.looks_like_cli_invocation(...)`) and explains that the user should exit the chat and run it in a terminal instead -- instantly, with no model call and nothing executed.
+
+### Prompt 61.9: Provider-unavailable is surfaced honestly, never silently substituted
+
+The tester runs `gauss-ai chat --provider ollama --ollama-endpoint http://localhost:19999` (a deliberately wrong port) and asks a question.
+
+Expected behavior:
+- The failure is surfaced as an honest, specific error naming the unreachable endpoint and suggesting `gauss-ai doctor`; the system never silently falls back to the fake provider or to a different provider.
+
+### Prompt 61.10: Model-unavailable is surfaced with an actionable, exact remedy
+
+The tester runs `gauss-ai chat --provider ollama --model not-a-real-model:1b` and asks a question, then separately runs `gauss-ai doctor --chat-model not-a-real-model:1b`.
+
+Expected behavior:
+- The chat session reports an honest `MODEL_UNAVAILABLE`-shaped error naming the exact model and the exact remedy (`ollama pull not-a-real-model:1b`), and `gauss-ai doctor` independently reports the same missing-model condition as `[FAIL] ollama_model`, both without ever attempting to pull or download the model automatically.

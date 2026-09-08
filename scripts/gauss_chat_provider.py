@@ -1,4 +1,5 @@
-"""Model-provider abstraction for conversational GAUSS Q&A (v0.70.0).
+"""Model-provider abstraction for conversational GAUSS Q&A (v0.70.0; local
+Ollama provider added in v0.71.0).
 
 This is the ONLY module in this repository that ever constructs a request
 to, or parses a response from, a real language-model API. The rest of the
@@ -6,7 +7,7 @@ application (`gauss_conversation_engine.py`, `gauss_ai_chat.py`, and every
 existing module) sees only `ChatMessage`/`ProviderResult` -- provider-
 specific request/response shapes never leak past this file.
 
-Two providers exist:
+Three providers exist:
 
 - `FakeModelProvider` -- fully deterministic, no network, no randomness. It
   is NOT a claim of real conversational intelligence: it never synthesizes
@@ -41,6 +42,37 @@ Two providers exist:
   `ANTHROPIC_API_KEY` is configured in this environment. The HTTP call path
   is real, standard, and has not been independently confirmed against the
   live API by this repository as of `v0.70.0`.
+
+- `OllamaProvider` (v0.71.0) -- the local, zero-API-cost provider, calling a
+  locally running Ollama service's own `POST /api/chat` endpoint, again via
+  `urllib.request` only. No API key is required or accepted: local Ollama
+  has no authentication for its default local-only listener. Request/
+  response shapes are taken directly from Ollama's own authoritative
+  documentation, verified before this was written (not from memory):
+  https://docs.ollama.com/api/chat, https://docs.ollama.com/api/errors, and
+  https://github.com/ollama/ollama/blob/main/docs/api.md. Unlike Anthropic,
+  Ollama's `/api/chat` accepts `"system"`/`"user"`/`"assistant"` roles
+  directly within its own `messages` array -- there is no separate top-
+  level `system` field to assemble. A token cap is passed as
+  `options.num_predict` (Ollama's own documented mechanism), and streaming
+  is explicitly disabled (`"stream": false`) so exactly one JSON object is
+  returned, matching this module's single-shot `complete(...)` contract.
+  Ollama's own documented error shape is `{"error": "<string>"}` at the top
+  level (never nested, unlike Anthropic's `{"error": {"message": ...}}`) --
+  a 404 whose message contains "not found" is reported as the more specific
+  `model_unavailable` error kind (with the exact `ollama pull <model>`
+  command to fix it), never conflated with a generic HTTP error or a
+  service-unreachable network error. `OllamaProvider` never falls back to
+  any other provider on any failure -- an unreachable service, a missing
+  model, or a malformed response are all reported as honest `ProviderResult`
+  failures for the caller to display, exactly like `AnthropicMessagesProvider`
+  already does.
+
+  `check_ollama_service(...)` is a separate, explicitly read-only helper
+  (`GET /api/tags`, Ollama's own documented model-listing endpoint) used by
+  `gauss-ai doctor` and `gauss-ai init` to report service reachability and
+  locally available models -- it never triggers a model pull or any
+  generation, and is never called by `OllamaProvider.complete(...)` itself.
 """
 
 from __future__ import annotations
@@ -55,6 +87,7 @@ from typing import Callable, Protocol
 
 FAKE_PROVIDER = "fake"
 ANTHROPIC_PROVIDER = "anthropic"
+OLLAMA_PROVIDER = "ollama"
 
 #: Read at call time only -- see module docstring.
 ANTHROPIC_API_KEY_ENV = "ANTHROPIC_API_KEY"
@@ -66,6 +99,23 @@ DEFAULT_MAX_TOKENS = 1024
 #: unbounded, mirroring this repository's existing GAUSS-execution timeout
 #: discipline (`gauss_code_execution.py`).
 DEFAULT_TIMEOUT_SECONDS = 30.0
+
+#: Ollama's own documented local default -- see module docstring for the
+#: authoritative sources this was verified against. No API key of any kind
+#: is required or accepted for a local Ollama service.
+DEFAULT_OLLAMA_ENDPOINT = "http://localhost:11434"
+#: See `docs/ollama-models.md` for the full recommendation policy and why
+#: this specific model/size was chosen for private alpha (Apache-2.0
+#: licensed, strong instruction-following and coding ability, practical on
+#: 8GB+ RAM/VRAM consumer hardware). Never bundled with this repository --
+#: the user must `ollama pull` it themselves.
+DEFAULT_OLLAMA_MODEL = "qwen2.5-coder:7b"
+OLLAMA_CHAT_PATH = "/api/chat"
+OLLAMA_TAGS_PATH = "/api/tags"
+#: A longer default timeout than the cloud providers' -- a local model
+#: running on CPU can genuinely take longer than a cloud API round trip;
+#: still explicit and bounded, never unbounded.
+DEFAULT_OLLAMA_TIMEOUT_SECONDS = 120.0
 
 
 @dataclass(frozen=True)
@@ -91,6 +141,11 @@ class ProviderErrorKind(enum.Enum):
     #: The provider responded with HTTP success, but the response body did
     #: not have the shape this adapter expects.
     MALFORMED_RESPONSE = "malformed_response"
+    #: The provider (currently: Ollama only) was reached, but the
+    #: specifically configured model is not available there -- distinct
+    #: from a generic HTTP error so callers (doctor, chat) can give an
+    #: actionable "pull it first" message rather than a generic failure.
+    MODEL_UNAVAILABLE = "model_unavailable"
 
 
 @dataclass(frozen=True)
@@ -159,6 +214,35 @@ def _default_transport(request: urllib.request.Request) -> tuple[int, bytes]:
             return response.status, response.read()
     except urllib.error.HTTPError as exc:
         return exc.code, exc.read()
+
+
+def _default_ollama_transport(request: urllib.request.Request) -> tuple[int, bytes]:
+    """Identical to `_default_transport` except for a longer default
+    timeout (`DEFAULT_OLLAMA_TIMEOUT_SECONDS`) -- a local model, especially
+    on CPU, can genuinely take longer than a cloud API round trip. Kept as
+    a separate function (rather than a parameterized one) because the
+    `transport` field's own type on both provider dataclasses is a plain
+    one-argument callable, matching `ModelProvider`'s minimal-surface
+    convention -- not because the request-handling logic itself differs."""
+    try:
+        with urllib.request.urlopen(request, timeout=DEFAULT_OLLAMA_TIMEOUT_SECONDS) as response:
+            return response.status, response.read()
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read()
+
+
+def _extract_ollama_error(raw_body: bytes) -> str | None:
+    """Ollama's own documented error shape is `{"error": "<string>"}` at
+    the top level -- verified against https://docs.ollama.com/api/errors,
+    never nested the way Anthropic's `{"error": {"message": ...}}` is."""
+    try:
+        parsed = json.loads(raw_body.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    error = parsed.get("error")
+    return error if isinstance(error, str) and error else None
 
 
 @dataclass
@@ -255,14 +339,171 @@ class AnthropicMessagesProvider:
         )
 
 
-def build_provider(provider_name: str, *, model: str | None = None) -> "ModelProvider":
+@dataclass
+class OllamaProvider:
+    """Local, zero-API-cost provider. See module docstring for the full
+    endpoint/request/response/error-handling disclosure, verified against
+    Ollama's own current documentation before this was written. `model`
+    defaults to `DEFAULT_OLLAMA_MODEL` (see `docs/ollama-models.md` for the
+    recommendation policy); `endpoint` defaults to Ollama's own documented
+    local default and should only be overridden if Ollama itself has been
+    configured to listen elsewhere. No API key field exists here at all --
+    not merely unset -- because local Ollama has no concept of one."""
+
+    model: str | None = None
+    endpoint: str = DEFAULT_OLLAMA_ENDPOINT
+    transport: Callable[[urllib.request.Request], tuple[int, bytes]] = _default_ollama_transport
+
+    def complete(self, messages: tuple[ChatMessage, ...], *, max_tokens: int = DEFAULT_MAX_TOKENS) -> ProviderResult:
+        resolved_model = self.model or DEFAULT_OLLAMA_MODEL
+        # Ollama's /api/chat accepts "system"/"user"/"assistant" roles
+        # directly within its own messages array -- confirmed against
+        # https://docs.ollama.com/api/chat -- unlike Anthropic, there is no
+        # separate top-level "system" field to assemble here.
+        conversation = [{"role": m.role, "content": m.content} for m in messages]
+        body = {
+            "model": resolved_model,
+            "messages": conversation,
+            "stream": False,
+            "options": {"num_predict": max_tokens},
+        }
+        request = urllib.request.Request(
+            url=f"{self.endpoint}{OLLAMA_CHAT_PATH}",
+            data=json.dumps(body).encode("utf-8"),
+            method="POST",
+            headers={"content-type": "application/json"},
+        )
+
+        try:
+            status, raw_body = self.transport(request)
+        except urllib.error.URLError as exc:
+            return ProviderResult(
+                success=False, text=None, provider_name=OLLAMA_PROVIDER, model=resolved_model,
+                error_kind=ProviderErrorKind.NETWORK.value,
+                error_message=(
+                    f"could not reach the local Ollama service at {self.endpoint}: {exc}. Is Ollama running? "
+                    "Start it, or run 'gauss-ai doctor' for a diagnostic."
+                ),
+            )
+        except OSError as exc:
+            return ProviderResult(
+                success=False, text=None, provider_name=OLLAMA_PROVIDER, model=resolved_model,
+                error_kind=ProviderErrorKind.NETWORK.value,
+                error_message=f"network error contacting {self.endpoint}: {exc}",
+            )
+
+        if status == 404:
+            message = _extract_ollama_error(raw_body) or f"HTTP 404 from {self.endpoint}"
+            if "not found" in message.lower():
+                return ProviderResult(
+                    success=False, text=None, provider_name=OLLAMA_PROVIDER, model=resolved_model,
+                    error_kind=ProviderErrorKind.MODEL_UNAVAILABLE.value,
+                    error_message=f"{message} -- pull it first with: ollama pull {resolved_model}",
+                )
+            return ProviderResult(
+                success=False, text=None, provider_name=OLLAMA_PROVIDER, model=resolved_model,
+                error_kind=ProviderErrorKind.HTTP_ERROR.value, error_message=message,
+            )
+        if status >= 400:
+            message = _extract_ollama_error(raw_body) or f"HTTP {status} from {self.endpoint}"
+            return ProviderResult(
+                success=False, text=None, provider_name=OLLAMA_PROVIDER, model=resolved_model,
+                error_kind=ProviderErrorKind.HTTP_ERROR.value, error_message=message,
+            )
+
+        try:
+            parsed = json.loads(raw_body.decode("utf-8"))
+            text = parsed["message"]["content"]
+            if not isinstance(text, str) or not text:
+                raise KeyError("no non-empty message.content in response")
+        except (json.JSONDecodeError, UnicodeDecodeError, KeyError, TypeError) as exc:
+            return ProviderResult(
+                success=False, text=None, provider_name=OLLAMA_PROVIDER, model=resolved_model,
+                error_kind=ProviderErrorKind.MALFORMED_RESPONSE.value,
+                error_message=f"response did not have the expected shape: {exc}",
+            )
+
+        return ProviderResult(
+            success=True, text=text, provider_name=OLLAMA_PROVIDER, model=parsed.get("model", resolved_model),
+        )
+
+
+@dataclass(frozen=True)
+class OllamaServiceStatus:
+    """Result of a read-only `GET /api/tags` probe -- never triggers a
+    model pull or any generation."""
+
+    reachable: bool
+    #: Locally available model names exactly as Ollama reports them (e.g.
+    #: "qwen2.5-coder:7b") -- empty if unreachable or the response was
+    #: unparseable.
+    models: tuple[str, ...]
+    error_message: str | None = None
+
+
+def check_ollama_service(
+    *,
+    endpoint: str = DEFAULT_OLLAMA_ENDPOINT,
+    transport: Callable[[urllib.request.Request], tuple[int, bytes]] = _default_ollama_transport,
+) -> OllamaServiceStatus:
+    """Read-only reachability/model-listing probe, used by `gauss-ai
+    doctor` and `gauss-ai init`. Calls Ollama's own documented `GET
+    /api/tags` endpoint (https://docs.ollama.com/api/tags) -- never `/api/
+    chat`, never `/api/pull`; nothing here can trigger generation or a
+    download. Never raises; every failure mode is reported on the returned
+    `OllamaServiceStatus`."""
+    request = urllib.request.Request(url=f"{endpoint}{OLLAMA_TAGS_PATH}", method="GET")
+    try:
+        status, raw_body = transport(request)
+    except (urllib.error.URLError, OSError) as exc:
+        return OllamaServiceStatus(reachable=False, models=(), error_message=str(exc))
+    if status >= 400:
+        return OllamaServiceStatus(
+            reachable=False, models=(), error_message=_extract_ollama_error(raw_body) or f"HTTP {status}"
+        )
+    try:
+        parsed = json.loads(raw_body.decode("utf-8"))
+        raw_models = parsed.get("models", []) if isinstance(parsed, dict) else []
+        names = tuple(
+            str(entry.get("name") or entry.get("model"))
+            for entry in raw_models
+            if isinstance(entry, dict) and (entry.get("name") or entry.get("model"))
+        )
+    except (json.JSONDecodeError, UnicodeDecodeError, AttributeError):
+        return OllamaServiceStatus(reachable=True, models=(), error_message="response did not have the expected shape")
+    return OllamaServiceStatus(reachable=True, models=names)
+
+
+def ollama_model_matches(configured_model: str, available_models: tuple[str, ...]) -> bool:
+    """Bounded, documented matching between a configured model name and
+    Ollama's own reported local model names. Ollama model names are
+    conventionally `<name>:<tag>` (default tag `latest`): an exact
+    configured name (e.g. `qwen2.5-coder:7b`) must match exactly; a bare
+    configured name with no tag (e.g. `llama3.1`) matches any installed
+    tag of that same base name (e.g. `llama3.1:latest`). Never a fuzzy or
+    partial-string match."""
+    if configured_model in available_models:
+        return True
+    if ":" in configured_model:
+        return False
+    return any(name.split(":", 1)[0] == configured_model for name in available_models)
+
+
+def build_provider(
+    provider_name: str, *, model: str | None = None, endpoint: str | None = None
+) -> "ModelProvider":
     """The one factory function callers should use. Raises `ValueError` for
     an unrecognized provider name -- never silently falls back to the fake
     provider, since that would be exactly the kind of quiet substitution
     this repository's own `v0.68.0` alpha validation work was built to
-    prevent for the GAUSS runner backend."""
+    prevent for the GAUSS runner backend. `endpoint` is meaningful only for
+    `ollama` and is ignored for the other two providers."""
     if provider_name == FAKE_PROVIDER:
         return FakeModelProvider()
     if provider_name == ANTHROPIC_PROVIDER:
         return AnthropicMessagesProvider(model=model)
-    raise ValueError(f"unknown chat provider {provider_name!r}; supported: {FAKE_PROVIDER!r}, {ANTHROPIC_PROVIDER!r}")
+    if provider_name == OLLAMA_PROVIDER:
+        return OllamaProvider(model=model, endpoint=endpoint or DEFAULT_OLLAMA_ENDPOINT)
+    raise ValueError(
+        f"unknown chat provider {provider_name!r}; supported: {FAKE_PROVIDER!r}, {ANTHROPIC_PROVIDER!r}, {OLLAMA_PROVIDER!r}"
+    )

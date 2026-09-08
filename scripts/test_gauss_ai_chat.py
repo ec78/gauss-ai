@@ -228,13 +228,13 @@ def test_16_cli_provider_argument_is_used_to_construct_the_engine() -> None:
         cli_provider="fake", config=config_mod.GaussAiConfig(), env={},
     )
     check("a real engine was constructed", result is not None)
-    check("the fake-provider notice was shown", any("deterministic fake/test provider" in m for m in messages))
+    check("the fake-provider notice was shown", any("Provider: fake/test" in m for m in messages))
 
 
 def test_17_default_provider_is_fake_when_nothing_configured() -> None:
     messages: list[str] = []
     chat_mod.run_chat(prompt_fn=_scripted(["exit"]), print_fn=messages.append, config=config_mod.GaussAiConfig(), env={})
-    check("defaults to the fake provider", any("deterministic fake/test provider" in m for m in messages))
+    check("defaults to the fake provider", any("Provider: fake/test" in m for m in messages))
 
 
 # ---------------------------------------------------------------------------
@@ -271,6 +271,66 @@ def test_19_no_output_line_ever_contains_a_secret_shaped_value() -> None:
     chat_mod.run_chat(prompt_fn=_scripted(["What does reshape do?", "exit"]), print_fn=messages.append, engine=engine)
     joined = "\n".join(messages)
     check("the real API key value never appears in any printed line", "sk-should-never-be-printed" not in joined)
+
+
+# ---------------------------------------------------------------------------
+# v0.71.0 Phase 6: generic startup status for any provider
+# ---------------------------------------------------------------------------
+
+
+def test_20_ollama_provider_startup_status_shows_provider_model_and_endpoint() -> None:
+    provider = provider_mod.OllamaProvider(model="qwen2.5-coder:7b", endpoint="http://localhost:11434")
+    engine = engine_mod.ConversationEngine(provider=provider)
+    messages: list[str] = []
+    chat_mod.run_chat(prompt_fn=_scripted(["exit"]), print_fn=messages.append, engine=engine)
+    check("provider and model are shown", any("Provider: ollama" in m and "qwen2.5-coder:7b" in m for m in messages))
+    check("endpoint is shown", any("http://localhost:11434" in m for m in messages))
+    check("the fake-provider notice is not shown for a real provider", not any("Provider: fake/test" in m for m in messages))
+
+
+def test_21_anthropic_provider_startup_status_shows_provider_and_model() -> None:
+    provider = provider_mod.AnthropicMessagesProvider(model="claude-sonnet-5")
+    engine = engine_mod.ConversationEngine(provider=provider)
+    messages: list[str] = []
+    chat_mod.run_chat(prompt_fn=_scripted(["exit"]), print_fn=messages.append, engine=engine)
+    check("provider and model are shown", any("Provider: anthropic" in m and "claude-sonnet-5" in m for m in messages))
+
+
+def test_22_startup_status_never_claims_grounding_without_a_configured_docs_root() -> None:
+    engine = _fake_engine(docs_root=None)
+    messages: list[str] = []
+    chat_mod.run_chat(prompt_fn=_scripted(["exit"]), print_fn=messages.append, engine=engine)
+    check("docs status says not configured", any("GAUSS documentation: not configured" in m for m in messages))
+    check("docs status never claims configured", not any("GAUSS documentation: configured" in m for m in messages))
+
+
+def test_23_startup_status_reports_a_configured_docs_root() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        engine = _fake_engine(docs_root=tmp)
+        messages: list[str] = []
+        chat_mod.run_chat(prompt_fn=_scripted(["exit"]), print_fn=messages.append, engine=engine)
+        check("docs status says configured", any("GAUSS documentation: configured" in m and tmp in m for m in messages))
+
+
+# ---------------------------------------------------------------------------
+# v0.71.0 Phase 7: gauss-ai CLI commands typed into chat are intercepted
+# ---------------------------------------------------------------------------
+
+
+def test_24_cli_shaped_input_is_intercepted_and_never_reaches_the_provider() -> None:
+    engine = _fake_engine()
+    messages: list[str] = []
+    chat_mod.run_chat(prompt_fn=_scripted(["gauss-ai doctor", "exit"]), print_fn=messages.append, engine=engine)
+    check("the interception message is shown", any("cannot run it" in m for m in messages))
+    check("nothing was recorded as a conversation turn", len(engine.state.turns) == 0)
+
+
+def test_25_a_normal_question_that_merely_mentions_gauss_ai_still_reaches_the_provider() -> None:
+    engine = _fake_engine()
+    chat_mod.run_chat(
+        prompt_fn=_scripted(["How do I install gauss-ai?", "exit"]), print_fn=lambda *_: None, engine=engine,
+    )
+    check("the question and its answer were recorded (two turns)", len(engine.state.turns) == 2)
 
 
 def run_tests() -> int:

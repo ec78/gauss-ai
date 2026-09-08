@@ -26,7 +26,7 @@ From the repository root:
 pip install -e .
 ```
 
-This is an **editable install** — the installed `gauss-ai` command continues to run the exact files in your cloned checkout; there is nothing to reinstall after pulling a new commit. A non-editable install also works if you prefer a fixed snapshot:
+This is an **editable install** — the installed `gauss-ai` command continues to run the files in your cloned checkout. A non-editable install also works if you prefer a fixed snapshot:
 
 ```
 pip install .
@@ -53,16 +53,29 @@ Should print the `gauss-ai` version, your Python version, platform, and configur
 
 If `gauss-ai` is not found on your `PATH` after installation, your virtual environment's `Scripts`/`bin` directory may not be activated, or your shell may need to be restarted. `python scripts/gauss_code_assistant_cli.py` (run from the repository root) always works as a fallback and requires no installation at all.
 
+## Updating to a newer version
+
+For an **editable install**, pulling new commits into the same checkout is normally enough — but if `gauss-ai version` still reports an old version number after pulling, or you've pointed your install at a *different* checkout than before, rerun the install from the checkout you want to use:
+
+```
+git pull origin main
+pip install -e .
+gauss-ai version
+gauss-ai doctor
+```
+
+`pip install -e .` is quick to rerun and safe to run any time you're unsure which checkout your installed `gauss-ai` command is actually running — it does not affect your saved configuration (`~/.gauss-ai/config.json`). To see exactly which files your installed command is running, run `python -c "import gauss_ai_config; print(gauss_ai_config.__file__)"`.
+
 ## Configuration
 
-`gauss-ai` stores at most seven settings and one display preference in a single local file: `~/.gauss-ai/config.json` (i.e. `Path.home() / ".gauss-ai" / "config.json"` — never a hard-coded, user-specific path). No secrets, license credentials, API keys, or arbitrary key/value data are ever stored there.
+`gauss-ai` stores a small, fixed set of settings — no secrets, license credentials, API keys, or arbitrary key/value data — in a single local file: `~/.gauss-ai/config.json` (i.e. `Path.home() / ".gauss-ai" / "config.json"` — never a hard-coded, user-specific path). Run `gauss-ai config --help` at any time for the full, current reference.
 
 Configuration precedence, most to least authoritative:
 
-1. An explicit CLI argument (e.g. `--gauss-executable`, `--runner`, `--workspace-parent`, `--provider`, `--model`, `--docs-root`)
-2. An environment variable (`GAUSS_EXECUTABLE`, `GAUSS_AI_DEFAULT_RUNNER`, `GAUSS_AI_WORKSPACE_PARENT`, `GAUSS_AI_TIMEOUT_SECONDS`, `GAUSS_AI_CHAT_PROVIDER`, `GAUSS_AI_CHAT_MODEL`, `GAUSS_AI_DOCS_ROOT`)
+1. An explicit CLI argument (e.g. `--gauss-executable`, `--runner`, `--workspace-parent`, `--provider`, `--model`, `--docs-root`, `--ollama-endpoint`)
+2. An environment variable (`GAUSS_EXECUTABLE`, `GAUSS_AI_DEFAULT_RUNNER`, `GAUSS_AI_WORKSPACE_PARENT`, `GAUSS_AI_TIMEOUT_SECONDS`, `GAUSS_AI_CHAT_PROVIDER`, `GAUSS_AI_CHAT_MODEL`, `GAUSS_AI_DOCS_ROOT`, `GAUSS_AI_OLLAMA_ENDPOINT`)
 3. The local config file
-4. A safe default (`default_runner=fake`, `default_timeout_seconds=30.0`, `chat_provider=fake`, no configured executable, workspace parent, chat model, or docs root)
+4. A safe default (`default_runner=fake`, `default_timeout_seconds=30.0`, `chat_provider=fake`, `ollama-endpoint=http://localhost:11434`, no configured executable, workspace parent, chat model, or docs root)
 
 Set values individually:
 
@@ -71,11 +84,12 @@ gauss-ai config show
 gauss-ai config set gauss-executable C:\gauss26\tgauss.exe
 gauss-ai config set workspace-parent C:\Users\you\gauss-ai-workspaces
 gauss-ai config set default-runner fake
-gauss-ai config set chat-provider fake
+gauss-ai config set chat-provider ollama
+gauss-ai config set chat-model qwen2.5-coder:7b
 gauss-ai config set docs-root C:\path\to\your\gauss-docs\checkout
 ```
 
-`gauss-ai config set gauss-executable <path>` validates the path exists and is a terminal executable before saving — an invalid or GUI path is rejected with a clear error, and nothing is written. See [docs/conversational-qa.md](conversational-qa.md) for the three chat-related settings (`chat-provider`, `chat-model`, `docs-root`) in full, including how a real provider's API key is configured (an environment variable, never a config setting).
+`gauss-ai config set gauss-executable <path>` validates the path exists and is a terminal executable before saving — an invalid or GUI path is rejected with a clear error, and nothing is written. See [docs/conversational-qa.md](conversational-qa.md) for the chat-related settings (`chat-provider`, `chat-model`, `docs-root`, `ollama-endpoint`) in full, including how a cloud provider's API key is configured (an environment variable, never a config setting), and [docs/ollama-models.md](ollama-models.md) for which local model to pull.
 
 ## First-run setup
 

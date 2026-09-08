@@ -27,6 +27,7 @@ if str(_SCRIPT_DIR) not in sys.path:
 import gauss_ai_chat as chat_mod  # noqa: E402
 import gauss_ai_cli as ai_cli  # noqa: E402
 import gauss_ai_config as config_mod  # noqa: E402
+import gauss_ai_doctor as doctor_mod  # noqa: E402
 import gauss_ai_guided_repair as guided_mod  # noqa: E402
 import gauss_code_assistant_cli as cli_mod  # noqa: E402
 
@@ -342,6 +343,90 @@ def test_24_config_show_and_set_cover_the_new_chat_settings() -> None:
 
         exit_code, _out = _capture(ai_cli.main, ["config", "set", "chat-provider", "not-a-real-provider"])
         check("an invalid chat-provider value is rejected", exit_code == 1)
+
+
+# ---------------------------------------------------------------------------
+# v0.71.0: config --help / bare config, ollama-endpoint, and doctor/chat
+# CLI-layer plumbing for the new Ollama provider
+# ---------------------------------------------------------------------------
+
+
+def test_25_config_help_and_bare_config_both_print_full_help() -> None:
+    """Alpha finding: `gauss-ai config --help` used to return 'Unknown
+    config subcommand' instead of useful help; bare `gauss-ai config` is
+    broadened the same way rather than keeping a bare one-line usage error."""
+    for args in (["config", "--help"], ["config", "-h"], ["config", "help"], ["config"]):
+        exit_code, out = _capture(ai_cli.main, args)
+        check(f"{args} exits 0", exit_code == 0)
+        check(f"{args} mentions chat-provider", "chat-provider" in out)
+        check(f"{args} mentions ollama-endpoint", "ollama-endpoint" in out)
+        check(f"{args} does not say 'Unknown config subcommand'", "Unknown config subcommand" not in out)
+
+
+def test_26_config_set_and_show_cover_ollama_endpoint() -> None:
+    with _isolated_config():
+        exit_code, out = _capture(ai_cli.main, ["config", "show"])
+        check("default ollama-endpoint is shown before anything is set", "ollama-endpoint:" in out and "11434" in out)
+
+        exit_code, _out = _capture(ai_cli.main, ["config", "set", "ollama-endpoint", "http://otherhost:9999"])
+        check("setting ollama-endpoint exits 0", exit_code == 0)
+        exit_code, out = _capture(ai_cli.main, ["config", "show"])
+        check("show reflects the set ollama-endpoint", "http://otherhost:9999" in out)
+
+
+def test_27_config_set_accepts_ollama_as_a_valid_chat_provider() -> None:
+    with _isolated_config():
+        exit_code, out = _capture(ai_cli.main, ["config", "set", "chat-provider", "ollama"])
+        check("setting chat-provider to ollama exits 0", exit_code == 0)
+        exit_code, out = _capture(ai_cli.main, ["config", "show"])
+        check("show reflects chat-provider: ollama", "chat-provider: ollama" in out)
+
+
+def test_28_chat_ollama_endpoint_flag_is_forwarded_to_run_chat() -> None:
+    captured: dict[str, object] = {}
+    original = chat_mod.run_chat
+
+    def fake_run_chat(**kwargs):
+        captured["kwargs"] = kwargs
+        return object()
+
+    chat_mod.run_chat = fake_run_chat
+    try:
+        with _isolated_config():
+            exit_code, _out = _capture(
+                ai_cli.main, ["chat", "--provider", "ollama", "--ollama-endpoint", "http://localhost:22222"]
+            )
+    finally:
+        chat_mod.run_chat = original
+    check("exit code 0", exit_code == 0)
+    check(
+        "--ollama-endpoint was forwarded to run_chat",
+        captured["kwargs"].get("cli_ollama_endpoint") == "http://localhost:22222",
+    )
+
+
+def test_29_doctor_new_flags_are_forwarded_to_run_doctor() -> None:
+    captured: dict[str, object] = {}
+    original = doctor_mod.run_doctor
+
+    def fake_run_doctor(**kwargs):
+        captured["kwargs"] = kwargs
+        return doctor_mod.DoctorReport(checks=())
+
+    doctor_mod.run_doctor = fake_run_doctor
+    try:
+        with _isolated_config():
+            exit_code, _out = _capture(
+                ai_cli.main,
+                ["doctor", "--chat-provider", "ollama", "--chat-model", "qwen2.5-coder:7b",
+                 "--ollama-endpoint", "http://localhost:33333"],
+            )
+    finally:
+        doctor_mod.run_doctor = original
+    check("exit code 0 (empty checks -> overall PASS)", exit_code == 0)
+    check("--chat-provider was forwarded", captured["kwargs"].get("cli_chat_provider") == "ollama")
+    check("--chat-model was forwarded", captured["kwargs"].get("cli_chat_model") == "qwen2.5-coder:7b")
+    check("--ollama-endpoint was forwarded", captured["kwargs"].get("cli_ollama_endpoint") == "http://localhost:33333")
 
 
 # ---------------------------------------------------------------------------

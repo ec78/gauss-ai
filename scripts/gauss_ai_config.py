@@ -1,7 +1,8 @@
 """Local configuration model for the productized `gauss-ai` CLI (v0.67.0;
-conversational-chat settings added in v0.70.0).
+conversational-chat settings added in v0.70.0; local Ollama endpoint added
+in v0.71.0).
 
-Stores exactly seven settings and one display preference -- no secrets, no
+Stores exactly eight settings and one display preference -- no secrets, no
 license credentials, no passwords, no API keys, and no arbitrary key/value
 execution mechanism of any kind:
 
@@ -9,17 +10,21 @@ execution mechanism of any kind:
     default_runner           -- "fake" or "gauss"
     workspace_parent         -- approved parent directory for alpha workspaces
     default_timeout_seconds  -- default execution timeout
-    chat_provider            -- "fake" or "anthropic" (v0.70.0)
+    chat_provider            -- "fake", "anthropic", or "ollama" (v0.70.0; ollama v0.71.0)
     chat_model                -- model identifier string, provider-specific (v0.70.0)
     docs_root                -- local root of official GAUSS documentation, for
                                  conversational grounding only (v0.70.0)
+    ollama_endpoint          -- local Ollama service URL, e.g. http://localhost:11434
+                                 (v0.71.0) -- never a credential; Ollama has none
     verbose                  -- whether to show raw digests/IDs by default
 
 An API key/credential is never a field on this model and is never written to
 the config file -- see `gauss_chat_provider.py`'s own module docstring for
 where and how a real provider's credential is read (fresh from an
 environment variable, at call time only, never persisted anywhere this
-module touches).
+module touches). `ollama_endpoint` is not a credential -- a local Ollama
+service has no authentication -- it is simply where to find it, exactly like
+`gauss_executable` is simply where to find a terminal GAUSS executable.
 
 File location: `~/.gauss-ai/config.json`, computed via `Path.home()` --
 never a hard-coded, user-specific path. Every location this module touches
@@ -57,7 +62,7 @@ CONFIG_DIR_NAME = ".gauss-ai"
 CONFIG_FILE_NAME = "config.json"
 
 VALID_RUNNERS = ("fake", "gauss")
-VALID_CHAT_PROVIDERS = ("fake", "anthropic")
+VALID_CHAT_PROVIDERS = ("fake", "anthropic", "ollama")
 
 ENV_GAUSS_EXECUTABLE = "GAUSS_EXECUTABLE"
 ENV_DEFAULT_RUNNER = "GAUSS_AI_DEFAULT_RUNNER"
@@ -66,6 +71,37 @@ ENV_TIMEOUT_SECONDS = "GAUSS_AI_TIMEOUT_SECONDS"
 ENV_CHAT_PROVIDER = "GAUSS_AI_CHAT_PROVIDER"
 ENV_CHAT_MODEL = "GAUSS_AI_CHAT_MODEL"
 ENV_DOCS_ROOT = "GAUSS_AI_DOCS_ROOT"
+ENV_OLLAMA_ENDPOINT = "GAUSS_AI_OLLAMA_ENDPOINT"
+
+#: A small, explicit, reviewable list of this CLI's own subcommand names --
+#: used only by `looks_like_cli_invocation(...)` below to catch the exact
+#: alpha-observed mistake of typing a `gauss-ai` command where a plain path
+#: was expected (e.g. into `workspace-parent`). Not a general shell-command
+#: detector; see that function's own docstring for the precise, narrow scope.
+_KNOWN_CLI_SUBCOMMANDS = (
+    "version", "doctor", "init", "config", "repair", "chat", "repl", "help",
+)
+
+
+def looks_like_cli_invocation(value: str) -> bool:
+    """True only when `value` looks like a literal `gauss-ai <subcommand>`
+    command line, e.g. `gauss-ai doctor` or `gauss-ai config show` -- the
+    exact, real alpha-observed mistake where a user typed a CLI command
+    into a prompt expecting a filesystem path (a workspace-parent
+    directory), and it was silently accepted as a valid, writable path
+    (`mkdir` happily creates a directory literally named "gauss-ai
+    doctor"). Deliberately narrow: only the first two whitespace-separated
+    tokens are checked against this module's own known command name and a
+    small, explicit list of real subcommands -- this is not a general
+    shell-command or executable-name detector, and it does not reject a
+    path that merely contains the substring "gauss-ai" somewhere else."""
+    tokens = value.strip().split()
+    if len(tokens) < 2:
+        return False
+    first = tokens[0].lower()
+    if first not in {"gauss-ai", "gauss-ai.exe"}:
+        return False
+    return tokens[1].lower() in _KNOWN_CLI_SUBCOMMANDS
 
 
 def config_dir() -> Path:
@@ -96,6 +132,7 @@ class GaussAiConfig:
     chat_provider: str | None = None
     chat_model: str | None = None
     docs_root: str | None = None
+    ollama_endpoint: str | None = None
     verbose: bool = False
 
 
@@ -133,6 +170,7 @@ def load_config(path: str | Path | None = None) -> GaussAiConfig:
         chat_provider=data.get("chat_provider") or None,
         chat_model=data.get("chat_model") or None,
         docs_root=data.get("docs_root") or None,
+        ollama_endpoint=data.get("ollama_endpoint") or None,
         verbose=bool(data.get("verbose", False)),
     )
 
@@ -306,4 +344,25 @@ def resolve_docs_root(
     config = config if config is not None else load_config()
     if config.docs_root:
         return ResolvedValue(config.docs_root, "config_file")
+    return ResolvedValue(None, "default")
+
+
+def resolve_ollama_endpoint(
+    *, cli_value: str | None = None, config: GaussAiConfig | None = None, env: dict[str, str] | None = None
+) -> ResolvedValue:
+    """No default endpoint is asserted at THIS layer -- mirrors
+    `resolve_chat_model(...)`'s own convention. `gauss_chat_provider.
+    OllamaProvider`/`build_provider(...)` apply the actual documented local
+    default (`DEFAULT_OLLAMA_ENDPOINT`) only when this resolves to `None`,
+    so a caller can always tell "the user explicitly set this" apart from
+    "nothing was configured, the provider's own default applies."""
+    env = env if env is not None else os.environ
+    if cli_value:
+        return ResolvedValue(cli_value, "cli_argument")
+    env_val = env.get(ENV_OLLAMA_ENDPOINT, "").strip()
+    if env_val:
+        return ResolvedValue(env_val, "environment_variable")
+    config = config if config is not None else load_config()
+    if config.ollama_endpoint:
+        return ResolvedValue(config.ollama_endpoint, "config_file")
     return ResolvedValue(None, "default")

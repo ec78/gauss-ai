@@ -68,6 +68,41 @@ def _render_answer(print_fn: Callable[[str], None], result: "engine_mod.AnswerRe
     print_fn("")
 
 
+def _startup_status_lines(engine: "engine_mod.ConversationEngine") -> tuple[str, ...]:
+    """Reports the resolved provider/model/grounding status for whichever
+    provider is actually in use -- generalizes the v0.70.0 fake-provider-only
+    notice (v0.71.0 Phase 6) so a real provider's user gets the same clarity
+    a fake-provider user always had, and grounding is never claimed unless
+    `docs_root` is actually configured."""
+    provider = engine.provider
+    lines: list[str] = []
+    if isinstance(provider, provider_mod.FakeModelProvider):
+        lines.append(
+            "Provider: fake/test (deterministic, no network, no API key) -- answers are limited to raw "
+            "retrieved documentation/catalog text, never synthesized prose."
+        )
+        lines.append("To use a real model: gauss-ai config set chat-provider ollama   (local, no API key)")
+        lines.append("                  or: gauss-ai config set chat-provider anthropic  (cloud, needs an API key)")
+    elif isinstance(provider, provider_mod.OllamaProvider):
+        model = provider.model or provider_mod.DEFAULT_OLLAMA_MODEL
+        endpoint = provider.endpoint or provider_mod.DEFAULT_OLLAMA_ENDPOINT
+        lines.append(f"Provider: ollama (local)  Model: {model}")
+        lines.append(f"Endpoint: {endpoint} -- run 'gauss-ai doctor' if this provider is unreachable.")
+    elif isinstance(provider, provider_mod.AnthropicMessagesProvider):
+        model = provider.model or "(provider default)"
+        lines.append(f"Provider: anthropic (cloud)  Model: {model}")
+    else:
+        lines.append(f"Provider: {type(provider).__name__}")
+    if engine.docs_root:
+        lines.append(f"GAUSS documentation: configured ({engine.docs_root})")
+    else:
+        lines.append(
+            "GAUSS documentation: not configured -- answers about specific commands will not be grounded in "
+            "official docs. See docs/gauss-documentation-setup.md, or run: gauss-ai config set docs-root <path>"
+        )
+    return tuple(lines)
+
+
 def run_chat(
     *,
     prompt_fn: Callable[[str], str] = input,
@@ -75,6 +110,7 @@ def run_chat(
     cli_provider: str | None = None,
     cli_model: str | None = None,
     cli_docs_root: str | None = None,
+    cli_ollama_endpoint: str | None = None,
     config: "config_mod.GaussAiConfig | None" = None,
     env: dict[str, str] | None = None,
     engine: "engine_mod.ConversationEngine | None" = None,
@@ -91,23 +127,26 @@ def run_chat(
         provider_name = config_mod.resolve_chat_provider(cli_value=cli_provider, config=resolved_config, env=env).value
         model = config_mod.resolve_chat_model(cli_value=cli_model, config=resolved_config, env=env).value
         docs_root = config_mod.resolve_docs_root(cli_value=cli_docs_root, config=resolved_config, env=env).value
+        endpoint = config_mod.resolve_ollama_endpoint(cli_value=cli_ollama_endpoint, config=resolved_config, env=env).value
         try:
-            provider = provider_mod.build_provider(provider_name, model=model)
+            build_kwargs = {"model": model}
+            if endpoint is not None:
+                build_kwargs["endpoint"] = endpoint
+            provider = provider_mod.build_provider(provider_name, **build_kwargs)
         except ValueError as exc:
             print_fn(f"Configuration error: {exc}")
-            print_fn("Run 'gauss-ai config set chat-provider fake' or 'gauss-ai config set chat-provider anthropic'.")
+            print_fn(
+                "Run 'gauss-ai config set chat-provider fake', 'gauss-ai config set chat-provider ollama', or "
+                "'gauss-ai config set chat-provider anthropic'."
+            )
             return None
         engine = engine_mod.ConversationEngine(provider=provider, docs_root=docs_root)
 
     print_fn(BANNER)
     print_fn("")
-    if isinstance(engine.provider, provider_mod.FakeModelProvider):
-        print_fn(
-            "Using the deterministic fake/test provider -- no real model is configured, so answers are limited "
-            "to raw retrieved documentation/catalog text, never synthesized prose. See "
-            "docs/conversational-qa.md to configure a real provider."
-        )
-        print_fn("")
+    for line in _startup_status_lines(engine):
+        print_fn(line)
+    print_fn("")
     print_fn("Type a GAUSS question, or 'help' for more, 'exit' to leave.")
     print_fn("")
 
@@ -130,6 +169,13 @@ def run_chat(
         if lowered in {"reset", "new"}:
             engine.reset()
             print_fn("Conversation reset -- starting fresh.")
+            print_fn("")
+            continue
+        if config_mod.looks_like_cli_invocation(stripped):
+            print_fn(
+                f"'{stripped}' looks like a gauss-ai command, not a question -- this chat cannot run it. "
+                "Exit this chat (type 'exit') and run it in your terminal instead."
+            )
             print_fn("")
             continue
         result = engine.ask(stripped)

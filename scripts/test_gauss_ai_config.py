@@ -285,7 +285,7 @@ def test_23_resolve_default_timeout_seconds_malformed_env_var_falls_through() ->
 
 
 def test_24_config_never_stores_secrets_or_arbitrary_keys() -> None:
-    """Structural proof: GaussAiConfig has exactly eight fields, none of
+    """Structural proof: GaussAiConfig has exactly nine fields, none of
     which is secret-shaped, and save_config(...) serializes only those.
 
     v0.70.0 note: this test's previous expectation ("exactly five fields")
@@ -296,14 +296,18 @@ def test_24_config_never_stores_secrets_or_arbitrary_keys() -> None:
     None-default, CLI>env>config>default precedence pattern as every prior
     field. No API key or credential field was added; see
     `gauss_chat_provider.py`'s own module docstring for why a credential is
-    never a field on this model."""
+    never a field on this model.
+
+    v0.71.0 note: `ollama_endpoint` was added for the same reason --
+    Ollama has no authentication for local use, so this is a location, not
+    a credential, exactly like `gauss_executable` is a location."""
     field_names = {f.name for f in __import__("dataclasses").fields(config_mod.GaussAiConfig)}
     check(
-        "exactly the eight documented fields exist",
+        "exactly the nine documented fields exist",
         field_names
         == {
             "gauss_executable", "default_runner", "workspace_parent", "default_timeout_seconds",
-            "chat_provider", "chat_model", "docs_root", "verbose",
+            "chat_provider", "chat_model", "docs_root", "ollama_endpoint", "verbose",
         },
     )
     for forbidden in ("password", "secret", "token", "license", "credential", "api_key"):
@@ -395,6 +399,71 @@ def test_29_chat_settings_round_trip_through_save_and_load() -> None:
         check("chat_provider round-trips", loaded.chat_provider == "anthropic")
         check("chat_model round-trips", loaded.chat_model == "claude-sonnet-5")
         check("docs_root round-trips", loaded.docs_root == "/some/docs")
+
+
+def test_30_valid_chat_providers_includes_ollama() -> None:
+    check("ollama is a supported provider", "ollama" in config_mod.VALID_CHAT_PROVIDERS)
+    check("fake is still supported", "fake" in config_mod.VALID_CHAT_PROVIDERS)
+    check("anthropic is still supported", "anthropic" in config_mod.VALID_CHAT_PROVIDERS)
+
+
+def test_31_resolve_ollama_endpoint_full_precedence_chain() -> None:
+    config = config_mod.GaussAiConfig(ollama_endpoint="http://config-host:11434")
+    check(
+        "cli arg wins",
+        config_mod.resolve_ollama_endpoint(
+            cli_value="http://cli-host:11434", config=config, env={"GAUSS_AI_OLLAMA_ENDPOINT": "http://env-host:11434"}
+        ).value
+        == "http://cli-host:11434",
+    )
+    check(
+        "env var wins over config",
+        config_mod.resolve_ollama_endpoint(
+            cli_value=None, config=config, env={"GAUSS_AI_OLLAMA_ENDPOINT": "http://env-host:11434"}
+        ).value
+        == "http://env-host:11434",
+    )
+    check(
+        "config file wins over default",
+        config_mod.resolve_ollama_endpoint(cli_value=None, config=config, env={}).value == "http://config-host:11434",
+    )
+    check(
+        "default is None -- the provider itself applies the documented local default",
+        config_mod.resolve_ollama_endpoint(cli_value=None, config=config_mod.GaussAiConfig(), env={}).value is None,
+    )
+
+
+def test_32_ollama_endpoint_round_trips_through_save_and_load() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "config.json"
+        original = config_mod.GaussAiConfig(chat_provider="ollama", chat_model="qwen2.5-coder:7b", ollama_endpoint="http://localhost:11434")
+        config_mod.save_config(original, path)
+        loaded = config_mod.load_config(path)
+        check("chat_provider round-trips", loaded.chat_provider == "ollama")
+        check("chat_model round-trips", loaded.chat_model == "qwen2.5-coder:7b")
+        check("ollama_endpoint round-trips", loaded.ollama_endpoint == "http://localhost:11434")
+
+
+def test_33_looks_like_cli_invocation_catches_the_real_alpha_mistake() -> None:
+    check("'gauss-ai doctor' is detected", config_mod.looks_like_cli_invocation("gauss-ai doctor"))
+    check("'gauss-ai config show' is detected", config_mod.looks_like_cli_invocation("gauss-ai config show"))
+    check("'gauss-ai version' is detected", config_mod.looks_like_cli_invocation("gauss-ai version"))
+    check("case-insensitive: 'Gauss-AI Doctor'", config_mod.looks_like_cli_invocation("Gauss-AI Doctor"))
+    check(
+        "with the .exe suffix: 'gauss-ai.exe repair'",
+        config_mod.looks_like_cli_invocation("gauss-ai.exe repair foo.gss"),
+    )
+
+
+def test_34_looks_like_cli_invocation_does_not_reject_real_paths() -> None:
+    check("a normal Windows path is not flagged", not config_mod.looks_like_cli_invocation(r"C:\Users\me\gauss-ai-workspaces"))
+    check("a folder literally named gauss-ai-workspaces is not flagged", not config_mod.looks_like_cli_invocation("gauss-ai-workspaces"))
+    check("a single bare word is not flagged (no subcommand token)", not config_mod.looks_like_cli_invocation("gauss-ai"))
+    check(
+        "'gauss-ai' appearing later in a real path is not flagged",
+        not config_mod.looks_like_cli_invocation("my gauss-ai project folder"),
+    )
+    check("an unrecognized second token is not flagged", not config_mod.looks_like_cli_invocation("gauss-ai somewhere"))
 
 
 def run_tests() -> int:

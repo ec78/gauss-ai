@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Callable
 
 import gauss_ai_config as config_mod
+import gauss_chat_provider as provider_mod
 import gauss_environment_check as environment_check_mod
 
 
@@ -58,7 +59,15 @@ def run_init(
     answer = prompt_fn("  Enter a path to use, or press Enter to keep the current setting: ").strip()
     workspace_parent = existing.workspace_parent
     workspace_parent_save_failed = False
-    if answer:
+    if answer and config_mod.looks_like_cli_invocation(answer):
+        workspace_parent_save_failed = True
+        print_fn(f"  WARNING: '{answer}' looks like a gauss-ai command, not a directory path.")
+        print_fn(
+            f"  NOT SAVED: this value was not saved. The previous setting "
+            f"({existing.workspace_parent or 'not set -- a fresh temporary directory will be used each session'}) "
+            "remains in effect."
+        )
+    elif answer:
         candidate = Path(answer).expanduser()
         try:
             candidate.mkdir(parents=True, exist_ok=True)
@@ -137,12 +146,47 @@ def run_init(
     elif answer:
         print_fn(f"  '{answer}' is not 'fake' or 'gauss'; keeping the previous setting.")
 
+    # -- conversational AI provider -----------------------------------------
+    print_fn("")
+    print_fn(f"Conversational AI provider (current: {existing.chat_provider or 'fake (default)'})")
+    print_fn("  fake       No real model, no network, no API key. Echoes retrieved evidence only.")
+    print_fn("  ollama     A locally running Ollama model. No API key required; you install/run Ollama yourself")
+    print_fn("             (https://ollama.com) and pull a model (e.g. 'ollama pull qwen2.5-coder:7b').")
+    print_fn("  anthropic  Anthropic's cloud API. Requires your own ANTHROPIC_API_KEY environment variable.")
+    chat_provider = existing.chat_provider
+    chat_model = existing.chat_model
+    ollama_endpoint = existing.ollama_endpoint
+    answer = prompt_fn("  Provider, 'fake', 'ollama', or 'anthropic' (press Enter to keep current): ").strip().lower()
+    if answer in config_mod.VALID_CHAT_PROVIDERS:
+        chat_provider = answer
+    elif answer:
+        print_fn(f"  '{answer}' is not 'fake', 'ollama', or 'anthropic'; keeping the previous setting.")
+
+    if chat_provider == provider_mod.OLLAMA_PROVIDER:
+        endpoint_to_check = ollama_endpoint or provider_mod.DEFAULT_OLLAMA_ENDPOINT
+        print_fn(f"  Checking whether Ollama is reachable at {endpoint_to_check} (read-only check, nothing is installed)...")
+        status = provider_mod.check_ollama_service(endpoint=endpoint_to_check)
+        if status.reachable:
+            print_fn(f"  OK: Ollama is reachable. Models available locally: {', '.join(status.models) or '(none pulled yet)'}")
+        else:
+            print_fn(f"  NOTE: Ollama is not reachable at {endpoint_to_check} yet ({status.error_message}).")
+            print_fn("  This setting will still be saved -- install/start Ollama and pull a model before chatting.")
+        model_answer = prompt_fn(
+            f"  Model to use (current: {chat_model or provider_mod.DEFAULT_OLLAMA_MODEL + ' (default)'}): "
+        ).strip()
+        if model_answer:
+            chat_model = model_answer
+
     new_config = config_mod.GaussAiConfig(
         gauss_executable=gauss_executable,
         default_runner=default_runner,
         workspace_parent=workspace_parent,
         default_timeout_seconds=existing.default_timeout_seconds,
         verbose=existing.verbose,
+        chat_provider=chat_provider,
+        chat_model=chat_model,
+        docs_root=existing.docs_root,
+        ollama_endpoint=ollama_endpoint,
     )
     saved_path = config_mod.save_config(new_config, config_path)
 

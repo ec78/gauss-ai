@@ -92,6 +92,13 @@ _EXECUTION_KEYWORDS = (
     "run this", "execute this", "run that", "execute that", "run it", "execute it",
     "run the example", "execute the example", "run the code", "execute the code",
     "apply this repair", "apply that repair", "run this script", "execute this script",
+    # v0.71.0: live Ollama validation (Phase 11) surfaced a real repair-intent
+    # phrasing ("fix my file ... and apply the change") that the original,
+    # narrower "run/execute this" list did not catch -- added as the same
+    # kind of fixed, literal phrase, not a general repair-intent parser.
+    "fix my file", "fix this file", "fix that file", "repair my file", "repair this file",
+    "repair that file", "apply the change", "apply this change", "apply that change",
+    "apply the fix", "apply this fix", "apply that fix",
 )
 
 _CODE_FENCE_RE = re.compile(r"```")

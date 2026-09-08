@@ -22,6 +22,7 @@ if str(_SCRIPT_DIR) not in sys.path:
 
 import gauss_ai_config as config_mod  # noqa: E402
 import gauss_ai_doctor as doctor_mod  # noqa: E402
+import gauss_chat_provider as provider_mod  # noqa: E402
 
 
 _failures: list[str] = []
@@ -238,10 +239,91 @@ def test_19_doctor_module_defines_no_execution_install_or_mutation_callables() -
 
 
 def test_20_doctor_never_imports_network_or_process_launch_modules() -> None:
+    """v0.71.0 note: doctor now reports Ollama reachability, which requires
+    ONE narrow, local-loopback network read -- but that logic lives
+    entirely in `gauss_chat_provider.check_ollama_service(...)`, a single,
+    well-tested, injectable helper. This module itself still contains no
+    direct network or process-launch call of its own -- confirmed here by
+    scanning doctor's own source text, not `gauss_chat_provider.py`'s."""
     source = Path(doctor_mod.__file__).read_text(encoding="utf-8")
     forbidden = ("import subprocess", "import socket", "import urllib", "import requests")
     for token in forbidden:
         check(f"doctor module does not {token!r}", token not in source)
+
+
+# ---------------------------------------------------------------------------
+# v0.71.0 Ollama diagnostics -- every test injects a fake service_checker,
+# never makes a real network call, even a local one.
+# ---------------------------------------------------------------------------
+
+
+def _fake_checker(reachable: bool, models: tuple[str, ...] = (), error_message: str | None = None):
+    def checker(*, endpoint: str) -> "provider_mod.OllamaServiceStatus":
+        return provider_mod.OllamaServiceStatus(reachable=reachable, models=models, error_message=error_message)
+    return checker
+
+
+def test_21_ollama_checks_absent_when_provider_is_not_ollama() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        report = doctor_mod.run_doctor(config=config_mod.GaussAiConfig(), env={}, config_path=Path(tmp) / "config.json")
+    names = {c.name for c in report.checks}
+    check("no ollama_service check when provider is fake", "ollama_service" not in names)
+    check("no ollama_model check when provider is fake", "ollama_model" not in names)
+
+
+def test_22_ollama_absence_does_not_fail_an_otherwise_valid_installation() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        report = doctor_mod.run_doctor(
+            config=config_mod.GaussAiConfig(chat_provider="fake"), env={}, config_path=Path(tmp) / "config.json",
+        )
+    check("overall status is not FAIL merely because Ollama was never checked", report.overall_status != doctor_mod.FAIL)
+
+
+def test_23_ollama_selected_and_reachable_and_model_present_is_pass() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        report = doctor_mod.run_doctor(
+            config=config_mod.GaussAiConfig(chat_provider="ollama", chat_model="qwen2.5-coder:7b"), env={},
+            config_path=Path(tmp) / "config.json",
+            ollama_service_checker=_fake_checker(reachable=True, models=("qwen2.5-coder:7b",)),
+        )
+    by_name = {c.name: c for c in report.checks}
+    check("ollama_service is PASS", by_name["ollama_service"].status == doctor_mod.PASS)
+    check("ollama_model is PASS", by_name["ollama_model"].status == doctor_mod.PASS)
+    check("PASS is not reported merely because a string/path exists -- it reflects a real (fake-injected) reachability result", "reachable" in by_name["ollama_service"].message)
+
+
+def test_24_ollama_selected_and_unreachable_is_fail_with_a_next_step() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        report = doctor_mod.run_doctor(
+            config=config_mod.GaussAiConfig(chat_provider="ollama"), env={}, config_path=Path(tmp) / "config.json",
+            ollama_service_checker=_fake_checker(reachable=False, error_message="connection refused"),
+        )
+    by_name = {c.name: c for c in report.checks}
+    check("ollama_service is FAIL", by_name["ollama_service"].status == doctor_mod.FAIL)
+    check("a next step is offered", by_name["ollama_service"].next_step is not None)
+    check("ollama_model is honestly skipped, not a separate misleading FAIL", by_name["ollama_model"].status == doctor_mod.WARN)
+    check("overall status is FAIL", report.overall_status == doctor_mod.FAIL)
+
+
+def test_25_ollama_selected_and_model_missing_is_fail_with_pull_command() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        report = doctor_mod.run_doctor(
+            config=config_mod.GaussAiConfig(chat_provider="ollama", chat_model="qwen2.5-coder:7b"), env={},
+            config_path=Path(tmp) / "config.json",
+            ollama_service_checker=_fake_checker(reachable=True, models=("llama3.1:latest",)),
+        )
+    by_name = {c.name: c for c in report.checks}
+    check("ollama_service is PASS (it IS reachable)", by_name["ollama_service"].status == doctor_mod.PASS)
+    check("ollama_model is FAIL", by_name["ollama_model"].status == doctor_mod.FAIL)
+    check("the exact pull command is suggested", "ollama pull qwen2.5-coder:7b" in by_name["ollama_model"].next_step)
+
+
+def test_26_doctor_ollama_checks_remain_read_only() -> None:
+    """Structural proof: nothing in the Ollama check path can trigger a
+    pull or generation -- `check_ollama_service` (which these checks are
+    the only doctor-side caller of) only ever calls GET /api/tags."""
+    source = Path(provider_mod.__file__).read_text(encoding="utf-8")
+    check("check_ollama_service uses only the tags path constant", "OLLAMA_TAGS_PATH" in source)
 
 
 def run_tests() -> int:

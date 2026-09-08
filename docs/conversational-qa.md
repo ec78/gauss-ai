@@ -16,7 +16,7 @@ is the default. The explicit, equivalent form is:
 gauss-ai chat
 ```
 
-Both accept the same optional flags: `--provider {fake|anthropic}`, `--model <name>`, `--docs-root <path>`.
+Both accept the same optional flags: `--provider {fake|ollama|anthropic}`, `--model <name>`, `--docs-root <path>`, `--ollama-endpoint <url>` (only meaningful with `--provider ollama`).
 
 ## Supported capabilities
 
@@ -34,9 +34,18 @@ Both accept the same optional flags: `--provider {fake|anthropic}`, `--model <na
 
 ## Provider configuration
 
-Two providers exist behind a small, common interface (`gauss_chat_provider.ModelProvider`):
+Three providers exist behind a small, common interface (`gauss_chat_provider.ModelProvider`):
 
 - **`fake`** (the default) — a fully deterministic, network-free provider. It never fabricates a synthesized answer; when real grounding evidence is available (see below) it echoes that evidence back, clearly labeled as a template, not a composed answer. It requires no credential and makes no network call, so the entire conversational system — including this alpha release itself — is usable and testable without an API key.
+- **`ollama`** (added in `v0.71.0`) — talks to a locally running [Ollama](https://ollama.com) instance over HTTP (Python's standard library only). No API key, no cost, no data leaving your machine. You install Ollama and pull a model yourself; `gauss-ai` never installs or downloads either. Configure it with:
+  ```
+  gauss-ai config set chat-provider ollama
+  gauss-ai config set chat-model qwen2.5-coder:7b   # optional; this is also the built-in default
+  gauss-ai config set ollama-endpoint http://localhost:11434   # optional; this is also the built-in default
+  ```
+  See [ollama-models.md](ollama-models.md) for model recommendations, and run `gauss-ai doctor` to check whether Ollama is actually reachable and the configured model is actually pulled.
+
+  **Validation status**: this provider has been validated against a real, locally running Ollama installation and a real model, in addition to its fully-tested fake-transport unit test suite — see the `v0.71.0` release notes for the specific scenarios exercised.
 - **`anthropic`** — calls the real Anthropic Messages API over HTTPS (Python's standard library only; no extra package is installed for this). Configure it with:
   ```
   gauss-ai config set chat-provider anthropic
@@ -46,7 +55,9 @@ Two providers exist behind a small, common interface (`gauss_chat_provider.Model
 
   **Alpha disclosure**: this provider's own request/response/error-handling logic is fully tested, but a live network round trip against the real Anthropic API has not been performed as part of this repository's own development or evaluation, because no API key is available in that environment. If you configure a real key and see something behave unexpectedly, please report it (see [reporting-bugs.md](reporting-bugs.md)).
 
-Precedence for every chat setting is the same as every other `gauss-ai` setting: explicit CLI flag (`--provider`/`--model`/`--docs-root`) > environment variable (`GAUSS_AI_CHAT_PROVIDER`/`GAUSS_AI_CHAT_MODEL`/`GAUSS_AI_DOCS_ROOT`) > `gauss-ai config set chat-provider|chat-model|docs-root <value>` > safe default.
+Precedence for every chat setting is the same as every other `gauss-ai` setting: explicit CLI flag (`--provider`/`--model`/`--docs-root`/`--ollama-endpoint`) > environment variable (`GAUSS_AI_CHAT_PROVIDER`/`GAUSS_AI_CHAT_MODEL`/`GAUSS_AI_DOCS_ROOT`/`GAUSS_AI_OLLAMA_ENDPOINT`) > `gauss-ai config set chat-provider|chat-model|docs-root|ollama-endpoint <value>` > safe default.
+
+See [distribution-architecture.md](distribution-architecture.md) for the ownership boundary between `gauss-ai` itself and whichever provider answers a question.
 
 ## Privacy and credential expectations
 
@@ -72,6 +83,10 @@ This repository does not bundle a copy of official GAUSS documentation. If you d
 ```
 gauss-ai config set docs-root "C:\path\to\your\gauss-docs\checkout"
 ```
+
+## Typing a `gauss-ai` command inside chat
+
+If you type something that looks like a `gauss-ai` command (for example, `gauss-ai doctor` or `gauss-ai config show`) at the chat prompt, `gauss-ai` recognizes this deterministically and tells you to exit the chat and run it in your terminal instead — it is never sent to the model provider as a question, and it is never executed from inside the chat loop.
 
 ## Execution boundary
 
