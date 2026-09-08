@@ -1,6 +1,6 @@
 # Private Alpha Testing
 
-**Status: `v0.70.0` — Private Alpha.** The GAUSS Code Assistant has been validated end to end against real GAUSS 26.1.1, through the installed `gauss-ai` product, exactly as you will use it. `gauss-ai` (no subcommand) now also launches a conversational GAUSS Q&A assistant — see [docs/conversational-qa.md](conversational-qa.md).
+**Status: `v0.71.0` — Private Alpha.** The GAUSS Code Assistant has been validated end to end against real GAUSS 26.1.1, through the installed `gauss-ai` product, exactly as you will use it. `gauss-ai` (no subcommand) now also launches a conversational GAUSS Q&A assistant, which can use a free, local Ollama model (no API key) or Anthropic's cloud API — see [docs/conversational-qa.md](conversational-qa.md).
 
 This page is the entry point for this phase. It does not repeat what the other alpha docs already cover — follow the links below in order.
 

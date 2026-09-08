@@ -7,7 +7,7 @@ Thank you for testing the GAUSS Code Assistant. This guide covers what to test, 
 ## What to test
 
 - **Installation**: `pip install -e .` in a clean environment, then `gauss-ai version`/`gauss-ai doctor`.
-- **Conversational Q&A** (`gauss-ai`, no subcommand — new in `v0.70.0`): a basic question, a follow-up question that relies on context ("show me an example"), a known error code (e.g. "what does G0036 mean?"), a question about a command you know isn't real, and trying to get it to "run" or "execute" something (it should redirect you to `gauss-ai repair`, never actually execute anything). See [docs/conversational-qa.md](conversational-qa.md).
+- **Conversational Q&A** (`gauss-ai`, no subcommand — new in `v0.70.0`; local Ollama support added in `v0.71.0`): a basic question, a follow-up question that relies on context ("show me an example"), a known error code (e.g. "what does G0036 mean?"), a question about a command you know isn't real, and trying to get it to "run" or "execute" something (it should redirect you to `gauss-ai repair`, never actually execute anything). Typing a `gauss-ai` command like `gauss-ai doctor` at the chat prompt should also be recognized and redirected, never sent to the model. See [docs/conversational-qa.md](conversational-qa.md).
 - **First-run setup**: `gauss-ai init`, including re-running it to confirm it doesn't corrupt prior configuration.
 - **The guided workflow** (`gauss-ai repair <file.gss>`), in both fake mode and (if you have GAUSS installed) real mode:
   - A file with a real, reproducible error (start with `examples/alpha-demo/broken.gss`, then try your own).
