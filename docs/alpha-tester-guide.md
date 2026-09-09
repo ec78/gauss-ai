@@ -8,6 +8,7 @@ Thank you for testing the GAUSS Code Assistant. This guide covers what to test, 
 
 - **Installation**: `pip install -e .` in a clean environment, then `gauss-ai version`/`gauss-ai doctor`.
 - **Conversational Q&A** (`gauss-ai`, no subcommand — new in `v0.70.0`; local Ollama support added in `v0.71.0`): a basic question, a follow-up question that relies on context ("show me an example"), a known error code (e.g. "what does G0036 mean?"), a question about a command you know isn't real, and trying to get it to "run" or "execute" something (it should redirect you to `gauss-ai repair`, never actually execute anything). Typing a `gauss-ai` command like `gauss-ai doctor` at the chat prompt should also be recognized and redirected, never sent to the model. See [docs/conversational-qa.md](conversational-qa.md).
+- **Conversational code generation** (new in `v0.72.0`): ask for GAUSS code directly ("write GAUSS code to reshape a matrix"), a request naming two real commands together (grounding should name both), and a request asking it to run or apply the code it just generated (should still redirect, never execute or edit a file). Treat all generated code as unverified -- this repository's own live testing found the local model can generate plausible-looking but nonexistent GAUSS syntax with no warning. See [docs/conversational-code-generation.md](conversational-code-generation.md).
 - **First-run setup**: `gauss-ai init`, including re-running it to confirm it doesn't corrupt prior configuration.
 - **The guided workflow** (`gauss-ai repair <file.gss>`), in both fake mode and (if you have GAUSS installed) real mode:
   - A file with a real, reproducible error (start with `examples/alpha-demo/broken.gss`, then try your own).
@@ -27,7 +28,7 @@ This is an alpha for a **single-file, human-approved repair workflow**. It does 
 - Guarantee that a proposed repair is correct — verification produces evidence, never a correctness verdict (see "Current safety boundaries" below).
 - Run on macOS or Linux with real GAUSS execution (fake-mode-only testing works anywhere Python 3.10+ does).
 - Persist a session across a process restart (durable sessions — repair or chat — are explicitly out of scope for this milestone).
-- Execute anything, generate a repair, or write a file from a conversational chat session — chat is Q&A only; it redirects you to `gauss-ai repair <file.gss>` for anything execution- or repair-shaped.
+- Execute anything, apply a repair, or write a file from a conversational chat session — chat can generate GAUSS code on request (`v0.72.0`) but never executes, applies, or saves it; it redirects you to `gauss-ai repair <file.gss>` for anything execution- or repair-shaped, even immediately after generating code.
 - Send any data anywhere — there is no telemetry, no analytics, no network reporting of any kind. A real chat provider's API key, if you configure one, is read from your own environment variable only, never stored by `gauss-ai` itself.
 
 If you hit one of these, it's expected, not a bug — see [KNOWN_LIMITATIONS.md](../KNOWN_LIMITATIONS.md) for the complete, current list.

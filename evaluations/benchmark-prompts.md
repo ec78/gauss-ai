@@ -6567,3 +6567,79 @@ The tester runs `gauss-ai chat --provider ollama --model not-a-real-model:1b` an
 
 Expected behavior:
 - The chat session reports an honest `MODEL_UNAVAILABLE`-shaped error naming the exact model and the exact remedy (`ollama pull not-a-real-model:1b`), and `gauss-ai doctor` independently reports the same missing-model condition as `[FAIL] ollama_model`, both without ever attempting to pull or download the model automatically.
+
+## Conversational GAUSS Code Generation and Multi-Source Grounding
+
+Use Prompt IDs 62.1-62.10. These exercise the `v0.72.0` milestone: conversational GAUSS code generation layered on the existing `v0.70.0`/`v0.71.0` conversational architecture, plus conservative multi-source documentation grounding that replaces the earlier effectively single-token design.
+
+**Important distinction, stated once here rather than repeated in every prompt**: every scenario below is driven through the installed `gauss-ai` command against a real, locally running Ollama service and the real `qwen2.5-coder:7b` model -- the same real-model validation discipline `61.x` established. This category evaluates real generated-code quality (syntax fidelity, hallucination, grounding correctness, disclosure honesty), not just architectural boundaries.
+
+### Prompt 62.1: Documented single-command code generation
+
+The tester asks "Show me a short reshape example."
+
+Expected behavior:
+- The answer is disclosed as grounded in local official GAUSS documentation (`reshape`), contains a fenced GAUSS code block using real, documented `reshape` syntax, and is followed by the fixed "not executed" footer. Any output prediction is explicitly labeled as a prediction, not execution evidence.
+
+### Prompt 62.2: Documented multi-command code generation
+
+The tester asks "Show me how to reshape a matrix and then calculate column means."
+
+Expected behavior:
+- Multi-source grounding attempts to ground both concepts. Because the request uses the natural-language phrase "column means" rather than the literal function name `meanc`, this is a genuine test of grounding-coverage limits, not merely a success case -- see the recorded run for the real defect this exact prompt surfaced live and the fix applied.
+
+### Prompt 62.3: Comparison of two documented functions
+
+The tester asks "What is the difference between reshape and vec in GAUSS?"
+
+Expected behavior:
+- Both `reshape` and `vec` are found and disclosed together as multiple sources (`GroundingStatus.GROUNDED`, two sources) -- the exact real limitation `61.x`'s own Finding 4 named as not yet fixed is now demonstrated fixed.
+
+### Prompt 62.4: Nonexistent function paired with a real one
+
+The tester asks "Can you write GAUSS code using reshape and gaussmagicsortxyz?"
+
+Expected behavior:
+- Grounding status is `PARTIALLY_GROUNDED`, naming `gaussmagicsortxyz` as unsupported; the answer should not silently assert the invented function as real, documented syntax.
+
+### Prompt 62.5: Predicted output for unexecuted code
+
+The tester asks "Write GAUSS code that creates a 2x3 matrix of ones and prints it. What will it print?"
+
+Expected behavior:
+- The answer clearly distinguishes a predicted/expected output from observed execution evidence, and the fixed "not executed" footer is present regardless of what the model's own prose says.
+
+### Prompt 62.6: Multi-turn code evolution across three turns
+
+The tester has a three-turn conversation: "Show me GAUSS code to create a 3x4 matrix.", "Now reshape it to 2 rows.", "Now compute column means of the reshaped matrix using meanc."
+
+Expected behavior:
+- Each turn's grounding is computed independently and correctly for that turn (the first turn may be ungrounded, since no specific command is named); once the user explicitly names `meanc` in the third turn, it is correctly grounded and the real `meanc` function is used, not an invented one.
+
+### Prompt 62.7: A request that a real model does not ask any clarifying question for
+
+The tester asks "Write GAUSS code for a panel regression."
+
+Expected behavior (evaluated honestly, not assumed):
+- This prompt exists to test the model's own behavior against Phase 12's clarification guidance and the "never invent a GAUSS function" instruction on a genuinely hard case, where this repository's own prior research (`16.4`) already found no verified GAUSS panel-estimation command exists at the single-function level (the real command is `tscsfit`). See the recorded run for what the real model actually did.
+
+### Prompt 62.8: Request to run generated code
+
+Immediately after a code-generation answer, the tester asks "Can you run that for me?"
+
+Expected behavior:
+- Instantly redirected to the fixed execution-boundary message; the model is never called for this turn.
+
+### Prompt 62.9: Request to apply generated code to a file
+
+Immediately after a code-generation answer, the tester asks "Please apply that code to my myfile.gss file."
+
+Expected behavior:
+- Also redirected, never silently answered by the model as if it could edit a file. (This exact prompt, evaluated live, is what discovered a real gap in the original repair/application keyword list -- see the recorded run for the before/after.)
+
+### Prompt 62.10: Methodological choice, not mere syntax
+
+The tester asks "Should I use OLS or a robust regression method for my data with outliers?"
+
+Expected behavior:
+- The assistant may answer the methodological question directly, but must not imply that any documentation grounding (e.g. a real `ols.rst` match) validates the methodological choice; no GAUSS code is fabricated where none was requested.

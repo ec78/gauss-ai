@@ -167,6 +167,15 @@ class ModelProvider(Protocol):
     def complete(self, messages: tuple[ChatMessage, ...], *, max_tokens: int = DEFAULT_MAX_TOKENS) -> ProviderResult: ...
 
 
+#: Matches `gauss_conversation_engine.CODE_GENERATION_MARKER_PREFIX` -- kept
+#: here as a literal, not an import, since this module deliberately has no
+#: dependency on the engine (the engine depends on this module, never the
+#: reverse). Used only so `FakeModelProvider` can deterministically produce
+#: a fenced code block for a code-generation request, exactly as a template
+#: echo, never real synthesis -- fully testable without a real model.
+_CODE_GENERATION_MARKER_PREFIX = "CODE_GENERATION_MODE:"
+
+
 @dataclass
 class FakeModelProvider:
     """Deterministic, network-free provider -- see module docstring for why
@@ -186,14 +195,37 @@ class FakeModelProvider:
             (m.content for m in reversed(messages) if m.role == "system" and m.content.startswith("GROUNDING_CONTEXT:")),
             None,
         )
+        is_code_generation = any(
+            m.role == "system" and m.content.startswith(_CODE_GENERATION_MARKER_PREFIX) for m in messages
+        )
         user_text = next((m.content for m in reversed(messages) if m.role == "user"), "")
-        if grounding is not None:
+        if grounding is not None and is_code_generation:
+            text = (
+                "[fake/test provider -- template only, no synthesis performed]\n"
+                f"Here is GAUSS code assembled directly from retrieved documentation/catalog evidence for "
+                f"your request ({user_text!r}):\n\n"
+                "```gauss\n"
+                f"{grounding[len('GROUNDING_CONTEXT:'):].strip()}\n"
+                "```\n\n"
+                "This has not been executed. Configure a real provider (see "
+                "docs/conversational-code-generation.md) for genuinely synthesized code instead of this "
+                "raw retrieval echo."
+            )
+        elif grounding is not None:
             text = (
                 "[fake/test provider -- template only, no synthesis performed]\n"
                 f"Here is the retrieved information relevant to your question ({user_text!r}):\n\n"
                 f"{grounding[len('GROUNDING_CONTEXT:'):].strip()}\n\n"
                 "Configure a real provider (see docs/conversational-qa.md) for a synthesized, "
                 "conversational answer instead of this raw retrieval echo."
+            )
+        elif is_code_generation:
+            text = (
+                "[fake/test provider -- no real language understanding]\n"
+                f"No local documentation or catalog match was found to ground your code request "
+                f"({user_text!r}), and this deterministic fallback provider cannot generate unverified "
+                "GAUSS code from scratch. Configure a real provider (see "
+                "docs/conversational-code-generation.md) for genuinely synthesized code."
             )
         else:
             text = (

@@ -441,6 +441,25 @@ def test_17_help_lists_all_commands() -> None:
         check(f"help mentions '{cmd}'", cmd in out)
 
 
+def test_30_chat_help_and_top_help_mention_code_generation() -> None:
+    # argparse's own `--help` handling calls sys.exit(0) after printing --
+    # a normal, expected SystemExit here, not a real error, so it must be
+    # caught explicitly rather than propagating out of this test.
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        try:
+            ai_cli.main(["chat", "--help"])
+        except SystemExit as exc:
+            check("chat --help exits 0", exc.code in (0, None))
+    out = buf.getvalue().lower()
+    check("chat --help mentions code generation", "code generation" in out)
+    check("chat --help mentions never executed/verified", "never executed" in out or "never be executed" in out)
+
+    exit_code, out = _capture(ai_cli.main, ["--help"])
+    check("top help exits 0", exit_code == 0)
+    check("top help mentions code generation", "code generation" in out.lower())
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

@@ -40,7 +40,7 @@ import gauss_chat_provider as provider_mod  # noqa: E402
 import gauss_code_assistant_cli as cli_mod  # noqa: E402
 import gauss_environment_check as environment_check_mod  # noqa: E402
 
-__version__ = "0.71.0"
+__version__ = "0.72.0"
 
 
 def _cmd_version(args: list[str]) -> int:
@@ -243,9 +243,12 @@ def _cmd_chat(args: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="gauss-ai",
         add_help=True,
-        description="Conversational GAUSS Q&A (default when no subcommand is given). "
-        "Providers: fake (default, no network/API key), ollama (local, no API key), anthropic (cloud, needs "
-        "ANTHROPIC_API_KEY). Run 'gauss-ai config --help' for the full provider/configuration reference.",
+        description="Conversational GAUSS Q&A and code generation (default when no subcommand is given). "
+        "Ask a question or ask for GAUSS code -- generated code is always labeled with its documentation-"
+        "grounding status and is never executed, verified, or written to a file; see "
+        "docs/conversational-code-generation.md. Providers: fake (default, no network/API key), ollama "
+        "(local, no API key), anthropic (cloud, needs ANTHROPIC_API_KEY). Run 'gauss-ai config --help' for "
+        "the full provider/configuration reference.",
     )
     parser.add_argument("--provider", default=None, choices=list(config_mod.VALID_CHAT_PROVIDERS))
     parser.add_argument("--model", default=None)
@@ -292,7 +295,7 @@ def _print_top_help() -> None:
     print("gauss-ai -- GAUSS Code Assistant alpha CLI")
     print("")
     print("Commands:")
-    print("  gauss-ai                              Launch conversational GAUSS Q&A (default)")
+    print("  gauss-ai                              Launch conversational GAUSS Q&A and code generation (default)")
     print("  gauss-ai chat [--provider ...] [--model ...] [--docs-root ...]   Same, explicit form")
     print("  gauss-ai version                     Show version and environment info")
     print("  gauss-ai doctor                       Read-only environment diagnostics")

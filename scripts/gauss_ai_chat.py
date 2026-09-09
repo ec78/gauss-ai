@@ -25,18 +25,60 @@ BANNER = "GAUSS AI Assistant"
 
 HELP_TEXT: tuple[str, ...] = (
     "Ask a GAUSS question in plain language, for example:",
-    "  How do I read a CSV file in GAUSS?",
     "  What does reshape do?",
     "  What does error G0036 mean?",
+    "",
+    "Or ask for GAUSS code, for example:",
+    "  Show me how to reshape a matrix to 4 columns.",
+    "  Write GAUSS code to estimate an OLS regression.",
+    "  Can you give me an example using reshape and meanc?",
+    "Generated code is always labeled with whether it's grounded in official documentation, and is",
+    "never executed, verified, or written to a file -- see docs/conversational-code-generation.md.",
     "",
     "Commands:",
     "  help           Show this message",
     "  reset / new    Start a new conversation (clears history)",
     "  exit / quit    Leave the assistant",
     "",
-    "This chat does not execute GAUSS code or apply repairs. For that, use:",
+    "This chat does not execute GAUSS code, edit files, or apply repairs. For that, use:",
     "  gauss-ai repair <file.gss>",
 )
+
+
+def _render_grounding_disclosure(result: "engine_mod.AnswerResult") -> str:
+    """v0.72.0: handles single-source (unchanged legacy wording, still
+    exactly what every pre-v0.72.0 test/evaluation transcript expects),
+    multi-source, and partial-grounding disclosure lines. The status and
+    source list are read directly off `result` -- computed by the grounding
+    layer, never guessed from the rendered text."""
+    sources = result.grounding_sources
+    if result.grounding_status == "grounded" and len(sources) == 1:
+        src = sources[0]
+        if src.source == "error_catalog":
+            return f"[Grounded in this repository's verified error catalog: {src.topic}]"
+        return f"[Grounded in local official GAUSS documentation: {src.topic}]"
+    if result.grounding_status == "grounded" and len(sources) > 1:
+        catalog_topics = [s.topic for s in sources if s.source == "error_catalog"]
+        doc_topics = [s.topic for s in sources if s.source == "official_docs"]
+        parts = []
+        if catalog_topics:
+            parts.append(f"this repository's verified error catalog ({', '.join(catalog_topics)})")
+        if doc_topics:
+            parts.append(f"local official GAUSS documentation ({', '.join(doc_topics)})")
+        return f"[Grounded in {' and '.join(parts)}]"
+    if result.grounding_status == "partially_grounded":
+        grounded_names = ", ".join(s.topic for s in sources) if sources else "none"
+        unsupported_names = ", ".join(f"`{t}`" for t in result.unsupported_topics)
+        return (
+            f"[Partially grounded: {grounded_names} documented; {unsupported_names} not found in the "
+            "configured GAUSS documentation or verified error catalog]"
+        )
+    if result.grounding_source == "uncataloged_error_code":
+        return (
+            f"[{result.grounding_topic} is not yet in this repository's verified error catalog -- the answer "
+            "below is not documentation-grounded]"
+        )
+    return "[Not grounded in official documentation or the verified error catalog -- from the model's own general knowledge]"
 
 
 def _render_answer(print_fn: Callable[[str], None], result: "engine_mod.AnswerResult") -> None:
@@ -52,17 +94,7 @@ def _render_answer(print_fn: Callable[[str], None], result: "engine_mod.AnswerRe
         print_fn("")
         return
 
-    if result.grounding_source == "error_catalog":
-        print_fn(f"[Grounded in this repository's verified error catalog: {result.grounding_topic}]")
-    elif result.grounding_source == "official_docs":
-        print_fn(f"[Grounded in local official GAUSS documentation: {result.grounding_topic}]")
-    elif result.grounding_source == "uncataloged_error_code":
-        print_fn(
-            f"[{result.grounding_topic} is not yet in this repository's verified error catalog -- the answer "
-            "below is not documentation-grounded]"
-        )
-    else:
-        print_fn("[Not grounded in official documentation or the verified error catalog -- from the model's own general knowledge]")
+    print_fn(_render_grounding_disclosure(result))
     print_fn("")
     print_fn(result.text)
     print_fn("")

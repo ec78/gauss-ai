@@ -62,10 +62,22 @@ Examples
 """
 
 
+_MEANC_RST = """meanc
+=====
+
+.. function:: y = meanc(x)
+
+Purpose
+-------
+Computes the mean of every column of a matrix.
+"""
+
+
 def _fixture_docs_root(tmp: str) -> Path:
     root = Path(tmp) / "docs"
     root.mkdir()
     (root / "reshape.rst").write_text(_RESHAPE_RST, encoding="utf-8")
+    (root / "meanc.rst").write_text(_MEANC_RST, encoding="utf-8")
     return root
 
 
@@ -331,6 +343,62 @@ def test_25_a_normal_question_that_merely_mentions_gauss_ai_still_reaches_the_pr
         prompt_fn=_scripted(["How do I install gauss-ai?", "exit"]), print_fn=lambda *_: None, engine=engine,
     )
     check("the question and its answer were recorded (two turns)", len(engine.state.turns) == 2)
+
+
+# ---------------------------------------------------------------------------
+# v0.72.0: conversational GAUSS code generation rendering
+# ---------------------------------------------------------------------------
+
+
+def test_26_multi_source_grounded_code_generation_shows_both_topics() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        messages: list[str] = []
+        chat_mod.run_chat(
+            prompt_fn=_scripted(["Can you give me an example using reshape and meanc?", "exit"]),
+            print_fn=messages.append, engine=_fake_engine(docs_root=str(docs_root)),
+        )
+        joined = "\n".join(messages)
+        check("disclosure names reshape", "reshape" in joined)
+        check("disclosure names meanc", "meanc" in joined)
+        check("disclosure says Grounded", "Grounded in" in joined)
+        check("a fenced GAUSS code block is shown", "```gauss" in joined)
+        check("the not-executed footer is shown", "has not been executed in this conversation" in joined)
+
+
+def test_27_partially_grounded_code_generation_discloses_the_unsupported_function() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        messages: list[str] = []
+        chat_mod.run_chat(
+            prompt_fn=_scripted(["Show me reshape and somefuncxyz.", "exit"]),
+            print_fn=messages.append, engine=_fake_engine(docs_root=str(docs_root)),
+        )
+        joined = "\n".join(messages)
+        check("disclosure says Partially grounded", "Partially grounded" in joined)
+        check("the unsupported function is named", "somefuncxyz" in joined)
+        check("the grounded function is named", "reshape" in joined)
+
+
+def test_28_ungrounded_code_generation_request_is_honestly_labeled() -> None:
+    messages: list[str] = []
+    chat_mod.run_chat(
+        prompt_fn=_scripted(["Write GAUSS code to estimate an OLS regression.", "exit"]),
+        print_fn=messages.append, engine=_fake_engine(),
+    )
+    joined = "\n".join(messages)
+    check(
+        "ungrounded disclosure is shown, not a fabricated grounding claim",
+        "Not grounded in official documentation or the verified error catalog" in joined,
+    )
+
+
+def test_29_help_text_mentions_code_generation_and_its_limits() -> None:
+    messages: list[str] = []
+    chat_mod.run_chat(prompt_fn=_scripted(["help", "exit"]), print_fn=messages.append, engine=_fake_engine())
+    joined = "\n".join(messages)
+    check("help mentions asking for GAUSS code", "GAUSS code" in joined)
+    check("help still states the no-execution/no-file-edit boundary", "does not execute" in joined)
 
 
 def run_tests() -> int:

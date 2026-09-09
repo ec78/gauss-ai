@@ -1,8 +1,8 @@
 # Conversational GAUSS Q&A
 
-**Status: Alpha — first version, added in `v0.70.0`.**
+**Status: Alpha — first version added in `v0.70.0`; conversational GAUSS code generation and multi-source grounding added in `v0.72.0`.**
 
-`gauss-ai`, run with no subcommand, launches a conversational assistant you can ask GAUSS questions in plain language, with follow-up context retained across turns.
+`gauss-ai`, run with no subcommand, launches a conversational assistant you can ask GAUSS questions in plain language, ask for GAUSS code, with follow-up context retained across turns. See [conversational-code-generation.md](conversational-code-generation.md) for the code-generation capability specifically.
 
 ## How to launch chat
 
@@ -28,8 +28,8 @@ Both accept the same optional flags: `--provider {fake|ollama|anthropic}`, `--mo
 
 ## Unsupported capabilities (by design, in this version)
 
-- **No conversational execution.** Asking the assistant to "run this" or "execute that" gets an honest redirect to the real, existing guided command (`gauss-ai repair <file.gss>`) — it never silently executes anything to seem more capable.
-- **No conversational code generation, repair, or file modification.** Incidental code examples in an answer are fine; turning a conversation directly into an executed script, a repair draft, or a written file is not implemented in this version.
+- **No conversational execution.** Asking the assistant to "run this" or "execute that" gets an honest redirect to the real, existing guided command (`gauss-ai repair <file.gss>`) — it never silently executes anything to seem more capable, even immediately after generating code for you.
+- **No conversational repair or file modification.** As of `v0.72.0` the assistant CAN generate GAUSS code on request (see [conversational-code-generation.md](conversational-code-generation.md)), but generated code is always advisory: turning a conversation directly into a written file or an applied repair is not implemented in this version.
 - **No durable conversation history.** Nothing about a chat session is written to disk, a database, or shared across processes. Exiting (or `reset`) discards it completely.
 
 ## Provider configuration
@@ -69,13 +69,15 @@ See [distribution-architecture.md](distribution-architecture.md) for the ownersh
 
 Before calling any provider, `gauss-ai` checks two existing, already-verified knowledge sources:
 
-1. If your question names a `G####`-shaped GAUSS error code, the answer is looked up directly in this repository's own [verified error catalog](gauss-error-catalog.md) — no GAUSS launch required.
-2. Otherwise, if you have configured `docs-root` to point at your own local checkout of official GAUSS documentation, the assistant looks for a real, matching command/procedure page.
+1. If your question names a `G####`-shaped GAUSS error code, it's looked up directly in this repository's own [verified error catalog](gauss-error-catalog.md) — no GAUSS launch required.
+2. If you have configured `docs-root` to point at your own local checkout of official GAUSS documentation, every distinct command/procedure name your question mentions is looked up (as of `v0.72.0`, up to a handful per question — not just one), so a question naming two real commands can ground on both.
 
-Every answer explicitly discloses which of these applies:
+Every answer explicitly discloses what was found:
 
 - `[Grounded in this repository's verified error catalog: G0036]`
 - `[Grounded in local official GAUSS documentation: reshape]`
+- `[Grounded in local official GAUSS documentation (reshape, meanc)]` — multiple real sources (`v0.72.0`)
+- `[Partially grounded: reshape documented; `foo` not found in the configured GAUSS documentation or verified error catalog]` — some, not all, referenced topics were found (`v0.72.0`)
 - `[Not grounded in official documentation or the verified error catalog -- from the model's own general knowledge]`
 
 This repository does not bundle a copy of official GAUSS documentation. If you don't configure `docs-root`, conversational answers about specific commands/procedures will not be documentation-grounded — set it to get real, cited retrieval instead of general-knowledge answers:

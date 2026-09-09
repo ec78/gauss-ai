@@ -91,6 +91,32 @@ def test_05_fake_provider_canned_answer_override() -> None:
     check("returns exactly the canned answer", result.text == "fixed test answer")
 
 
+def test_05b_fake_provider_wraps_grounded_code_generation_in_a_fenced_block() -> None:
+    fake = provider_mod.FakeModelProvider()
+    messages = _msgs(
+        ("system", "CODE_GENERATION_MODE: generate GAUSS code"),
+        ("system", "GROUNDING_CONTEXT: [official docs: reshape]\nSyntax: y = reshape(x, r, c)"),
+        ("user", "write code to reshape a matrix"),
+    )
+    result = fake.complete(messages)
+    check("succeeds", result.success)
+    check("wraps the grounding content in a gauss fence", "```gauss" in result.text)
+    check("the grounding content itself is present", "reshape(x, r, c)" in result.text)
+    check("still discloses itself as a template, not synthesis", "no synthesis performed" in result.text)
+
+
+def test_05c_fake_provider_ungrounded_code_generation_never_fabricates_a_source() -> None:
+    fake = provider_mod.FakeModelProvider()
+    messages = _msgs(
+        ("system", "CODE_GENERATION_MODE: generate GAUSS code"),
+        ("user", "write code for something with no matching documentation"),
+    )
+    result = fake.complete(messages)
+    check("succeeds", result.success)
+    check("honestly discloses no match, not a fabricated code block", "No local documentation or catalog match" in result.text)
+    check("no fenced code block is fabricated", "```" not in result.text)
+
+
 def test_06_fake_provider_never_claims_high_confidence_or_real_intelligence() -> None:
     fake = provider_mod.FakeModelProvider()
     result = fake.complete(_msgs(("user", "test")))
