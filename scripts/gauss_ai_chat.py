@@ -95,6 +95,18 @@ def _render_answer(print_fn: Callable[[str], None], result: "engine_mod.AnswerRe
         return
 
     print_fn(_render_grounding_disclosure(result))
+    if result.unknown_symbols:
+        # v0.73.0 Phase 8/19: the post-generation symbol check found a
+        # call-shaped symbol in the generated code that is not a grounded/
+        # resolved topic, a known language construct, or plausibly user-
+        # defined -- disclosed regardless of the pre-generation grounding
+        # status, since that status describes retrieval evidence, not
+        # whether the model actually stayed within it.
+        unknown_list = ", ".join(f"`{s}`" for s in result.unknown_symbols)
+        print_fn(
+            f"[Warning: the generated code also calls {unknown_list}, which is not a documented function this "
+            "session could verify -- treat it as unverified, not authoritative GAUSS syntax.]"
+        )
     print_fn("")
     print_fn(result.text)
     print_fn("")

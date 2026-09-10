@@ -6643,3 +6643,71 @@ The tester asks "Should I use OLS or a robust regression method for my data with
 
 Expected behavior:
 - The assistant may answer the methodological question directly, but must not imply that any documentation grounding (e.g. a real `ols.rst` match) validates the methodological choice; no GAUSS code is fabricated where none was requested.
+
+## Grounding-Gated Generation and GAUSS Function Resolution
+
+Use Prompt IDs 63.1-63.10. These exercise the `v0.73.0` milestone: deterministic natural-language-to-symbol resolution (`resolve_concepts(...)`), a provider-independent generation gate (`compute_generation_gate(...)`) that decides whether GAUSS-specific code generation is permitted BEFORE the provider is ever called, and a conservative post-generation symbol checker that catches an unsupported function call even if the model still produces one.
+
+**Important distinction, stated once here rather than repeated in every prompt**: every scenario below is driven through the installed `gauss-ai` command against the same real, locally running Ollama service and `qwen2.5-coder:7b` model as `61.x`/`62.x`, with a bounded subset of generated examples independently re-verified against real GAUSS execution.
+
+### Prompt 63.1: "Calculate the column means." resolves to the real `meanc` function
+
+The tester asks "Calculate the column means." with no explicit function name given.
+
+Expected behavior:
+- `resolve_concepts(...)` resolves "column means" to the real, documented `meanc` function; the disclosure shows `[Grounded in local official GAUSS documentation: meanc]`; the generated code uses `meanc`, not a fabricated function name. This is the exact `v0.72.0` regression (`62.2`), now fixed.
+
+### Prompt 63.2: "Average each column of this matrix." (alias variant)
+
+Expected behavior:
+- Resolves to `meanc` via a different verified alias phrase, exactly like `63.1`.
+
+### Prompt 63.3: "Reshape this matrix and then calculate the column means."
+
+Expected behavior:
+- Both `reshape` (literal) and `meanc` (resolved concept) are grounded together; the disclosure names both.
+
+### Prompt 63.4: "Use reshape and colmean." (a nonexistent function named directly)
+
+Expected behavior:
+- `colmean` is honestly disclosed as unsupported (`PARTIALLY_GROUNDED`); if the model still uses it in generated code, the post-generation symbol check flags it explicitly, in addition to the pre-generation disclosure.
+
+### Prompt 63.5: "Write a GAUSS panel regression."
+
+Expected behavior:
+- With authoritative panel-estimation documentation configured (`tscsFit`), this resolves and generates using real, documented syntax -- not the fabricated `panel`/struct-field-assignment pattern `v0.72.0`'s `62.7` found. Without such documentation configured, generation is BLOCKed instead, never fabricated.
+
+### Prompt 63.6: Matrix inverse via a natural-language alias
+
+The tester asks "Invert this matrix."
+
+Expected behavior:
+- Resolves to the real, documented `inv`/`invpd` pair; a companion function documented on the same real page as the resolved topic (e.g. `invpd` when `inv` was the resolved topic) must not be flagged as an unsupported symbol merely because it was not the specific resolved topic name.
+
+### Prompt 63.7: An ambiguous natural-language request
+
+The tester asks about a term that resolves to more than one similarly-scored documented candidate.
+
+Expected behavior:
+- Generation policy is `CLARIFY`; the provider is never called for speculative code generation; the response names the real candidate symbols and asks which one was meant.
+
+### Prompt 63.8: One documented and one nonexistent function together
+
+The tester asks "Write GAUSS code using reshape and gaussmagicsortxyz."
+
+Expected behavior:
+- `SUPPORTED_ONLY` policy; the supported portion (`reshape`) is generated; the unsupported portion is disclosed, never fabricated as if documented.
+
+### Prompt 63.9: Multi-turn resolution across two turns
+
+Turn 1: "Show me reshape." Turn 2: "Now calculate the column means."
+
+Expected behavior:
+- Turn 1 grounds on `reshape`; turn 2 resolves `meanc` via the concept index; both topics are retained in the bounded recent-topics list.
+
+### Prompt 63.10: A fully ungrounded GAUSS-specific request
+
+The tester asks for code for a clearly nonexistent, implausible GAUSS procedure with no supporting documentation.
+
+Expected behavior:
+- Generation policy is `BLOCK`; the provider is never called at all (observable directly: an effectively instant response, in contrast to every genuinely-answered scenario in this category); the response is the fixed, honest "not enough authoritative documentation" message.

@@ -85,6 +85,28 @@ Computes the standard deviation of every column of a matrix.
 """
 
 
+_INV_RST = """inv, invpd
+==========
+
+.. function:: xi = inv(x)
+              xi = invpd(x)
+
+Purpose
+-------
+inv returns the inverse of an invertible matrix.
+"""
+
+_TSCSFIT_RST = """tscsFit
+=======
+
+.. function:: tso = tscsFit(y, x, grp)
+
+Purpose
+-------
+Estimates the parameters of the pooled time-series cross-section regression model.
+"""
+
+
 def _fixture_docs_root(tmp: str) -> Path:
     root = Path(tmp) / "docs"
     root.mkdir()
@@ -92,6 +114,8 @@ def _fixture_docs_root(tmp: str) -> Path:
     (root / "vec.rst").write_text(_VEC_RST, encoding="utf-8")
     (root / "meanc.rst").write_text(_MEANC_RST, encoding="utf-8")
     (root / "stdc.rst").write_text(_STDC_RST, encoding="utf-8")
+    (root / "invinvpd.rst").write_text(_INV_RST, encoding="utf-8")
+    (root / "tscsfit.rst").write_text(_TSCSFIT_RST, encoding="utf-8")
     return root
 
 
@@ -519,21 +543,40 @@ def test_38_grounding_sources_are_bounded_and_deduplicated() -> None:
 
 
 def test_39_code_generation_intent_extracts_generated_code_blocks() -> None:
-    provider = provider_mod.FakeModelProvider(canned_answer="Here you go:\n\n```gauss\nx = reshape(5, 3);\n```\n")
-    engine = engine_mod.ConversationEngine(provider=provider)
-    result = engine.ask("Write GAUSS code to reshape a scalar into a vector.")
-    check("intent recorded as code_generation", result.intent == engine_mod.Intent.CODE_GENERATION.value)
-    check("generated_code is populated", result.generated_code == ("x = reshape(5, 3);",))
-    check("executed is always False", result.executed is False)
-    check("methodologically_validated is always False", result.methodologically_validated is False)
+    """v0.73.0: an ungrounded code-generation request is now correctly
+    BLOCKed (see test_51_ungrounded_code_generation_request_is_blocked...),
+    so this test configures a real docs_root, exactly like a genuinely
+    GROUNDED request would need, to exercise the generated_code
+    extraction path end to end."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(canned_answer="Here you go:\n\n```gauss\nx = reshape(5, 3);\n```\n")
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        result = engine.ask("Write GAUSS code to reshape a scalar into a vector.")
+        check("intent recorded as code_generation", result.intent == engine_mod.Intent.CODE_GENERATION.value)
+        check("generated_code is populated", result.generated_code == ("x = reshape(5, 3);",))
+        check("executed is always False", result.executed is False)
+        check("methodologically_validated is always False", result.methodologically_validated is False)
+        check(
+            "generation was permitted (reshape is grounded, even if other stray words like 'scalar'/'vector' are not)",
+            result.generation_policy in (engine_mod.GenerationPolicy.FULL.value, engine_mod.GenerationPolicy.SUPPORTED_ONLY.value),
+        )
 
 
-def test_40_plain_qa_intent_never_populates_generated_code() -> None:
+def test_40_qa_intent_can_still_populate_generated_code_when_the_answer_is_code_shaped() -> None:
+    """v0.73.0: broadened from the v0.72.0 behavior (QA never populated
+    `generated_code`) after live Ollama evaluation found a real question
+    ("Use reshape and colmean on my data.") that did not match any
+    code-generation trigger phrase, classified as QA, yet still produced a
+    code-shaped answer containing a hallucinated symbol -- the post-
+    generation symbol check needs to see that code regardless of intent,
+    since a hallucination is exactly as real in a QA answer that happens
+    to include example code."""
     provider = provider_mod.FakeModelProvider(canned_answer="```gauss\nx = 1;\n```")
     engine = engine_mod.ConversationEngine(provider=provider)
     result = engine.ask("What does reshape do?")
     check("intent recorded as qa", result.intent == engine_mod.Intent.QA.value)
-    check("generated_code is empty for a plain QA turn, even if the text happens to contain a fence", result.generated_code == ())
+    check("generated_code is populated because the answer is code-shaped", result.generated_code == ("x = 1;",))
 
 
 def test_41_extract_code_blocks_ignores_prose_and_handles_multiple_blocks() -> None:
@@ -571,6 +614,8 @@ def test_44_ungrounded_code_generation_discloses_honestly_no_fabricated_source()
     check("intent is code_generation", result.intent == engine_mod.Intent.CODE_GENERATION.value)
     check("grounding_status is ungrounded", result.grounding_status == engine_mod.GroundingStatus.UNGROUNDED.value)
     check("no fabricated grounding sources", result.grounding_sources == ())
+    check("generation is blocked, not left to the model", result.generation_policy == engine_mod.GenerationPolicy.BLOCK.value)
+    check("no code was fabricated", result.generated_code == ())
 
 
 def test_45_code_generation_system_prompt_addendum_instructs_against_fabricated_execution_claims() -> None:
@@ -666,6 +711,413 @@ def test_50_extract_code_blocks_never_writes_anything_to_disk() -> None:
     source = inspect.getsource(engine_mod.extract_code_blocks)
     for token in ("open(", "write_text", "write_bytes", "os.system", "subprocess."):
         check(f"extract_code_blocks source does not contain {token!r}", token not in source)
+
+
+# ---------------------------------------------------------------------------
+# v0.73.0 Phase 2/3/4: function/concept resolution
+# ---------------------------------------------------------------------------
+
+
+def test_51_resolve_concepts_exact_symbol() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        resolutions = engine_mod.resolve_concepts("What does reshape do?", docs_root_str=str(docs_root))
+        hits = [r for r in resolutions if r.status == engine_mod.ResolutionStatus.RESOLVED.value]
+        check("reshape resolves as an exact symbol", any(r.resolved_symbol == "reshape" for r in hits))
+        check(
+            "match_type is EXACT_SYMBOL for the literal token",
+            any(r.resolved_symbol == "reshape" and r.match_type == engine_mod.MatchType.EXACT_SYMBOL.value for r in hits),
+        )
+
+
+def test_52_resolve_concepts_description_to_symbol() -> None:
+    """The exact v0.72.0 regression: a natural-language description, not
+    the literal function name, must still resolve to the real symbol."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        resolutions = engine_mod.resolve_concepts("Calculate the column means.", docs_root_str=str(docs_root))
+        hits = [r for r in resolutions if r.status == engine_mod.ResolutionStatus.RESOLVED.value]
+        check("resolves to meanc", any(r.resolved_symbol == "meanc" for r in hits))
+        check(
+            "match_type is ALIAS_OR_DESCRIPTION, not EXACT_SYMBOL",
+            any(r.resolved_symbol == "meanc" and r.match_type == engine_mod.MatchType.ALIAS_OR_DESCRIPTION.value for r in hits),
+        )
+        check("citation names the real file", any(r.resolved_symbol == "meanc" and r.citation == "meanc.rst" for r in hits))
+
+
+def test_53_resolve_concepts_multiple_resolved_functions() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        resolutions = engine_mod.resolve_concepts("Show me reshape and meanc.", docs_root_str=str(docs_root))
+        resolved_symbols = {r.resolved_symbol for r in resolutions if r.status == engine_mod.ResolutionStatus.RESOLVED.value}
+        check("both reshape and meanc resolved", resolved_symbols == {"reshape", "meanc"})
+
+
+def test_54_resolve_concepts_ambiguous_resolution() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        # Two files that both score identically for the token "alphafunc"
+        # (same heading, same "command_in_file_name" bonus) -- a real,
+        # reproducible ambiguous case from command_doc_lookup's own scoring.
+        (root / "alphafuncx.rst").write_text("alphafunc\n=========\n\nPurpose\n-------\nDoes alpha thing one.\n", encoding="utf-8")
+        (root / "alphafuncy.rst").write_text("alphafunc\n=========\n\nPurpose\n-------\nDoes alpha thing two.\n", encoding="utf-8")
+        resolutions = engine_mod.resolve_concepts("Use alphafunc on my data.", docs_root_str=str(root))
+        ambiguous = [r for r in resolutions if r.status == engine_mod.ResolutionStatus.AMBIGUOUS.value]
+        check("alphafunc is reported as ambiguous, not silently resolved to one guess", len(ambiguous) == 1)
+        check("candidates name both real files", set(ambiguous[0].candidates) == {"alphafuncx", "alphafuncy"})
+
+
+def test_55_resolve_concepts_unresolved_phrase() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        resolutions = engine_mod.resolve_concepts("Use somefuncxyz for this.", docs_root_str=str(docs_root))
+        unresolved = [r for r in resolutions if r.status == engine_mod.ResolutionStatus.UNRESOLVED.value]
+        check("somefuncxyz is honestly reported as unresolved", any(r.user_phrase == "somefuncxyz" for r in unresolved))
+        check("no resolved_symbol is fabricated for it", all(r.resolved_symbol is None for r in unresolved))
+
+
+def test_56_resolve_concepts_deduplicates_alias_and_literal() -> None:
+    """If the user's own literal token already resolves a symbol directly,
+    a redundant alias-phrase match for the SAME symbol must not also
+    appear as a second, duplicate resolution."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        # "meanc" (literal) and "column means" (alias) both resolve to
+        # meanc -- must appear exactly once in the resolutions.
+        resolutions = engine_mod.resolve_concepts(
+            "Use meanc to calculate the column means.", docs_root_str=str(docs_root),
+        )
+        meanc_resolutions = [r for r in resolutions if r.resolved_symbol == "meanc"]
+        check("meanc appears exactly once, not duplicated by the alias", len(meanc_resolutions) == 1)
+        check("the literal exact match won, not the alias", meanc_resolutions[0].match_type == engine_mod.MatchType.EXACT_SYMBOL.value)
+
+
+def test_57_resolve_concepts_returns_empty_without_docs_root() -> None:
+    check("no docs_root -> no resolutions", engine_mod.resolve_concepts("Calculate the column means.", docs_root_str=None) == ())
+    check(
+        "nonexistent docs_root -> no resolutions",
+        engine_mod.resolve_concepts("Calculate the column means.", docs_root_str="/does/not/exist") == (),
+    )
+
+
+# ---------------------------------------------------------------------------
+# v0.73.0 Phase 5: grounding integration (resolution + ground_multi)
+# ---------------------------------------------------------------------------
+
+
+def test_58_ground_multi_merges_literal_and_resolved_symbol() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        bundle = engine_mod.ground_multi("Use reshape, then calculate the column means.", docs_root_str=str(docs_root))
+        check("status is GROUNDED", bundle.status == engine_mod.GroundingStatus.GROUNDED)
+        check("both the literal and the resolved symbol are present", set(bundle.matched_topics) == {"reshape", "meanc"})
+        origins = {s.topic: s.origin for s in bundle.sources}
+        check("reshape's origin is literal", origins["reshape"] == "literal")
+        check("meanc's origin is resolved_concept", origins["meanc"] == "resolved_concept")
+
+
+def test_59_ground_multi_resolved_symbol_plus_recent_topic() -> None:
+    """Prior-topic retention (v0.72.0) plus a new natural-language
+    resolution (v0.73.0) working together across two turns."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        engine = engine_mod.ConversationEngine(provider=provider_mod.FakeModelProvider(), docs_root=str(docs_root))
+        r1 = engine.ask("Show me reshape.")
+        check("first turn grounds on reshape", r1.grounding_topic == "reshape")
+        r2 = engine.ask("Now calculate the column means.")
+        check("second turn resolves meanc via the concept index", "meanc" in [s.topic for s in r2.grounding_sources])
+        check("recent_topics retains both", set(engine.state.recent_topics) == {"reshape", "meanc"})
+
+
+def test_60_ground_multi_dedup_when_alias_and_literal_both_match() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        bundle = engine_mod.ground_multi("Use meanc to calculate the column means.", docs_root_str=str(docs_root))
+        check("meanc appears exactly once as a source", [s.topic for s in bundle.sources].count("meanc") == 1)
+
+
+def test_61_ground_multi_source_bound_respected_with_resolutions() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        bundle = engine_mod.ground_multi(
+            "Use reshape, vec, meanc, stdc, and the matrix inverse.", docs_root_str=str(docs_root),
+        )
+        check(
+            f"total sources never exceed MAX_GROUNDING_SOURCES ({engine_mod.MAX_GROUNDING_SOURCES})",
+            len(bundle.sources) <= engine_mod.MAX_GROUNDING_SOURCES,
+        )
+
+
+def test_62_grounding_source_provenance_tracked() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        engine = engine_mod.ConversationEngine(provider=provider_mod.FakeModelProvider(), docs_root=str(docs_root))
+        engine.ask("Show me reshape.")
+        r2 = engine.ask("Give me a short example.")  # pure pronoun follow-up -> recent_topic fallback
+        check("follow-up source origin is recent_topic", any(s.origin == "recent_topic" for s in r2.grounding_sources))
+
+
+# ---------------------------------------------------------------------------
+# v0.73.0 Phase 6/7: the deterministic generation gate
+# ---------------------------------------------------------------------------
+
+
+def test_63_gate_grounded_is_full() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        bundle = engine_mod.ground_multi("What does reshape do?", docs_root_str=str(docs_root))
+        gate = engine_mod.compute_generation_gate(bundle)
+        check("policy is FULL", gate.policy == engine_mod.GenerationPolicy.FULL.value)
+        check("allowed is True", gate.allowed)
+
+
+def test_64_gate_partially_grounded_is_supported_only() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        bundle = engine_mod.ground_multi("Show me reshape and somefuncxyz.", docs_root_str=str(docs_root))
+        gate = engine_mod.compute_generation_gate(bundle)
+        check("policy is SUPPORTED_ONLY", gate.policy == engine_mod.GenerationPolicy.SUPPORTED_ONLY.value)
+        check("allowed is True (the supported portion can still be generated)", gate.allowed)
+
+
+def test_65_gate_ungrounded_is_block() -> None:
+    bundle = engine_mod.ground_multi("Write GAUSS code for fooPanelEstimator.", docs_root_str=None)
+    gate = engine_mod.compute_generation_gate(bundle)
+    check("policy is BLOCK", gate.policy == engine_mod.GenerationPolicy.BLOCK.value)
+    check("allowed is False", not gate.allowed)
+
+
+def test_66_gate_ambiguous_is_clarify_regardless_of_grounded_status() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "alphafuncx.rst").write_text("alphafunc\n=========\n\nPurpose\n-------\nOne.\n", encoding="utf-8")
+        (root / "alphafuncy.rst").write_text("alphafunc\n=========\n\nPurpose\n-------\nTwo.\n", encoding="utf-8")
+        bundle = engine_mod.ground_multi("Use alphafunc and reshape.", docs_root_str=str(root))
+        gate = engine_mod.compute_generation_gate(bundle)
+        check("policy is CLARIFY even though reshape alone would be GROUNDED", gate.policy == engine_mod.GenerationPolicy.CLARIFY.value)
+        check("allowed is False", not gate.allowed)
+
+
+def test_67_provider_not_called_on_block() -> None:
+    class ExplodingProvider:
+        def complete(self, messages, *, max_tokens=1024):
+            raise AssertionError("the provider must never be called when generation is BLOCKed")
+
+    engine = engine_mod.ConversationEngine(provider=ExplodingProvider())  # no docs_root -> always UNGROUNDED
+    result = engine.ask("Write GAUSS code for fooPanelEstimator.")  # must not raise
+    check("returns the fixed BLOCK message without calling the provider", result.text == engine_mod.GENERATION_BLOCKED_MESSAGE)
+    check("generation_policy recorded as BLOCK", result.generation_policy == engine_mod.GenerationPolicy.BLOCK.value)
+
+
+def test_68_provider_not_called_on_clarify() -> None:
+    class ExplodingProvider:
+        def complete(self, messages, *, max_tokens=1024):
+            raise AssertionError("the provider must never be called when generation requires CLARIFY")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "alphafuncx.rst").write_text("alphafunc\n=========\n\nPurpose\n-------\nOne.\n", encoding="utf-8")
+        (root / "alphafuncy.rst").write_text("alphafunc\n=========\n\nPurpose\n-------\nTwo.\n", encoding="utf-8")
+        engine = engine_mod.ConversationEngine(provider=ExplodingProvider(), docs_root=str(root))
+        result = engine.ask("Write GAUSS code using alphafunc.")  # must not raise
+        check("generation_policy recorded as CLARIFY", result.generation_policy == engine_mod.GenerationPolicy.CLARIFY.value)
+        check("the clarify message names the ambiguous candidates", "alphafuncx" in result.text and "alphafuncy" in result.text)
+
+
+# ---------------------------------------------------------------------------
+# v0.73.0 Phase 8: post-generation symbol support checking
+# ---------------------------------------------------------------------------
+
+
+def test_69_documented_function_accepted_by_the_symbol_checker() -> None:
+    check_result = engine_mod.check_generated_symbols("y = reshape(x, 2, -1);\nprint y;", supported_symbols=("reshape",))
+    check("reshape recognized as supported", "reshape" in check_result.supported_symbols)
+    check("nothing flagged as unknown", check_result.unknown_call_symbols == ())
+
+
+def test_70_colmean_flagged_as_unknown() -> None:
+    code = "y = reshape(x, 2, -1);\ncol_means = colmean(y);\nprint col_means;"
+    check_result = engine_mod.check_generated_symbols(code, supported_symbols=("reshape",))
+    check("colmean is flagged as unknown", "colmean" in check_result.unknown_call_symbols)
+    check("reshape is not flagged", "reshape" not in check_result.unknown_call_symbols)
+
+
+def test_71_variable_names_not_flagged() -> None:
+    code = "x = 5;\ny = x + 1;\nz = y * 2;\nprint z;"
+    check_result = engine_mod.check_generated_symbols(code, supported_symbols=())
+    check("no call-shaped tokens exist here at all", check_result.unknown_call_symbols == ())
+
+
+def test_72_user_defined_proc_not_flagged() -> None:
+    code = "proc (1) = myproc(a, b);\n    retp(a+b);\nendp;\nz = myproc(1, 2);\nprint z;"
+    check_result = engine_mod.check_generated_symbols(code, supported_symbols=())
+    check("myproc is classified as user-defined/ambiguous, not unknown", "myproc" in check_result.user_defined_or_ambiguous_symbols)
+    check("myproc is never flagged as an unknown hallucination", "myproc" not in check_result.unknown_call_symbols)
+
+
+def test_73_known_language_syntax_accepted() -> None:
+    code = "for j (1, 3, 1);\n    print j;\nendfor;\nif j == 2;\n    print \"two\";\nendif;"
+    check_result = engine_mod.check_generated_symbols(code, supported_symbols=())
+    check("the loop variable j is never flagged as an unknown call", "j" not in check_result.unknown_call_symbols)
+    check("no language keyword is flagged either", not set(check_result.unknown_call_symbols) & {"for", "if", "endfor", "endif"})
+
+
+def test_74_unknown_call_shaped_symbol_flagged() -> None:
+    code = "z = gaussmagicsortxyz(y);\nprint z;"
+    check_result = engine_mod.check_generated_symbols(code, supported_symbols=("reshape",))
+    check("the invented function is flagged", "gaussmagicsortxyz" in check_result.unknown_call_symbols)
+
+
+def test_75_multiple_code_blocks_handled_conservatively() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        canned = (
+            "First block:\n\n```gauss\ny = reshape(x, 2, -1);\n```\n\n"
+            "Second block:\n\n```gauss\ncol_means = colmean(y);\n```\n"
+        )
+        provider = provider_mod.FakeModelProvider(canned_answer=canned)
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        result = engine.ask("Show me reshape and then compute the column means.")
+        check("both code blocks were extracted", len(result.generated_code) == 2)
+        check("the hallucinated symbol in the second block is still caught", "colmean" in result.unknown_symbols)
+
+
+# ---------------------------------------------------------------------------
+# v0.73.0 Phase 9/10: hard regressions for the exact v0.72.0 failures
+# ---------------------------------------------------------------------------
+
+
+def test_76_column_means_regression_resolves_to_meanc_and_flags_colmean_if_fabricated() -> None:
+    """The exact v0.72.0 failure, made permanent. Even if the underlying
+    model still fabricates `colmean` (a real model-quality issue this
+    architecture cannot force a model to stop doing), the product's own
+    grounding correctly resolves the real `meanc` function, generation is
+    permitted (FULL, since meanc is genuinely documented), and the
+    post-generation check still catches the fabrication if it happens."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(
+            canned_answer="```gauss\ncol_means = colmean(y);\nprint col_means;\n```",
+        )
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        result = engine.ask("Calculate the column means.")
+        check("resolves to the real meanc function", "meanc" in result.grounding_topic or "meanc" in [s.topic for s in result.grounding_sources])
+        check("grounding status is GROUNDED", result.grounding_status == engine_mod.GroundingStatus.GROUNDED.value)
+        check("generation policy is FULL", result.generation_policy == engine_mod.GenerationPolicy.FULL.value)
+        check("colmean is flagged as an unknown symbol, never silently accepted", "colmean" in result.unknown_symbols)
+
+
+def test_76b_column_means_variants_all_resolve_to_meanc() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        for phrase in ("average each column", "get the mean of every column", "compute column averages"):
+            bundle = engine_mod.ground_multi(phrase, docs_root_str=str(docs_root))
+            check(f"{phrase!r} resolves to meanc", "meanc" in bundle.matched_topics)
+
+
+def test_77_panel_regression_without_authoritative_support_is_blocked() -> None:
+    """The exact v0.72.0 panel-regression failure, made permanent: with NO
+    panel-estimation documentation available, generation must be BLOCKed,
+    never left to the model to fabricate a syntax pattern."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "docs"
+        root.mkdir()
+        (root / "reshape.rst").write_text(_RESHAPE_RST, encoding="utf-8")  # no panel-estimation docs at all
+        engine = engine_mod.ConversationEngine(provider=provider_mod.FakeModelProvider(), docs_root=str(root))
+        result = engine.ask("Write GAUSS code for a panel regression.")
+        check("generation is BLOCKed", result.generation_policy == engine_mod.GenerationPolicy.BLOCK.value)
+        check("no code was generated", result.generated_code == ())
+        check("the fixed honest message is shown", result.text == engine_mod.GENERATION_BLOCKED_MESSAGE)
+
+
+def test_77b_panel_regression_with_authoritative_support_resolves_and_generates() -> None:
+    """When the configured documentation DOES cover a real panel-estimation
+    command (tscsFit), the request should resolve and be permitted --
+    BLOCK is for missing evidence, not a blanket ban on this topic."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)  # includes tscsfit.rst
+        bundle = engine_mod.ground_multi("Write GAUSS code for a panel regression.", docs_root_str=str(docs_root))
+        gate = engine_mod.compute_generation_gate(bundle)
+        check("resolves to tscsfit", "tscsfit" in bundle.matched_topics)
+        check("generation policy is FULL", gate.policy == engine_mod.GenerationPolicy.FULL.value)
+
+
+def test_78_run_this_still_blocked_after_resolution_changes() -> None:
+    engine = engine_mod.ConversationEngine(provider=provider_mod.FakeModelProvider())
+    result = engine.ask("Run this code for me.")
+    check("still redirected", result.text == engine_mod.EXECUTION_BOUNDARY_MESSAGE)
+
+
+def test_79_apply_this_code_still_blocked_after_resolution_changes() -> None:
+    engine = engine_mod.ConversationEngine(provider=provider_mod.FakeModelProvider())
+    result = engine.ask("Apply that code to my file.")
+    check("still redirected", result.text == engine_mod.EXECUTION_BOUNDARY_MESSAGE)
+
+
+# ---------------------------------------------------------------------------
+# v0.73.0 safety: no execution/file/process authority anywhere in the new code
+# ---------------------------------------------------------------------------
+
+
+def test_80_new_v0_73_0_functions_have_no_execution_or_file_write_capability() -> None:
+    import inspect
+
+    for func in (
+        engine_mod.resolve_concepts, engine_mod.compute_generation_gate, engine_mod.check_generated_symbols,
+        engine_mod._render_clarify_message,
+    ):
+        source = inspect.getsource(func)
+        for token in ("open(", "write_text", "write_bytes", "os.system", "subprocess.", "eval(", "exec("):
+            check(f"{func.__name__} source does not contain {token!r}", token not in source)
+
+
+def test_81_module_still_never_imports_execution_repair_or_filesystem_modules() -> None:
+    """Re-confirms the same structural guarantee test_17/test_49 already
+    cover, now that v0.73.0 added resolution/gating/symbol-checking code."""
+    forbidden_modules = (
+        "gauss_execution_workflow", "gauss_repair_application", "gauss_repair_draft",
+        "gauss_repair_planner", "gauss_repair_approval", "gauss_verification_execution",
+        "gauss_verification_review", "gauss_code_execution", "gauss_workspace", "subprocess",
+    )
+    for line in Path(engine_mod.__file__).read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped.startswith(("import ", "from ")):
+            for token in forbidden_modules:
+                check(f"import line {stripped!r} does not reference {token!r}", token not in stripped)
+
+
+def test_82_qa_classified_request_naming_an_unsupported_symbol_still_flags_it() -> None:
+    """The exact real gap found during this milestone's own Phase 21 live
+    evaluation: 'Use reshape and colmean on my data.' does not match any
+    code-generation trigger phrase (it is not phrased as an explicit
+    request to write code), so it classifies as QA, not CODE_GENERATION --
+    but the model can still legitimately return code-shaped prose in a QA
+    answer, and if it uses a hallucinated symbol there, the post-generation
+    check must still catch it."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(
+            canned_answer="```gauss\ny = reshape(x, 2, -1);\ncolumnMeans = colmean(y);\nprint columnMeans;\n```",
+        )
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        result = engine.ask("Use reshape and colmean on my data.")
+        check("intent is QA (no explicit code-generation trigger phrase)", result.intent == engine_mod.Intent.QA.value)
+        check("colmean is still flagged as an unknown symbol", "colmean" in result.unknown_symbols)
+
+
+def test_83_companion_function_in_the_same_retrieved_source_is_not_a_false_positive() -> None:
+    """v0.73.0 Phase 21 live evaluation found a real false positive:
+    `invinvpd.rst` (grounded topic `inv`) legitimately documents `invpd`
+    too, in the same real retrieved content, and the real model correctly
+    used `invpd` -- the checker must not flag it as unknown merely because
+    the RESOLVED topic name was `inv`, not `invpd`."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)  # invinvpd.rst documents both inv and invpd
+        provider = provider_mod.FakeModelProvider(canned_answer="```gauss\nxi = invpd(x);\nprint xi;\n```")
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        result = engine.ask("Invert this matrix.")
+        check("resolved to inv", "inv" in [s.topic for s in result.grounding_sources])
+        check("invpd is not flagged as unknown -- it's real, documented content from the same source", "invpd" not in result.unknown_symbols)
 
 
 def run_tests() -> int:

@@ -380,7 +380,11 @@ def test_27_partially_grounded_code_generation_discloses_the_unsupported_functio
         check("the grounded function is named", "reshape" in joined)
 
 
-def test_28_ungrounded_code_generation_request_is_honestly_labeled() -> None:
+def test_28_ungrounded_code_generation_request_is_blocked_not_fabricated() -> None:
+    """v0.73.0: an ungrounded GAUSS-specific code-generation request is now
+    deterministically BLOCKed before the model is ever consulted, rather
+    than reaching the model and getting an honest-but-still-model-generated
+    answer as in v0.72.0 -- see gauss_conversation_engine.GenerationPolicy.BLOCK."""
     messages: list[str] = []
     chat_mod.run_chat(
         prompt_fn=_scripted(["Write GAUSS code to estimate an OLS regression.", "exit"]),
@@ -388,8 +392,8 @@ def test_28_ungrounded_code_generation_request_is_honestly_labeled() -> None:
     )
     joined = "\n".join(messages)
     check(
-        "ungrounded disclosure is shown, not a fabricated grounding claim",
-        "Not grounded in official documentation or the verified error catalog" in joined,
+        "generation is honestly blocked, not fabricated by the model",
+        "I don't have enough authoritative GAUSS documentation" in joined,
     )
 
 
@@ -399,6 +403,48 @@ def test_29_help_text_mentions_code_generation_and_its_limits() -> None:
     joined = "\n".join(messages)
     check("help mentions asking for GAUSS code", "GAUSS code" in joined)
     check("help still states the no-execution/no-file-edit boundary", "does not execute" in joined)
+
+
+# ---------------------------------------------------------------------------
+# v0.73.0: grounding-gated generation rendering
+# ---------------------------------------------------------------------------
+
+
+def test_30_column_means_resolves_to_meanc_through_the_full_chat_loop() -> None:
+    """The exact v0.72.0 regression, exercised through the full CLI loop."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        messages: list[str] = []
+        chat_mod.run_chat(
+            prompt_fn=_scripted(["Calculate the column means.", "exit"]), print_fn=messages.append,
+            engine=_fake_engine(docs_root=str(docs_root)),
+        )
+        joined = "\n".join(messages)
+        check("resolves to the real meanc function, not colmean", "meanc" in joined)
+        check("colmean never appears", "colmean" not in joined)
+
+
+def test_31_unknown_generated_symbol_is_disclosed() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(canned_answer="```gauss\ncol_means = colmean(y);\n```")
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        messages: list[str] = []
+        chat_mod.run_chat(
+            prompt_fn=_scripted(["Calculate the column means.", "exit"]), print_fn=messages.append, engine=engine,
+        )
+        joined = "\n".join(messages)
+        check("the unknown symbol is disclosed as a warning", "colmean" in joined and "Warning" in joined)
+
+
+def test_32_panel_regression_without_support_is_blocked_through_the_full_chat_loop() -> None:
+    messages: list[str] = []
+    chat_mod.run_chat(
+        prompt_fn=_scripted(["Write GAUSS code for a panel regression.", "exit"]),
+        print_fn=messages.append, engine=_fake_engine(),  # no docs_root -> no authoritative support
+    )
+    joined = "\n".join(messages)
+    check("generation is blocked, not fabricated", "I don't have enough authoritative GAUSS documentation" in joined)
 
 
 def run_tests() -> int:
