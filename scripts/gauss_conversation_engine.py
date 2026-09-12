@@ -1304,10 +1304,18 @@ class AnswerResult:
     #: empty when `generated_code` is empty.
     unknown_symbols: tuple[str, ...] = ()
     #: v0.74.0 additions -- deterministic pre-execution validation. `None`
-    #: whenever the pre-execution validation pass did not run at all (any
-    #: intent other than `CODE_GENERATION` producing code under a `FULL`/
-    #: `SUPPORTED_ONLY` gate) -- distinct from an empty tuple, which means
-    #: the pass ran and found nothing to report.
+    #: whenever the pre-execution validation pass did not run at all.
+    #: v0.75.0: this pass now runs whenever `generated_code` is non-empty,
+    #: for ANY intent -- so `None` here means specifically "no code-shaped
+    #: content was in the answer" (the repository-equivalent of a
+    #: `NOT_APPLICABLE` eligibility verdict; see `gauss_pre_execution_
+    #: validation.py`'s own top-of-file docstring for why a fourth
+    #: `ExecutionEligibility` state was deliberately not added instead) --
+    #: distinct from an empty tuple, which means the pass ran and found
+    #: nothing to report. It is NO LONGER gated on `intent ==
+    #: CODE_GENERATION` or on the generation-gate policy: a `QA`-classified
+    #: turn whose answer happens to contain code now gets an eligibility
+    #: verdict exactly like a `CODE_GENERATION`-classified one does.
     pre_execution_eligibility: str | None = None
     pre_execution_issues: tuple[str, ...] = ()
     call_validations: tuple["validation_mod.CallValidationResult", ...] = ()
@@ -1315,6 +1323,14 @@ class AnswerResult:
     #: `(unknown_symbol, documented_companion)` pairs -- see
     #: `gauss_pre_execution_validation.find_companion_hint(...)`.
     companion_hints: tuple[tuple[str, str], ...] = ()
+    #: v0.75.0 additions -- richer signature/parameter-role evidence,
+    #: structured predicted-output claim handling, and a validation-
+    #: completeness summary. All `None`/empty under the exact same
+    #: condition as `pre_execution_eligibility` above (no code-shaped
+    #: content in the answer).
+    parameter_role_checks: tuple["validation_mod.ParameterRoleCheck", ...] = ()
+    predicted_output: "validation_mod.PredictedOutputClaim | None" = None
+    validation_coverage: "validation_mod.ValidationCoverage | None" = None
 
 
 class ConversationEngine:
@@ -1357,8 +1373,22 @@ class ConversationEngine:
         # BEFORE the provider is ever consulted whether generation is
         # permitted at all. The provider is never given a chance to override
         # this: BLOCK and CLARIFY never reach `self.provider.complete(...)`.
+        #
+        # v0.75.0: the gate itself is now computed for EVERY intent that
+        # reaches this point (previously only for `CODE_GENERATION`) -- this
+        # is the fix for the exact v0.74.0-disclosed QA-intent eligibility
+        # gap (see `KNOWN_LIMITATIONS.md`/`planning/v0.74.0-pre-execution-
+        # validation.md`'s own Section 15): a `QA`-classified turn can still
+        # produce a code-shaped answer, and that code deserves the same
+        # deterministic eligibility evidence a `CODE_GENERATION`-classified
+        # turn already got. The gate still only BLOCKS/CLARIFIES the
+        # provider call for `CODE_GENERATION` -- for every other intent, the
+        # provider is always called normally (prose-only QA behavior is
+        # unchanged), and `gate` is retained purely as evidence for the
+        # universal validation pass below, applied ONLY if the answer
+        # actually turns out to contain code.
+        gate = compute_generation_gate(bundle)
         if intent == Intent.CODE_GENERATION:
-            gate = compute_generation_gate(bundle)
             if gate.policy == GenerationPolicy.BLOCK.value:
                 self.state.add("user", question)
                 self.state.add("assistant", GENERATION_BLOCKED_MESSAGE)
@@ -1381,8 +1411,6 @@ class ConversationEngine:
                     unsupported_topics=bundle.unmatched_topics, generation_policy=gate.policy,
                     ambiguous_topics=bundle.ambiguous_topics,
                 )
-        else:
-            gate = None
 
         messages = [provider_mod.ChatMessage(role="system", content=SYSTEM_PROMPT)]
         messages.extend(self.state.as_messages())
@@ -1408,7 +1436,7 @@ class ConversationEngine:
                 provider_success=False, provider_error=result.error_message,
                 intent=intent.value, grounding_status=bundle.status.value,
                 grounding_sources=bundle.sources, unsupported_topics=bundle.unmatched_topics,
-                generation_policy=gate.policy if gate is not None else None,
+                generation_policy=gate.policy,
             )
 
         text = result.text or ""
@@ -1463,18 +1491,29 @@ class ConversationEngine:
                         all_unknown.append(symbol)
             unknown_symbols = tuple(all_unknown)
 
-        # v0.74.0: deterministic pre-execution validation -- only attempted
-        # when code was actually generated under a gate that permitted
-        # generation at all (`FULL`/`SUPPORTED_ONLY`); `BLOCK`/`CLARIFY`
-        # already returned earlier and never reach this point. See
-        # `gauss_pre_execution_validation.py`'s own module docstring for
-        # the full design and the exact live findings motivating it.
+        # v0.74.0: deterministic pre-execution validation. v0.75.0: this is
+        # now UNCONDITIONAL on `generated_code` alone -- previously also
+        # required `gate.policy in (FULL, SUPPORTED_ONLY)`, which meant a
+        # `QA`-classified turn (where `gate` was `None` before this
+        # milestone) never ran this pass at all, EVEN IF the model's answer
+        # contained real, call-shaped GAUSS code. That was the exact,
+        # disclosed v0.74.0 QA-intent eligibility gap (see
+        # `KNOWN_LIMITATIONS.md`): code was generated, symbol-checked, and
+        # even executed under some future workflow, without ever passing
+        # through documented-signature/precondition/eligibility evidence,
+        # purely because of how the ORIGINAL question happened to be
+        # phrased. Any code-shaped answer now gets the identical validation
+        # pass regardless of `intent` or `gate.policy` -- an ungrounded
+        # (`BLOCK`) or ambiguous (`CLARIFY`) bundle that still produced code
+        # (a QA-route hallucination) is validated too, and will correctly
+        # come out `INELIGIBLE`/`REQUIRES_CLARIFICATION` via
+        # `compute_eligibility(...)`'s own `generation_policy`/
+        # `ambiguous_topics` checks -- nothing here silently passes it.
         pre_execution: "validation_mod.PreExecutionValidationResult | None" = None
-        if generated_code and gate is not None and gate.policy in (
-            GenerationPolicy.FULL.value, GenerationPolicy.SUPPORTED_ONLY.value,
-        ):
+        if generated_code:
             pre_execution = self._validate_pre_execution(
                 generated_code=generated_code, bundle=bundle, gate=gate, unknown_symbols=unknown_symbols,
+                answer_text=text,
             )
 
         self.state.add("user", question)
@@ -1488,17 +1527,20 @@ class ConversationEngine:
             intent=intent.value, grounding_status=bundle.status.value,
             grounding_sources=bundle.sources, unsupported_topics=bundle.unmatched_topics,
             generated_code=generated_code, executed=False, methodologically_validated=False,
-            generation_policy=gate.policy if gate is not None else None, unknown_symbols=unknown_symbols,
+            generation_policy=gate.policy, unknown_symbols=unknown_symbols,
             pre_execution_eligibility=pre_execution.eligibility if pre_execution else None,
             pre_execution_issues=pre_execution.unresolved_issues if pre_execution else (),
             call_validations=pre_execution.call_validations if pre_execution else (),
             precondition_checks=pre_execution.preconditions if pre_execution else (),
             companion_hints=pre_execution.companion_hints if pre_execution else (),
+            parameter_role_checks=pre_execution.parameter_role_checks if pre_execution else (),
+            predicted_output=pre_execution.predicted_output if pre_execution else None,
+            validation_coverage=pre_execution.coverage if pre_execution else None,
         )
 
     def _validate_pre_execution(
         self, *, generated_code: tuple[str, ...], bundle: "GroundingBundle", gate: "GenerationGateResult",
-        unknown_symbols: tuple[str, ...],
+        unknown_symbols: tuple[str, ...], answer_text: str,
     ) -> "validation_mod.PreExecutionValidationResult":
         """Re-fetches each grounded topic's own `best_match` (a second real
         `command_doc_lookup.lookup(...)` call, same simplicity-over-
@@ -1556,6 +1598,24 @@ class ConversationEngine:
             for call in validation_mod.extract_generated_calls(cleaned_block):
                 precondition_checks.extend(validation_mod.check_preconditions(call, code=cleaned_block))
 
+        # v0.75.0 Phase 5/6: parameter-role/type validation -- positional,
+        # against whatever documented parameter metadata
+        # `extract_documented_signature(...)` above could extract (empty for
+        # a symbol whose documentation did not support it, per that
+        # function's own conservative discipline).
+        parameter_role_checks: list[validation_mod.ParameterRoleCheck] = []
+        for call in all_calls:
+            signature = documented_signatures.get(call.symbol.lower())
+            parameter_role_checks.extend(validation_mod.check_parameter_roles(call, signature=signature))
+
+        # v0.75.0 Phase 9/10/11: a structured, never-model-self-labeled
+        # predicted-output claim, with limited deterministic verification
+        # for the small set of literal patterns `verify_predicted_output(...)`
+        # can actually compute. Kept entirely separate from `eligibility`
+        # below -- see `compute_eligibility(...)`'s own docstring for why.
+        cleaned_generated_code = tuple(_strip_comments_for_analysis(block) for block in generated_code)
+        predicted_output = validation_mod.analyze_predicted_output(answer_text, generated_code=cleaned_generated_code)
+
         companion_hints: list[tuple[str, str]] = []
         for symbol in unknown_symbols:
             hint = validation_mod.find_companion_hint(symbol, companions=frozenset(companions))
@@ -1583,9 +1643,16 @@ class ConversationEngine:
         eligibility, issues = validation_mod.compute_eligibility(
             generation_policy=gate.policy, unknown_symbols=unknown_symbols, ambiguous_topics=bundle.ambiguous_topics,
             call_validations=call_validations, preconditions=tuple(precondition_checks), code_extraction_ok=True,
+            parameter_role_checks=tuple(parameter_role_checks),
+        )
+        coverage = validation_mod.compute_validation_coverage(
+            has_code=True, call_validations=call_validations, parameter_role_checks=tuple(parameter_role_checks),
+            preconditions=tuple(precondition_checks), predicted_output=predicted_output,
         )
         return validation_mod.PreExecutionValidationResult(
             generation_policy=gate.policy, unknown_symbols=unknown_symbols,
             companion_hints=tuple(companion_hints), call_validations=call_validations,
             preconditions=tuple(precondition_checks), unresolved_issues=issues, eligibility=eligibility,
+            parameter_role_checks=tuple(parameter_role_checks), predicted_output=predicted_output,
+            coverage=coverage,
         )

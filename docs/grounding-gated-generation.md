@@ -1,6 +1,6 @@
 # Grounding-Gated Generation
 
-**Status: Alpha — added in `v0.73.0`, extending [conversational-code-generation.md](conversational-code-generation.md). `v0.74.0` adds a further layer on top of everything below — signature/precondition checking and an execution-eligibility verdict — see [docs/pre-execution-validation.md](pre-execution-validation.md).**
+**Status: Alpha — added in `v0.73.0`, extending [conversational-code-generation.md](conversational-code-generation.md). `v0.74.0` adds a further layer on top of everything below — signature/precondition checking and an execution-eligibility verdict — see [docs/pre-execution-validation.md](pre-execution-validation.md). `v0.75.0` makes that layer apply to every code-shaped answer, not only requests this module's own gate classified as code generation — see [docs/universal-code-validation.md](universal-code-validation.md).**
 
 `v0.72.0` disclosed whether a code-generation answer was grounded, but that disclosure was informational only — the model could still be asked to generate code for an entirely ungrounded request, and it sometimes fabricated a plausible-but-nonexistent GAUSS function when it did. `v0.73.0` turns grounding into an actual **generation gate**: a deterministic, provider-independent decision, computed before the model is ever consulted, that controls whether — and how much — GAUSS-specific code generation is permitted.
 

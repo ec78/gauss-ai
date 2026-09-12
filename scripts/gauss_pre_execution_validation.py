@@ -57,13 +57,90 @@ KEYWORDS` below). This module is imported BY `gauss_conversation_engine.py`,
 so importing back from it would create a circular import; the list is small,
 stable, and was verified via real GAUSS execution in `v0.73.0`'s own
 development -- keep the two copies in sync if that list ever changes.
+
+`v0.75.0` additions -- richer signature/parameter metadata, expanded
+precondition coverage, and structured predicted-output claim handling. This
+milestone's own real evaluation of `v0.74.0` surfaced a QA-intent
+eligibility gap (a conversational answer not classified `CODE_GENERATION`
+could still contain generated GAUSS code that never received an
+eligibility verdict at all) and a real wrong-model-prediction finding (a
+literal, valid `invpd({2 1, 1 2})` example: the code itself was correctly
+`ELIGIBLE_FOR_VALIDATION`, but the model's own claimed numeric inverse,
+`0.5 -0.5 / -0.5 0.5`, was wrong -- the real inverse, confirmed by
+`tgauss.exe -b` execution, is `0.66666667 -0.33333333 / -0.33333333
+0.66666667`; see `evaluations/runs/2026-09-12-code-assistant-pre-execution-
+validation-run-004.md`). The universal-routing fix itself lives in
+`gauss_conversation_engine.py` (see that module's own v0.75.0 docstring
+section); this module adds the richer evidence that routing fix now always
+computes:
+
+- `DocumentedParameter`/`classify_documented_type` -- conservative
+  per-parameter category (`SCALAR`/`VECTOR`/`MATRIX`/`STRING`/`CONTROL`/
+  `DATASET`/`UNKNOWN`) and shape (`SQUARE`/`COLUMN_VECTOR`/`ROW_VECTOR`/
+  `UNKNOWN`) extracted ONLY from a real `:type <name>: <text>` line in the
+  documentation's own `.. function::` directive block (e.g. `meanc.rst`'s
+  own `:type x: NxK matrix`) -- never inferred from a parameter name alone,
+  never fabricated when the doc's own text does not support a confident
+  category.
+- `infer_literal_category`/`check_parameter_roles` -- a small, bounded
+  literal-expression classifier (numeric scalar / string / literal
+  matrix-or-vector, from a GAUSS `{...}` literal) compared positionally
+  against the documented parameter category above, producing `MATCH`/
+  `MISMATCH`/`UNKNOWN` (never fabricated agreement) per argument. A runtime
+  variable or any non-literal expression is always `UNKNOWN` here -- this is
+  not, and does not attempt to be, a type system or a GAUSS parser.
+- Two new documented-precondition families beyond `invpd`, plus one
+  upgrade of an EXISTING curated-but-previously-unimplemented entry, all
+  selected because this session's own real, local GAUSS documentation
+  checkout supports a genuinely deterministic literal check: `solpd`
+  (`solpd.rst`: the *A* argument, its SECOND parameter, must be positive
+  definite -- and `solpd.rst`'s own text says the function "does not check
+  to see that the matrix *A* is symmetric... will look only at the upper
+  half of the matrix including the principal diagonal", so this module's
+  own check mirrors that exact documented convention rather than reusing
+  `invpd`'s symmetry requirement verbatim); `chol` (`chol.rst`: the same
+  upper-triangle-only positive-definiteness convention, on its one
+  argument); and `inv` (`invinvpd.rst`: "if x is a matrix, it must be
+  square and invertible" -- `v0.74.0` curated this entry but marked it
+  `machine_checkable=False` because it had no deterministic invertibility
+  test; `v0.75.0` adds one, an exact determinant computation via the same
+  cofactor/leading-principal-minor machinery `invpd`'s own check already
+  uses, bounded to the same `MAX_CHECKED_MATRIX_DIM`).
+- `PredictedOutputClaim`/`detect_predicted_output_claim`/
+  `verify_predicted_output`/`analyze_predicted_output` -- a structured,
+  never-model-self-labeled representation of a claimed predicted output
+  (detected only from a small, explicit set of marker phrases, e.g.
+  `"Expected output:"`/`"This should print:"`), with LIMITED deterministic
+  verification for a handful of literal cases this module can already
+  compute exactly without executing GAUSS: `meanc`/`sumc` of a literal
+  matrix, and `inv`/`invpd` of a literal matrix (reusing the same cofactor-
+  based inverse the upgraded `inv` precondition check above uses). Every
+  other case is honestly `UNVERIFIED`, never guessed. A predicted-output
+  verdict is ALWAYS kept structurally separate from `ExecutionEligibility`
+  -- a wrong prediction never makes correctly-generated code itself
+  ineligible, and a right-looking prediction is never treated as execution
+  evidence (see `compute_eligibility(...)`'s own docstring).
+- `ValidationCoverage`/`compute_validation_coverage` -- a small, explicit
+  summary of which of the above passes actually ran to completion
+  (`COMPLETE`/`PARTIAL`/`NOT_APPLICABLE`/`UNKNOWN`) for the current
+  code-shaped answer, so a caller (and, eventually, a future controlled-
+  execution-handoff milestone) can distinguish "eligible with broad
+  evidence" from "eligible with many unknown gaps" -- never implying full
+  static validation occurred when only part of it did.
+
+`v0.75.0` deliberately keeps `ExecutionEligibility` a 3-state enum (see that
+class's own docstring) rather than adding a fourth "eligible with caveats"
+tier: `ValidationCoverage` above already gives a caller everything a fourth
+tier would have provided, without proliferating eligibility states.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import enum
 import re
 from dataclasses import dataclass
+from typing import Callable
 
 #: See module docstring's final paragraph for why this is duplicated rather
 #: than imported.
@@ -122,6 +199,130 @@ SIGNATURE_EXTRACTED = "extracted"
 SIGNATURE_UNKNOWN = "unknown"
 
 
+class TypeClass(str, enum.Enum):
+    """v0.75.0: a conservative, categorical classification of a documented
+    parameter's (or a literal argument's) type -- NOT a real GAUSS type
+    system, and deliberately coarse. `UNKNOWN` is the honest default: it is
+    returned whenever the source text (documented or literal) does not
+    clearly support one of the other categories, never guessed."""
+
+    SCALAR = "scalar"
+    VECTOR = "vector"
+    MATRIX = "matrix"
+    STRING = "string"
+    CONTROL = "control"
+    DATASET = "dataset"
+    UNKNOWN = "unknown"
+
+
+class ShapeConstraint(str, enum.Enum):
+    """v0.75.0: a small, bounded set of shape constraints this module can
+    actually recognize from a documented `NxN`/`Nx1`/`1xN`-style dimension
+    string or a literal `{...}` matrix's own real dimensions. `CONFORMABLE`
+    and `SPD` are provided for vocabulary completeness (per this
+    milestone's own spec) but are not produced by any extractor in this
+    version -- conformability/SPD-ness are precondition-level concerns
+    (see `check_preconditions(...)`), not per-parameter shape metadata."""
+
+    SQUARE = "square"
+    COLUMN_VECTOR = "column_vector"
+    ROW_VECTOR = "row_vector"
+    CONFORMABLE = "conformable"
+    SPD = "spd"
+    UNKNOWN = "unknown"
+
+
+#: v0.75.0: ordered only for deterministic iteration; every matching
+#: keyword found in a documented `:type` string is collected (not just the
+#: first), so a genuinely documented enumeration like "matrix, vector, or
+#: scalar" (real text seen across this session's own docs corpus, e.g.
+#: `addition.rst`-style operator pages) becomes a real multi-category
+#: allowed set rather than an arbitrarily-picked single category -- see
+#: `check_parameter_roles(...)`, which only flags `MISMATCH` when the
+#: literal's inferred category is in NONE of the documented categories.
+_TYPE_KEYWORDS: tuple[tuple[re.Pattern, str], ...] = (
+    (re.compile(r"\bstring\b", re.IGNORECASE), TypeClass.STRING.value),
+    (re.compile(r"\bstruct\b", re.IGNORECASE), TypeClass.CONTROL.value),
+    (re.compile(r"\bdata\s*frame\b", re.IGNORECASE), TypeClass.DATASET.value),
+    (re.compile(r"\bmatrix\b", re.IGNORECASE), TypeClass.MATRIX.value),
+    (re.compile(r"\barray\b", re.IGNORECASE), TypeClass.MATRIX.value),
+    (re.compile(r"\bvector\b", re.IGNORECASE), TypeClass.VECTOR.value),
+    (re.compile(r"\bscalar\b", re.IGNORECASE), TypeClass.SCALAR.value),
+    (re.compile(r"\binteger\b", re.IGNORECASE), TypeClass.SCALAR.value),
+)
+
+#: `NxN`, `KxK`, etc. -- a backreference so only a REPEATED dimension label
+#: counts as documented-square, never two merely-similar-looking labels.
+_SQUARE_SHAPE_RE = re.compile(r"\b([A-Za-z])[xX]\1\b")
+_COLUMN_VECTOR_SHAPE_RE = re.compile(r"\b[A-Za-z0-9]+[xX]1\b")
+_ROW_VECTOR_SHAPE_RE = re.compile(r"\b1[xX][A-Za-z0-9]+\b")
+
+
+def classify_documented_type(type_text: str | None) -> tuple[tuple[str, ...], str]:
+    """Conservative, doc-text-only classification -- never infers a
+    category from a parameter NAME, only from real documented type text
+    (e.g. `meanc.rst`'s own `:type x: NxK matrix`). Returns
+    `((TypeClass.UNKNOWN.value,), ShapeConstraint.UNKNOWN.value)` when
+    `type_text` is empty or matches none of `_TYPE_KEYWORDS` -- an honest
+    gap, never a guess."""
+    if not type_text:
+        return (TypeClass.UNKNOWN.value,), ShapeConstraint.UNKNOWN.value
+    categories: list[str] = []
+    for pattern, category in _TYPE_KEYWORDS:
+        if pattern.search(type_text) and category not in categories:
+            categories.append(category)
+    if not categories:
+        categories = [TypeClass.UNKNOWN.value]
+    shape = ShapeConstraint.UNKNOWN.value
+    if TypeClass.MATRIX.value in categories and _SQUARE_SHAPE_RE.search(type_text):
+        shape = ShapeConstraint.SQUARE.value
+    elif _COLUMN_VECTOR_SHAPE_RE.search(type_text) and not _ROW_VECTOR_SHAPE_RE.search(type_text):
+        shape = ShapeConstraint.COLUMN_VECTOR.value
+    elif _ROW_VECTOR_SHAPE_RE.search(type_text):
+        shape = ShapeConstraint.ROW_VECTOR.value
+    return tuple(categories), shape
+
+
+@dataclass(frozen=True)
+class DocumentedParameter:
+    """v0.75.0: one documented parameter's own conservative metadata --
+    `category`/`shape` are populated ONLY via `classify_documented_type(...)`
+    from a real `:type <name>: ...` line found in the documentation's own
+    `.. function::` directive block; `source` carries that raw text (or
+    `None` when no `:type` line was found for this parameter at all, which
+    is distinct from an unclassifiable one)."""
+
+    name: str
+    required: bool
+    position: int
+    category: tuple[str, ...]
+    shape: str
+    source: str | None
+
+
+#: v0.75.0: matches a real `:type <name>: <text>` line from the same
+#: `.. function::` directive block `extract_documented_signature(...)`
+#: already reads `syntax_blocks` from -- `best_match["inputs_section"]`
+#: joins each param's own `:param`/`:type` lines with real newlines (see
+#: `command_doc_lookup.extract_match(...)`), so this is a genuine per-line
+#: match, never a guess across an unrelated parameter's text. A leading
+#: `&` (GAUSS's own struct-pointer sigil, e.g. `:type &myPlot: struct
+#: pointer`) is stripped from the captured name so it still matches the
+#: plain parameter name recorded in `parameter_names`.
+_PARAM_TYPE_LINE_RE = re.compile(r":type\s+&?([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.+)")
+
+
+def _extract_documented_parameter_types(inputs_section: str | None) -> dict[str, str]:
+    if not inputs_section:
+        return {}
+    type_by_name: dict[str, str] = {}
+    for match in _PARAM_TYPE_LINE_RE.finditer(inputs_section):
+        name, type_text = match.group(1), match.group(2).strip()
+        if name not in type_by_name:
+            type_by_name[name] = type_text
+    return type_by_name
+
+
 @dataclass(frozen=True)
 class DocumentedSignature:
     """`arg_ranges` holds one `(min_args, max_args)` pair per documented
@@ -130,13 +331,20 @@ class DocumentedSignature:
     functions in this codebase's own docs, e.g. `tscsFit`, have more than
     one overload). `extraction_status == UNKNOWN` (with empty `arg_ranges`)
     means the documentation's own format did not support reliable
-    extraction -- never a fabricated signature."""
+    extraction -- never a fabricated signature. v0.75.0: `parameters` is a
+    best-effort, SINGLE flattened parameter-metadata list (position/
+    required/category/shape) built from `parameter_names` -- consistent
+    with this module's existing overload-merging simplification (see
+    `test_04_multiple_overloads_produce_multiple_ranges`), it does not
+    track per-overload parameter metadata separately. Always `()` when
+    `extraction_status == SIGNATURE_UNKNOWN`."""
 
     symbol: str
     arg_ranges: tuple[tuple[int, int], ...]
     parameter_names: tuple[str, ...]
     source: str | None
     extraction_status: str
+    parameters: tuple[DocumentedParameter, ...] = ()
 
 
 def _parse_signature_occurrence(raw_args: str) -> tuple[int, int, tuple[str, ...]]:
@@ -187,9 +395,26 @@ def extract_documented_signature(symbol: str, best_match: dict) -> DocumentedSig
             symbol=symbol, arg_ranges=(), parameter_names=(),
             source=best_match.get("file_path"), extraction_status=SIGNATURE_UNKNOWN,
         )
+
+    # v0.75.0: `:type` lines, when present, come from the SAME `.. function::`
+    # directive block already parsed for syntax/names -- see
+    # `_extract_documented_parameter_types(...)`'s own docstring for why this
+    # is a real per-line match, never a guess.
+    type_by_name = _extract_documented_parameter_types(best_match.get("inputs_section"))
+    required_count = min(lo for lo, _hi in ranges)
+    parameters = tuple(
+        DocumentedParameter(
+            name=name, required=position < required_count, position=position,
+            category=classify_documented_type(type_by_name.get(name))[0],
+            shape=classify_documented_type(type_by_name.get(name))[1],
+            source=type_by_name.get(name),
+        )
+        for position, name in enumerate(names)
+    )
     return DocumentedSignature(
         symbol=symbol, arg_ranges=tuple(ranges), parameter_names=tuple(names),
         source=best_match.get("file_path"), extraction_status=SIGNATURE_EXTRACTED,
+        parameters=parameters,
     )
 
 
@@ -298,6 +523,115 @@ def validate_call(
 
 
 # ---------------------------------------------------------------------------
+# Phase 6 / 18 (v0.75.0): basic literal type/shape inference and
+# parameter-role validation
+# ---------------------------------------------------------------------------
+
+_NUMERIC_LITERAL_RE = re.compile(r"^-?\d+(\.\d+)?$")
+_STRING_LITERAL_RE = re.compile(r'^"(?:[^"\\]|\\.)*"$|^\'(?:[^\'\\]|\\.)*\'$')
+
+
+def infer_literal_category(argument: str) -> tuple[str, str]:
+    """Bounded, deterministic literal-expression classifier -- NOT arbitrary
+    expression evaluation. Recognizes exactly three shapes of GAUSS literal:
+    a bare numeric constant (`SCALAR`), a quoted string (`STRING`), and a
+    `{...}` matrix/vector literal (parsed via the same `_parse_literal_matrix`
+    logic the `invpd` precondition check already uses, so a 1x1 literal is
+    `SCALAR`, a single-column or single-row literal is `VECTOR` with the
+    corresponding shape, and anything else is `MATRIX`, `SQUARE` only when
+    genuinely square). A runtime variable, a function call, or any other
+    expression (e.g. the real documented `invpd(x'x)` OLS example) always
+    returns `(TypeClass.UNKNOWN.value, ShapeConstraint.UNKNOWN.value)` --
+    this function never partially evaluates a runtime expression."""
+    argument = argument.strip()
+    if _STRING_LITERAL_RE.match(argument):
+        return TypeClass.STRING.value, ShapeConstraint.UNKNOWN.value
+    if _NUMERIC_LITERAL_RE.match(argument):
+        return TypeClass.SCALAR.value, ShapeConstraint.UNKNOWN.value
+    if argument.startswith("{") and argument.endswith("}"):
+        rows = _parse_literal_matrix(argument)
+        if rows is None:
+            return TypeClass.UNKNOWN.value, ShapeConstraint.UNKNOWN.value
+        height, width = len(rows), len(rows[0])
+        if height == 1 and width == 1:
+            return TypeClass.SCALAR.value, ShapeConstraint.UNKNOWN.value
+        if width == 1:
+            return TypeClass.VECTOR.value, ShapeConstraint.COLUMN_VECTOR.value
+        if height == 1:
+            return TypeClass.VECTOR.value, ShapeConstraint.ROW_VECTOR.value
+        if height == width:
+            return TypeClass.MATRIX.value, ShapeConstraint.SQUARE.value
+        return TypeClass.MATRIX.value, ShapeConstraint.UNKNOWN.value
+    return TypeClass.UNKNOWN.value, ShapeConstraint.UNKNOWN.value
+
+
+class ParameterRoleStatus(str, enum.Enum):
+    MATCH = "match"
+    MISMATCH = "mismatch"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True)
+class ParameterRoleCheck:
+    """One positional argument-vs-documented-parameter comparison.
+    `MISMATCH` is produced ONLY when both the documented category and the
+    argument's own inferred literal category are confidently known and they
+    genuinely do not overlap -- e.g. a string literal passed where the
+    documentation's own `:type` text names only `matrix`. Anything the
+    literal inferrer or the documentation extractor could not confidently
+    classify is `UNKNOWN`, never guessed into a `MISMATCH`."""
+
+    symbol: str
+    position: int
+    parameter_name: str | None
+    documented_category: tuple[str, ...]
+    inferred_category: str
+    status: str
+    explanation: str
+
+
+def check_parameter_roles(call: GeneratedCall, *, signature: DocumentedSignature | None) -> tuple[ParameterRoleCheck, ...]:
+    """Positional: argument `i` is compared against `signature.parameters[i]`.
+    An extra argument beyond the documented parameter list is skipped here
+    (argument-COUNT mismatches are already `validate_call(...)`'s own job,
+    per `CallValidationResult`); this function never attempts to guess a
+    role for a parameter with no reliable documented category, and never
+    considers a runtime variable's true type. Returns `()` when `signature`
+    is `None` or has no extracted parameter metadata at all -- an honest
+    "nothing to check", not a fabricated pass."""
+    if signature is None or not signature.parameters:
+        return ()
+    checks: list[ParameterRoleCheck] = []
+    for position, argument in enumerate(call.raw_arguments):
+        if position >= len(signature.parameters):
+            break
+        param = signature.parameters[position]
+        inferred_category, _inferred_shape = infer_literal_category(argument)
+        documented = param.category
+        if TypeClass.UNKNOWN.value in documented or inferred_category == TypeClass.UNKNOWN.value:
+            status = ParameterRoleStatus.UNKNOWN.value
+            explanation = (
+                "the documented parameter type or this argument's own literal category could not be "
+                "confidently determined"
+            )
+        elif inferred_category in documented:
+            status = ParameterRoleStatus.MATCH.value
+            explanation = f"the argument's literal category ({inferred_category}) matches the documented parameter type"
+        else:
+            status = ParameterRoleStatus.MISMATCH.value
+            explanation = (
+                f"the argument's literal category ({inferred_category}) does not match the documented type "
+                f"for parameter {param.name!r} ({'/'.join(documented)})"
+            )
+        checks.append(ParameterRoleCheck(
+            symbol=call.symbol, position=position, parameter_name=param.name,
+            documented_category=documented, inferred_category=inferred_category,
+            status=status, explanation=explanation,
+        ))
+    return tuple(checks)
+
+
+# ---------------------------------------------------------------------------
 # Phase 7: companion-function mismatch detection
 # ---------------------------------------------------------------------------
 
@@ -351,11 +685,20 @@ class DocumentedPrecondition:
     #: is a claim about what THIS VERSION can prove, not about whether the
     #: constraint is inherently checkable at all.
     machine_checkable: bool
+    #: v0.75.0: which positional argument (0-indexed) of the call this
+    #: precondition applies to -- `invpd`/`inv`/`chol` all constrain their
+    #: ONE argument (position 0, the default), but `solpd(b, A)`'s
+    #: documented precondition applies to its SECOND argument, `A`
+    #: (position 1). Added rather than hardcoding position 0 everywhere so
+    #: a genuinely different documented argument position is never silently
+    #: mischecked.
+    argument_index: int = 0
 
 
 #: Hand-curated, doc-verified -- every entry's `description`/`source` was
 #: checked in this milestone's own development session against the real,
-#: local `invinvpd.rst` cited (see module docstring's Finding 3). Small and
+#: local `invinvpd.rst`/`solpd.rst`/`chol.rst` cited (see module docstring's
+#: Finding 3 and this module's own v0.75.0 docstring section). Small and
 #: explicit, exactly like `gauss_conversation_engine._CONCEPT_ALIAS_INDEX`.
 _PRECONDITION_INDEX: dict[str, tuple[DocumentedPrecondition, ...]] = {
     "invpd": (
@@ -371,13 +714,45 @@ _PRECONDITION_INDEX: dict[str, tuple[DocumentedPrecondition, ...]] = {
     ),
     "inv": (
         DocumentedPrecondition(
-            symbol="inv", kind=PreconditionKind.PROPERTY.value, machine_checkable=False,
+            symbol="inv", kind=PreconditionKind.PROPERTY.value, machine_checkable=True,
             source="invinvpd.rst",
             description=(
                 'invinvpd.rst: "For inv, if x is a matrix, it must be square and invertible." '
-                "(squareness is checkable for a literal matrix; general invertibility is not "
-                "attempted deterministically in this version, so this entry is not marked "
-                "machine-checkable -- see check_preconditions(...).)"
+                "v0.74.0 curated this entry but left it machine_checkable=False (no deterministic "
+                "invertibility test existed yet). v0.75.0 upgrades it: for a literal matrix, "
+                "squareness and a nonzero determinant (exact cofactor-expansion computation, the "
+                "same machinery invpd's own leading-principal-minor check already uses) are both "
+                "deterministically checkable without executing GAUSS -- see check_inv_precondition(...)."
+            ),
+        ),
+    ),
+    "solpd": (
+        DocumentedPrecondition(
+            symbol="solpd", kind=PreconditionKind.PROPERTY.value, machine_checkable=True, argument_index=1,
+            source="solpd.rst",
+            description=(
+                'solpd.rst: "param A: NxN symmetric positive definite matrix..."; and, in its own '
+                'Remarks: "solpd does not check to see that the matrix A is symmetric. solpd will '
+                'look only at the upper half of the matrix including the principal diagonal." and '
+                '"If the A matrix is not positive definite: trap 1 -> return scalar error code 30; '
+                'trap 0 -> terminate with an error message." Checked on the SECOND argument (A), '
+                "using solpd's own documented upper-triangle-only convention (see "
+                "check_solpd_precondition(...)) rather than requiring literal symmetry the function "
+                "itself does not require."
+            ),
+        ),
+    ),
+    "chol": (
+        DocumentedPrecondition(
+            symbol="chol", kind=PreconditionKind.PROPERTY.value, machine_checkable=True,
+            source="chol.rst",
+            description=(
+                'chol.rst: "Computes the Cholesky decomposition of a symmetric, positive definite '
+                'square matrix."; Remarks: "chol does not check to see that the matrix is symmetric. '
+                'chol will look only at the upper half of the matrix including the principal '
+                'diagonal... If the matrix x is symmetric but not positive definite... an error '
+                '[is generated]." Checked the same upper-triangle-only way as solpd (see '
+                "check_chol_precondition(...))."
             ),
         ),
     ),
@@ -484,25 +859,82 @@ def _leading_principal_minors_positive(rows: list[list[float]]) -> bool:
     return True
 
 
-def check_invpd_precondition(call: GeneratedCall, *, code: str) -> PreconditionCheck:
-    precondition = _PRECONDITION_INDEX["invpd"][0]
-    if not call.raw_arguments:
-        return PreconditionCheck(precondition, PreconditionStatus.UNVERIFIED.value, "no argument found to inspect")
+def _reflect_upper_triangle_to_symmetric(rows: list[list[float]]) -> list[list[float]]:
+    """v0.75.0: mirrors `solpd`/`chol`'s own documented behavior ("will look
+    only at the upper half of the matrix including the principal diagonal")
+    -- builds the symmetric matrix the function actually OPERATES ON from a
+    (possibly non-symmetric) literal input, so this module's own
+    positive-definiteness check tests exactly what the real function tests,
+    never a stricter symmetry requirement the function itself does not
+    impose. Callers must ensure `rows` is square first."""
+    n = len(rows)
+    reflected = [row[:] for row in rows]
+    for i in range(n):
+        for j in range(i):
+            reflected[i][j] = reflected[j][i]
+    return reflected
 
-    rows = _find_literal_matrix_for_argument(call.raw_arguments[0], code=code)
+
+#: v0.75.0: exact tolerance for treating a literal-matrix determinant as
+#: zero (singular) -- matches the `<= 0`/strict-positivity discipline
+#: `_leading_principal_minors_positive` already uses for exact/rational
+#: literal input.
+_SINGULAR_DETERMINANT_TOLERANCE = 1e-9
+
+
+def _cofactor(matrix: list[list[float]], row: int, col: int) -> float:
+    minor = [r[:col] + r[col + 1:] for k, r in enumerate(matrix) if k != row]
+    sign = 1.0 if (row + col) % 2 == 0 else -1.0
+    return sign * _determinant(minor)
+
+
+def _matrix_inverse(rows: list[list[float]]) -> list[list[float]] | None:
+    """Exact adjugate/cofactor matrix inverse, bounded to
+    `MAX_CHECKED_MATRIX_DIM` by every caller -- reuses `_determinant(...)`,
+    the same machinery `_leading_principal_minors_positive(...)` already
+    uses. Returns `None` for a singular (or non-square) matrix rather than
+    raising or fabricating a result -- used both by the upgraded `inv`
+    precondition check and by `verify_predicted_output(...)`'s own bounded
+    deterministic output checker."""
+    n = len(rows)
+    if n == 0 or any(len(row) != n for row in rows):
+        return None
+    det = _determinant(rows)
+    if abs(det) <= _SINGULAR_DETERMINANT_TOLERANCE:
+        return None
+    cofactors = [[_cofactor(rows, i, j) for j in range(n)] for i in range(n)]
+    # Adjugate = transpose of the cofactor matrix.
+    return [[cofactors[j][i] / det for j in range(n)] for i in range(n)]
+
+
+def _literal_matrix_for_precondition_argument(
+    call: GeneratedCall, *, argument_index: int, code: str,
+) -> tuple[list[list[float]] | None, str | None]:
+    """Shared bounds/lookup logic for every precondition checker below.
+    Returns `(rows, unverified_reason)` -- exactly one is non-`None`. Never
+    raises on a short argument list (e.g. `solpd(b)` missing its documented
+    second argument)."""
+    if argument_index >= len(call.raw_arguments):
+        return None, "the documented argument this precondition applies to was not found in this call"
+    rows = _find_literal_matrix_for_argument(call.raw_arguments[argument_index], code=code)
     if rows is None:
-        return PreconditionCheck(
-            precondition, PreconditionStatus.UNVERIFIED.value,
-            "the input is a runtime value or expression, not a literal matrix -- symmetry/"
-            "positive-definiteness cannot be checked without executing GAUSS, which this module "
-            "never does",
+        return None, (
+            "the input is a runtime value or expression, not a literal matrix -- this cannot be checked "
+            "without executing GAUSS, which this module never does"
         )
     if len(rows) > MAX_CHECKED_MATRIX_DIM or len(rows[0]) > MAX_CHECKED_MATRIX_DIM:
-        return PreconditionCheck(
-            precondition, PreconditionStatus.UNVERIFIED.value,
+        return None, (
             f"the literal input matrix exceeds the {MAX_CHECKED_MATRIX_DIM}x{MAX_CHECKED_MATRIX_DIM} "
-            "bound this version checks deterministically",
+            "bound this version checks deterministically"
         )
+    return rows, None
+
+
+def check_invpd_precondition(call: GeneratedCall, *, code: str) -> PreconditionCheck:
+    precondition = _PRECONDITION_INDEX["invpd"][0]
+    rows, reason = _literal_matrix_for_precondition_argument(call, argument_index=precondition.argument_index, code=code)
+    if rows is None:
+        return PreconditionCheck(precondition, PreconditionStatus.UNVERIFIED.value, reason)
     if not _is_square(rows):
         return PreconditionCheck(
             precondition, PreconditionStatus.VIOLATED.value,
@@ -524,15 +956,91 @@ def check_invpd_precondition(call: GeneratedCall, *, code: str) -> PreconditionC
     )
 
 
+def check_inv_precondition(call: GeneratedCall, *, code: str) -> PreconditionCheck:
+    """v0.75.0: upgraded from `machine_checkable=False` in v0.74.0 -- see
+    `_PRECONDITION_INDEX["inv"]`'s own description for why this is now
+    deterministically checkable for a literal matrix."""
+    precondition = _PRECONDITION_INDEX["inv"][0]
+    rows, reason = _literal_matrix_for_precondition_argument(call, argument_index=precondition.argument_index, code=code)
+    if rows is None:
+        return PreconditionCheck(precondition, PreconditionStatus.UNVERIFIED.value, reason)
+    if not _is_square(rows):
+        return PreconditionCheck(
+            precondition, PreconditionStatus.VIOLATED.value,
+            "the literal input matrix is not square, so it cannot be inverted by inv",
+        )
+    if abs(_determinant(rows)) <= _SINGULAR_DETERMINANT_TOLERANCE:
+        return PreconditionCheck(
+            precondition, PreconditionStatus.VIOLATED.value,
+            "the literal input matrix has a zero determinant (singular), so it is not invertible",
+        )
+    return PreconditionCheck(
+        precondition, PreconditionStatus.SATISFIED.value,
+        "the literal input matrix is square with a nonzero determinant (verified by exact determinant computation)",
+    )
+
+
+def _check_upper_triangle_positive_definite(
+    call: GeneratedCall, *, precondition: DocumentedPrecondition, code: str,
+) -> PreconditionCheck:
+    """Shared implementation for `solpd`/`chol`: both document that they
+    "look only at the upper half of the matrix including the principal
+    diagonal" rather than requiring literal symmetry -- see each entry's own
+    `_PRECONDITION_INDEX` description for the exact quoted text."""
+    rows, reason = _literal_matrix_for_precondition_argument(call, argument_index=precondition.argument_index, code=code)
+    if rows is None:
+        return PreconditionCheck(precondition, PreconditionStatus.UNVERIFIED.value, reason)
+    if not _is_square(rows):
+        return PreconditionCheck(
+            precondition, PreconditionStatus.VIOLATED.value,
+            f"the literal input matrix is not square, so it cannot be positive definite ({precondition.symbol} "
+            "requires a square matrix)",
+        )
+    reflected = _reflect_upper_triangle_to_symmetric(rows)
+    if not _leading_principal_minors_positive(reflected):
+        return PreconditionCheck(
+            precondition, PreconditionStatus.VIOLATED.value,
+            f"the matrix implied by the literal input's own upper triangle (the convention {precondition.symbol} "
+            "itself documents using) is not positive definite",
+        )
+    return PreconditionCheck(
+        precondition, PreconditionStatus.SATISFIED.value,
+        f"the matrix implied by the literal input's own upper triangle is positive definite (verified by "
+        f"leading-principal-minor computation, following {precondition.symbol}'s own documented upper-triangle "
+        "convention)",
+    )
+
+
+def check_solpd_precondition(call: GeneratedCall, *, code: str) -> PreconditionCheck:
+    return _check_upper_triangle_positive_definite(call, precondition=_PRECONDITION_INDEX["solpd"][0], code=code)
+
+
+def check_chol_precondition(call: GeneratedCall, *, code: str) -> PreconditionCheck:
+    return _check_upper_triangle_positive_definite(call, precondition=_PRECONDITION_INDEX["chol"][0], code=code)
+
+
+#: v0.75.0: dispatch from symbol to its deterministic checker -- every entry
+#: here must have a matching `machine_checkable=True` entry in
+#: `_PRECONDITION_INDEX`; `check_preconditions(...)` never calls a checker
+#: for a precondition it does not itself mark `machine_checkable`.
+_PRECONDITION_CHECKERS: dict[str, "Callable[[GeneratedCall], PreconditionCheck]"] = {
+    "invpd": check_invpd_precondition,
+    "inv": check_inv_precondition,
+    "solpd": check_solpd_precondition,
+    "chol": check_chol_precondition,
+}
+
+
 def check_preconditions(call: GeneratedCall, *, code: str) -> tuple[PreconditionCheck, ...]:
     """Never fabricates `SATISFIED` -- a precondition with no implemented
     deterministic validator is always reported `UNVERIFIED`, explicitly
     naming that no validator exists in this version, rather than being
     silently omitted."""
     checks: list[PreconditionCheck] = []
+    checker = _PRECONDITION_CHECKERS.get(call.symbol.lower())
     for precondition in documented_preconditions(call.symbol):
-        if call.symbol.lower() == "invpd" and precondition.machine_checkable:
-            checks.append(check_invpd_precondition(call, code=code))
+        if precondition.machine_checkable and checker is not None:
+            checks.append(checker(call, code=code))
         else:
             checks.append(PreconditionCheck(
                 precondition, PreconditionStatus.UNVERIFIED.value,
@@ -564,7 +1072,10 @@ class PreExecutionValidationResult:
     """Immutable, provider-independent, contains no execution capability of
     any kind. `companion_hints` is a tuple of `(unknown_symbol,
     documented_companion)` pairs rather than a dict, for the same
-    immutability discipline as every other field here."""
+    immutability discipline as every other field here. v0.75.0 adds
+    `parameter_role_checks`/`predicted_output`/`coverage` -- all optional/
+    defaulted so this remains constructible exactly as before wherever it
+    already was."""
 
     generation_policy: str | None
     unknown_symbols: tuple[str, ...]
@@ -573,12 +1084,15 @@ class PreExecutionValidationResult:
     preconditions: tuple[PreconditionCheck, ...]
     unresolved_issues: tuple[str, ...]
     eligibility: str
+    parameter_role_checks: tuple[ParameterRoleCheck, ...] = ()
+    predicted_output: "PredictedOutputClaim | None" = None
+    coverage: "ValidationCoverage | None" = None
 
 
 def compute_eligibility(
     *, generation_policy: str | None, unknown_symbols: tuple[str, ...], ambiguous_topics: tuple[str, ...],
     call_validations: tuple[CallValidationResult, ...], preconditions: tuple[PreconditionCheck, ...],
-    code_extraction_ok: bool,
+    code_extraction_ok: bool, parameter_role_checks: tuple[ParameterRoleCheck, ...] = (),
 ) -> tuple[str, tuple[str, ...]]:
     """Deterministic: reads only its own arguments, calls no model, performs
     no I/O. Rule (deliberately conservative, exactly per this milestone's
@@ -593,13 +1107,24 @@ def compute_eligibility(
       signature does not block eligibility -- it is a real, disclosed gap,
       not a violation);
     - no documented precondition is known to be VIOLATED (an UNVERIFIED
-      precondition does not block eligibility either, for the same reason).
+      precondition does not block eligibility either, for the same reason);
+    - v0.75.0: no documented parameter role/type is known to be MISMATCH
+      (an UNKNOWN role check does not block eligibility, for the same
+      reason UNKNOWN signatures/UNVERIFIED preconditions do not).
 
     `REQUIRES_CLARIFICATION` takes priority when genuine ambiguity remains
     (mirrors `v0.73.0`'s own `GenerationPolicy.CLARIFY` priority ordering).
     Any other failure yields `INELIGIBLE` with the specific reason(s)
     named in `unresolved_issues` -- never silently blocked with no
-    explanation."""
+    explanation.
+
+    v0.75.0: deliberately does NOT take a predicted-output verification
+    argument at all -- a model's claimed predicted output (see
+    `PredictedOutputClaim`/`analyze_predicted_output(...)`) is tracked as
+    entirely separate evidence, never fed into this function, so a wrong
+    prediction can never make correctly-generated code itself ineligible,
+    and this function structurally cannot treat a predicted-output verdict
+    as an execution-eligibility input even by future accident."""
     if ambiguous_topics:
         return (
             ExecutionEligibility.REQUIRES_CLARIFICATION.value,
@@ -619,6 +1144,9 @@ def compute_eligibility(
     for check in preconditions:
         if check.status == PreconditionStatus.VIOLATED.value:
             issues.append(f"{check.precondition.symbol}: {check.explanation}")
+    for role_check in parameter_role_checks:
+        if role_check.status == ParameterRoleStatus.MISMATCH.value:
+            issues.append(f"{role_check.symbol} (argument {role_check.position + 1}): {role_check.explanation}")
 
     if issues:
         return ExecutionEligibility.INELIGIBLE.value, tuple(issues)
@@ -626,18 +1154,330 @@ def compute_eligibility(
 
 
 # ---------------------------------------------------------------------------
-# Phase 20: rendering
+# Phase 9/10/11 (v0.75.0): predicted-output claim detection and limited
+# deterministic verification
+# ---------------------------------------------------------------------------
+
+
+class OutputVerificationStatus(str, enum.Enum):
+    """v0.75.0. Never self-assigned by the model -- `analyze_predicted_
+    output(...)` is the only producer of this value, and it takes no
+    provider/model argument of any kind (mirrors `compute_eligibility(...)`'s
+    own structural guarantee)."""
+
+    NOT_PRESENT = "not_present"
+    VERIFIED = "verified"
+    MISMATCH = "mismatch"
+    UNVERIFIED = "unverified"
+    UNPARSEABLE = "unparseable"
+
+
+@dataclass(frozen=True)
+class PredictedOutputClaim:
+    """`expected_value`/`computed_value` are always a tuple-of-tuples (a
+    single-cell tuple for a scalar) so a claimed matrix and a claimed
+    scalar share one representation. `computed_value` is populated only
+    when a deterministic checker in `verify_predicted_output(...)` actually
+    ran (`verification_status` is `VERIFIED` or `MISMATCH`); it stays
+    `None` for `UNVERIFIED`/`UNPARSEABLE`/`NOT_PRESENT` -- never guessed."""
+
+    present: bool
+    raw_text: str | None
+    parseable: bool
+    verification_status: str
+    expected_value: tuple[tuple[float, ...], ...] | None = None
+    computed_value: tuple[tuple[float, ...], ...] | None = None
+    issues: tuple[str, ...] = ()
+
+
+#: v0.75.0: a small, explicit set of marker phrases -- deliberately NOT a
+#: general "any sentence describing output" detector, so ordinary
+#: explanatory prose is never mistaken for a claimed result. Matches the
+#: exact phrasing `CODE_GENERATION_SYSTEM_PROMPT_ADDENDUM` already asks the
+#: model to use ("Expected output, not execution evidence:") plus a small
+#: number of natural variants confirmed as real live-model phrasing in this
+#: session's own v0.74.0 evaluation transcripts (e.g. "The expected output
+#: is:", `evaluations/runs/2026-09-12-code-assistant-pre-execution-
+#: validation-run-004.md`).
+_OUTPUT_CLAIM_MARKERS: tuple[str, ...] = (
+    "expected output, not execution evidence:",
+    "expected output:",
+    "the expected output is:",
+    "this should print:",
+    "this will print:",
+    "this will return:",
+    "the output will be:",
+    "the result will be:",
+)
+_OUTPUT_CLAIM_MARKER_RE = re.compile(
+    "(?:" + "|".join(re.escape(marker) for marker in _OUTPUT_CLAIM_MARKERS) + ")",
+    re.IGNORECASE,
+)
+#: v0.75.0 live evaluation (category 65.x, scenario 65.10) found a real
+#: detection gap: a real model frequently puts its claimed output in its
+#: OWN separate fenced block immediately after the marker (often itself
+#: inside markdown bold, e.g. "**Expected output:**\n```\n4.0\n5.0\n```"),
+#: not as bare text before the next fence. The original single-regex
+#: design stopped capturing at the first ``` it saw, which was the
+#: OPENING of that very fence -- producing an empty/near-empty capture
+#: (just the markdown "**" bold-close) instead of the real numeric
+#: content inside it. `_extract_claim_text(...)` below fixes this: it
+#: first tolerates markdown bold-close/whitespace right after the marker,
+#: then explicitly prefers a fenced block's own CONTENT when one starts
+#: there, falling back to the original "up to the next blank line/fence/
+#: end" behavior only when no fence immediately follows.
+_FENCED_BLOCK_RE = re.compile(r"```[A-Za-z0-9_+-]*[ \t]*\n(.*?)```", re.DOTALL)
+
+
+def _extract_claim_text(remainder: str) -> str:
+    stripped = remainder.lstrip()
+    stripped = stripped.lstrip("*:").lstrip()  # tolerate "**...**"/stray ":" markdown right after the marker
+    fence_match = _FENCED_BLOCK_RE.match(stripped)
+    if fence_match:
+        return fence_match.group(1).strip()
+    stop_match = re.search(r"\n\s*\n|```", stripped)
+    return (stripped[: stop_match.start()] if stop_match else stripped).strip()
+
+
+def _parse_output_value(raw_text: str) -> tuple[tuple[float, ...], ...] | None:
+    """Parses plain numeric text (one or more rows of whitespace/comma-
+    separated numbers) -- the same conservative discipline as
+    `_parse_literal_matrix(...)`, but without a `{...}` wrapper, since a
+    model's own prose claim is never fenced that way. Returns `None`
+    (never a partial/guessed parse) for anything containing non-numeric
+    tokens.
+
+    A small, bounded exception (v0.75.0 live evaluation, category 65.x,
+    scenario 65.9): a real model commonly prefixes its numeric block with a
+    plain text LABEL line inside the same fenced block (e.g. `"Inverted
+    Matrix:\\n0.4  -0.2\\n-0.2  0.4"`). Any number of LEADING lines
+    containing zero digit characters at all are skipped as a label/header
+    -- never a line that has both digits and non-numeric tokens (e.g.
+    `"Mean: 4.0"`), which still fails closed to `None` rather than being
+    guessed at."""
+    lines = [line.strip().strip(".") for line in raw_text.strip().splitlines()]
+    lines = [line for line in lines if line]
+    while lines and not any(ch.isdigit() for ch in lines[0]):
+        lines.pop(0)  # a pure-text label/header line -- never partially numeric
+    rows: list[tuple[float, ...]] = []
+    for line in lines:
+        tokens = line.replace(",", " ").split()
+        if not tokens:
+            continue
+        try:
+            rows.append(tuple(float(tok) for tok in tokens))
+        except ValueError:
+            return None
+    if not rows:
+        return None
+    width = len(rows[0])
+    if any(len(row) != width for row in rows):
+        return None
+    return tuple(rows)
+
+
+def detect_predicted_output_claim(answer_text: str) -> PredictedOutputClaim:
+    """Detection only -- never attempts deterministic verification itself
+    (see `analyze_predicted_output(...)` for the combined entry point).
+    Returns `NOT_PRESENT` when no marker phrase is found at all -- the
+    common case for an answer with no output claim, and for prose-only
+    QA (see `gauss_conversation_engine`'s own v0.75.0 universal-routing
+    section)."""
+    match = _OUTPUT_CLAIM_MARKER_RE.search(answer_text)
+    if match is None:
+        return PredictedOutputClaim(
+            present=False, raw_text=None, parseable=False, verification_status=OutputVerificationStatus.NOT_PRESENT.value,
+        )
+    raw_text = _extract_claim_text(answer_text[match.end():])
+    value = _parse_output_value(raw_text)
+    if value is None:
+        return PredictedOutputClaim(
+            present=True, raw_text=raw_text, parseable=False, verification_status=OutputVerificationStatus.UNPARSEABLE.value,
+            issues=("the claimed output text could not be parsed as a plain numeric value or matrix",),
+        )
+    return PredictedOutputClaim(
+        present=True, raw_text=raw_text, parseable=True, verification_status=OutputVerificationStatus.UNVERIFIED.value,
+        expected_value=value,
+        issues=("no deterministic checker in this version recognized a computable pattern in the generated code",),
+    )
+
+
+def _flatten(rows: tuple[tuple[float, ...], ...]) -> tuple[float, ...]:
+    return tuple(v for row in rows for v in row)
+
+
+def _values_close(computed: tuple[tuple[float, ...], ...], expected: tuple[tuple[float, ...], ...], *, tol: float = 1e-3) -> bool:
+    """Compares FLATTENED values only, deliberately ignoring row/column
+    orientation -- a model may write a documented `Kx1` result as a single
+    row of numbers instead of a column, and this checker's job is to catch
+    a wrong VALUE, not to additionally re-validate shape/orientation (which
+    is `check_parameter_roles(...)`'s job, not this one's)."""
+    a, b = _flatten(computed), _flatten(expected)
+    if len(a) != len(b):
+        return False
+    return all(abs(x - y) <= tol * max(1.0, abs(y)) for x, y in zip(a, b))
+
+
+def verify_predicted_output(claim: PredictedOutputClaim, *, generated_code: str) -> PredictedOutputClaim:
+    """Bounded, deterministic verification for a small, explicit set of
+    recognized call patterns -- `meanc`/`sumc`/`inv`/`invpd` applied to a
+    LITERAL matrix (traced the same way `check_preconditions(...)` already
+    traces one), reusing `_matrix_inverse(...)` for `inv`/`invpd`. Every
+    other generated-code pattern is deliberately left `UNVERIFIED` -- this
+    function is not, and must never become, a general GAUSS interpreter.
+    Never called when `claim.present` or `claim.parseable` is false.
+    `generated_code` is expected to already have comments stripped by the
+    caller (mirrors `check_preconditions(...)`'s own expectation -- this
+    module never re-implements `gauss_conversation_engine._strip_comments_
+    for_analysis(...)`, to avoid a third divergent copy of that regex)."""
+    if not claim.present or not claim.parseable or claim.expected_value is None:
+        return claim
+    cleaned_code = generated_code
+    for call in extract_generated_calls(cleaned_code):
+        symbol = call.symbol.lower()
+        if symbol not in ("meanc", "sumc", "inv", "invpd") or not call.raw_arguments:
+            continue
+        rows = _find_literal_matrix_for_argument(call.raw_arguments[0], code=cleaned_code)
+        if rows is None or len(rows) > MAX_CHECKED_MATRIX_DIM or len(rows[0]) > MAX_CHECKED_MATRIX_DIM:
+            continue
+        if symbol == "meanc":
+            n = len(rows)
+            computed = tuple((sum(rows[i][j] for i in range(n)) / n,) for j in range(len(rows[0])))
+        elif symbol == "sumc":
+            n = len(rows)
+            computed = tuple((sum(rows[i][j] for i in range(n)),) for j in range(len(rows[0])))
+        else:
+            inverse = _matrix_inverse(rows)
+            if inverse is None:
+                continue
+            computed = tuple(tuple(row) for row in inverse)
+        if _values_close(computed, claim.expected_value):
+            return dataclasses.replace(
+                claim, computed_value=computed, verification_status=OutputVerificationStatus.VERIFIED.value, issues=(),
+            )
+        return dataclasses.replace(
+            claim, computed_value=computed, verification_status=OutputVerificationStatus.MISMATCH.value,
+            issues=(
+                f"the deterministically computed result of {call.symbol}(...) does not match the claimed "
+                "predicted output -- the claimed value is a model prediction, never execution evidence",
+            ),
+        )
+    return claim
+
+
+def analyze_predicted_output(answer_text: str, *, generated_code: tuple[str, ...]) -> PredictedOutputClaim:
+    """The one combined entry point callers should use -- detects a claim in
+    `answer_text`, then attempts limited deterministic verification against
+    `generated_code`. `ExecutionEligibility`/`compute_eligibility(...)` never
+    consume this result -- see that function's own v0.75.0 docstring
+    paragraph for why."""
+    claim = detect_predicted_output_claim(answer_text)
+    if not claim.present or not claim.parseable:
+        return claim
+    return verify_predicted_output(claim, generated_code="\n".join(generated_code))
+
+
+# ---------------------------------------------------------------------------
+# Phase 13 (v0.75.0): validation completeness metadata
+# ---------------------------------------------------------------------------
+
+
+class CoverageStatus(str, enum.Enum):
+    COMPLETE = "complete"
+    PARTIAL = "partial"
+    NOT_APPLICABLE = "not_applicable"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True)
+class ValidationCoverage:
+    """A summary of which validation passes actually ran to completion for
+    the CURRENT code-shaped answer -- never a claim that the code itself is
+    correct or safe. Distinguishes "eligible with broad evidence" from
+    "eligible with many unknown gaps" without proliferating a second
+    `ExecutionEligibility` tier (see this module's own top-of-file
+    docstring for that explicit decision)."""
+
+    symbol_check: str
+    signature_check: str
+    parameter_role_check: str
+    precondition_check: str
+    predicted_output_check: str
+
+
+def compute_validation_coverage(
+    *, has_code: bool, call_validations: tuple[CallValidationResult, ...],
+    parameter_role_checks: tuple[ParameterRoleCheck, ...], preconditions: tuple[PreconditionCheck, ...],
+    predicted_output: PredictedOutputClaim,
+) -> ValidationCoverage:
+    if not has_code:
+        na = CoverageStatus.NOT_APPLICABLE.value
+        return ValidationCoverage(na, na, na, na, na)
+
+    # `check_generated_symbols(...)` (gauss_conversation_engine.py) always
+    # runs to completion whenever code is present -- there is no partial
+    # state for it.
+    symbol_check = CoverageStatus.COMPLETE.value
+
+    if not call_validations:
+        signature_check = CoverageStatus.NOT_APPLICABLE.value
+    elif all(c.signature_known for c in call_validations):
+        signature_check = CoverageStatus.COMPLETE.value
+    elif any(c.signature_known for c in call_validations):
+        signature_check = CoverageStatus.PARTIAL.value
+    else:
+        signature_check = CoverageStatus.UNKNOWN.value
+
+    if not parameter_role_checks:
+        parameter_role_check = CoverageStatus.NOT_APPLICABLE.value
+    elif all(c.status != ParameterRoleStatus.UNKNOWN.value for c in parameter_role_checks):
+        parameter_role_check = CoverageStatus.COMPLETE.value
+    elif any(c.status != ParameterRoleStatus.UNKNOWN.value for c in parameter_role_checks):
+        parameter_role_check = CoverageStatus.PARTIAL.value
+    else:
+        parameter_role_check = CoverageStatus.UNKNOWN.value
+
+    if not preconditions:
+        precondition_check = CoverageStatus.NOT_APPLICABLE.value
+    elif all(c.status != PreconditionStatus.UNVERIFIED.value for c in preconditions):
+        precondition_check = CoverageStatus.COMPLETE.value
+    elif any(c.status != PreconditionStatus.UNVERIFIED.value for c in preconditions):
+        precondition_check = CoverageStatus.PARTIAL.value
+    else:
+        precondition_check = CoverageStatus.UNKNOWN.value
+
+    if predicted_output.verification_status == OutputVerificationStatus.NOT_PRESENT.value:
+        predicted_output_check = CoverageStatus.NOT_APPLICABLE.value
+    elif predicted_output.verification_status in (
+        OutputVerificationStatus.VERIFIED.value, OutputVerificationStatus.MISMATCH.value,
+    ):
+        predicted_output_check = CoverageStatus.COMPLETE.value
+    else:
+        predicted_output_check = CoverageStatus.UNKNOWN.value
+
+    return ValidationCoverage(
+        symbol_check=symbol_check, signature_check=signature_check, parameter_role_check=parameter_role_check,
+        precondition_check=precondition_check, predicted_output_check=predicted_output_check,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Phase 20/22: rendering
 # ---------------------------------------------------------------------------
 
 
 def render_validation_report(
     *, eligibility: str, unresolved_issues: tuple[str, ...], call_validations: tuple[CallValidationResult, ...],
     preconditions: tuple[PreconditionCheck, ...], companion_hints: tuple[tuple[str, str], ...],
+    parameter_role_checks: tuple[ParameterRoleCheck, ...] = (), predicted_output: PredictedOutputClaim | None = None,
+    coverage: ValidationCoverage | None = None,
 ) -> str:
     """Advisory, human-readable summary of this module's own evidence.
     Never implies real GAUSS execution occurred -- callers are expected to
     still append the existing, fixed "not executed in this conversation"
-    footer (`gauss_conversation_engine.NOT_EXECUTED_FOOTER`) alongside this."""
+    footer (`gauss_conversation_engine.NOT_EXECUTED_FOOTER`) alongside this.
+    v0.75.0's new optional parameters default to empty/`None` so every
+    pre-v0.75.0 call site remains valid unchanged."""
     lines = ["Validation:"]
 
     for validation in call_validations:
@@ -658,6 +1498,25 @@ def render_validation_report(
         for check in preconditions:
             lines.append(f"  - {check.precondition.symbol}: {check.status} -- {check.explanation}")
 
+    if parameter_role_checks:
+        lines.append("- Parameter checks:")
+        for role_check in parameter_role_checks:
+            label = role_check.parameter_name or f"argument {role_check.position + 1}"
+            lines.append(f"  - {role_check.symbol} ({label}): {role_check.status} -- {role_check.explanation}")
+
+    if predicted_output is not None and predicted_output.present:
+        lines.append(f"- Predicted output: {predicted_output.verification_status}")
+        if predicted_output.verification_status == OutputVerificationStatus.MISMATCH.value:
+            lines.append(
+                "  (The model's own claimed output does not match a deterministic recomputation -- this is a "
+                "prediction-quality issue, separate from whether the code itself is eligible for validation.)"
+            )
+        elif predicted_output.verification_status == OutputVerificationStatus.VERIFIED.value:
+            lines.append(
+                "  (A deterministic recomputation matches the model's claimed output -- still not execution "
+                "evidence: this code has not been run.)"
+            )
+
     lines.append(f"- Execution eligibility: {eligibility}")
     if eligibility == ExecutionEligibility.ELIGIBLE_FOR_VALIDATION.value:
         lines.append(
@@ -668,5 +1527,14 @@ def render_validation_report(
         lines.append("  Cannot mark this code eligible for validation:")
         for issue in unresolved_issues:
             lines.append(f"  - {issue}")
+
+    if coverage is not None:
+        lines.append(
+            "- Validation coverage: symbols={}, signature={}, parameter roles={}, preconditions={}, "
+            "predicted output={}".format(
+                coverage.symbol_check, coverage.signature_check, coverage.parameter_role_check,
+                coverage.precondition_check, coverage.predicted_output_check,
+            )
+        )
 
     return "\n".join(lines)

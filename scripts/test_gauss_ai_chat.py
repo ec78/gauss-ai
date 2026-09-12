@@ -502,6 +502,45 @@ def test_35_module_still_never_imports_execution_repair_or_filesystem_modules() 
                 check(f"import line {stripped!r} does not reference {token!r}", token not in stripped)
 
 
+def test_36_qa_intent_code_answer_is_rendered_with_validation_evidence() -> None:
+    """v0.75.0: through the full chat loop, a `QA`-classified question
+    ("What does invpd do?" -- matches no code-generation trigger phrase and
+    no concept-alias phrase) whose answer happens to include real GAUSS
+    code must now show the SAME validation section a `CODE_GENERATION`
+    request already shows -- closing the QA-intent eligibility gap
+    end-to-end, not merely inside `ConversationEngine.ask(...)`."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(
+            canned_answer="invpd inverts a symmetric positive definite matrix, for example:\n\n```gauss\ny = invpd({2 1, 1 2});\n```",
+        )
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        messages: list[str] = []
+        chat_mod.run_chat(prompt_fn=_scripted(["What does invpd do?", "exit"]), print_fn=messages.append, engine=engine)
+        joined = "\n".join(messages)
+        check("validation section rendered for a QA-route answer", "Validation:" in joined)
+        check("eligibility shown", "eligible_for_validation" in joined)
+
+
+def test_37_predicted_output_mismatch_is_rendered_through_the_full_chat_loop() -> None:
+    """Reconstructs the exact v0.74.0 wrong-model-prediction finding
+    (evaluations/runs/2026-09-12-code-assistant-pre-execution-validation-
+    run-004.md) end to end: the code itself is eligible, but the model's
+    own claimed numeric inverse is wrong and must be disclosed as a
+    MISMATCH, never silently accepted."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(
+            canned_answer="```gauss\nxi = invpd({2 1, 1 2});\n```\nExpected output:\n0.5 -0.5\n-0.5 0.5",
+        )
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        messages: list[str] = []
+        chat_mod.run_chat(prompt_fn=_scripted(["Invert this matrix.", "exit"]), print_fn=messages.append, engine=engine)
+        joined = "\n".join(messages)
+        check("predicted output mismatch disclosed", "Predicted output: mismatch" in joined)
+        check("code itself still eligible independent of the wrong prediction", "eligible_for_validation" in joined)
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

@@ -117,7 +117,8 @@ def _render_answer(print_fn: Callable[[str], None], result: "engine_mod.AnswerRe
         print_fn(validation_mod.render_validation_report(
             eligibility=result.pre_execution_eligibility, unresolved_issues=result.pre_execution_issues,
             call_validations=result.call_validations, preconditions=result.precondition_checks,
-            companion_hints=result.companion_hints,
+            companion_hints=result.companion_hints, parameter_role_checks=result.parameter_role_checks,
+            predicted_output=result.predicted_output, coverage=result.validation_coverage,
         ))
     print_fn("")
     print_fn(result.text)

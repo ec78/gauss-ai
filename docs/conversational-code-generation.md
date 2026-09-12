@@ -1,6 +1,6 @@
 # Conversational GAUSS Code Generation
 
-**Status: Alpha — added in `v0.72.0`, extending [conversational-qa.md](conversational-qa.md); grounding now actively controls generation (not just discloses it) as of `v0.73.0` — see [grounding-gated-generation.md](grounding-gated-generation.md); `v0.74.0` adds documented call-signature/precondition checking and an execution-eligibility verdict — see [pre-execution-validation.md](pre-execution-validation.md).**
+**Status: Alpha — added in `v0.72.0`, extending [conversational-qa.md](conversational-qa.md); grounding now actively controls generation (not just discloses it) as of `v0.73.0` — see [grounding-gated-generation.md](grounding-gated-generation.md); `v0.74.0` adds documented call-signature/precondition checking and an execution-eligibility verdict — see [pre-execution-validation.md](pre-execution-validation.md); `v0.75.0` makes that validation pass apply to ANY code-shaped answer, regardless of whether the question was classified as a code-generation request — see [universal-code-validation.md](universal-code-validation.md).**
 
 In addition to answering questions, `gauss-ai` chat can now generate GAUSS code from a plain-language request. This is still advisory only: generated code is never executed, never written to a file, and never treated as an approved repair. It uses the exact same provider/grounding architecture as conversational Q&A — this is an extension, not a second system.
 

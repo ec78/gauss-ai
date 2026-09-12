@@ -1,6 +1,6 @@
 # Deterministic Pre-Execution Validation
 
-**Status: `v0.74.0`.** Extends [docs/grounding-gated-generation.md](grounding-gated-generation.md) (`v0.73.0`) and [docs/conversational-code-generation.md](conversational-code-generation.md) (`v0.72.0`). Read those first — this page only covers what's new: checking whether generated code's *calls* and *documented preconditions* are actually consistent with real documentation, not just whether its *symbols* are.
+**Status: `v0.75.0`.** Extends [docs/grounding-gated-generation.md](grounding-gated-generation.md) (`v0.73.0`) and [docs/conversational-code-generation.md](conversational-code-generation.md) (`v0.72.0`). Read those first — this page only covers what's new: checking whether generated code's *calls* and *documented preconditions* are actually consistent with real documentation, not just whether its *symbols* are. See [docs/universal-code-validation.md](universal-code-validation.md) for `v0.75.0`'s own headline change — this validation pass no longer depends on how the ORIGINAL question was classified.
 
 ## Why this exists
 
@@ -84,10 +84,19 @@ Five different things this page is careful never to collapse into one:
 
 A result can be true at one level and false at another — the `invpd` example above (real GAUSS execution succeeded) whose input didn't actually satisfy the documented precondition is a real, observed instance of exactly that.
 
+## What's new in `v0.75.0`
+
+1. **Universal routing** (the headline change — see [docs/universal-code-validation.md](universal-code-validation.md)): this entire pass now runs for ANY code-shaped answer, regardless of whether the original question was classified `CODE_GENERATION` or plain `QA`/follow-up. `v0.74.0` disclosed but did not fix this gap; `v0.75.0` closes it.
+2. **Richer signature metadata where documentation supports it.** Beyond argument count, a documented parameter's own `:type` text (e.g. `meanc.rst`'s `:type x: NxK matrix`) is now classified into a coarse category (`SCALAR`/`VECTOR`/`MATRIX`/`STRING`/`CONTROL`/`DATASET`/`UNKNOWN`) and, where the text supports it, a shape (`SQUARE`/`COLUMN_VECTOR`/`ROW_VECTOR`/`UNKNOWN`).
+3. **Basic literal parameter-role checking.** A generated call's own literal arguments (a bare number, a quoted string, a `{...}` matrix/vector) are compared positionally against that documented category, producing `MATCH`/`MISMATCH`/`UNKNOWN` — a `MISMATCH` (e.g. a string literal passed where a matrix is documented) now blocks eligibility. A runtime variable is always `UNKNOWN`, never guessed.
+4. **Two new documented-precondition families, plus one upgrade**: `solpd` and `chol` (both positive-definiteness, using each function's own documented "looks only at the upper half of the matrix" convention — not naively reusing `invpd`'s symmetry requirement), and `inv` upgraded from `UNVERIFIED`-only to a real determinant-based invertibility check.
+5. **Structured predicted-output claims.** A model's own claimed result (e.g. "Expected output:") is now detected and, for a small set of deterministic literal patterns (`meanc`/`sumc`/`inv`/`invpd` on a literal matrix), verified — `VERIFIED`/`MISMATCH`/`UNVERIFIED`/`UNPARSEABLE`/`NOT_PRESENT`. Never treated as execution evidence, and never allowed to change the code's own structural eligibility.
+6. **Validation coverage metadata** — a `COMPLETE`/`PARTIAL`/`NOT_APPLICABLE`/`UNKNOWN` summary of which of the above actually ran to completion, so "eligible with broad evidence" is distinguishable from "eligible with many unknown gaps."
+
 ## Known limitations
 
-- **Signature checking is argument-count only.** A call with the right number of arguments in the wrong order, or with an argument of the wrong shape/type, is not caught.
-- **Precondition checking covers one function family (`invpd`) so far**, and only for literal matrix arguments — a real, disclosed, narrow start, not a claim of general semantic analysis.
+- **Signature/parameter-role checking remains conservative and partial.** Only a documented `:type` line in the `.. function::` directive style is parsed; a symbol documented in the older plain Format-heading style still gets argument-count-only checking. Parameter-role checking only compares LITERAL arguments — any runtime variable is `UNKNOWN`, by design.
+- **Precondition checking covers four function families so far (`invpd`, `inv`, `solpd`, `chol`)**, and only for literal matrix arguments — a real, disclosed, narrow (if now roughly quadrupled) start, not a claim of general semantic analysis.
+- **Predicted-output verification is limited to a handful of literal patterns.** Anything else is honestly `UNVERIFIED`, never guessed — this is not, and will not become, a general GAUSS interpreter.
 - **The documentation-derived concept index can propose a topically-related but not-quite-right candidate** (bag-of-words overlap has no real understanding of synonyms) — when this happens, it either resolves to a real, verified, but imperfectly-matched symbol, or (more often) correctly reports genuine ambiguity and asks rather than guessing.
-- **The new eligibility computation currently only runs for requests classified as code-generation intent.** A code-shaped answer to a plain question still gets `v0.73.0`'s older unsupported-symbol warning, but not the newer signature/precondition/eligibility evidence — a known, disclosed gap, not silently ignored.
-- Every `v0.71.0`-`v0.73.0` limitation (no execution, no autonomous debugging, `docs-root` dependency, local-Ollama/hardware dependence) still applies unchanged.
+- Every `v0.71.0`-`v0.74.0` limitation (no execution, no autonomous debugging, `docs-root` dependency, local-Ollama/hardware dependence) still applies unchanged.

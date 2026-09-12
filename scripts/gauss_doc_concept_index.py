@@ -98,6 +98,27 @@ _GENERIC_DOC_WORDS = frozenset({
     # boilerplate on many otherwise-unrelated pages.
     "gauss", "gaus", "dataset", "datasets", "write", "writes", "written",
     "writing", "code",
+    # v0.75.0 live evaluation (category 65.x, scenario 65.1) found a real,
+    # different false-ambiguity mechanism the document-frequency filter
+    # below does NOT catch: an ordinary English pronoun/auxiliary-verb pair
+    # ("can", "you") that is genuinely rare across the real corpus's own
+    # heading+Purpose text (14 and 2 entries respectively out of 2,105 --
+    # nowhere near `MAX_DOC_FREQUENCY_FRACTION`'s threshold) but still
+    # carries zero real topical signal, purely because it is ordinary
+    # conversational English, not GAUSS-domain vocabulary. A user's own
+    # question ("What does invpd do, and can you show a quick example?")
+    # naturally contains this kind of filler; two otherwise-unrelated pages
+    # (`dbqueryisforwardonly.rst`, `dbsetdatabasename.rst`) coincidentally
+    # both used "you"/"can" in their own second-person-styled Purpose text,
+    # producing a spurious `AMBIGUOUS` derived-concept resolution for the
+    # WHOLE question even though `invpd` had already resolved via a direct
+    # literal match. Fixed by adding a small, fixed, general-English
+    # stopword list here -- corpus-frequency-independent, unlike the words
+    # above -- since a pronoun/auxiliary/modal verb is never meaningfully
+    # GAUSS-domain content regardless of how rare it happens to be in this
+    # particular corpus.
+    "you", "your", "yours", "can", "could", "would", "should", "shall",
+    "must", "may", "might", "we", "our", "they", "their", "does", "did",
 })
 
 

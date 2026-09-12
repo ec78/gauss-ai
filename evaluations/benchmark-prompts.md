@@ -6781,3 +6781,83 @@ Turn 1: "Show me how to compute column means with meanc." Turn 2: "Show me how t
 
 Expected behavior:
 - Turn 2's generated code reuses `meanc` from turn 1 without re-mentioning it; it must not be flagged unknown merely because turn 2's own grounding bundle doesn't independently re-resolve it. The final code is `ELIGIBLE_FOR_VALIDATION` (with `invpd`'s own precondition honestly `UNVERIFIED`, since the input here is a runtime expression, not a literal).
+
+## Validation Coverage & Universal Code Eligibility
+
+Use Prompt IDs 65.1-65.10 (plus an optional bonus, 65.11). These exercise the `v0.75.0` milestone: universal pre-execution validation for ANY code-shaped conversational answer regardless of the originating intent (closing the disclosed `v0.74.0` QA-intent eligibility gap), richer documented parameter-role/type-shape checking beyond argument count, two new documented-precondition families (`solpd`, `chol`) plus an upgraded `inv` invertibility check, and structured predicted-output claim handling (detection plus limited deterministic verification, never treated as execution evidence).
+
+**Same environment note as `64.x`**: every scenario below is driven against the same real, locally running Ollama service and `qwen2.5-coder:7b` model, with a bounded subset independently re-verified against real GAUSS execution.
+
+### Prompt 65.1: A conceptual question likely to produce a code example while remaining `QA`-classified
+
+"What does invpd do, and can you show a quick example?" -- deliberately phrased to avoid every `_CODE_GENERATION_KEYWORDS` trigger phrase.
+
+Expected behavior:
+- Classified `QA`, not `CODE_GENERATION`; the model's own code example is still detected and passes through the full validation pipeline; an eligibility verdict is computed -- THE core proof the universal-routing fix works live, not just in synthetic tests.
+
+### Prompt 65.2: Explicit generation baseline (non-regression)
+
+"Show me an example using meanc." -- the ordinary, already-covered `CODE_GENERATION` path.
+
+Expected behavior:
+- Behavior unchanged from `v0.74.0`: validated once, `ELIGIBLE_FOR_VALIDATION`, no duplicate validation pass.
+
+### Prompt 65.3: Signature-compatible call
+
+"Write GAUSS code to compute the mean of every column of a matrix x using meanc."
+
+Expected behavior:
+- `meanc(x)` validated argument-count COMPATIBLE; no false warning.
+
+### Prompt 65.4: Signature-incompatible call
+
+"Write GAUSS code that calls meanc with two arguments, x and y."
+
+Expected behavior:
+- Flagged `INCOMPATIBLE` against `meanc`'s real documented one-argument form; `INELIGIBLE`.
+
+### Prompt 65.5: Parameter-role/type mismatch
+
+"Write GAUSS code that calls meanc with a string literal "hello" instead of a matrix."
+
+Expected behavior:
+- A deterministic `MISMATCH` between the string literal and `meanc`'s documented `NxK matrix` parameter, where the model actually produces the deliberately-wrong call as asked; `INELIGIBLE`.
+
+### Prompt 65.6: `invpd` valid
+
+"Write GAUSS code using invpd to invert this matrix: {2 1, 1 2}."
+
+Expected behavior:
+- Precondition `SATISFIED`; `ELIGIBLE_FOR_VALIDATION` (the exact `v0.74.0` `64.4` prompt, re-run to confirm no regression).
+
+### Prompt 65.7: `invpd` invalid
+
+"Write GAUSS code using invpd to invert this matrix: {2 1, 3 2}."
+
+Expected behavior:
+- Precondition `VIOLATED`; `INELIGIBLE` (the exact `v0.74.0` `64.5` prompt, re-run to confirm no regression).
+
+### Prompt 65.8: New precondition family, valid and invalid (`chol`)
+
+65.8a: "Write GAUSS code using chol on this matrix: {2 1, 1 2}." 65.8b: "Write GAUSS code using chol on this matrix: {-1 0, 0 -1}."
+
+Expected behavior:
+- 65.8a: precondition `SATISFIED`, `ELIGIBLE_FOR_VALIDATION`. 65.8b: precondition `VIOLATED`, `INELIGIBLE`. Both independently re-verified against real GAUSS execution (Section 9 of the final report).
+
+### Prompt 65.9: Predicted-output mismatch
+
+"Write GAUSS code using invpd to invert this matrix: {2 1, 1 2}, and tell me what the expected output is." -- reconstructs the exact `v0.74.0` wrong-prediction finding (`evaluations/runs/2026-09-12-code-assistant-pre-execution-validation-run-004.md`).
+
+Expected behavior:
+- Predicted-output status `MISMATCH` (or, if the model declines to predict a value at all, `NOT_PRESENT`) -- never `VERIFIED` for a wrong claim; code eligibility is computed and reported entirely independently of the predicted-output verdict.
+
+### Prompt 65.10: Multi-turn universal validation
+
+Turn 1 (conceptual QA): "What does meanc do?" Turn 2 (small example): "Can you show me a small example?" Turn 3 (modifies it): "Now modify that example to also compute stdc on the same matrix."
+
+Expected behavior:
+- Every turn producing code-shaped output is validated, regardless of that turn's own intent classification; eligibility is (re)computed each time; conversational context (the matrix/topic from turn 2) is preserved into turn 3.
+
+### Prompt 65.11 (bonus): Multi-turn request that begins as QA and evolves into code
+
+Covered by `65.10` above in this milestone's own live run -- see Section 8 of the final report for whether a materially distinct additional scenario was warranted.

@@ -190,6 +190,28 @@ def test_09_two_distinct_equally_scored_symbols_is_reported_as_multiple_matches(
         check("both tied candidates returned", symbols == {"twin_a", "twin_b"})
 
 
+def test_09b_pronoun_and_auxiliary_verb_overlap_never_produces_false_ambiguity() -> None:
+    """v0.75.0 live evaluation (category 65.x, scenario 65.1) found a real
+    false-ambiguity case: two unrelated real documentation pages
+    (`dbqueryisforwardonly.rst`, `dbsetdatabasename.rst`) both happened to
+    use "you"/"can" in their own second-person-styled Purpose text -- rare
+    enough (14/2105 and 2/2105 entries) that the document-frequency filter
+    never caught either word, yet neither carries any real topical
+    signal. Reconstructed here with a small synthetic fixture: two entries
+    sharing ONLY a pronoun/auxiliary-verb pair must never tie as genuine
+    ambiguity."""
+    page_a = "twin_a\n======\n\n.. function:: y = twin_a(x)\n\nPurpose\n-------\nReturns whether you can move forward.\n"
+    page_b = "twin_b\n======\n\n.. function:: y = twin_b(x)\n\nPurpose\n-------\nSets the name you can use.\n"
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "docs"
+        root.mkdir()
+        (root / "twin_a.rst").write_text(page_a, encoding="utf-8")
+        (root / "twin_b.rst").write_text(page_b, encoding="utf-8")
+        index = index_mod.build_documentation_concept_index(root)
+        matches = index_mod.resolve_derived_concepts("What does invpd do, and can you show a quick example?", index)
+        check("no false ambiguity from shared pronoun/auxiliary words alone", matches == ())
+
+
 def test_10_index_build_is_bounded_by_max_indexed_doc_files() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp) / "docs"

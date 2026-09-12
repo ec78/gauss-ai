@@ -1398,6 +1398,115 @@ def test_98_multi_turn_reuse_of_an_earlier_grounded_function_is_not_flagged_unkn
         check("meanc is not re-flagged as unknown in the follow-up turn", "meanc" not in result.unknown_symbols)
 
 
+# ---------------------------------------------------------------------------
+# v0.75.0: universal code-shaped-response validation -- the QA-intent
+# eligibility gap this milestone's own objective is to close.
+# ---------------------------------------------------------------------------
+
+
+def test_99_qa_classified_turn_with_code_shaped_answer_now_gets_eligibility() -> None:
+    """THE core v0.75.0 regression: v0.74.0 disclosed (but did not fix) a
+    gap where a `QA`-classified turn producing code-shaped output never ran
+    the pre-execution validation pass at all -- `pre_execution_eligibility`
+    stayed `None` regardless of what the code actually contained. "What
+    does meanc do?" classifies as `QA` (it matches no `_CODE_GENERATION_
+    KEYWORDS` phrase), yet the model's own answer legitimately includes a
+    real, well-formed `meanc` example -- this must now be validated and
+    receive a real eligibility verdict, exactly as a `CODE_GENERATION`-
+    classified turn already would."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        canned = (
+            "meanc computes the mean of every column of a matrix. For example:\n\n"
+            "```gauss\n"
+            "x = meanc(y);\n"
+            "```\n"
+        )
+        provider = provider_mod.FakeModelProvider(canned_answer=canned)
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        result = engine.ask("What does meanc do?")
+        check("classified as QA, not CODE_GENERATION", result.intent == engine_mod.Intent.QA.value)
+        check("code was actually extracted", result.generated_code != ())
+        check("eligibility is no longer left unset for a QA-route code answer", result.pre_execution_eligibility is not None)
+        check(
+            "eligible for validation -- meanc is a real, correctly-used documented function",
+            result.pre_execution_eligibility == "eligible_for_validation",
+        )
+        check("validation coverage was also computed", result.validation_coverage is not None)
+
+
+def test_100_qa_classified_turn_with_hallucinated_symbol_is_now_ineligible_not_unvalidated() -> None:
+    """Same gap, opposite outcome: a QA-route hallucination (`colmean`, the
+    exact v0.72.0/v0.73.0 canonical fabricated-symbol example) must now be
+    caught with a real `INELIGIBLE` verdict, not silently left unvalidated
+    just because the turn was never classified `CODE_GENERATION`."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        canned = (
+            "You can compute column averages like this:\n\n"
+            "```gauss\n"
+            "x = colmean(y);\n"
+            "```\n"
+        )
+        provider = provider_mod.FakeModelProvider(canned_answer=canned)
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        result = engine.ask("What does reshape do?")
+        check("classified as QA", result.intent == engine_mod.Intent.QA.value)
+        check("hallucinated symbol still flagged", "colmean" in result.unknown_symbols)
+        check("eligibility is computed, not left unset", result.pre_execution_eligibility is not None)
+        check("ineligible", result.pre_execution_eligibility == "ineligible")
+        check("issue names colmean", any("colmean" in issue for issue in result.pre_execution_issues))
+
+
+def test_101_prose_only_qa_still_has_no_eligibility_verdict() -> None:
+    """Phase 16 guardrail: universal validation must trigger ONLY on actual
+    code-shaped content -- an ordinary prose QA answer must behave exactly
+    as before (`pre_execution_eligibility` stays `None`, i.e. not
+    applicable), never turned into a spurious validation failure."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(canned_answer="reshape changes the dimensions of a matrix without changing its data.")
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        result = engine.ask("What does reshape do?")
+        check("no code extracted", result.generated_code == ())
+        check("eligibility not applicable (None)", result.pre_execution_eligibility is None)
+        check("validation coverage also not computed", result.validation_coverage is None)
+
+
+def test_102_code_generation_intent_still_validated_exactly_as_before_no_double_validation() -> None:
+    """Non-regression: an explicit `CODE_GENERATION` request must still be
+    validated exactly once (not twice merely because the universal routing
+    fix runs for every intent now)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        canned = "```gauss\nx = meanc(y);\n```\n"
+        provider = provider_mod.FakeModelProvider(canned_answer=canned)
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        result = engine.ask("Show me an example using meanc.")
+        check("classified as CODE_GENERATION", result.intent == engine_mod.Intent.CODE_GENERATION.value)
+        check("eligible", result.pre_execution_eligibility == "eligible_for_validation")
+        check("exactly one call validation recorded for meanc, not duplicated", len(result.call_validations) == 1)
+
+
+def test_103_follow_up_qa_turn_with_code_is_also_universally_validated() -> None:
+    """A multi-turn conversation where turn 2 is a plain follow-up question
+    (not itself CODE_GENERATION-phrased) that nonetheless produces code
+    reusing an earlier turn's grounded topic -- validation must still run."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        engine = engine_mod.ConversationEngine(
+            provider=provider_mod.FakeModelProvider(canned_answer="unused"), docs_root=str(docs_root),
+        )
+        engine.provider = provider_mod.FakeModelProvider(canned_answer="meanc computes the mean of every column.")
+        first = engine.ask("What does meanc do?")
+        check("first turn is prose-only, no eligibility", first.pre_execution_eligibility is None)
+
+        engine.provider = provider_mod.FakeModelProvider(canned_answer="Sure:\n\n```gauss\nx = meanc(y);\n```\n")
+        second = engine.ask("Now use meanc on my data.")
+        check("second turn is a follow-up, not CODE_GENERATION-phrased", second.intent == engine_mod.Intent.QA.value)
+        check("follow-up code is validated too", second.pre_execution_eligibility is not None)
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)
