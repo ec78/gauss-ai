@@ -4,7 +4,7 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 
 ## Current Objective
 
-None active. `v0.75.0 — Validation Coverage & Universal Code Eligibility` is **complete, tested, and committed** (not yet tagged/pushed/released — see Next Steps). Per this repository's own workflow rule (see `CLAUDE.md`), the next milestone should NOT be started automatically — it needs a deliberate decision from the user, informed by `planning/v0.75.0-universal-code-validation.md`'s own recommendation (Section 16: ready for alpha testing of universal code validation; NOT ready for a controlled-execution-handoff milestone yet).
+None active. `v0.75.0 — Validation Coverage & Universal Code Eligibility` is **complete, tested, committed, and tagged locally** (commit `7e29d4d`, tag `v0.75.0`) — **not yet pushed or released**, pending explicit user confirmation (see Next Steps). Per this repository's own workflow rule (see `CLAUDE.md`), the next milestone should NOT be started automatically — it needs a deliberate decision from the user, informed by `planning/v0.75.0-universal-code-validation.md`'s own recommendation (Section 16: ready for alpha testing of universal code validation; NOT ready for a controlled-execution-handoff milestone yet).
 
 ## Completed Work
 
@@ -32,7 +32,7 @@ None active. `v0.75.0 — Validation Coverage & Universal Code Eligibility` is *
 
 ## Next Steps
 
-**Release steps not yet completed** (per `CLAUDE.md`'s release sequence and this milestone's own acceptance criteria): bump `pyproject.toml` version to `0.75.0`; update `README.md`/`CHANGELOG.md`/`KNOWN_LIMITATIONS.md` (already done in this session) — confirm final read-through; commit; tag `v0.75.0`; **confirm with the user before pushing/creating a GitHub release** (this is a hard rule, not a suggestion — do not push or create the release without an explicit, separate go-ahead).
+Commit `7e29d4d` and tag `v0.75.0` are done. **Remaining release step**: push the branch/tag and create a GitHub release — **requires explicit, separate user confirmation** (this is a hard rule per `CLAUDE.md`, not a suggestion). Do not push or create the release without an explicit go-ahead.
 
 Do not start `v0.76` (or any controlled-execution-handoff milestone) without an explicit, separate decision from the user — this is a hard workflow rule (see `CLAUDE.md`), and is doubly true here since `planning/v0.75.0-universal-code-validation.md`'s own Section 16 explicitly recommends against it for now.
 
