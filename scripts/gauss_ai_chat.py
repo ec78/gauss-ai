@@ -20,6 +20,7 @@ from typing import Callable
 import gauss_ai_config as config_mod
 import gauss_chat_provider as provider_mod
 import gauss_conversation_engine as engine_mod
+import gauss_pre_execution_validation as validation_mod
 
 BANNER = "GAUSS AI Assistant"
 
@@ -107,6 +108,17 @@ def _render_answer(print_fn: Callable[[str], None], result: "engine_mod.AnswerRe
             f"[Warning: the generated code also calls {unknown_list}, which is not a documented function this "
             "session could verify -- treat it as unverified, not authoritative GAUSS syntax.]"
         )
+    if result.pre_execution_eligibility is not None:
+        # v0.74.0 Phase 20: deterministic pre-execution validation evidence
+        # -- signature compatibility, documented preconditions, and an
+        # explicit eligibility verdict. Never implies real GAUSS execution
+        # occurred; the fixed "not executed" footer above/below this still
+        # applies regardless of what this reports.
+        print_fn(validation_mod.render_validation_report(
+            eligibility=result.pre_execution_eligibility, unresolved_issues=result.pre_execution_issues,
+            call_validations=result.call_validations, preconditions=result.precondition_checks,
+            companion_hints=result.companion_hints,
+        ))
     print_fn("")
     print_fn(result.text)
     print_fn("")

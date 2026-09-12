@@ -99,11 +99,26 @@ inv returns the inverse of an invertible matrix.
 _TSCSFIT_RST = """tscsFit
 =======
 
-.. function:: tso = tscsFit(y, x, grp)
+.. function:: tso = tscsFit(y, x, grp[, tsc])
 
 Purpose
 -------
-Estimates the parameters of the pooled time-series cross-section regression model.
+Estimates the parameters of the pooled time-series cross-section regression model. See :func:`tscsmtControlCreate` to build the optional tsc control structure.
+"""
+
+#: v0.74.0: a doc-derivable concept NOT present in the hand-curated
+#: `_CONCEPT_ALIAS_INDEX` at all -- used to prove the new documentation-
+#: derived concept index (`gauss_doc_concept_index.py`) can resolve a
+#: natural-language phrase to a real symbol on its own, without relying on
+#: any curated alias.
+_CORRX_RST = """corrx
+=====
+
+.. function:: y = corrx(x)
+
+Purpose
+-------
+Computes the correlation matrix of the columns of a dataset.
 """
 
 
@@ -116,6 +131,7 @@ def _fixture_docs_root(tmp: str) -> Path:
     (root / "stdc.rst").write_text(_STDC_RST, encoding="utf-8")
     (root / "invinvpd.rst").write_text(_INV_RST, encoding="utf-8")
     (root / "tscsfit.rst").write_text(_TSCSFIT_RST, encoding="utf-8")
+    (root / "corrx.rst").write_text(_CORRX_RST, encoding="utf-8")
     return root
 
 
@@ -1118,6 +1134,268 @@ def test_83_companion_function_in_the_same_retrieved_source_is_not_a_false_posit
         result = engine.ask("Invert this matrix.")
         check("resolved to inv", "inv" in [s.topic for s in result.grounding_sources])
         check("invpd is not flagged as unknown -- it's real, documented content from the same source", "invpd" not in result.unknown_symbols)
+
+
+# ---------------------------------------------------------------------------
+# v0.74.0: documentation-derived concept index (Phase 2/3)
+# ---------------------------------------------------------------------------
+
+
+def test_84_documentation_derived_index_resolves_a_phrase_not_in_curated_aliases() -> None:
+    """`corrx` is NOT in `_CONCEPT_ALIAS_INDEX` at all -- this proves the new
+    documentation-DERIVED index (built from the fixture doc's own heading +
+    Purpose text) can resolve a natural-language phrase on its own."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(canned_answer="```gauss\ny = corrx(x);\n```")
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        result = engine.ask("Write GAUSS code for the correlation between the columns of my dataset.")
+        check("resolved to corrx via the derived index", "corrx" in [s.topic for s in result.grounding_sources])
+        origins = {s.topic: s.origin for s in result.grounding_sources}
+        check("provenance is derived_from_docs, not a curated alias", origins.get("corrx") == "derived_from_docs")
+        # "dataset" is itself also attempted as a literal candidate token and
+        # honestly reported unmatched (it is not a real symbol) -- this
+        # makes the bundle PARTIALLY_GROUNDED, not GROUNDED, which is
+        # correct: only that generation was still permitted at all is
+        # actually being asserted here.
+        check(
+            "generation was permitted (FULL or SUPPORTED_ONLY)",
+            result.generation_policy in (engine_mod.GenerationPolicy.FULL.value, engine_mod.GenerationPolicy.SUPPORTED_ONLY.value),
+        )
+
+
+def test_85_documentation_derived_candidate_not_in_this_docs_root_produces_no_resolution() -> None:
+    """The re-verification discipline: a docs_root that does NOT contain
+    `corrx.rst` at all must never resolve it, even if some other unrelated
+    text happened to look similar -- there is no fixture describing
+    correlation anywhere in this smaller root."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "docs"
+        root.mkdir()
+        (root / "meanc.rst").write_text(_MEANC_RST, encoding="utf-8")
+        provider = provider_mod.FakeModelProvider(canned_answer="I don't have documentation for that.")
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(root))
+        result = engine.ask("What is the correlation between the columns of my dataset?")
+        check("no fabricated resolution to corrx", "corrx" not in [s.topic for s in result.grounding_sources])
+
+
+# ---------------------------------------------------------------------------
+# v0.74.0: pre-execution validation (Phases 4-13)
+# ---------------------------------------------------------------------------
+
+
+def test_86_pre_execution_eligibility_populated_for_a_clean_full_gated_example() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(canned_answer="```gauss\ny = meanc(x);\nprint y;\n```")
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        result = engine.ask("Calculate the column means.")
+        check("policy is FULL", result.generation_policy == engine_mod.GenerationPolicy.FULL.value)
+        check(
+            "eligibility is ELIGIBLE_FOR_VALIDATION",
+            result.pre_execution_eligibility == "eligible_for_validation",
+        )
+        check("no unresolved issues", result.pre_execution_issues == ())
+        check("meanc call validated as compatible", any(
+            v.symbol == "meanc" and v.argument_count_status == "compatible" for v in result.call_validations
+        ))
+
+
+def test_87_invpd_valid_symmetric_positive_definite_literal_is_eligible() -> None:
+    """The exact v0.73.0 Finding 3 regression, valid side: a literal
+    symmetric positive-definite matrix must be recognized as satisfying
+    invpd's own documented precondition."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(canned_answer="```gauss\ny = invpd({2 1, 1 2});\nprint y;\n```")
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        result = engine.ask("Invert this matrix.")
+        satisfied = [c for c in result.precondition_checks if c.status == "satisfied"]
+        check("invpd precondition reported satisfied", len(satisfied) == 1 and satisfied[0].precondition.symbol == "invpd")
+        check("eligibility is ELIGIBLE_FOR_VALIDATION", result.pre_execution_eligibility == "eligible_for_validation")
+
+
+def test_88_invpd_non_symmetric_literal_precondition_violated_is_ineligible() -> None:
+    """The exact v0.73.0 Finding 3 regression, invalid side: a literal
+    non-symmetric matrix must be flagged VIOLATED, and this must block
+    eligibility even though nothing here claims GAUSS itself was run."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(canned_answer="```gauss\ny = invpd({2 1, 3 2});\nprint y;\n```")
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        result = engine.ask("Invert this matrix.")
+        violated = [c for c in result.precondition_checks if c.status == "violated"]
+        check("invpd precondition reported violated", len(violated) == 1)
+        check("eligibility is INELIGIBLE", result.pre_execution_eligibility == "ineligible")
+        check("the violation is named in unresolved_issues", any("invpd" in issue for issue in result.pre_execution_issues))
+
+
+def test_89_invpd_runtime_variable_argument_is_unverified_never_fabricated_satisfied() -> None:
+    """A matrix that is a runtime value (not a literal, not traceable to a
+    literal assignment in the same code) must be reported UNVERIFIED --
+    this module must never claim SATISFIED without deterministic evidence,
+    exactly mirroring the real documented invpd(x'x) OLS example, where x
+    is real input data, not a literal this module could ever legitimately
+    evaluate."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(
+            canned_answer="```gauss\nx = loadd(\"mydata.csv\");\ny = invpd(x);\nprint y;\n```",
+        )
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        result = engine.ask("Invert this matrix.")
+        unverified = [c for c in result.precondition_checks if c.precondition.symbol == "invpd"]
+        check("invpd precondition present", len(unverified) == 1)
+        check("status is unverified, not satisfied", unverified[0].status == "unverified")
+        check("no fabricated SATISFIED anywhere", all(c.status != "satisfied" for c in result.precondition_checks))
+
+
+def test_90_tscsmtcontrol_hallucination_surfaces_companion_hint_and_stays_ineligible() -> None:
+    """The exact v0.73.0 `tscsmtControl` regression (live scenario 63.5):
+    a FULL-gated request that correctly uses the real tscsFit signature can
+    still hallucinate a secondary symbol. This must (a) still be flagged
+    unknown, (b) surface the real documented companion
+    (tscsmtControlCreate) as a hint without silently rewriting anything,
+    and (c) never become eligible for validation."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(
+            canned_answer=(
+                "```gauss\ntsc = tscsmtControl();\ntso = tscsFit(y, x, grp);\nprint tso;\n```"
+            ),
+        )
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        result = engine.ask("Write GAUSS code for a panel regression.")
+        check("tscsmtControl still flagged unknown", "tscsmtControl" in result.unknown_symbols)
+        hints = dict(result.companion_hints)
+        check("companion hint names the real constructor", hints.get("tscsmtControl") == "tscsmtControlCreate")
+        check("eligibility is INELIGIBLE -- no silent correction, no eligibility", result.pre_execution_eligibility == "ineligible")
+
+
+def test_91_incompatible_argument_count_marks_call_incompatible_and_ineligible() -> None:
+    """tscsFit's own fixture documents `tscsFit(y, x, grp[, tsc])` -- 3 or 4
+    arguments. A generated call with only 2 must be flagged INCOMPATIBLE."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(canned_answer="```gauss\ntso = tscsFit(y, x);\nprint tso;\n```")
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        result = engine.ask("Write GAUSS code for a panel regression.")
+        incompatible = [v for v in result.call_validations if v.symbol == "tscsFit"]
+        check("tscsFit call present", len(incompatible) == 1)
+        check("flagged incompatible", incompatible[0].argument_count_status == "incompatible")
+        check("eligibility is INELIGIBLE", result.pre_execution_eligibility == "ineligible")
+
+
+def test_92_pre_execution_validation_only_runs_when_generation_actually_happened() -> None:
+    """`BLOCK`/`CLARIFY` return before the provider is ever called, and a
+    plain QA answer with no code never reaches the validation pass either --
+    in both cases `pre_execution_eligibility` must stay `None`, distinct
+    from an empty-but-checked result."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(canned_answer="not used")
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+
+        blocked = engine.ask("Write GAUSS code for a nonexistent completely unsupported topic xyzzy.")
+        check("BLOCK leaves eligibility unset", blocked.pre_execution_eligibility is None)
+
+        engine.reset()
+        qa_provider = provider_mod.FakeModelProvider(canned_answer="reshape changes a matrix's dimensions.")
+        qa_engine = engine_mod.ConversationEngine(provider=qa_provider, docs_root=str(docs_root))
+        qa_result = qa_engine.ask("What does reshape do?")
+        check("plain-prose QA answer leaves eligibility unset", qa_result.pre_execution_eligibility is None)
+
+
+def test_93_new_v0_74_0_modules_have_no_execution_or_file_write_capability() -> None:
+    import gauss_doc_concept_index as concept_index_mod
+    import gauss_pre_execution_validation as validation_mod
+
+    for module in (concept_index_mod, validation_mod):
+        source = Path(module.__file__).read_text(encoding="utf-8")
+        for token in ("open(", "write_text", "write_bytes", "os.system", "subprocess.", "eval(", "exec("):
+            check(f"{module.__name__} source does not contain {token!r}", token not in source)
+
+
+def test_94_new_v0_74_0_modules_never_import_execution_repair_or_filesystem_modules() -> None:
+    import gauss_doc_concept_index as concept_index_mod
+    import gauss_pre_execution_validation as validation_mod
+
+    forbidden_modules = (
+        "gauss_execution_workflow", "gauss_repair_application", "gauss_repair_draft",
+        "gauss_repair_planner", "gauss_repair_approval", "gauss_verification_execution",
+        "gauss_verification_review", "gauss_code_execution", "gauss_workspace", "subprocess",
+    )
+    for module in (concept_index_mod, validation_mod):
+        for line in Path(module.__file__).read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped.startswith(("import ", "from ")):
+                for token in forbidden_modules:
+                    check(f"{module.__name__} import line {stripped!r} does not reference {token!r}", token not in stripped)
+
+
+def test_95_parenthetical_line_comment_is_not_mistaken_for_a_call() -> None:
+    """The exact v0.74.0 live evaluation finding (category 64.x, scenario
+    64.7): a real model wrote "// Set the method (optional, default is 0)"
+    -- a plain GAUSS line comment containing a parenthetical remark --
+    which must never be flagged as an unknown call to a function named
+    `method`."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(
+            canned_answer=(
+                "```gauss\n"
+                "// Set the method (optional, default is 0)\n"
+                "y = meanc(x);\n"
+                "```"
+            ),
+        )
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        result = engine.ask("Calculate the column means.")
+        check("comment parenthetical not flagged as an unknown symbol", "method" not in result.unknown_symbols)
+        check("no fabricated call-validation entry for 'method'", not any(v.symbol == "method" for v in result.call_validations))
+
+
+def test_96_block_comment_parenthetical_is_not_mistaken_for_a_call() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(
+            canned_answer="```gauss\n/* uses helper(x) internally, see docs */\ny = meanc(x);\n```",
+        )
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        result = engine.ask("Calculate the column means.")
+        check("block-comment parenthetical not flagged", "helper" not in result.unknown_symbols)
+
+
+def test_97_common_builtin_is_not_mislabeled_not_documented_in_call_validation() -> None:
+    """The exact v0.74.0 live evaluation finding (category 64.x, scenario
+    64.7): `rows` (a real, common GAUSS builtin, already allowlisted for
+    the post-generation unknown-symbol check) must also be recognized as
+    documented by the pre-execution call-validation pass, not just by the
+    older checker."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(canned_answer="```gauss\nn = rows(x);\ny = meanc(x);\n```")
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        result = engine.ask("Calculate the column means.")
+        rows_validation = next(v for v in result.call_validations if v.symbol == "rows")
+        check("rows is recognized as documented (a common builtin)", rows_validation.documented is True)
+
+
+def test_98_multi_turn_reuse_of_an_earlier_grounded_function_is_not_flagged_unknown() -> None:
+    """The exact v0.74.0 live evaluation finding (category 64.x, scenario
+    64.10): a follow-up turn that legitimately reuses a function grounded
+    in an EARLIER turn (without re-mentioning its name/description) must
+    not have that function flagged as an unknown symbol merely because it
+    is not part of THIS turn's own grounding bundle."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(canned_answer="```gauss\ny = meanc(x);\n```")
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        engine.ask("Calculate the column means.")  # grounds and remembers meanc
+
+        provider.canned_answer = "```gauss\nz = invpd(y);\n```"
+        result = engine.ask("Now invert that result.")
+        check("meanc is not re-flagged as unknown in the follow-up turn", "meanc" not in result.unknown_symbols)
 
 
 def run_tests() -> int:

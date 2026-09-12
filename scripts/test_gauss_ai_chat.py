@@ -73,11 +73,24 @@ Computes the mean of every column of a matrix.
 """
 
 
+_INV_RST = """inv, invpd
+==========
+
+.. function:: xi = inv(x)
+              xi = invpd(x)
+
+Purpose
+-------
+inv returns the inverse of an invertible matrix. invpd returns the inverse of a symmetric, positive definite matrix.
+"""
+
+
 def _fixture_docs_root(tmp: str) -> Path:
     root = Path(tmp) / "docs"
     root.mkdir()
     (root / "reshape.rst").write_text(_RESHAPE_RST, encoding="utf-8")
     (root / "meanc.rst").write_text(_MEANC_RST, encoding="utf-8")
+    (root / "invinvpd.rst").write_text(_INV_RST, encoding="utf-8")
     return root
 
 
@@ -445,6 +458,48 @@ def test_32_panel_regression_without_support_is_blocked_through_the_full_chat_lo
     )
     joined = "\n".join(messages)
     check("generation is blocked, not fabricated", "I don't have enough authoritative GAUSS documentation" in joined)
+
+
+def test_33_invpd_valid_spd_literal_shows_eligible_for_validation() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(canned_answer="```gauss\ny = invpd({2 1, 1 2});\n```")
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        messages: list[str] = []
+        chat_mod.run_chat(prompt_fn=_scripted(["Invert this matrix.", "exit"]), print_fn=messages.append, engine=engine)
+        joined = "\n".join(messages)
+        check("eligibility line shown", "eligible_for_validation" in joined)
+        check("precondition satisfaction shown", "satisfied" in joined)
+        check("never claims real execution occurred", "executed successfully" not in joined.lower())
+
+
+def test_34_invpd_non_symmetric_literal_shows_ineligible_and_the_reason() -> None:
+    """The exact v0.73.0 Finding 3 regression, rendered through the full
+    chat loop: a documented function used with a real, existing symbol
+    must still be marked ineligible when its own documented precondition
+    is violated by a literal input."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(canned_answer="```gauss\ny = invpd({2 1, 3 2});\n```")
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        messages: list[str] = []
+        chat_mod.run_chat(prompt_fn=_scripted(["Invert this matrix.", "exit"]), print_fn=messages.append, engine=engine)
+        joined = "\n".join(messages)
+        check("eligibility is ineligible", "ineligible" in joined)
+        check("the violated precondition is named", "symmetric" in joined)
+
+
+def test_35_module_still_never_imports_execution_repair_or_filesystem_modules() -> None:
+    forbidden_modules = (
+        "gauss_execution_workflow", "gauss_repair_application", "gauss_repair_draft",
+        "gauss_repair_planner", "gauss_repair_approval", "gauss_verification_execution",
+        "gauss_verification_review", "gauss_code_execution", "gauss_workspace", "subprocess",
+    )
+    for line in Path(chat_mod.__file__).read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped.startswith(("import ", "from ")):
+            for token in forbidden_modules:
+                check(f"import line {stripped!r} does not reference {token!r}", token not in stripped)
 
 
 def run_tests() -> int:

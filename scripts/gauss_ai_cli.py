@@ -40,7 +40,7 @@ import gauss_chat_provider as provider_mod  # noqa: E402
 import gauss_code_assistant_cli as cli_mod  # noqa: E402
 import gauss_environment_check as environment_check_mod  # noqa: E402
 
-__version__ = "0.73.0"
+__version__ = "0.74.0"
 
 
 def _cmd_version(args: list[str]) -> int:

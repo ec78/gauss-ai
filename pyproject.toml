@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gauss-ai"
-version = "0.73.0"
+version = "0.74.0"
 description = "GAUSS Code Assistant -- alpha CLI for a governed, human-in-the-loop GAUSS repair workflow."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -44,6 +44,7 @@ py-modules = [
     "gauss_code_assistant_workflow",
     "gauss_code_execution",
     "gauss_conversation_engine",
+    "gauss_doc_concept_index",
     "gauss_environment_check",
     "gauss_error_catalog",
     "gauss_execution_adapter",
@@ -53,6 +54,7 @@ py-modules = [
     "gauss_execution_workflow",
     "gauss_orchestration_state_store",
     "gauss_package_inspection",
+    "gauss_pre_execution_validation",
     "gauss_repair_application",
     "gauss_repair_application_approval",
     "gauss_repair_application_gate",

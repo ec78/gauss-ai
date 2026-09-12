@@ -1,6 +1,45 @@
 """Conversational GAUSS Q&A engine (v0.70.0; conversational GAUSS code
 generation and multi-source grounding added in v0.72.0).
 
+v0.74.0 additions -- deterministic pre-execution validation and grounding
+coverage expansion:
+
+- `resolve_concepts(...)` now also consults `gauss_doc_concept_index.
+  resolve_derived_concepts(...)`: a documentation-DERIVED concept index
+  (page heading + "Purpose" section + companion references, scanned
+  directly from the caller's own configured documentation) supplements
+  -- and, going forward, should reduce dependence on -- the `v0.73.0`
+  5-entry hand-curated `_CONCEPT_ALIAS_INDEX`. Exactly like the curated
+  index, a derived candidate is only ever a PROPOSAL: it is independently
+  re-verified against the caller's own `docs_root` before being trusted.
+  `GroundingSource.origin` gained a new value, `"derived_from_docs"`, so
+  provenance always distinguishes literal / curated-alias / derived-from-
+  docs / recent-topic resolutions.
+- For `CODE_GENERATION` turns that actually produce code under a `FULL`/
+  `SUPPORTED_ONLY` gate, `ConversationEngine.ask(...)` now also runs a
+  deterministic pre-execution validation pass (`gauss_pre_execution_
+  validation`): documented call-signature compatibility (argument COUNT
+  only -- never argument order/type/semantic correctness), a small set of
+  deterministic documented-precondition checks (currently: whether a
+  LITERAL matrix argument to `invpd` is symmetric and positive definite --
+  a runtime variable/expression is honestly reported `UNVERIFIED`, never
+  guessed), and an explicit, conservative `ExecutionEligibility` verdict
+  (`INELIGIBLE` / `REQUIRES_CLARIFICATION` / `ELIGIBLE_FOR_VALIDATION`).
+  This is directly motivated by two real `v0.73.0` live-evaluation
+  findings: a `FULL`-gated example that used a real documented function
+  correctly still hallucinated an unrelated symbol (`tscsmtControl()`
+  instead of the real `tscsmtControlCreate()`) that this module's new
+  companion-hint detection now surfaces without silently rewriting
+  anything; and a real, successfully-executing `invpd` example whose input
+  did not actually satisfy `invpd`'s own documented symmetric-positive-
+  definite precondition -- proving execution success is independent
+  evidence from documented-precondition satisfaction, never a substitute
+  for it. `ELIGIBLE_FOR_VALIDATION` means only that deterministic checks
+  found no known problem; it is never presented as correct, safe,
+  methodologically appropriate, or approved to run, and this milestone
+  adds no execution capability of any kind -- see `gauss_pre_execution_
+  validation.py`'s own module docstring for the full design.
+
 Position relative to the rest of this repository: this module is the FIRST
 genuine conversational capability in the project's history. Everything
 before it ("Try The GAUSS Code Assistant" in `README.md`) meant a human
@@ -117,7 +156,9 @@ from pathlib import Path
 
 import command_doc_lookup as doc_lookup_mod
 import gauss_chat_provider as provider_mod
+import gauss_doc_concept_index as concept_index_mod
 import gauss_error_catalog as catalog
+import gauss_pre_execution_validation as validation_mod
 
 #: A conservative bound on retained turns (user+assistant combined, so 20
 #: turns is 10 full exchanges) -- process-local only, never persisted.
@@ -522,10 +563,12 @@ class GroundingSource:
     #: v0.73.0: where this source's TOPIC came from -- "literal" (the user
     #: named it directly), "recent_topic" (carried over from an earlier
     #: turn), or "resolved_concept" (found via `resolve_concepts(...)`'s
-    #: natural-language alias index). Provenance only -- never affects
-    #: whether the source counts as real grounding, which always requires
-    #: the same real `command_doc_lookup`/error-catalog verification
-    #: regardless of origin.
+    #: curated natural-language alias index). v0.74.0 adds
+    #: "derived_from_docs" (found via the documentation-DERIVED concept
+    #: index instead of the hand-curated one). Provenance only -- never
+    #: affects whether the source counts as real grounding, which always
+    #: requires the same real `command_doc_lookup`/error-catalog
+    #: verification regardless of origin.
     origin: str = "literal"
 
 
@@ -551,6 +594,14 @@ class MatchType(str, enum.Enum):
 
     EXACT_SYMBOL = "exact_symbol"
     ALIAS_OR_DESCRIPTION = "alias_or_description"
+    #: v0.74.0: the resolution came from `gauss_doc_concept_index.
+    #: resolve_derived_concepts(...)` -- a candidate DERIVED directly from
+    #: the caller's own configured documentation (page heading/Purpose
+    #: section/companion references), not from the hand-curated
+    #: `_CONCEPT_ALIAS_INDEX` below. Still independently re-verified
+    #: against the caller's own `docs_root` before being trusted, exactly
+    #: like every other match type here.
+    DERIVED_FROM_DOCS = "derived_from_docs"
 
 
 @dataclass(frozen=True)
@@ -734,15 +785,57 @@ def resolve_concepts(question: str, *, docs_root_str: str | None) -> tuple[Funct
         # If verification fails against THIS caller's own docs_root, the
         # alias produces no resolution at all -- never a fabricated one.
 
+    # v0.74.0: a documentation-DERIVED concept index (built directly from
+    # the caller's own configured documentation, not hand-curated)
+    # supplements the alias index above. Run once against the WHOLE
+    # question (not per-token) -- a natural-language concept is phrase-
+    # level, and a single generic word should not, by itself, propose a
+    # candidate (see `gauss_doc_concept_index.MIN_KEYWORD_OVERLAP`).
+    index = concept_index_mod.get_documentation_concept_index(docs_root)
+    derived_matches = concept_index_mod.resolve_derived_concepts(question, index)
+    distinct_derived_symbols = {m.symbol.lower() for m in derived_matches} - seen_symbols
+    if len(distinct_derived_symbols) == 1:
+        target = next(iter(distinct_derived_symbols))
+        match = next(m for m in derived_matches if m.symbol.lower() == target)
+        result = doc_lookup_mod.lookup(match.symbol, docs_root, max_results=1)
+        if result["status"] == "found" and result["best_match"] and result["confidence"] >= MIN_DOC_CONFIDENCE:
+            seen_symbols.add(match.symbol.lower())
+            best_match = result["best_match"]
+            resolutions.append(FunctionResolution(
+                user_phrase=question.strip(), status=ResolutionStatus.RESOLVED.value, resolved_symbol=match.symbol,
+                match_type=MatchType.DERIVED_FROM_DOCS.value, source="official_docs",
+                citation=best_match.get("file_path"),
+                evidence=(
+                    f"documentation-derived index matched keywords ({', '.join(match.overlap_keywords)}) in "
+                    f"{match.source} (re-verified against the configured docs-root: {best_match.get('file_path')})"
+                ),
+            ))
+        # If verification fails against THIS caller's own docs_root, the
+        # derived candidate produces no resolution at all -- never a
+        # fabricated one, exactly like the curated-alias path above.
+    elif len(distinct_derived_symbols) > 1:
+        resolutions.append(FunctionResolution(
+            user_phrase=question.strip(), status=ResolutionStatus.AMBIGUOUS.value,
+            evidence="the documentation-derived concept index matched more than one equally-scored symbol",
+            candidates=tuple(sorted(distinct_derived_symbols)),
+        ))
+    # A derived-index miss (zero candidates) is not reported as a separate
+    # UNRESOLVED entry here -- this is a supplemental, whole-question pass,
+    # not a per-token pass, and an absent match carries no new information
+    # beyond what the per-token loop above already reported honestly.
+
     # Once a phrase like "column means" has successfully resolved via the
-    # alias index, its own literal words (e.g. "means") should not ALSO be
-    # reported as a separate, confusing UNRESOLVED token -- the concept it
-    # expressed was resolved, even though the bare word is not itself a
-    # GAUSS symbol. This does not hide anything: the ALIAS_OR_DESCRIPTION
-    # resolution itself still names the full phrase and its real citation.
+    # alias index (or, v0.74.0, the documentation-derived index), its own
+    # literal words (e.g. "means") should not ALSO be reported as a
+    # separate, confusing UNRESOLVED token -- the concept it expressed was
+    # resolved, even though the bare word is not itself a GAUSS symbol.
+    # This does not hide anything: the RESOLVED entry itself still names
+    # the full phrase and its real citation.
     resolved_alias_words: set[str] = set()
     for resolution in resolutions:
-        if resolution.status == ResolutionStatus.RESOLVED.value and resolution.match_type == MatchType.ALIAS_OR_DESCRIPTION.value:
+        if resolution.status == ResolutionStatus.RESOLVED.value and resolution.match_type in (
+            MatchType.ALIAS_OR_DESCRIPTION.value, MatchType.DERIVED_FROM_DOCS.value,
+        ):
             resolved_alias_words.update(resolution.user_phrase.split())
     resolutions = [
         r for r in resolutions
@@ -867,7 +960,12 @@ def ground_multi(
             result = doc_lookup_mod.lookup(resolution.resolved_symbol, docs_root, max_results=1)
             if result["status"] == "found" and result["best_match"]:
                 best_match = result["best_match"]
-                origin = "literal" if resolution.match_type == MatchType.EXACT_SYMBOL.value else "resolved_concept"
+                if resolution.match_type == MatchType.EXACT_SYMBOL.value:
+                    origin = "literal"
+                elif resolution.match_type == MatchType.DERIVED_FROM_DOCS.value:
+                    origin = "derived_from_docs"
+                else:
+                    origin = "resolved_concept"
                 _add_source(GroundingSource(
                     source=resolution.source, topic=resolution.resolved_symbol,
                     content=_format_doc_match(best_match, max_chars=MAX_GROUNDING_CHARS_BUNDLED),
@@ -1034,6 +1132,25 @@ _CALL_SHAPED_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(")
 _ASSIGNMENT_TARGET_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)")
 _PROC_DEFINITION_RE = re.compile(r"\bproc\b[^;]*?\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", re.IGNORECASE)
 
+#: v0.74.0 live evaluation (category 64.x, scenario 64.7) found a real,
+#: genuine false positive: GAUSS `//` line comments are real, legitimate
+#: content (e.g. `// Set the method (optional, default is 0)`) whose own
+#: parenthetical remarks were being mistaken for a call-shaped expression
+#: (`method(`) by both `check_generated_symbols(...)` below and
+#: `gauss_pre_execution_validation.extract_generated_calls(...)`, since
+#: neither excluded comment text before scanning. `/* ... */` block
+#: comments are handled too, for the same reason.
+_LINE_COMMENT_RE = re.compile(r"//.*$", re.MULTILINE)
+_BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+
+
+def _strip_comments_for_analysis(code: str) -> str:
+    """Analysis-only: the code actually shown to the user (`AnswerResult.
+    text`/`.generated_code`) is never altered by this -- only a throwaway
+    copy, used exclusively for symbol/call/precondition scanning, has its
+    comments removed."""
+    return _LINE_COMMENT_RE.sub("", _BLOCK_COMMENT_RE.sub(" ", code))
+
 
 @dataclass(frozen=True)
 class GeneratedSymbolCheck:
@@ -1186,6 +1303,18 @@ class AnswerResult:
     #: hallucinated function name (e.g. a future `colmean(...)`). Always
     #: empty when `generated_code` is empty.
     unknown_symbols: tuple[str, ...] = ()
+    #: v0.74.0 additions -- deterministic pre-execution validation. `None`
+    #: whenever the pre-execution validation pass did not run at all (any
+    #: intent other than `CODE_GENERATION` producing code under a `FULL`/
+    #: `SUPPORTED_ONLY` gate) -- distinct from an empty tuple, which means
+    #: the pass ran and found nothing to report.
+    pre_execution_eligibility: str | None = None
+    pre_execution_issues: tuple[str, ...] = ()
+    call_validations: tuple["validation_mod.CallValidationResult", ...] = ()
+    precondition_checks: tuple["validation_mod.PreconditionCheck", ...] = ()
+    #: `(unknown_symbol, documented_companion)` pairs -- see
+    #: `gauss_pre_execution_validation.find_companion_hint(...)`.
+    companion_hints: tuple[tuple[str, str], ...] = ()
 
 
 class ConversationEngine:
@@ -1312,16 +1441,41 @@ class ConversationEngine:
         # fabrication risk.
         unknown_symbols: tuple[str, ...] = ()
         if generated_code:
-            supported = set(bundle.matched_topics)
+            # v0.74.0 live evaluation (category 64.x, scenario 64.10) found
+            # a real false positive: a multi-turn follow-up that legitimately
+            # reuses a function grounded in an EARLIER turn (e.g. "now use
+            # that result inside invpd") does not re-mention that function's
+            # own name/description, so it is not among THIS turn's own
+            # `bundle.matched_topics` -- the model correctly reused it
+            # anyway, and it was flagged unknown purely because of where in
+            # the conversation it was last grounded. `recent_topics` were
+            # each independently verified via a real `command_doc_lookup.
+            # lookup(...)` earlier in this SAME session (never fabricated),
+            # so folding them into the known-symbol vocabulary here is safe.
+            supported = set(bundle.matched_topics) | {t.lower() for t in self.state.recent_topics}
             for source in bundle.sources:
                 supported.update(m.group(1) for m in _CALL_SHAPED_RE.finditer(source.content))
             all_unknown: list[str] = []
             for block in generated_code:
-                block_check = check_generated_symbols(block, supported_symbols=tuple(supported))
+                block_check = check_generated_symbols(_strip_comments_for_analysis(block), supported_symbols=tuple(supported))
                 for symbol in block_check.unknown_call_symbols:
                     if symbol not in all_unknown:
                         all_unknown.append(symbol)
             unknown_symbols = tuple(all_unknown)
+
+        # v0.74.0: deterministic pre-execution validation -- only attempted
+        # when code was actually generated under a gate that permitted
+        # generation at all (`FULL`/`SUPPORTED_ONLY`); `BLOCK`/`CLARIFY`
+        # already returned earlier and never reach this point. See
+        # `gauss_pre_execution_validation.py`'s own module docstring for
+        # the full design and the exact live findings motivating it.
+        pre_execution: "validation_mod.PreExecutionValidationResult | None" = None
+        if generated_code and gate is not None and gate.policy in (
+            GenerationPolicy.FULL.value, GenerationPolicy.SUPPORTED_ONLY.value,
+        ):
+            pre_execution = self._validate_pre_execution(
+                generated_code=generated_code, bundle=bundle, gate=gate, unknown_symbols=unknown_symbols,
+            )
 
         self.state.add("user", question)
         self.state.add("assistant", text)
@@ -1335,4 +1489,103 @@ class ConversationEngine:
             grounding_sources=bundle.sources, unsupported_topics=bundle.unmatched_topics,
             generated_code=generated_code, executed=False, methodologically_validated=False,
             generation_policy=gate.policy if gate is not None else None, unknown_symbols=unknown_symbols,
+            pre_execution_eligibility=pre_execution.eligibility if pre_execution else None,
+            pre_execution_issues=pre_execution.unresolved_issues if pre_execution else (),
+            call_validations=pre_execution.call_validations if pre_execution else (),
+            precondition_checks=pre_execution.preconditions if pre_execution else (),
+            companion_hints=pre_execution.companion_hints if pre_execution else (),
+        )
+
+    def _validate_pre_execution(
+        self, *, generated_code: tuple[str, ...], bundle: "GroundingBundle", gate: "GenerationGateResult",
+        unknown_symbols: tuple[str, ...],
+    ) -> "validation_mod.PreExecutionValidationResult":
+        """Re-fetches each grounded topic's own `best_match` (a second real
+        `command_doc_lookup.lookup(...)` call, same simplicity-over-
+        performance tradeoff `ground_multi(...)` already makes -- this
+        module never caches documentation content) to extract a documented
+        signature and collect real companion-symbol names, then validates
+        every call-shaped expression actually found in the generated code
+        against that evidence. Contains no execution capability: no
+        subprocess, no shell, no file write."""
+        docs_root = _resolve_docs_root(self.docs_root)
+        # Includes `_COMMON_BUILTIN_SYMBOLS` for the same reason
+        # `check_generated_symbols(...)` does -- a real GAUSS builtin (e.g.
+        # `rows`) should never be reported "not documented" here merely
+        # because it wasn't this turn's own grounded topic. v0.74.0 live
+        # evaluation (category 64.x, scenario 64.7) found this set had
+        # drifted out of sync with `check_generated_symbols`'s own,
+        # producing a confusing (though not eligibility-affecting, since
+        # UNKNOWN never blocks eligibility) "not documented" label for a
+        # real builtin.
+        documented_symbols = (
+            {t.lower() for t in bundle.matched_topics}
+            | {t.lower() for t in self.state.recent_topics}
+            | set(_COMMON_BUILTIN_SYMBOLS)
+        )
+        for source in bundle.sources:
+            documented_symbols.update(m.group(1).lower() for m in _CALL_SHAPED_RE.finditer(source.content))
+
+        documented_signatures: dict[str, validation_mod.DocumentedSignature] = {}
+        companions: set[str] = set()
+        if docs_root is not None:
+            for topic in bundle.matched_topics:
+                result = doc_lookup_mod.lookup(topic, docs_root, max_results=1)
+                if result["status"] == "found" and result["best_match"]:
+                    best_match = result["best_match"]
+                    documented_signatures[topic.lower()] = validation_mod.extract_documented_signature(topic, best_match)
+                    companions.update(
+                        link for link in (best_match.get("related_links") or ())
+                        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", link)
+                    )
+
+        all_calls: list[validation_mod.GeneratedCall] = []
+        for block in generated_code:
+            all_calls.extend(validation_mod.extract_generated_calls(_strip_comments_for_analysis(block)))
+
+        call_validations = tuple(
+            validation_mod.validate_call(
+                call, documented_signatures=documented_signatures, documented_symbols=frozenset(documented_symbols),
+            )
+            for call in all_calls
+        )
+
+        precondition_checks: list[validation_mod.PreconditionCheck] = []
+        for block in generated_code:
+            cleaned_block = _strip_comments_for_analysis(block)
+            for call in validation_mod.extract_generated_calls(cleaned_block):
+                precondition_checks.extend(validation_mod.check_preconditions(call, code=cleaned_block))
+
+        companion_hints: list[tuple[str, str]] = []
+        for symbol in unknown_symbols:
+            hint = validation_mod.find_companion_hint(symbol, companions=frozenset(companions))
+            if hint is None and docs_root is not None:
+                # v0.74.0 live evaluation (category 64.x, scenario 64.7)
+                # found the real `tscsFit` documentation mentions
+                # "tscsmtControl" only in plain prose, with no `:func:`/
+                # backtick markup at all -- so it was never captured as a
+                # companion via the grounded topic's own related_links.
+                # Fall back to a direct, bounded, real documentation lookup
+                # on the unknown symbol itself: `command_doc_lookup.
+                # lookup(...)`'s own substring-in-filename scoring (already
+                # used everywhere else in this module) can still find a
+                # real, differently-named companion page this way (e.g.
+                # `tscsmtcontrolcreate.rst` for `tscsmtControl`) without
+                # ever fabricating one.
+                fallback = doc_lookup_mod.lookup(symbol, docs_root, max_results=3)
+                fallback_names = frozenset(
+                    Path(m["file_path"]).stem for m in fallback.get("matches", []) if m.get("file_path")
+                )
+                hint = validation_mod.find_companion_hint(symbol, companions=fallback_names)
+            if hint:
+                companion_hints.append((symbol, hint))
+
+        eligibility, issues = validation_mod.compute_eligibility(
+            generation_policy=gate.policy, unknown_symbols=unknown_symbols, ambiguous_topics=bundle.ambiguous_topics,
+            call_validations=call_validations, preconditions=tuple(precondition_checks), code_extraction_ok=True,
+        )
+        return validation_mod.PreExecutionValidationResult(
+            generation_policy=gate.policy, unknown_symbols=unknown_symbols,
+            companion_hints=tuple(companion_hints), call_validations=call_validations,
+            preconditions=tuple(precondition_checks), unresolved_issues=issues, eligibility=eligibility,
         )

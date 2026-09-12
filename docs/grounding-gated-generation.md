@@ -1,6 +1,6 @@
 # Grounding-Gated Generation
 
-**Status: Alpha — added in `v0.73.0`, extending [conversational-code-generation.md](conversational-code-generation.md).**
+**Status: Alpha — added in `v0.73.0`, extending [conversational-code-generation.md](conversational-code-generation.md). `v0.74.0` adds a further layer on top of everything below — signature/precondition checking and an execution-eligibility verdict — see [docs/pre-execution-validation.md](pre-execution-validation.md).**
 
 `v0.72.0` disclosed whether a code-generation answer was grounded, but that disclosure was informational only — the model could still be asked to generate code for an entirely ungrounded request, and it sometimes fabricated a plausible-but-nonexistent GAUSS function when it did. `v0.73.0` turns grounding into an actual **generation gate**: a deterministic, provider-independent decision, computed before the model is ever consulted, that controls whether — and how much — GAUSS-specific code generation is permitted.
 
@@ -19,6 +19,8 @@ Before `v0.73.0`, grounding only matched the literal words in your question agai
 Every entry was verified against real local GAUSS documentation before being added — the mapping is never guessed from memory, and it is never trusted by itself: every resolution is re-verified, at the moment you ask, against **your own configured `docs-root`**. If your documentation checkout doesn't actually contain the symbol, the alias produces no resolution at all, rather than a fabricated one.
 
 This is a small, curated table — not a synonym dictionary, not a language model, not a vector database. It will not resolve every possible phrasing, and it does not try to.
+
+**`v0.74.0` addition**: a second, *documentation-derived* index now supplements this curated table — it derives candidate symbols directly from your own configured documentation's own page headings and "Purpose" text, so a real function not in the 5-entry table above can still resolve (e.g. "sum each column of my matrix" can resolve toward `sumc` on its own). It uses the same re-verification discipline as the curated table, and when several real functions score equally well, it honestly asks rather than guessing. See [docs/pre-execution-validation.md](pre-execution-validation.md) for detail and known limitations.
 
 ## The generation gate
 

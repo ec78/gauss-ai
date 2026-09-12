@@ -6711,3 +6711,73 @@ The tester asks for code for a clearly nonexistent, implausible GAUSS procedure 
 
 Expected behavior:
 - Generation policy is `BLOCK`; the provider is never called at all (observable directly: an effectively instant response, in contrast to every genuinely-answered scenario in this category); the response is the fixed, honest "not enough authoritative documentation" message.
+
+## Deterministic Pre-Execution Validation and Grounding Coverage Expansion
+
+Use Prompt IDs 64.1-64.10. These exercise the `v0.74.0` milestone: a documentation-DERIVED concept index supplementing the `v0.73.0` curated alias table, documented call-signature extraction/compatibility checking, a small set of deterministic documented-precondition validators (currently: literal-matrix symmetric/positive-definite checking for `invpd`), and an explicit `INELIGIBLE`/`REQUIRES_CLARIFICATION`/`ELIGIBLE_FOR_VALIDATION` verdict computed entirely from that evidence.
+
+**Important distinction, stated once here rather than repeated in every prompt**: every scenario below is driven against the same real, locally running Ollama service and `qwen2.5-coder:7b` model as `61.x`/`62.x`/`63.x`, with a bounded subset of generated examples independently re-verified against real GAUSS execution. `ELIGIBLE_FOR_VALIDATION` never means correct, safe, or approved to run -- only that deterministic checks found no known problem.
+
+### Prompt 64.1: "Sum each column of my matrix." -- a natural-language phrase not in the curated alias table
+
+Expected behavior:
+- Resolved only via the documentation-DERIVED concept index (`gauss_doc_concept_index.py`), never the 5-entry curated table, which has no `sumc`/`sum`-related entry at all. Real live result: three real, genuinely similar documented candidates (`cumsumc`, `matndup`, `sumc`) tie at the same keyword-overlap score, correctly producing `CLARIFY` rather than guessing -- the provider was never called (2.42s response).
+
+### Prompt 64.2: "Calculate the column means."
+
+The exact `v0.72.0`/`v0.73.0` regression prompt, re-run again to confirm it still resolves to `meanc` under the new validation layer.
+
+Expected behavior:
+- `FULL` gate; the real model's generated `meanc` call is validated argument-count COMPATIBLE; eligibility is `ELIGIBLE_FOR_VALIDATION`.
+
+### Prompt 64.3: "Write GAUSS code using reshape and meanc together on a matrix."
+
+Expected behavior:
+- Both `reshape` and `meanc` calls validated COMPATIBLE against their real documented signatures; `ELIGIBLE_FOR_VALIDATION`.
+
+### Prompt 64.4: A correct `invpd` example with a valid symmetric positive-definite literal matrix
+
+The tester asks GAUSS code using `invpd` to invert `{2 1, 1 2}`.
+
+Expected behavior:
+- The literal matrix precondition check reports `SATISFIED` (verified by real leading-principal-minor computation); `ELIGIBLE_FOR_VALIDATION`.
+
+### Prompt 64.5: An invalid `invpd` example with a documented precondition violation
+
+The tester asks the same, but for the non-symmetric literal `{2 1, 3 2}`.
+
+Expected behavior:
+- The precondition check reports `VIOLATED` ("not symmetric"); eligibility is `INELIGIBLE`, and the specific reason is named -- even though the generated GAUSS syntax itself is completely well-formed.
+
+### Prompt 64.6: A generated call with a deliberately wrong argument count to a real documented function
+
+Expected behavior:
+- A call whose argument count falls outside every documented overload's range is flagged `INCOMPATIBLE`, blocking eligibility. (The real model itself avoided this mistake when simply asked to use `meanc` unusually; the architecture's own INCOMPATIBLE-detection path is proven both automatically -- `test_91`/`test_14`/`test_15` -- and via a forced-response check using the real docs-root.)
+
+### Prompt 64.7: The `tscsmtControl` hallucination/forced-response regression
+
+The tester asks for a panel regression using `tscsFit` with a control structure.
+
+Expected behavior:
+- `tscsmtControl` (a struct TYPE name, not a real callable) must remain unsupported; a real documented companion (`tscsmtControlCreate`) is surfaced as a diagnostic hint without any silent rewriting; eligibility is `INELIGIBLE`.
+
+### Prompt 64.8: A real documented companion-function scenario
+
+The tester asks for code mentioning both `inv` and `invpd`.
+
+Expected behavior:
+- Both symbols are recognized as documented (the companion appears in the SAME retrieved page's own content); each call is validated independently; a satisfied precondition for one companion and an honestly `UNVERIFIED` precondition for the other (no deterministic validator implemented for `inv`'s own invertibility requirement) do not block each other.
+
+### Prompt 64.9: A request with no resolvable function
+
+The tester asks for a "completely unsupported quantum wavelet transform xyzzyplot."
+
+Expected behavior:
+- `BLOCK`; the provider is never called (4.61s response, consistent with every other BLOCK scenario in this and the `63.x` category).
+
+### Prompt 64.10: A multi-turn request whose final generated code becomes `ELIGIBLE_FOR_VALIDATION`
+
+Turn 1: "Show me how to compute column means with meanc." Turn 2: "Show me how to use that result inside invpd with a literal 2x2 symmetric positive definite matrix."
+
+Expected behavior:
+- Turn 2's generated code reuses `meanc` from turn 1 without re-mentioning it; it must not be flagged unknown merely because turn 2's own grounding bundle doesn't independently re-resolve it. The final code is `ELIGIBLE_FOR_VALIDATION` (with `invpd`'s own precondition honestly `UNVERIFIED`, since the input here is a runtime expression, not a literal).
