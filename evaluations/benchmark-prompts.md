@@ -6861,3 +6861,93 @@ Expected behavior:
 ### Prompt 65.11 (bonus): Multi-turn request that begins as QA and evolves into code
 
 Covered by `65.10` above in this milestone's own live run -- see Section 8 of the final report for whether a materially distinct additional scenario was warranted.
+
+## GAUSS Syntax Validation & Execution-Handoff Readiness
+
+Use Prompt IDs 66.1-66.10. These exercise the `v0.76.0` milestone: a bounded, deterministic GAUSS syntax-validation layer (`gauss_pre_execution_validation.validate_syntax(...)`), hardened validation-coverage evidence profiles (`MINIMAL`/`PARTIAL`/`BROAD`), and a new `HandoffReadiness` verdict (`NOT_READY`/`REVIEW_REQUIRED`/`HANDOFF_CANDIDATE`) answering a different question than `ExecutionEligibility` does -- not "is this worth validating" but "is there enough deterministic evidence for a FUTURE, user-approved execution-handoff workflow to even consider this code." No conversational execution is added by this milestone.
+
+**Same environment note as `65.x`**: every scenario below is driven against the same real, locally running Ollama service and `qwen2.5-coder:7b` model, with a bounded subset independently re-verified against real GAUSS execution.
+
+### Prompt 66.1: Fully supported example should reach `HANDOFF_CANDIDATE`
+
+"Write GAUSS code using invpd to invert this matrix: {2 1, 1 2}."
+
+Expected behavior:
+- Syntax `VALIDATED`, eligibility `ELIGIBLE_FOR_VALIDATION`, coverage `BROAD`, readiness `HANDOFF_CANDIDATE`.
+
+### Prompt 66.2: Valid nested-call example
+
+"Write GAUSS code that computes the column means of a reshaped 2x3 version of a 6-element vector x, using meanc and reshape."
+
+Expected behavior:
+- Both `meanc` and `reshape` extracted and validated independently; syntax `VALIDATED`; no false unknown symbol (Phase 14).
+
+### Prompt 66.3: Matrix literal with correct GAUSS row syntax
+
+"Write GAUSS code using chol on this matrix: {2 1, 1 2}."
+
+Expected behavior:
+- Syntax `VALIDATED` (comma row separator); precondition `SATISFIED`; the exact `65.8a` prompt, re-run to confirm no regression from the new syntax layer.
+
+### Prompt 66.4: Matrix literal using semicolon row separators
+
+"Write GAUSS code using chol on this matrix: {-1 0; 0 -1}." -- deliberately phrased with a `;` in the literal, reconstructing the exact `65.8b` live finding.
+
+Expected behavior:
+- If the model reproduces the `;` row separator live, syntax is `INVALID` (rule `matrix_literal_row_separator`) and readiness is `NOT_READY`, regardless of what the precondition checker reports. If the model instead writes the documented `,` form, this converges with `66.3`'s expected behavior -- either outcome is a pass, per this milestone's own fail-closed design.
+
+### Prompt 66.5: Dangling assignment
+
+"Write GAUSS code that starts by declaring a variable x but leaves its value blank, then prints x." -- an adversarial prompt intended to elicit `x = ;`-shaped code; the model may also reasonably decline or produce different code, in which case this is scored against whatever it actually produces.
+
+Expected behavior:
+- If a dangling assignment appears, syntax `INVALID` (rule `dangling_assignment`), readiness `NOT_READY`.
+
+### Prompt 66.6: Real documented function, invalid argument count
+
+"Write GAUSS code that calls meanc with two arguments, x and y."
+
+Expected behavior:
+- The exact `65.4` prompt, re-run: `INCOMPATIBLE` signature, `INELIGIBLE`, and now also `NOT_READY` (never merely `REVIEW_REQUIRED`) for the same known violation.
+
+### Prompt 66.7: Real documented function, parameter-role mismatch
+
+"Write GAUSS code that calls meanc with a string literal "hello" instead of a matrix."
+
+Expected behavior:
+- The exact `65.5` prompt, re-run: parameter-role `MISMATCH`, `INELIGIBLE`, `NOT_READY`.
+
+### Prompt 66.8: Runtime-variable precondition that must remain `UNVERIFIED`
+
+"Write GAUSS code that loads a matrix from a data file and inverts it with invpd." -- the input is a runtime value, not a literal.
+
+Expected behavior:
+- `invpd`'s precondition stays `UNVERIFIED` (never guessed); readiness is `REVIEW_REQUIRED`, not `NOT_READY` and not `HANDOFF_CANDIDATE` -- this milestone's own documented policy for a real, disclosed runtime-dependent evidence gap (Phase 16).
+
+### Prompt 66.9: Previously known hallucinated-symbol case
+
+"Write GAUSS code for a panel regression using tscsFit with a custom control structure." -- the exact `tscsmtControl` hallucination shape from `63.5`/`90` (unit-test regression).
+
+Expected behavior:
+- If the model reproduces the hallucinated `tscsmtControl()` symbol, it stays flagged unknown, `INELIGIBLE`, and `NOT_READY` -- confirming the new readiness layer did not weaken this existing guarantee.
+
+### Prompt 66.10: Multi-turn conversation ending in broad-enough evidence for handoff candidacy
+
+Turn 1: "What does invpd do?" Turn 2: "Show me an example using invpd on the matrix {2 1, 1 2}."
+
+Expected behavior:
+- Turn 2's code is syntax-`VALIDATED`, `ELIGIBLE_FOR_VALIDATION`, and -- provided the documented signature/parameter-role evidence resolves cleanly against the real docs checkout -- reaches `HANDOFF_CANDIDATE`, demonstrating the full readiness pipeline through a real multi-turn conversation, not just a single turn.
+
+### Prompt 66.11: Direct proof that `HANDOFF_CANDIDATE` is live-reachable (bonus)
+
+"Call invpd directly on the literal matrix {2 1, 1 2}, with no intermediate variable."
+
+Expected behavior:
+- With a literal argument at the call site (rather than an assign-then-call pattern), parameter-role checking resolves to a real `MATCH`, evidence coverage reaches `BROAD`, and readiness reaches `HANDOFF_CANDIDATE` -- proving the positive path is real, not only a synthetic-test construction.
+
+### Prompt 66.12: CLI subprocess smoke test of the headline regression (bonus)
+
+The `66.4` prompt, re-run through the actual installed `gauss-ai` CLI binary (subprocess, real Ollama, real docs-root) rather than a direct Python call, per this milestone's own release-readiness verification (Phase 26).
+
+Expected behavior:
+- Confirms the packaged CLI entry point, real Ollama call, real grounding, and validation rendering all function together end to end outside direct-Python-call testing.

@@ -119,6 +119,7 @@ def _render_answer(print_fn: Callable[[str], None], result: "engine_mod.AnswerRe
             call_validations=result.call_validations, preconditions=result.precondition_checks,
             companion_hints=result.companion_hints, parameter_role_checks=result.parameter_role_checks,
             predicted_output=result.predicted_output, coverage=result.validation_coverage,
+            syntax=result.syntax_validation, readiness=result.handoff_readiness,
         ))
     print_fn("")
     print_fn(result.text)

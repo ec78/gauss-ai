@@ -541,6 +541,43 @@ def test_37_predicted_output_mismatch_is_rendered_through_the_full_chat_loop() -
         check("code itself still eligible independent of the wrong prediction", "eligible_for_validation" in joined)
 
 
+# ---------------------------------------------------------------------------
+# v0.76.0: syntax validation / execution-handoff readiness rendering
+# ---------------------------------------------------------------------------
+
+
+def test_38_semicolon_matrix_literal_shows_invalid_syntax_and_not_ready_through_the_full_chat_loop() -> None:
+    """The exact v0.75.0 live regression (evaluation 65.8b), rendered
+    through the full chat loop this time: the user must actually SEE that
+    the generated code has an invalid matrix literal and is not a handoff
+    candidate, not just get a silent UNVERIFIED precondition."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(canned_answer="```gauss\ny = invpd({2 1; 1 2});\n```")
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        messages: list[str] = []
+        chat_mod.run_chat(prompt_fn=_scripted(["Invert this matrix.", "exit"]), print_fn=messages.append, engine=engine)
+        joined = "\n".join(messages)
+        check("syntax invalid shown", "Syntax: invalid" in joined)
+        check("row separator problem named", "row separator" in joined)
+        check("readiness not ready", "Execution handoff readiness: not_ready" in joined)
+        check("never claims real execution occurred", "executed successfully" not in joined.lower())
+
+
+def test_39_fully_supported_example_shows_handoff_candidate_through_the_full_chat_loop() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(canned_answer="```gauss\ny = invpd({2 1, 1 2});\n```")
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        messages: list[str] = []
+        chat_mod.run_chat(
+            prompt_fn=_scripted(["Use invpd to invert this matrix.", "exit"]), print_fn=messages.append, engine=engine,
+        )
+        joined = "\n".join(messages)
+        check("syntax validated shown", "Syntax: validated" in joined)
+        check("still discloses this was never executed", "This code has not been executed." in joined)
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

@@ -1331,6 +1331,11 @@ class AnswerResult:
     parameter_role_checks: tuple["validation_mod.ParameterRoleCheck", ...] = ()
     predicted_output: "validation_mod.PredictedOutputClaim | None" = None
     validation_coverage: "validation_mod.ValidationCoverage | None" = None
+    #: v0.76.0 additions -- deterministic syntax validation and a future
+    #: execution-handoff readiness verdict. `None` under the exact same
+    #: condition as `pre_execution_eligibility` above.
+    syntax_validation: "validation_mod.SyntaxValidationResult | None" = None
+    handoff_readiness: "validation_mod.ReadinessResult | None" = None
 
 
 class ConversationEngine:
@@ -1536,6 +1541,8 @@ class ConversationEngine:
             parameter_role_checks=pre_execution.parameter_role_checks if pre_execution else (),
             predicted_output=pre_execution.predicted_output if pre_execution else None,
             validation_coverage=pre_execution.coverage if pre_execution else None,
+            syntax_validation=pre_execution.syntax if pre_execution else None,
+            handoff_readiness=pre_execution.readiness if pre_execution else None,
         )
 
     def _validate_pre_execution(
@@ -1616,6 +1623,15 @@ class ConversationEngine:
         cleaned_generated_code = tuple(_strip_comments_for_analysis(block) for block in generated_code)
         predicted_output = validation_mod.analyze_predicted_output(answer_text, generated_code=cleaned_generated_code)
 
+        # v0.76.0 Phase 2-7: deterministic syntax validation -- one
+        # `SyntaxValidationResult` per code block, merged into a single
+        # per-answer result via `merge_syntax_results(...)` (re-derives
+        # status from the combined evidence rather than a separate ranking
+        # scheme; see that function's own docstring).
+        syntax = validation_mod.merge_syntax_results(
+            tuple(validation_mod.validate_syntax(block) for block in cleaned_generated_code)
+        )
+
         companion_hints: list[tuple[str, str]] = []
         for symbol in unknown_symbols:
             hint = validation_mod.find_companion_hint(symbol, companions=frozenset(companions))
@@ -1647,12 +1663,17 @@ class ConversationEngine:
         )
         coverage = validation_mod.compute_validation_coverage(
             has_code=True, call_validations=call_validations, parameter_role_checks=tuple(parameter_role_checks),
-            preconditions=tuple(precondition_checks), predicted_output=predicted_output,
+            preconditions=tuple(precondition_checks), predicted_output=predicted_output, syntax=syntax,
+        )
+        evidence_profile = validation_mod.compute_evidence_profile(coverage)
+        readiness = validation_mod.compute_handoff_readiness(
+            eligibility=eligibility, unresolved_issues=issues, syntax=syntax, call_validations=call_validations,
+            preconditions=tuple(precondition_checks), evidence_profile=evidence_profile,
         )
         return validation_mod.PreExecutionValidationResult(
             generation_policy=gate.policy, unknown_symbols=unknown_symbols,
             companion_hints=tuple(companion_hints), call_validations=call_validations,
             preconditions=tuple(precondition_checks), unresolved_issues=issues, eligibility=eligibility,
             parameter_role_checks=tuple(parameter_role_checks), predicted_output=predicted_output,
-            coverage=coverage,
+            coverage=coverage, syntax=syntax, readiness=readiness,
         )

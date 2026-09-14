@@ -836,6 +836,489 @@ def test_73_coverage_partial_when_some_preconditions_unverified() -> None:
     check("partial", coverage.precondition_check == "partial")
 
 
+# ---------------------------------------------------------------------------
+# v0.76.0 Phases 2-7: deterministic GAUSS syntax validation
+# ---------------------------------------------------------------------------
+
+
+def test_74_valid_matrix_literal_is_validated() -> None:
+    result = validation_mod.validate_syntax("x = {1 2, 3 4};\nprint x;\n")
+    check("validated", result.status == validation_mod.SyntaxStatus.VALIDATED.value)
+    check("no issues", result.issues == ())
+    check("matrix_literal checked", "matrix_literal" in result.validated_constructs)
+
+
+def test_75_semicolon_row_separator_matrix_literal_is_invalid() -> None:
+    """The exact v0.75.0 live regression (evaluation 65.8b): a `chol`
+    example whose generated matrix literal used `;` as a row separator."""
+    result = validation_mod.validate_syntax("x = {-1 0; 0 -1};\nu = chol(x);\n")
+    check("invalid", result.status == validation_mod.SyntaxStatus.INVALID.value)
+    check("names the separator", any("row separator" in i.message and "`;`" in i.message for i in result.issues))
+    check("rule provenance recorded", any(i.rule == "matrix_literal_row_separator" for i in result.issues))
+
+
+def test_76_correctly_formatted_gauss_equivalent_of_the_semicolon_case_is_validated() -> None:
+    """Phase 12: the correctly formatted equivalent of the semicolon-matrix
+    regression must NOT be flagged."""
+    result = validation_mod.validate_syntax("x = {-1 0, 0 -1};\nu = chol(x);\n")
+    check("validated", result.status == validation_mod.SyntaxStatus.VALIDATED.value)
+
+
+def test_77_ragged_numeric_matrix_rows_are_invalid() -> None:
+    result = validation_mod.validate_syntax("x = {1 2 3, 4 5};\n")
+    check("invalid", result.status == validation_mod.SyntaxStatus.INVALID.value)
+    check("names inconsistent counts", any("inconsistent element counts" in i.message for i in result.issues))
+
+
+def test_78_empty_matrix_literal_row_is_invalid() -> None:
+    result = validation_mod.validate_syntax("x = {1 2, , 3 4};\n")
+    check("invalid", result.status == validation_mod.SyntaxStatus.INVALID.value)
+    check("names empty row", any("empty row" in i.message for i in result.issues))
+
+
+def test_79_unbalanced_brace_is_invalid() -> None:
+    result = validation_mod.validate_syntax("x = {1 2, 3 4;\nprint x;\n")
+    check("invalid", result.status == validation_mod.SyntaxStatus.INVALID.value)
+    check("names unmatched brace", any("unmatched `{`" in i.message for i in result.issues))
+
+
+def test_80_unbalanced_parenthesis_from_incomplete_call_is_invalid() -> None:
+    """Phase 5's exact example: `meanc(` with nothing to close it."""
+    result = validation_mod.validate_syntax("y = meanc(\n")
+    check("invalid", result.status == validation_mod.SyntaxStatus.INVALID.value)
+    check("names unmatched paren", any("unmatched `(`" in i.message for i in result.issues))
+
+
+def test_81_dangling_assignment_is_invalid() -> None:
+    """Phase 13's exact example: `x = ;`, confirmed against real
+    `tgauss.exe -b` execution (error G0105) in this milestone's own
+    development session."""
+    result = validation_mod.validate_syntax("x = ;\nprint x;\n")
+    check("invalid", result.status == validation_mod.SyntaxStatus.INVALID.value)
+    check("names dangling assignment", any("empty right-hand side" in i.message for i in result.issues))
+
+
+def test_82_ordinary_valid_assignment_is_validated() -> None:
+    result = validation_mod.validate_syntax("x = 5;\nprint x;\n")
+    check("validated", result.status == validation_mod.SyntaxStatus.VALIDATED.value)
+    check("assignment checked", "assignment" in result.validated_constructs)
+
+
+def test_83_quoted_string_containing_a_comma_is_not_mistaken_for_an_argument_boundary() -> None:
+    result = validation_mod.validate_syntax('print "hello, world";\n')
+    check("validated", result.status == validation_mod.SyntaxStatus.VALIDATED.value)
+    check("string_literal checked", "string_literal" in result.validated_constructs)
+
+
+def test_84_unterminated_quoted_string_is_invalid() -> None:
+    result = validation_mod.validate_syntax('print "hello;\n')
+    check("invalid", result.status == validation_mod.SyntaxStatus.INVALID.value)
+    check("names unterminated string", any("not closed" in i.message for i in result.issues))
+
+
+def test_85_nested_call_is_validated() -> None:
+    """Phase 14's exact example: `meanc(reshape(x, 2, 3))`."""
+    result = validation_mod.validate_syntax("y = meanc(reshape(x, 2, 3));\n")
+    check("validated", result.status == validation_mod.SyntaxStatus.VALIDATED.value)
+
+
+def test_86_multiple_code_blocks_merge_conservatively() -> None:
+    block_a = validation_mod.validate_syntax("x = {1 2, 3 4};\n")
+    block_b = validation_mod.validate_syntax("y = {-1 0; 0 -1};\n")
+    merged = validation_mod.merge_syntax_results((block_a, block_b))
+    check("invalid overall", merged.status == validation_mod.SyntaxStatus.INVALID.value)
+    check("carries both blocks' evidence", "matrix_literal" in merged.validated_constructs)
+    check("names the second block's violation", any("row separator" in i.message for i in merged.issues))
+
+
+def test_86b_merge_of_no_blocks_is_none() -> None:
+    check("none", validation_mod.merge_syntax_results(()) is None)
+
+
+def test_86c_stray_comma_in_call_arguments_is_invalid() -> None:
+    result = validation_mod.validate_syntax("y = meanc(x,,y);\n")
+    check("invalid", result.status == validation_mod.SyntaxStatus.INVALID.value)
+    check("names malformed call", any("malformed argument list" in i.message for i in result.issues))
+
+
+def test_86d_trailing_comma_in_call_arguments_is_invalid() -> None:
+    result = validation_mod.validate_syntax("y = meanc(x,);\n")
+    check("invalid", result.status == validation_mod.SyntaxStatus.INVALID.value)
+
+
+def test_86e_control_flow_block_is_partial_not_invalid() -> None:
+    code = "i = 1;\ndo while i <= 3;\n  print i;\n  i = i + 1;\nendo;\n"
+    result = validation_mod.validate_syntax(code)
+    check("partial, not invalid", result.status == validation_mod.SyntaxStatus.PARTIAL.value)
+    check("unknown construct named", "control_flow_block" in result.unknown_constructs)
+
+
+def test_86f_empty_code_is_unknown() -> None:
+    result = validation_mod.validate_syntax("")
+    check("unknown", result.status == validation_mod.SyntaxStatus.UNKNOWN.value)
+    check("nothing validated", result.validated_constructs == ())
+
+
+def test_86g_ordinary_print_statement_is_not_treated_as_an_unknown_construct() -> None:
+    """Regression guard: `print`/`local`/`retp` are simple statements, not
+    block constructs -- they must never spuriously downgrade otherwise fully
+    checkable code from VALIDATED to PARTIAL (see `_BLOCK_CONSTRUCT_
+    KEYWORDS`'s own docstring)."""
+    result = validation_mod.validate_syntax("x = {2 1, 1 2};\nu = chol(x);\nprint u;\n")
+    check("validated, not partial", result.status == validation_mod.SyntaxStatus.VALIDATED.value)
+    check("no unknown constructs", result.unknown_constructs == ())
+
+
+def test_86h_matrix_literal_with_character_elements_is_not_falsely_flagged_invalid() -> None:
+    """A documented, valid literal this checker cannot deeply validate
+    (character elements, not numeric) must never be guessed at as INVALID --
+    only the two structural rules (row separator, empty row) that apply
+    regardless of element type are checked."""
+    result = validation_mod.validate_syntax("x = { dog cat };\n")
+    check("not invalid", result.status != validation_mod.SyntaxStatus.INVALID.value)
+
+
+def test_86i_rule_registry_has_provenance_for_every_rule_a_check_can_produce() -> None:
+    produced_rules = {
+        "matrix_literal_row_separator", "matrix_literal_row_shape", "balanced_delimiters",
+        "dangling_assignment", "call_argument_separator", "unterminated_string",
+    }
+    for rule_name in produced_rules:
+        rule = validation_mod._SYNTAX_RULE_REGISTRY.get(rule_name)
+        check(f"{rule_name} has a registry entry", rule is not None)
+        if rule is not None:
+            check(f"{rule_name} has a non-empty source", bool(rule.source))
+
+
+# ---------------------------------------------------------------------------
+# v0.76.0 Phase 6: call-expression parsing hardening
+# ---------------------------------------------------------------------------
+
+
+def test_86j_bare_multi_token_literal_without_let_or_braces_is_invalid() -> None:
+    """v0.76.0 live finding: a real CLI smoke test of the `66.4` prompt
+    against the real Ollama model produced `x = -1 0;` -- a bare, brace-less,
+    non-`let` multi-token literal, which real `tgauss.exe -b` execution
+    confirms is invalid GAUSS (`error G0063: Operator expected before '0'`).
+    Regression guard."""
+    result = validation_mod.validate_syntax("x = -1 0;\nu = chol(x);\n")
+    check("invalid", result.status == validation_mod.SyntaxStatus.INVALID.value)
+    check("names the rule", any(i.rule == "bare_multi_token_literal_requires_let_or_braces" for i in result.issues))
+
+
+def test_86k_let_prefixed_multi_token_literal_is_validated() -> None:
+    """The same literal, `let`-prefixed, is real, documented, valid GAUSS
+    (`let.rst`) and must not be flagged."""
+    result = validation_mod.validate_syntax("let x = -1 0;\nprint x;\n")
+    check("validated", result.status == validation_mod.SyntaxStatus.VALIDATED.value)
+
+
+def test_86l_braced_multi_token_literal_is_unaffected_by_the_new_rule() -> None:
+    result = validation_mod.validate_syntax("x = {-1 0, 0 -1};\nprint x;\n")
+    check("validated", result.status == validation_mod.SyntaxStatus.VALIDATED.value)
+
+
+def test_86m_ordinary_expressions_and_calls_are_not_falsely_flagged() -> None:
+    for code in ("x = a + b;\nprint x;\n", "y = meanc(x);\nprint y;\n", "y = reshape(x, 2, 3);\nprint y;\n", "x = 5;\nprint x;\n"):
+        r = validation_mod.validate_syntax(code)
+        check(f"{code!r} is not flagged bare_multi_token_literal", not any(
+            i.rule == "bare_multi_token_literal_requires_let_or_braces" for i in r.issues
+        ))
+
+
+def test_87_nested_call_extraction_preserves_both_symbols_and_argument_boundaries() -> None:
+    calls = validation_mod.extract_generated_calls("y = meanc(reshape(x, 2, 3));\n")
+    symbols = {c.symbol for c in calls}
+    check("both calls extracted", symbols == {"meanc", "reshape"})
+    outer = next(c for c in calls if c.symbol == "meanc")
+    inner = next(c for c in calls if c.symbol == "reshape")
+    check("outer call has exactly one top-level argument", outer.argument_count == 1)
+    check("outer argument boundary preserves the nested call whole", outer.raw_arguments == ("reshape(x, 2, 3)",))
+    check("inner call has three arguments", inner.argument_count == 3)
+
+
+def test_88_matrix_literal_as_a_call_argument_is_a_single_argument() -> None:
+    calls = validation_mod.extract_generated_calls("u = chol({2 1, 1 2});\n")
+    check("one call", len(calls) == 1)
+    check("one argument, the whole literal", calls[0].raw_arguments == ("{2 1, 1 2}",))
+
+
+def test_89_string_argument_containing_a_comma_is_a_single_argument() -> None:
+    calls = validation_mod.extract_generated_calls('sprintf("%s, %s", a, b);\n')
+    call = calls[0]
+    check("three top-level arguments, not four", call.argument_count == 3)
+    check("the string argument is kept whole", call.raw_arguments[0] == '"%s, %s"')
+
+
+def test_90_multiple_nesting_levels_are_each_extracted() -> None:
+    calls = validation_mod.extract_generated_calls("y = meanc(sumc(reshape(x, 2, 3)));\n")
+    symbols = {c.symbol for c in calls}
+    check("all three calls extracted", symbols == {"meanc", "sumc", "reshape"})
+
+
+def test_91_malformed_unterminated_call_fails_closed_never_guessed() -> None:
+    calls = validation_mod.extract_generated_calls("y = meanc(\n")
+    check("no call fabricated for an unterminated call", calls == ())
+
+
+# ---------------------------------------------------------------------------
+# v0.76.0 Phase 8: coverage/evidence-profile hardening
+# ---------------------------------------------------------------------------
+
+
+def _no_predicted_output() -> "validation_mod.PredictedOutputClaim":
+    return validation_mod.PredictedOutputClaim(present=False, raw_text=None, parseable=False, verification_status="not_present")
+
+
+def test_92_broad_evidence_profile_when_everything_resolved() -> None:
+    validated_syntax = validation_mod.validate_syntax("x = {1 2, 3 4};\nu = chol(x);\n")
+    coverage = validation_mod.compute_validation_coverage(
+        has_code=True, call_validations=(_compatible("chol"),), parameter_role_checks=(), preconditions=(),
+        predicted_output=_no_predicted_output(), syntax=validated_syntax,
+    )
+    check("syntax complete", coverage.syntax_check == "complete")
+    check("broad", validation_mod.compute_evidence_profile(coverage) == validation_mod.EvidenceProfile.BROAD.value)
+
+
+def test_93_partial_evidence_profile_when_signature_unknown() -> None:
+    unknown_sig = validation_mod.CallValidationResult(
+        symbol="chol", documented=True, signature_known=False,
+        argument_count_status=validation_mod.SignatureCompatibility.UNKNOWN.value,
+        issues=("signature could not be extracted",), source=None,
+    )
+    validated_syntax = validation_mod.validate_syntax("x = {1 2, 3 4};\nu = chol(x);\n")
+    coverage = validation_mod.compute_validation_coverage(
+        has_code=True, call_validations=(unknown_sig,), parameter_role_checks=(), preconditions=(),
+        predicted_output=_no_predicted_output(), syntax=validated_syntax,
+    )
+    check("signature unknown", coverage.signature_check == "unknown")
+    check("partial", validation_mod.compute_evidence_profile(coverage) == validation_mod.EvidenceProfile.PARTIAL.value)
+
+
+def test_94_minimal_evidence_profile_when_syntax_unknown() -> None:
+    unknown_syntax = validation_mod.validate_syntax("")
+    coverage = validation_mod.compute_validation_coverage(
+        has_code=True, call_validations=(), parameter_role_checks=(), preconditions=(),
+        predicted_output=_no_predicted_output(), syntax=unknown_syntax,
+    )
+    check("syntax unknown", coverage.syntax_check == "unknown")
+    check("minimal", validation_mod.compute_evidence_profile(coverage) == validation_mod.EvidenceProfile.MINIMAL.value)
+
+
+def test_95_unverified_precondition_keeps_evidence_profile_below_broad() -> None:
+    precondition = validation_mod.DocumentedPrecondition(
+        symbol="invpd", description="d", kind="property", source="s", machine_checkable=True,
+    )
+    unverified = validation_mod.PreconditionCheck(precondition, validation_mod.PreconditionStatus.UNVERIFIED.value, "runtime value")
+    validated_syntax = validation_mod.validate_syntax("y = invpd(x);\n")
+    coverage = validation_mod.compute_validation_coverage(
+        has_code=True, call_validations=(_compatible("invpd"),), parameter_role_checks=(), preconditions=(unverified,),
+        predicted_output=_no_predicted_output(), syntax=validated_syntax,
+    )
+    check("precondition unknown-coverage", coverage.precondition_check == "unknown")
+    check("not broad", validation_mod.compute_evidence_profile(coverage) != validation_mod.EvidenceProfile.BROAD.value)
+
+
+def test_96_predicted_output_never_affects_evidence_profile() -> None:
+    """Phase 17: predicted-output verification is orthogonal -- a MISMATCH
+    must never change the evidence-profile category."""
+    validated_syntax = validation_mod.validate_syntax("x = {1 2, 3 4};\nu = chol(x);\n")
+    mismatch = validation_mod.PredictedOutputClaim(
+        present=True, raw_text="9 9", parseable=True, verification_status="mismatch",
+        expected_value=((9.0, 9.0),), computed_value=((1.0, 1.0),), issues=("wrong",),
+    )
+    coverage_with_mismatch = validation_mod.compute_validation_coverage(
+        has_code=True, call_validations=(_compatible("chol"),), parameter_role_checks=(), preconditions=(),
+        predicted_output=mismatch, syntax=validated_syntax,
+    )
+    coverage_without_claim = validation_mod.compute_validation_coverage(
+        has_code=True, call_validations=(_compatible("chol"),), parameter_role_checks=(), preconditions=(),
+        predicted_output=_no_predicted_output(), syntax=validated_syntax,
+    )
+    check(
+        "evidence profile identical regardless of predicted-output verdict",
+        validation_mod.compute_evidence_profile(coverage_with_mismatch)
+        == validation_mod.compute_evidence_profile(coverage_without_claim),
+    )
+
+
+# ---------------------------------------------------------------------------
+# v0.76.0 Phases 9-11, 16: execution-handoff readiness
+# ---------------------------------------------------------------------------
+
+
+def test_97_fully_supported_code_is_a_handoff_candidate() -> None:
+    validated_syntax = validation_mod.validate_syntax("x = {1 2, 3 4};\nu = chol(x);\n")
+    coverage = validation_mod.compute_validation_coverage(
+        has_code=True, call_validations=(_compatible("chol"),), parameter_role_checks=(), preconditions=(),
+        predicted_output=_no_predicted_output(), syntax=validated_syntax,
+    )
+    profile = validation_mod.compute_evidence_profile(coverage)
+    readiness = validation_mod.compute_handoff_readiness(
+        eligibility=validation_mod.ExecutionEligibility.ELIGIBLE_FOR_VALIDATION.value, unresolved_issues=(),
+        syntax=validated_syntax, call_validations=(_compatible("chol"),), preconditions=(), evidence_profile=profile,
+    )
+    check("handoff candidate", readiness.state == validation_mod.HandoffReadiness.HANDOFF_CANDIDATE.value)
+    check("has positive reasons", len(readiness.reasons) > 0)
+
+
+def test_98_ineligible_from_unknown_symbol_is_not_ready() -> None:
+    readiness = validation_mod.compute_handoff_readiness(
+        eligibility=validation_mod.ExecutionEligibility.INELIGIBLE.value,
+        unresolved_issues=("unresolved/unsupported call symbol(s): colmean",),
+        syntax=None, call_validations=(), preconditions=(), evidence_profile=validation_mod.EvidenceProfile.MINIMAL.value,
+    )
+    check("not ready", readiness.state == validation_mod.HandoffReadiness.NOT_READY.value)
+    check("names the symbol", any("colmean" in r for r in readiness.reasons))
+
+
+def test_99_incompatible_signature_is_not_ready() -> None:
+    eligibility, issues = validation_mod.compute_eligibility(
+        generation_policy="full", unknown_symbols=(), ambiguous_topics=(),
+        call_validations=(_incompatible("meanc"),), preconditions=(), code_extraction_ok=True,
+    )
+    readiness = validation_mod.compute_handoff_readiness(
+        eligibility=eligibility, unresolved_issues=issues, syntax=validation_mod.validate_syntax("y = meanc(1, 2);\n"),
+        call_validations=(_incompatible("meanc"),), preconditions=(), evidence_profile=validation_mod.EvidenceProfile.BROAD.value,
+    )
+    check("not ready", readiness.state == validation_mod.HandoffReadiness.NOT_READY.value)
+
+
+def test_100_parameter_role_mismatch_is_not_ready() -> None:
+    mismatch = validation_mod.ParameterRoleCheck(
+        symbol="meanc", position=0, parameter_name="x", documented_category=("matrix",),
+        inferred_category="string", status=validation_mod.ParameterRoleStatus.MISMATCH.value, explanation="wrong type",
+    )
+    eligibility, issues = validation_mod.compute_eligibility(
+        generation_policy="full", unknown_symbols=(), ambiguous_topics=(),
+        call_validations=(_compatible("meanc"),), preconditions=(), code_extraction_ok=True,
+        parameter_role_checks=(mismatch,),
+    )
+    readiness = validation_mod.compute_handoff_readiness(
+        eligibility=eligibility, unresolved_issues=issues, syntax=validation_mod.validate_syntax('y = meanc("x");\n'),
+        call_validations=(_compatible("meanc"),), preconditions=(), evidence_profile=validation_mod.EvidenceProfile.BROAD.value,
+    )
+    check("not ready", readiness.state == validation_mod.HandoffReadiness.NOT_READY.value)
+
+
+def test_101_known_precondition_violation_is_not_ready() -> None:
+    call = validation_mod.GeneratedCall(symbol="invpd", argument_count=1, raw_arguments=("{1 2, 3 4}",), line_number=1)
+    check_result = validation_mod.check_invpd_precondition(call, code="x = {1 2, 3 4};\ny = invpd(x);\n")
+    check("sanity: precondition actually violated", check_result.status == validation_mod.PreconditionStatus.VIOLATED.value)
+    eligibility, issues = validation_mod.compute_eligibility(
+        generation_policy="full", unknown_symbols=(), ambiguous_topics=(),
+        call_validations=(_compatible("invpd"),), preconditions=(check_result,), code_extraction_ok=True,
+    )
+    readiness = validation_mod.compute_handoff_readiness(
+        eligibility=eligibility, unresolved_issues=issues, syntax=validation_mod.validate_syntax("y = invpd(x);\n"),
+        call_validations=(_compatible("invpd"),), preconditions=(check_result,),
+        evidence_profile=validation_mod.EvidenceProfile.BROAD.value,
+    )
+    check("not ready", readiness.state == validation_mod.HandoffReadiness.NOT_READY.value)
+
+
+def test_102_invalid_syntax_is_not_ready_even_when_otherwise_eligible() -> None:
+    """The exact Phase 12 requirement: invalid syntax must never become a
+    handoff candidate, regardless of what the eligibility verdict says."""
+    invalid_syntax = validation_mod.validate_syntax("x = {-1 0; 0 -1};\nu = chol(x);\n")
+    readiness = validation_mod.compute_handoff_readiness(
+        eligibility=validation_mod.ExecutionEligibility.ELIGIBLE_FOR_VALIDATION.value, unresolved_issues=(),
+        syntax=invalid_syntax, call_validations=(_compatible("chol"),), preconditions=(),
+        evidence_profile=validation_mod.EvidenceProfile.BROAD.value,
+    )
+    check("not ready", readiness.state == validation_mod.HandoffReadiness.NOT_READY.value)
+    check("reasons cite the syntax problem", any("row separator" in r for r in readiness.reasons))
+
+
+def test_103_unresolved_ambiguity_is_not_ready() -> None:
+    readiness = validation_mod.compute_handoff_readiness(
+        eligibility=validation_mod.ExecutionEligibility.REQUIRES_CLARIFICATION.value,
+        unresolved_issues=("ambiguous topic(s) remain unresolved: inv",),
+        syntax=None, call_validations=(), preconditions=(), evidence_profile=validation_mod.EvidenceProfile.MINIMAL.value,
+    )
+    check("not ready", readiness.state == validation_mod.HandoffReadiness.NOT_READY.value)
+
+
+def test_104_runtime_dependent_unverified_precondition_is_review_required() -> None:
+    """This milestone's documented policy (planning doc Section 3.5): an
+    UNVERIFIED runtime-dependent precondition is a real, disclosed gap, not
+    a known violation -- it forces REVIEW_REQUIRED, never silently
+    HANDOFF_CANDIDATE and never punitively NOT_READY."""
+    precondition = validation_mod.DocumentedPrecondition(
+        symbol="invpd", description="d", kind="property", source="s", machine_checkable=True,
+    )
+    unverified = validation_mod.PreconditionCheck(precondition, validation_mod.PreconditionStatus.UNVERIFIED.value, "runtime value, not literal")
+    validated_syntax = validation_mod.validate_syntax("y = invpd(x);\n")
+    readiness = validation_mod.compute_handoff_readiness(
+        eligibility=validation_mod.ExecutionEligibility.ELIGIBLE_FOR_VALIDATION.value, unresolved_issues=(),
+        syntax=validated_syntax, call_validations=(_compatible("invpd"),), preconditions=(unverified,),
+        evidence_profile=validation_mod.EvidenceProfile.PARTIAL.value,
+    )
+    check("review required, not handoff candidate", readiness.state == validation_mod.HandoffReadiness.REVIEW_REQUIRED.value)
+    check("not ready is never used for a mere evidence gap", readiness.state != validation_mod.HandoffReadiness.NOT_READY.value)
+    check("names the unverified precondition", any("unverified" in r for r in readiness.reasons))
+
+
+def test_105_unknown_signature_forces_review_required_not_handoff_candidate() -> None:
+    unknown_sig = validation_mod.CallValidationResult(
+        symbol="tscsFit", documented=True, signature_known=False,
+        argument_count_status=validation_mod.SignatureCompatibility.UNKNOWN.value,
+        issues=("a documented call signature could not be reliably extracted for this symbol",), source=None,
+    )
+    validated_syntax = validation_mod.validate_syntax("m = tscsFit(y, x, grp);\n")
+    readiness = validation_mod.compute_handoff_readiness(
+        eligibility=validation_mod.ExecutionEligibility.ELIGIBLE_FOR_VALIDATION.value, unresolved_issues=(),
+        syntax=validated_syntax, call_validations=(unknown_sig,), preconditions=(),
+        evidence_profile=validation_mod.EvidenceProfile.PARTIAL.value,
+    )
+    check("review required", readiness.state == validation_mod.HandoffReadiness.REVIEW_REQUIRED.value)
+
+
+def test_106_model_cannot_set_readiness() -> None:
+    """Structural proof: `compute_handoff_readiness` takes no provider/model
+    argument of any kind -- it cannot even accidentally consult one."""
+    import inspect
+
+    sig = inspect.signature(validation_mod.compute_handoff_readiness)
+    for param_name in sig.parameters:
+        check(f"{param_name!r} is not a provider/model parameter", "provider" not in param_name.lower() and "model" not in param_name.lower())
+
+
+# ---------------------------------------------------------------------------
+# v0.76.0 Phase 19: safety -- no execution capability of any kind
+# ---------------------------------------------------------------------------
+
+
+def test_106b_identifier_starting_with_a_block_keyword_is_not_a_false_positive() -> None:
+    """v0.76.0 live evaluation (category 66.x, scenario 66.9) found a real
+    defect: a real model-generated identifier, `formula`, was spuriously
+    treated as starting with the block keyword `for` (a bare string-prefix
+    match, not a real word boundary), downgrading otherwise fully-checkable
+    code from VALIDATED to PARTIAL. Fixed by requiring a real word boundary
+    (`_starts_with_keyword`). Regression guard."""
+    result = validation_mod.validate_syntax('formula = "y ~ X1 + X2 + X3";\nprint formula;\n')
+    check("validated, not spuriously partial", result.status == validation_mod.SyntaxStatus.VALIDATED.value)
+    check("no false unknown construct", result.unknown_constructs == ())
+
+    # A handful of other real identifiers that share a keyword's own prefix.
+    for code in ("dogcount = 5;\nprint dogcount;\n", "ifx = 1;\nprint ifx;\n", "doubled = x + x;\nprint doubled;\n"):
+        r = validation_mod.validate_syntax(code)
+        check(f"{code!r} is not falsely flagged", r.unknown_constructs == ())
+
+
+def test_107_syntax_and_readiness_functions_have_no_execution_shell_or_file_write_capability() -> None:
+    import inspect
+
+    forbidden = ("subprocess", "os.system", "open(", "write_text", "write_bytes", "eval(", "exec(", "shell=")
+    for fn in (
+        validation_mod.validate_syntax, validation_mod.merge_syntax_results, validation_mod.compute_evidence_profile,
+        validation_mod.compute_handoff_readiness,
+    ):
+        source = inspect.getsource(fn)
+        for token in forbidden:
+            check(f"{fn.__name__} source does not contain {token!r}", token not in source)
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

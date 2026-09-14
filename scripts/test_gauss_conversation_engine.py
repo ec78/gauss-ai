@@ -94,6 +94,11 @@ _INV_RST = """inv, invpd
 Purpose
 -------
 inv returns the inverse of an invertible matrix.
+
+Input
+-----
+    :param x: data
+    :type x: NxN matrix
 """
 
 _TSCSFIT_RST = """tscsFit
@@ -1505,6 +1510,144 @@ def test_103_follow_up_qa_turn_with_code_is_also_universally_validated() -> None
         second = engine.ask("Now use meanc on my data.")
         check("second turn is a follow-up, not CODE_GENERATION-phrased", second.intent == engine_mod.Intent.QA.value)
         check("follow-up code is validated too", second.pre_execution_eligibility is not None)
+
+
+# ---------------------------------------------------------------------------
+# v0.76.0: syntax validation / coverage-hardening / handoff-readiness
+# wiring, and the milestone's own hard regressions.
+# ---------------------------------------------------------------------------
+
+
+def test_104_semicolon_row_separator_matrix_literal_is_syntax_invalid_end_to_end() -> None:
+    """The exact v0.75.0 live regression (evaluation 65.8b), reproduced
+    through the full engine: a generated `invpd` example whose matrix
+    literal used `;` as a row separator must now be caught by syntax
+    validation and kept off the handoff-candidate path, even though the
+    precondition checker itself can only, correctly, report UNVERIFIED for
+    an unparseable literal."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(canned_answer="```gauss\nx = {2 1; 1 2};\ny = invpd(x);\nprint y;\n```")
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        result = engine.ask("Invert this matrix.")
+        check("syntax validation ran", result.syntax_validation is not None)
+        check("syntax invalid", result.syntax_validation.status == "invalid")
+        check(
+            "names the row separator problem",
+            any("row separator" in issue.message for issue in result.syntax_validation.issues),
+        )
+        check("readiness computed", result.handoff_readiness is not None)
+        check("not a handoff candidate", result.handoff_readiness.state == "not_ready")
+
+
+def test_105_correctly_formatted_matrix_literal_equivalent_is_syntax_validated() -> None:
+    """Phase 12's paired case: the correctly formatted GAUSS equivalent of
+    the semicolon regression must NOT be penalized by syntax validation, and
+    -- with a literal argument at the call site (so the parameter-role
+    checker has real evidence, not a runtime-variable UNKNOWN) -- reaches
+    real broad-evidence handoff candidacy."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(canned_answer="```gauss\ny = invpd({2 1, 1 2});\nprint y;\n```")
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        result = engine.ask("Use invpd to invert this matrix.")
+        check("syntax validated", result.syntax_validation.status == "validated")
+        check("eligible", result.pre_execution_eligibility == "eligible_for_validation")
+        check("handoff candidate", result.handoff_readiness.state == "handoff_candidate")
+
+
+def test_106_dangling_assignment_is_syntax_invalid_end_to_end() -> None:
+    """The exact `x = ;` regression, reproduced through the full engine."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(canned_answer="```gauss\nx = ;\nprint x;\n```")
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        result = engine.ask("Show me an example using meanc.")
+        check("syntax invalid", result.syntax_validation.status == "invalid")
+        check("names the dangling assignment", any("empty right-hand side" in i.message for i in result.syntax_validation.issues))
+        check("not a handoff candidate", result.handoff_readiness.state == "not_ready")
+
+
+def test_107_nested_reshape_and_meanc_call_parses_and_validates_through_the_full_engine() -> None:
+    """Phase 14's exact example, `meanc(reshape(x, 2, 3))`, through the full
+    engine: both real documented functions must be extracted, validated
+    independently, and the code must be syntax-VALIDATED with no false
+    unknown symbol."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(canned_answer="```gauss\ny = meanc(reshape(x, 2, 3));\nprint y;\n```")
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        result = engine.ask("Reshape my data and take the column means.")
+        check("no unknown symbols", result.unknown_symbols == ())
+        check("both calls validated", {v.symbol for v in result.call_validations} == {"meanc", "reshape"})
+        check("syntax validated", result.syntax_validation.status == "validated")
+        check("eligible", result.pre_execution_eligibility == "eligible_for_validation")
+
+
+def test_108_tscsmtcontrol_hallucination_still_prevented_from_handoff_readiness() -> None:
+    """v0.76.0 re-confirmation of the exact v0.73.0 `tscsmtControl`
+    regression (test_90 above): adding syntax validation/handoff readiness
+    must not weaken this existing guarantee."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(
+            canned_answer="```gauss\ntsc = tscsmtControl();\ntso = tscsFit(y, x, grp);\nprint tso;\n```",
+        )
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        result = engine.ask("Write GAUSS code for a panel regression.")
+        check("still ineligible", result.pre_execution_eligibility == "ineligible")
+        check("readiness computed", result.handoff_readiness is not None)
+        check("not ready", result.handoff_readiness.state == "not_ready")
+
+
+def test_109_invalid_invpd_precondition_still_prevented_from_handoff_readiness() -> None:
+    """v0.76.0 re-confirmation of test_88 above: a violated documented
+    precondition must still block handoff readiness, not just eligibility."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(canned_answer="```gauss\ny = invpd({2 1, 3 2});\nprint y;\n```")
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        result = engine.ask("Invert this matrix.")
+        check("still ineligible", result.pre_execution_eligibility == "ineligible")
+        check("not ready", result.handoff_readiness.state == "not_ready")
+
+
+def test_110_syntax_and_readiness_are_none_when_no_code_is_generated() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(canned_answer="reshape changes a matrix's dimensions.")
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        result = engine.ask("What does reshape do?")
+        check("syntax not applicable", result.syntax_validation is None)
+        check("readiness not applicable", result.handoff_readiness is None)
+
+
+def test_111_v0_76_0_module_still_never_imports_execution_repair_or_filesystem_modules() -> None:
+    """Re-confirms the same structural safety guarantee test_49/test_94
+    already cover, now that v0.76.0 added syntax validation and a
+    handoff-readiness verdict -- neither adds any execution capability."""
+    forbidden_modules = (
+        "gauss_execution_workflow", "gauss_repair_application", "gauss_repair_draft",
+        "gauss_repair_planner", "gauss_repair_approval", "gauss_verification_execution",
+        "gauss_verification_review", "gauss_code_execution", "gauss_workspace", "subprocess",
+    )
+    for line in Path(engine_mod.__file__).read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped.startswith(("import ", "from ")):
+            for token in forbidden_modules:
+                check(f"import line {stripped!r} does not reference {token!r}", token not in stripped)
+
+
+def test_112_no_automatic_execution_handoff_is_ever_triggered() -> None:
+    """Structural proof that reaching HANDOFF_CANDIDATE triggers nothing:
+    `ConversationEngine.ask(...)`'s own source contains no call to any
+    execution/repair-shaped function, regardless of what readiness state a
+    turn computes."""
+    import inspect
+
+    source = inspect.getsource(engine_mod.ConversationEngine.ask)
+    for token in ("execute(", "run_gauss", "apply_repair", "subprocess", "os.system"):
+        check(f"ask(...) source does not contain {token!r}", token not in source)
 
 
 def run_tests() -> int:

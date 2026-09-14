@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gauss-ai"
-version = "0.75.0"
+version = "0.76.0"
 description = "GAUSS Code Assistant -- alpha CLI for a governed, human-in-the-loop GAUSS repair workflow."
 readme = "README.md"
 requires-python = ">=3.10"

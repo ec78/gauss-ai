@@ -132,6 +132,45 @@ computes:
 class's own docstring) rather than adding a fourth "eligible with caveats"
 tier: `ValidationCoverage` above already gives a caller everything a fourth
 tier would have provided, without proliferating eligibility states.
+
+`v0.76.0` additions -- see `planning/v0.76.0-gauss-syntax-validation.md` for
+the full gap analysis this section closes. Live `v0.75.0` evaluation
+(scenario `65.8b`) found a real `chol` example whose generated matrix
+literal used `;` as a row separator (`x = {-1 0; 0 -1};`) -- not valid GAUSS
+syntax (`let.rst`'s own documented row-separator is `,`), but the existing
+precondition checker could only, correctly and conservatively, report
+`UNVERIFIED`, since it never guesses at an unparseable literal. Real
+`tgauss.exe -b` execution (this milestone's own development session)
+confirmed the gap is worse than a loud parse error: GAUSS does not reject
+that literal -- it silently misparses it into one malformed row containing
+a denormal/garbage element. This revealed a missing layer between
+"documented call/precondition support" and "future execution eligibility":
+
+- `SyntaxValidationResult`/`validate_syntax(...)` -- a small, bounded,
+  provider-independent deterministic syntax checker (matrix-literal row
+  separator/shape, balanced delimiters, dangling assignments, malformed
+  call-argument separators, unterminated double-quoted strings), never a
+  full GAUSS parser. Every rule's provenance (official documentation, real
+  `tgauss.exe` execution, or a narrowly justified structural convention) is
+  recorded in `_SYNTAX_RULE_REGISTRY`.
+- `ValidationCoverage.syntax_check` and `EvidenceProfile`/
+  `compute_evidence_profile(...)` -- coverage hardened into a categorical
+  (`MINIMAL`/`PARTIAL`/`BROAD`) evidence-breadth judgment, never a numeric
+  score, deliberately excluding predicted-output verification (orthogonal
+  by design).
+- `HandoffReadiness`/`ReadinessResult`/`compute_handoff_readiness(...)` -- a
+  new, strictly-downstream-of-`ExecutionEligibility` verdict
+  (`NOT_READY`/`REVIEW_REQUIRED`/`HANDOFF_CANDIDATE`) answering a different
+  question than `ExecutionEligibility` does: not "is this worth
+  validating" but "is there enough deterministic evidence for a FUTURE,
+  user-approved, explicit execution-handoff workflow to even consider this
+  code." `HANDOFF_CANDIDATE` never means correct, safe, approved, or
+  executed -- it means every known-violation and evidence-gap check this
+  module can run found nothing wrong and nothing missing. Computed purely
+  from this module's own deterministic evidence; the model can never
+  influence it, exactly like `ExecutionEligibility`. This milestone adds no
+  execution capability of any kind -- no subprocess, no shell, no file
+  write, no conversational execution handoff.
 """
 
 from __future__ import annotations
@@ -154,16 +193,27 @@ _CALL_SHAPED_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(")
 
 def _split_top_level_args(raw: str) -> list[str]:
     """Splits `raw` on top-level commas only -- commas nested inside
-    `(...)`, `{...}`, or `[...]` do not split. Bounded, conservative: not a
-    real expression parser, just enough to separate GAUSS call arguments
-    and documented parameter lists."""
+    `(...)`, `{...}`, or `[...]`, or inside a double-quoted string (v0.76.0
+    Phase 6 -- a real comma-containing string argument, e.g.
+    `sprintf("%s, %s", a, b)`, must never be mistaken for two arguments),
+    do not split. Bounded, conservative: not a real expression parser, just
+    enough to separate GAUSS call arguments and documented parameter
+    lists."""
     raw = raw.strip()
     if not raw:
         return []
     parts: list[str] = []
     depth = 0
+    in_string = False
     current: list[str] = []
     for ch in raw:
+        if ch == '"' and not in_string:
+            in_string = True
+        elif ch == '"' and in_string:
+            in_string = False
+        if in_string:
+            current.append(ch)
+            continue
         if ch in "{[(":
             depth += 1
         elif ch in "}])":
@@ -1050,6 +1100,532 @@ def check_preconditions(call: GeneratedCall, *, code: str) -> tuple[Precondition
 
 
 # ---------------------------------------------------------------------------
+# Phases 2-7 (v0.76.0): deterministic GAUSS syntax validation
+#
+# See `planning/v0.76.0-gauss-syntax-validation.md` Section 3.2/3.3 for the
+# full gap analysis and per-rule provenance table this section implements.
+# The motivating regression: a real live `chol` scenario (evaluation 65.8b)
+# produced a matrix literal using `;` as a row separator
+# (`x = {-1 0; 0 -1};`). `_find_literal_matrix_for_argument` correctly
+# declined to guess at it, reporting the `chol` precondition `UNVERIFIED` --
+# safe, but silent about the fact that the literal itself is not well-formed
+# GAUSS. Real `tgauss.exe -b` execution (this milestone's own development
+# session) confirmed this is worse than a loud parse error: GAUSS does NOT
+# reject a `;`-separated literal -- it silently misparses it into a single
+# malformed row containing a denormal/garbage element. This section adds a
+# dedicated deterministic layer that catches this class of problem directly,
+# instead of leaving it to fall through as an uninformative UNVERIFIED
+# precondition.
+#
+# Deliberately NOT a parser: every check below is a small, bounded, textual
+# rule with its own documented/empirical provenance (see
+# `_SYNTAX_RULE_REGISTRY`), operating on already comment-stripped code (the
+# same convention every other check in this module already follows --
+# callers pass `_strip_comments_for_analysis(block)`, never raw fenced-block
+# text). A construct this version cannot check (e.g. a `do`/`if`/`proc`
+# block body) is recorded in `unknown_constructs`, never silently ignored
+# and never guessed at as passing.
+# ---------------------------------------------------------------------------
+
+
+class SyntaxStatus(str, enum.Enum):
+    """`VALIDATED` means ONLY "no syntax violation was found within this
+    version's implemented, deliberately bounded deterministic coverage" --
+    it is never a claim of full GAUSS grammar correctness. `INVALID` means
+    at least one deterministic rule below was actually violated. `PARTIAL`
+    means some constructs in the code were checked (and passed), but at
+    least one other construct present is outside this version's coverage
+    (see `unknown_constructs`) -- never used when nothing was checked at
+    all, which is `UNKNOWN` instead."""
+
+    VALIDATED = "validated"
+    INVALID = "invalid"
+    PARTIAL = "partial"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True)
+class SyntaxRule:
+    """Provenance record for one deterministic syntax rule -- every rule
+    used by `validate_syntax(...)` has a matching entry in
+    `_SYNTAX_RULE_REGISTRY` below, referenced by name from every
+    `SyntaxIssue.rule` this module ever produces. Mirrors the same
+    hand-curated-with-provenance discipline `_PRECONDITION_INDEX` already
+    established for documented preconditions."""
+
+    name: str
+    description: str
+    source: str
+    applies_to: str
+
+
+_SYNTAX_RULE_REGISTRY: dict[str, SyntaxRule] = {
+    "matrix_literal_row_separator": SyntaxRule(
+        name="matrix_literal_row_separator",
+        description=(
+            "A GAUSS matrix literal's rows are separated by `,`; elements within a row are separated by "
+            "whitespace. `;` is not a valid row separator."
+        ),
+        source=(
+            'let.rst (official docs): "let x = { 1 2 3, 4 5 6, 7 8 9 };" ... "If curly braces are used, '
+            'the let is optional" (so the same literal syntax applies to a bare `x = {...}` assignment); '
+            "confirmed by real `tgauss.exe -b` execution (v0.76.0 development session): a `;`-separated "
+            "literal is NOT rejected by GAUSS -- it is silently misparsed into a single malformed row "
+            "containing a denormal/garbage element, rather than raising an error."
+        ),
+        applies_to="matrix_literal",
+    ),
+    "matrix_literal_row_shape": SyntaxRule(
+        name="matrix_literal_row_shape",
+        description=(
+            "Every row of a purely-numeric GAUSS matrix literal must have the same number of elements, "
+            "and no row may be empty."
+        ),
+        source="let.rst (official docs): every documented literal example has conformable rows.",
+        applies_to="matrix_literal",
+    ),
+    "balanced_delimiters": SyntaxRule(
+        name="balanced_delimiters",
+        description="`{`/`}`, `(`/`)`, and `[`/`]` must be balanced, and never closed with the wrong type.",
+        source=(
+            "Structural convention: every real GAUSS syntax example in this repository's own curated "
+            "precondition/signature fixtures and documentation excerpts uses balanced delimiters throughout."
+        ),
+        applies_to="delimiters",
+    ),
+    "dangling_assignment": SyntaxRule(
+        name="dangling_assignment",
+        description="An assignment statement's right-hand side must not be empty (e.g. `x = ;`).",
+        source=(
+            "Real `tgauss.exe -b` execution (v0.76.0 development session): `x = ;` raises "
+            '"error G0105: Bad expression or missing arguments".'
+        ),
+        applies_to="assignment",
+    ),
+    "call_argument_separator": SyntaxRule(
+        name="call_argument_separator",
+        description=(
+            "A call's argument list must not contain an empty slot between commas (e.g. `f(a,,b)`, "
+            "`f(a,)`, `f(,a)`)."
+        ),
+        source=(
+            "Structural convention: every documented call signature this module can extract "
+            "(extract_documented_signature(...)) never contains an empty positional slot."
+        ),
+        applies_to="call",
+    ),
+    "unterminated_string": SyntaxRule(
+        name="unterminated_string",
+        description="A double-quoted string literal opened on a line must be closed on that same line.",
+        source=(
+            'let.rst (official docs): `let x = "dog""cat";` -- double quotes are GAUSS\'s unambiguous '
+            "string delimiter. A single quote is deliberately NOT checked here: it is overwhelmingly used "
+            "as the transpose operator (`x'`) in generated code, and treating it as a string delimiter "
+            "would be a real false-positive risk this module's own fail-closed discipline requires avoiding."
+        ),
+        applies_to="string_literal",
+    ),
+    "bare_multi_token_literal_requires_let_or_braces": SyntaxRule(
+        name="bare_multi_token_literal_requires_let_or_braces",
+        description=(
+            "A bare assignment of two or more whitespace-separated numeric tokens with no enclosing `{...}` "
+            "and no `let` keyword (e.g. `x = -1 0;`) is not valid GAUSS -- it requires either `{...}` "
+            "(`x = { -1 0 };`) or the `let` keyword (`let x = -1 0;`)."
+        ),
+        source=(
+            "v0.76.0 live evaluation (a real CLI smoke-test scenario, category 66.x's own 66.4 prompt "
+            're-run through the installed `gauss-ai` binary: a `chol` example whose real model output '
+            "wrote `x = -1 0;` with no braces at all) + real `tgauss.exe -b` "
+            "execution performed this session: `x = -1 0;` (no `let`, no `{}`) raises "
+            '"error G0063: Operator expected before \'0\'"; the identical literal prefixed with `let` '
+            "(`let x = -1 0;`) executes successfully, producing a column vector -- exactly matching "
+            "`let.rst`'s own documented Format/Remarks (\"If curly braces are used, the let is optional\"; "
+            'a bare multi-token list otherwise requires `let`).'
+        ),
+        applies_to="assignment",
+    ),
+}
+
+
+@dataclass(frozen=True)
+class SyntaxIssue:
+    rule: str
+    message: str
+    line_number: int | None
+    construct: str
+
+
+@dataclass(frozen=True)
+class SyntaxValidationResult:
+    """Immutable, provider-independent, contains no execution capability of
+    any kind -- same discipline as every other result type in this module.
+    `validated_constructs`/`unknown_constructs` are deduplicated, ordered
+    tuples of construct names (e.g. `"matrix_literal"`, `"assignment"`,
+    `"call"`, `"delimiters"`, `"string_literal"`, `"control_flow_block"`)."""
+
+    status: str
+    issues: tuple[SyntaxIssue, ...]
+    validated_constructs: tuple[str, ...]
+    unknown_constructs: tuple[str, ...]
+
+
+_QUOTED_STRING_RE = re.compile(r'"[^"\n]*"')
+#: Deliberately excludes newlines and backslash-escaping -- `let.rst`'s own
+#: documented convention for embedding a literal quote is adjacent quoted
+#: tokens (`"dog""cat"`), not backslash escaping, and a real GAUSS string
+#: literal is not documented anywhere in this repository's own docs
+#: checkout as spanning multiple lines.
+_DANGLING_ASSIGNMENT_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*=\s*;")
+#: A looser match than `_DANGLING_ASSIGNMENT_RE` -- used only to record that
+#: SOME assignment construct is present (for `validated_constructs`
+#: bookkeeping), matching both a normal and a dangling assignment alike.
+#: `(?!=)` after the `=` excludes `==`/`!=`/`<=`/`>=` comparison operators.
+_ASSIGNMENT_RE = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*\s*=(?!=)\s*\S")
+#: v0.76.0: matches one non-`let`, non-brace-enclosed assignment statement's
+#: own right-hand side -- see `bare_multi_token_literal_requires_let_or_
+#: braces`'s own registry entry for the real live-found regression and real
+#: `tgauss.exe -b` provenance. `(?P<let>\blet\s+)?` captures a `let` prefix
+#: when present so the check below can skip it (`let.rst`'s own documented
+#: exemption); `[^;{}]*` deliberately excludes `{`/`}` so this never
+#: double-reports a real `{...}` matrix literal, which
+#: `_check_matrix_literals(...)` already owns.
+_BARE_ASSIGNMENT_RE = re.compile(
+    r"(?P<let>\blet\s+)?\b[A-Za-z_][A-Za-z0-9_]*\s*=(?!=)\s*(?P<rhs>[^;{}]*);"
+)
+
+
+def _mask_quoted_strings(code: str) -> str:
+    """Replaces each complete double-quoted string's content with `#` of the
+    same length, so delimiter-balance/argument-separator/dangling-assignment
+    scanning below never misreads a bracket or `=`/`;` character that
+    happens to appear inside a string literal. Length-preserving, so byte
+    offsets computed against the masked text remain valid against the
+    original `code` for line-number reporting."""
+    return _QUOTED_STRING_RE.sub(lambda m: "#" * len(m.group(0)), code)
+
+
+def _find_matching_brace(text: str, open_idx: int) -> int | None:
+    depth = 0
+    for i in range(open_idx, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return i
+    return None
+
+
+def _check_balanced_delimiters(masked_code: str) -> tuple[list[SyntaxIssue], bool]:
+    """A single unified stack-based scanner for `{}`/`()`/`[]` together --
+    catches both a genuinely unmatched delimiter (e.g. the exact `meanc(`
+    incomplete-call regression) and a wrong-type closer (e.g. `(1, 2}`).
+    Returns `(issues, any_delimiter_found)`."""
+    pairs = {"{": "}", "(": ")", "[": "]"}
+    closers = {v: k for k, v in pairs.items()}
+    issues: list[SyntaxIssue] = []
+    stack: list[tuple[str, int]] = []
+    found = False
+    for i, ch in enumerate(masked_code):
+        if ch in pairs:
+            found = True
+            stack.append((ch, i))
+        elif ch in closers:
+            found = True
+            if stack and stack[-1][0] == closers[ch]:
+                stack.pop()
+            else:
+                issues.append(SyntaxIssue(
+                    rule="balanced_delimiters", message=f"unexpected `{ch}` with no matching opener",
+                    line_number=masked_code.count("\n", 0, i) + 1, construct="delimiters",
+                ))
+    for opener, pos in stack:
+        issues.append(SyntaxIssue(
+            rule="balanced_delimiters", message=f"unmatched `{opener}` -- no closing `{pairs[opener]}` found",
+            line_number=masked_code.count("\n", 0, pos) + 1, construct="delimiters",
+        ))
+    return issues, found
+
+
+def _check_matrix_literals(code: str) -> tuple[list[SyntaxIssue], bool]:
+    """Scans every top-level `{...}` occurrence in `code`. Does not attempt
+    to validate a literal nested inside another literal -- no documented
+    example in this repository's own docs checkout nests one matrix literal
+    inside another. An unterminated `{` is deliberately left to
+    `_check_balanced_delimiters(...)` rather than double-reported here."""
+    issues: list[SyntaxIssue] = []
+    found = False
+    idx = 0
+    while True:
+        open_idx = code.find("{", idx)
+        if open_idx == -1:
+            break
+        close_idx = _find_matching_brace(code, open_idx)
+        if close_idx is None:
+            break  # reported by _check_balanced_delimiters instead
+        found = True
+        content = code[open_idx + 1 : close_idx]
+        line_no = code.count("\n", 0, open_idx) + 1
+        if ";" in content:
+            issues.append(SyntaxIssue(
+                rule="matrix_literal_row_separator",
+                message=(
+                    "GAUSS matrix literal uses unsupported row separator `;` -- rows must be separated by "
+                    "`,` (a `;`-separated literal is not rejected by GAUSS; it is silently misparsed into a "
+                    "malformed single row instead)"
+                ),
+                line_number=line_no, construct="matrix_literal",
+            ))
+        elif content.strip():
+            rows = content.split(",")
+            if any(not row.strip() for row in rows):
+                issues.append(SyntaxIssue(
+                    rule="matrix_literal_row_shape",
+                    message="matrix literal contains an empty row (a stray `,` with nothing between it and the next delimiter)",
+                    line_number=line_no, construct="matrix_literal",
+                ))
+            else:
+                numeric_row_widths: list[int] = []
+                all_numeric = True
+                for row in rows:
+                    tokens = row.split()
+                    if not all(_NUMERIC_LITERAL_RE.match(tok) for tok in tokens):
+                        all_numeric = False
+                        break
+                    numeric_row_widths.append(len(tokens))
+                if all_numeric and len(set(numeric_row_widths)) > 1:
+                    issues.append(SyntaxIssue(
+                        rule="matrix_literal_row_shape",
+                        message="matrix literal rows have inconsistent element counts",
+                        line_number=line_no, construct="matrix_literal",
+                    ))
+        idx = close_idx + 1
+    return issues, found
+
+
+def _check_unterminated_strings(code: str) -> list[SyntaxIssue]:
+    issues: list[SyntaxIssue] = []
+    offset = 0
+    for line_no, line in enumerate(code.splitlines(keepends=True), start=1):
+        remaining = _QUOTED_STRING_RE.sub("", line)
+        if '"' in remaining:
+            issues.append(SyntaxIssue(
+                rule="unterminated_string", message="a double-quoted string on this line is not closed",
+                line_number=line_no, construct="string_literal",
+            ))
+        offset += len(line)
+    return issues
+
+
+def _split_top_level_args_keep_empty(raw: str) -> list[str]:
+    """Same top-level-comma splitting as `_split_top_level_args(...)`, but
+    keeps empty slots (`""`) instead of dropping them -- needed to detect a
+    stray/leading/trailing/duplicate comma, which `_split_top_level_args`'s
+    own final filter would otherwise silently absorb."""
+    raw = raw.strip()
+    if not raw:
+        return []
+    parts: list[str] = []
+    depth = 0
+    current: list[str] = []
+    for ch in raw:
+        if ch in "{[(":
+            depth += 1
+        elif ch in "}])":
+            depth -= 1
+        if ch == "," and depth == 0:
+            parts.append("".join(current).strip())
+            current = []
+        else:
+            current.append(ch)
+    parts.append("".join(current).strip())
+    return parts
+
+
+def _check_call_argument_separators(code: str) -> list[SyntaxIssue]:
+    issues: list[SyntaxIssue] = []
+    for match in _CALL_SHAPED_RE.finditer(code):
+        symbol = match.group(1)
+        if symbol.lower() in _LANGUAGE_CONSTRUCT_KEYWORDS:
+            continue
+        close_idx = _find_matching_paren(code, match.end() - 1)
+        if close_idx is None:
+            continue  # reported by _check_balanced_delimiters instead
+        raw = code[match.end() : close_idx]
+        if not raw.strip():
+            continue  # a genuine zero-argument call, e.g. f()
+        parts = _split_top_level_args_keep_empty(raw)
+        if any(not p for p in parts):
+            issues.append(SyntaxIssue(
+                rule="call_argument_separator",
+                message=f"call to `{symbol}` has a malformed argument list (an empty slot between commas)",
+                line_number=code.count("\n", 0, match.start()) + 1, construct="call",
+            ))
+    return issues
+
+
+#: A narrower set than `_LANGUAGE_CONSTRUCT_KEYWORDS` above -- that set
+#: exists to keep a loop/conditional HEADER from being misread as a call
+#: (e.g. `if(x)`), and deliberately also includes simple single-statement
+#: keywords (`print`, `local`, `retp`, `struct`) that are not block
+#: constructs at all. Flagging `print`/`local` as an "unknown construct"
+#: would make ordinary, fully-checkable generated code (which routinely
+#: ends in a `print` statement) spuriously PARTIAL instead of VALIDATED --
+#: only a genuine block-opening keyword belongs here.
+_BLOCK_CONSTRUCT_KEYWORDS = frozenset({
+    "if", "elseif", "else", "endif", "do", "while", "until", "endo", "for", "endfor", "proc", "endp",
+})
+
+
+#: v0.76.0 live evaluation (category 66.x, scenario 66.9) found a real
+#: defect: a plain `startswith(keyword)` check matches `formula = ...` as
+#: starting with the keyword `for` (a bare string-prefix match, not a real
+#: word boundary), spuriously downgrading ordinary, fully-checkable code
+#: from VALIDATED to PARTIAL. Requires the character immediately after the
+#: keyword to be whitespace, `;`, or end-of-line -- a real word boundary,
+#: never a guess at where an identifier happens to start with a keyword's
+#: own letters.
+def _starts_with_keyword(stripped_line: str, keyword: str) -> bool:
+    if not stripped_line.startswith(keyword):
+        return False
+    remainder = stripped_line[len(keyword):]
+    return remainder == "" or remainder[0] in " \t;("
+
+
+def _check_bare_multi_token_literals(masked_code: str) -> list[SyntaxIssue]:
+    """See `bare_multi_token_literal_requires_let_or_braces`'s own registry
+    entry for the real live-found regression and real `tgauss.exe -b`
+    provenance. Flags ONLY a right-hand side of two-or-more bare numeric
+    tokens (each individually matching `_NUMERIC_LITERAL_RE`) with no `let`
+    prefix and no `{...}` -- never a real expression (`x = a + b;`), a real
+    call (`x = meanc(y);`), or a single scalar (`x = 5;`), which are all
+    structurally excluded by the token-count/all-numeric requirement below."""
+    issues: list[SyntaxIssue] = []
+    for match in _BARE_ASSIGNMENT_RE.finditer(masked_code):
+        if match.group("let") is not None:
+            continue
+        tokens = match.group("rhs").split()
+        if len(tokens) < 2:
+            continue
+        if not all(_NUMERIC_LITERAL_RE.match(tok) for tok in tokens):
+            continue
+        issues.append(SyntaxIssue(
+            rule="bare_multi_token_literal_requires_let_or_braces",
+            message=(
+                "a bare multi-value assignment with no `{...}` and no `let` keyword is not valid GAUSS "
+                "-- use `{...}` (e.g. `x = { ... };`) or prefix with `let` (e.g. `let x = ...;`)"
+            ),
+            line_number=masked_code.count("\n", 0, match.start()) + 1, construct="assignment",
+        ))
+    return issues
+
+
+def _detect_unknown_syntax_constructs(code: str) -> tuple[str, ...]:
+    """Deliberately narrow: flags the PRESENCE of a construct this module
+    does not attempt to deterministically validate (a control-flow block
+    body), never a guess at whether that construct is itself well-formed."""
+    for line in code.splitlines():
+        stripped = line.strip().lower()
+        if any(_starts_with_keyword(stripped, keyword) for keyword in _BLOCK_CONSTRUCT_KEYWORDS):
+            return ("control_flow_block",)
+    return ()
+
+
+def validate_syntax(code: str) -> SyntaxValidationResult:
+    """The one entry point callers should use. `code` is expected to already
+    have comments stripped by the caller, exactly like `check_preconditions(
+    ...)`/`extract_generated_calls(...)` already expect -- this function
+    never re-implements `gauss_conversation_engine._strip_comments_for_
+    analysis(...)`, to avoid a third divergent copy of that regex."""
+    masked = _mask_quoted_strings(code)
+    issues: list[SyntaxIssue] = []
+
+    delimiter_issues, delimiters_found = _check_balanced_delimiters(masked)
+    issues.extend(delimiter_issues)
+
+    matrix_issues, matrix_found = _check_matrix_literals(code)
+    issues.extend(matrix_issues)
+
+    issues.extend(_check_unterminated_strings(code))
+    issues.extend(_check_bare_multi_token_literals(masked))
+
+    dangling_found = False
+    for match in _DANGLING_ASSIGNMENT_RE.finditer(masked):
+        dangling_found = True
+        issues.append(SyntaxIssue(
+            rule="dangling_assignment", message=f"assignment to `{match.group(1)}` has an empty right-hand side",
+            line_number=masked.count("\n", 0, match.start()) + 1, construct="assignment",
+        ))
+    assignment_found = dangling_found or bool(_ASSIGNMENT_RE.search(masked))
+
+    issues.extend(_check_call_argument_separators(code))
+    call_found = bool(_CALL_SHAPED_RE.search(code))
+
+    string_found = bool(_QUOTED_STRING_RE.search(code))
+
+    validated: list[str] = []
+    if delimiters_found:
+        validated.append("delimiters")
+    if matrix_found:
+        validated.append("matrix_literal")
+    if assignment_found:
+        validated.append("assignment")
+    if call_found:
+        validated.append("call")
+    if string_found:
+        validated.append("string_literal")
+
+    unknown = _detect_unknown_syntax_constructs(code)
+
+    if issues:
+        status = SyntaxStatus.INVALID.value
+    elif validated and not unknown:
+        status = SyntaxStatus.VALIDATED.value
+    elif validated and unknown:
+        status = SyntaxStatus.PARTIAL.value
+    else:
+        status = SyntaxStatus.UNKNOWN.value
+
+    return SyntaxValidationResult(
+        status=status, issues=tuple(issues), validated_constructs=tuple(validated), unknown_constructs=unknown,
+    )
+
+
+def merge_syntax_results(results: tuple[SyntaxValidationResult, ...]) -> SyntaxValidationResult | None:
+    """Combines one `SyntaxValidationResult` per generated code block (a
+    conversational answer can contain more than one fenced block) into a
+    single result for the whole answer, re-deriving `status` from the
+    combined evidence via the exact same rule `validate_syntax(...)` itself
+    uses -- never a separate ranking scheme. Returns `None` for an empty
+    input (no code blocks at all), distinct from a result computed from
+    code that happened to have nothing checkable in it."""
+    if not results:
+        return None
+    issues: list[SyntaxIssue] = []
+    validated: list[str] = []
+    unknown: list[str] = []
+    for result in results:
+        issues.extend(result.issues)
+        for construct in result.validated_constructs:
+            if construct not in validated:
+                validated.append(construct)
+        for construct in result.unknown_constructs:
+            if construct not in unknown:
+                unknown.append(construct)
+    if issues:
+        status = SyntaxStatus.INVALID.value
+    elif validated and not unknown:
+        status = SyntaxStatus.VALIDATED.value
+    elif validated and unknown:
+        status = SyntaxStatus.PARTIAL.value
+    else:
+        status = SyntaxStatus.UNKNOWN.value
+    return SyntaxValidationResult(
+        status=status, issues=tuple(issues), validated_constructs=tuple(validated), unknown_constructs=tuple(unknown),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Phase 11/12/13: pre-execution validation result and eligibility
 # ---------------------------------------------------------------------------
 
@@ -1087,6 +1663,11 @@ class PreExecutionValidationResult:
     parameter_role_checks: tuple[ParameterRoleCheck, ...] = ()
     predicted_output: "PredictedOutputClaim | None" = None
     coverage: "ValidationCoverage | None" = None
+    #: v0.76.0 additions -- deterministic syntax validation and a future
+    #: execution-handoff readiness verdict. `None` under the exact same
+    #: condition as `coverage` above (no code-shaped content in the answer).
+    syntax: "SyntaxValidationResult | None" = None
+    readiness: "ReadinessResult | None" = None
 
 
 def compute_eligibility(
@@ -1403,16 +1984,19 @@ class ValidationCoverage:
     parameter_role_check: str
     precondition_check: str
     predicted_output_check: str
+    #: v0.76.0 addition -- same four-state vocabulary, defaulted so every
+    #: pre-v0.76.0 construction of this type remains valid unchanged.
+    syntax_check: str = CoverageStatus.NOT_APPLICABLE.value
 
 
 def compute_validation_coverage(
     *, has_code: bool, call_validations: tuple[CallValidationResult, ...],
     parameter_role_checks: tuple[ParameterRoleCheck, ...], preconditions: tuple[PreconditionCheck, ...],
-    predicted_output: PredictedOutputClaim,
+    predicted_output: PredictedOutputClaim, syntax: "SyntaxValidationResult | None" = None,
 ) -> ValidationCoverage:
     if not has_code:
         na = CoverageStatus.NOT_APPLICABLE.value
-        return ValidationCoverage(na, na, na, na, na)
+        return ValidationCoverage(na, na, na, na, na, na)
 
     # `check_generated_symbols(...)` (gauss_conversation_engine.py) always
     # runs to completion whenever code is present -- there is no partial
@@ -1455,10 +2039,162 @@ def compute_validation_coverage(
     else:
         predicted_output_check = CoverageStatus.UNKNOWN.value
 
+    # v0.76.0: `SyntaxStatus.INVALID` is still COMPLETE coverage -- a
+    # definitive, deterministic finding, exactly like a VIOLATED
+    # precondition above. Coverage measures whether real evidence was
+    # obtained, not whether that evidence was favorable.
+    if syntax is None:
+        syntax_check = CoverageStatus.NOT_APPLICABLE.value
+    elif syntax.status in (SyntaxStatus.VALIDATED.value, SyntaxStatus.INVALID.value):
+        syntax_check = CoverageStatus.COMPLETE.value
+    elif syntax.status == SyntaxStatus.PARTIAL.value:
+        syntax_check = CoverageStatus.PARTIAL.value
+    else:
+        syntax_check = CoverageStatus.UNKNOWN.value
+
     return ValidationCoverage(
         symbol_check=symbol_check, signature_check=signature_check, parameter_role_check=parameter_role_check,
         precondition_check=precondition_check, predicted_output_check=predicted_output_check,
+        syntax_check=syntax_check,
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 8 (v0.76.0): evidence-profile categorization
+# ---------------------------------------------------------------------------
+
+
+class EvidenceProfile(str, enum.Enum):
+    """A categorical summary of how BROAD the validation evidence for the
+    current code-shaped answer is, computed from `ValidationCoverage`'s five
+    non-orthogonal dimensions (symbol/signature/parameter-role/precondition/
+    syntax). Deliberately excludes `predicted_output_check` -- predicted-
+    output verification is orthogonal evidence by design (see module
+    docstring's Phase 17 discussion and `compute_eligibility(...)`'s own
+    docstring), never folded into the evidence-breadth judgment a future
+    handoff-readiness decision consumes. Deliberately not a numeric score --
+    see module docstring's `v0.75.0` closing paragraph for why this module
+    prefers categorical states throughout."""
+
+    MINIMAL = "minimal"
+    PARTIAL = "partial"
+    BROAD = "broad"
+
+
+def compute_evidence_profile(coverage: ValidationCoverage) -> str:
+    dimensions = (
+        coverage.symbol_check, coverage.signature_check, coverage.parameter_role_check,
+        coverage.precondition_check, coverage.syntax_check,
+    )
+    unknown_count = sum(1 for d in dimensions if d == CoverageStatus.UNKNOWN.value)
+    complete_or_na = all(d in (CoverageStatus.COMPLETE.value, CoverageStatus.NOT_APPLICABLE.value) for d in dimensions)
+    if coverage.syntax_check == CoverageStatus.UNKNOWN.value or unknown_count >= 2:
+        return EvidenceProfile.MINIMAL.value
+    if coverage.syntax_check == CoverageStatus.COMPLETE.value and complete_or_na:
+        return EvidenceProfile.BROAD.value
+    return EvidenceProfile.PARTIAL.value
+
+
+# ---------------------------------------------------------------------------
+# Phase 9/10/11/16 (v0.76.0): future execution-handoff readiness
+# ---------------------------------------------------------------------------
+
+
+class HandoffReadiness(str, enum.Enum):
+    """Distinct from, and strictly downstream of, `ExecutionEligibility`:
+    `ELIGIBLE_FOR_VALIDATION` means "structurally worth validating";
+    `HANDOFF_CANDIDATE` means "enough deterministic evidence exists to let a
+    FUTURE, user-approved, explicit execution-handoff workflow consider
+    it" -- still not executed, still not approved, still not semantically
+    guaranteed correct, safe, or methodologically appropriate. This module
+    contains no execution capability of any kind and this value is never
+    consulted by, or capable of triggering, any execution path."""
+
+    NOT_READY = "not_ready"
+    REVIEW_REQUIRED = "review_required"
+    HANDOFF_CANDIDATE = "handoff_candidate"
+
+
+@dataclass(frozen=True)
+class ReadinessResult:
+    state: str
+    reasons: tuple[str, ...]
+
+
+def compute_handoff_readiness(
+    *, eligibility: str, unresolved_issues: tuple[str, ...], syntax: SyntaxValidationResult | None,
+    call_validations: tuple[CallValidationResult, ...], preconditions: tuple[PreconditionCheck, ...],
+    evidence_profile: str,
+) -> ReadinessResult:
+    """Deterministic, provider-independent: reads only its own arguments,
+    calls no model, performs no I/O -- the model can never influence this
+    verdict, exactly like `compute_eligibility(...)`. Conservative by
+    design (Phase 10's own default policy):
+
+    1. `eligibility != ELIGIBLE_FOR_VALIDATION` -> `NOT_READY` (both
+       `INELIGIBLE` and `REQUIRES_CLARIFICATION` -- there is nothing yet
+       for a future handoff workflow to consider).
+    2. A KNOWN violation -- `syntax.status == INVALID` -- -> `NOT_READY`,
+       reasons quote the syntax issues directly. (Every other known
+       violation -- an incompatible signature, a violated precondition, a
+       mismatched parameter role, an unknown call symbol -- already forces
+       `eligibility != ELIGIBLE_FOR_VALIDATION` via `compute_eligibility(
+       ...)`, so step 1 already covers those; this function does not
+       re-derive them.)
+    3. Otherwise, an evidence GAP (never a known violation) forces
+       `REVIEW_REQUIRED`: syntax coverage itself is `PARTIAL`/`UNKNOWN`; a
+       documented call's own signature could not be extracted
+       (`signature_known == False`); a documented precondition remains
+       `UNVERIFIED` (a real, runtime-dependent gap); or the overall
+       evidence profile is not `BROAD`.
+    4. No violation and no gap -> `HANDOFF_CANDIDATE`.
+    """
+    if eligibility == ExecutionEligibility.INELIGIBLE.value:
+        reasons = unresolved_issues if unresolved_issues else ("code failed deterministic eligibility checks",)
+        return ReadinessResult(HandoffReadiness.NOT_READY.value, tuple(reasons))
+    if eligibility == ExecutionEligibility.REQUIRES_CLARIFICATION.value:
+        reasons = unresolved_issues if unresolved_issues else (
+            "unresolved topic ambiguity must be clarified before this code can be considered",
+        )
+        return ReadinessResult(HandoffReadiness.NOT_READY.value, tuple(reasons))
+
+    if syntax is not None and syntax.status == SyntaxStatus.INVALID.value:
+        reasons = tuple(f"syntax: {issue.message}" for issue in syntax.issues) or ("syntax validation found a violation",)
+        return ReadinessResult(HandoffReadiness.NOT_READY.value, reasons)
+
+    review_reasons: list[str] = []
+    if syntax is None or syntax.status in (SyntaxStatus.PARTIAL.value, SyntaxStatus.UNKNOWN.value):
+        status_label = syntax.status if syntax is not None else SyntaxStatus.UNKNOWN.value
+        review_reasons.append(
+            f"syntax validation coverage is {status_label} -- not all generated constructs could be "
+            "deterministically checked"
+        )
+    unknown_signature_symbols = sorted({
+        cv.symbol for cv in call_validations if cv.documented and not cv.signature_known
+    })
+    if unknown_signature_symbols:
+        review_reasons.append(
+            f"documented call signature could not be reliably extracted for: {', '.join(unknown_signature_symbols)}"
+        )
+    unverified_preconditions = [c for c in preconditions if c.status == PreconditionStatus.UNVERIFIED.value]
+    if unverified_preconditions:
+        symbols = ", ".join(sorted({c.precondition.symbol for c in unverified_preconditions}))
+        review_reasons.append(f"runtime-dependent precondition(s) remain unverified for: {symbols}")
+    if evidence_profile != EvidenceProfile.BROAD.value:
+        review_reasons.append(
+            f"validation coverage is {evidence_profile}, short of the broad evidence required for handoff candidacy"
+        )
+
+    if review_reasons:
+        return ReadinessResult(HandoffReadiness.REVIEW_REQUIRED.value, tuple(review_reasons))
+
+    return ReadinessResult(HandoffReadiness.HANDOFF_CANDIDATE.value, (
+        "generated code is grounded and symbol-supported",
+        "documented call signatures are compatible",
+        "syntax was validated with no known violation",
+        "no documented precondition is known to be violated",
+        "validation coverage is broad",
+    ))
 
 
 # ---------------------------------------------------------------------------
@@ -1470,14 +2206,15 @@ def render_validation_report(
     *, eligibility: str, unresolved_issues: tuple[str, ...], call_validations: tuple[CallValidationResult, ...],
     preconditions: tuple[PreconditionCheck, ...], companion_hints: tuple[tuple[str, str], ...],
     parameter_role_checks: tuple[ParameterRoleCheck, ...] = (), predicted_output: PredictedOutputClaim | None = None,
-    coverage: ValidationCoverage | None = None,
+    coverage: ValidationCoverage | None = None, syntax: SyntaxValidationResult | None = None,
+    readiness: ReadinessResult | None = None,
 ) -> str:
     """Advisory, human-readable summary of this module's own evidence.
     Never implies real GAUSS execution occurred -- callers are expected to
     still append the existing, fixed "not executed in this conversation"
     footer (`gauss_conversation_engine.NOT_EXECUTED_FOOTER`) alongside this.
-    v0.75.0's new optional parameters default to empty/`None` so every
-    pre-v0.75.0 call site remains valid unchanged."""
+    v0.75.0's/v0.76.0's new optional parameters default to empty/`None` so
+    every earlier call site remains valid unchanged."""
     lines = ["Validation:"]
 
     for validation in call_validations:
@@ -1517,6 +2254,16 @@ def render_validation_report(
                 "evidence: this code has not been run.)"
             )
 
+    if syntax is not None:
+        lines.append(f"- Syntax: {syntax.status}")
+        for issue in syntax.issues:
+            where = f" (line {issue.line_number})" if issue.line_number is not None else ""
+            lines.append(f"  - {issue.message}{where}")
+        if syntax.unknown_constructs:
+            lines.append(
+                "  - Not checked by this version: " + ", ".join(syntax.unknown_constructs)
+            )
+
     lines.append(f"- Execution eligibility: {eligibility}")
     if eligibility == ExecutionEligibility.ELIGIBLE_FOR_VALIDATION.value:
         lines.append(
@@ -1531,10 +2278,16 @@ def render_validation_report(
     if coverage is not None:
         lines.append(
             "- Validation coverage: symbols={}, signature={}, parameter roles={}, preconditions={}, "
-            "predicted output={}".format(
+            "syntax={}, predicted output={}".format(
                 coverage.symbol_check, coverage.signature_check, coverage.parameter_role_check,
-                coverage.precondition_check, coverage.predicted_output_check,
+                coverage.precondition_check, coverage.syntax_check, coverage.predicted_output_check,
             )
         )
+
+    if readiness is not None:
+        lines.append(f"- Execution handoff readiness: {readiness.state}")
+        for reason in readiness.reasons:
+            lines.append(f"  - {reason}")
+        lines.append("  (This code has not been executed. This is not an approval to run it.)")
 
     return "\n".join(lines)
