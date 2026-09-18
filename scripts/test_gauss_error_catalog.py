@@ -30,7 +30,11 @@ def check(name: str, condition: bool) -> None:
 
 
 def test_01_catalog_size_matches_v0_55_0() -> None:
-    check("catalog has exactly 11 entries as of v0.55.0", len(catalog.known_error_codes()) == 11)
+    # v0.77.0 added G0063 (real-runtime-verified PARSE_SYNTAX entry, the
+    # `x = -1 0;` bare-multi-token-literal regression's own error code --
+    # see gauss_differential_harness.py's syntax-oracle classification,
+    # which relies on PARSE_SYNTAX catalog coverage) -- 11 -> 12.
+    check("catalog has exactly 12 entries as of v0.77.0", len(catalog.known_error_codes()) == 12)
 
 
 def test_02_every_entry_has_verification_metadata() -> None:

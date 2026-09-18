@@ -171,6 +171,49 @@ _ENTRIES: tuple[GaussErrorCatalogEntry, ...] = (
         ),
     ),
     GaussErrorCatalogEntry(
+        error_code="G0063",
+        category=GaussErrorCategory.PARSE_SYNTAX,
+        title="Operator expected",
+        generic_explanation=(
+            "Execution stopped during parsing because GAUSS encountered a token where it expected an operator "
+            "-- typically a bare, brace-less, `let`-less multi-token literal on an assignment's right-hand side."
+        ),
+        execution_phase="parsing",
+        confidence="high",
+        recommended_next_step="Enclose the right-hand side in `{...}` or prefix the statement with `let`.",
+        verification_status=(VerificationStatus.REAL_RUNTIME,),
+        verification_source=(
+            "Real runtime: reproduced via `tgauss.exe -b` during v0.76.0 development (this repository's own "
+            "session) using `x = -1 0;` (a real, live-found model output shape, category 66.x's own 66.4 "
+            "prompt re-run through the installed `gauss-ai` CLI), consistently producing "
+            "\"error G0063: Operator expected before '0'\". The identical literal prefixed with `let` "
+            "(`let x = -1 0;`) was independently confirmed, same session, to execute successfully -- matching "
+            "`let.rst`'s own documented Remarks (\"If curly braces are used, the `let` is optional\"; a bare "
+            "multi-token list otherwise requires `let`). v0.77.0's own `gauss_pre_execution_validation."
+            "bare_multi_token_literal_requires_let_or_braces` syntax rule is the deterministic detector for "
+            "this exact shape."
+        ),
+        known_triggers=(
+            "a bare assignment right-hand side listing two or more whitespace-separated numeric tokens with "
+            "no enclosing `{...}` and no `let` keyword",
+        ),
+        diagnostic_questions=(
+            "Does the reported right-hand side list more than one bare numeric token with no `{...}` and no `let`?",
+        ),
+        required_evidence_for_diagnosis=("the exact source text of the reported assignment statement",),
+        repair_strategies=(
+            "Enclose the right-hand side in curly braces, or prefix the statement with the `let` keyword.",
+        ),
+        repair_preconditions=("the exact source text of the reported assignment statement",),
+        repair_verification_steps=(
+            "Confirm the corrected script parses and executes without reproducing error G0063 at the same location.",
+        ),
+        repair_risks=(
+            "A syntax-level fix does not confirm the surrounding logic is still correct; unrelated errors may "
+            "surface only after this one is addressed.",
+        ),
+    ),
+    GaussErrorCatalogEntry(
         error_code="G0036",
         category=GaussErrorCategory.MATRIX_DIMENSION,
         title="Matrix dimensions are incompatible",

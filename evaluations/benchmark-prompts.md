@@ -6951,3 +6951,96 @@ The `66.4` prompt, re-run through the actual installed `gauss-ai` CLI binary (su
 
 Expected behavior:
 - Confirms the packaged CLI entry point, real Ollama call, real grounding, and validation rendering all function together end to end outside direct-Python-call testing.
+
+## Differential GAUSS Syntax Validation & Corpus Hardening
+
+### Prompt 67.1: Valid simple call
+
+
+"Write GAUSS code to compute the sum of the elements of a column vector x using sumc."
+
+
+Expected behavior:
+- Syntax VALIDATED, ELIGIBLE_FOR_VALIDATION.
+
+### Prompt 67.2: Valid sequential/nested calls
+
+
+"Show me GAUSS code that reshapes a matrix x into a 2x3 matrix and then takes its column means, using meanc and reshape."
+
+
+Expected behavior:
+- Syntax VALIDATED; both reshape/meanc call-validated compatible.
+
+### Prompt 67.3: Multiline matrix literal
+
+
+"Give me GAUSS code that creates a 3x3 matrix literal written across multiple lines, one row per line, and prints it."
+
+
+Expected behavior:
+- If `;` is used as a matrix-literal row separator, syntax INVALID and readiness NOT_READY.
+
+### Prompt 67.4: chol on a hand-described matrix
+
+
+"Write GAUSS code that computes the Cholesky decomposition of the 2x2 matrix whose first row is -1, 0 and second row is 0, -1, using chol."
+
+
+Expected behavior:
+- If `;` is used as a row separator, syntax INVALID, readiness NOT_READY.
+
+### Prompt 67.5: Bare multi-token malformed literal (natural wording)
+
+
+"Write GAUSS code that creates a variable x containing the two values -1 and 0, then prints x."
+
+
+Expected behavior:
+- Whatever the model produces is reported honestly -- BLOCK/CLARIFY (no function name to ground on) is an acceptable, non-adversarial result.
+
+### Prompt 67.6: sprintf with a comma inside the format string
+
+
+"Write GAUSS code using sprintf to format a string like 'Value: 3.14, precision: 2' from a number x and an integer precision, using a single format string with two placeholders."
+
+
+Expected behavior:
+- A comma inside the format string is correctly treated as one argument (never mis-split); any signature-compatibility finding is disclosed honestly.
+
+### Prompt 67.7: Indexing example
+
+
+"Write GAUSS code that accesses the element in row 2, column 3 of a matrix x."
+
+
+Expected behavior:
+- If code is produced, syntax should validate cleanly; an honest CLARIFY/ambiguous-topic outcome is acceptable.
+
+### Prompt 67.8: Genuine runtime-variable precondition
+
+
+"I already have a matrix stored in a variable called x. Write GAUSS code that calls chol on x to compute its Cholesky decomposition."
+
+
+Expected behavior:
+- Syntax may validate; the documented precondition must be UNVERIFIED, never fabricated SATISFIED; readiness must reflect that uncertainty.
+
+### Prompt 67.9: Candidate-token-cap regression wording (live)
+
+
+"Write GAUSS code that computes the column means of a reshaped 2x3 version of a 6-element vector x, using meanc and reshape."
+
+
+Expected behavior:
+- Both `meanc` and `reshape` are reached as grounding candidates and resolved to real documented symbols.
+
+### Prompt 67.10: Broad-evidence case expected to reach HANDOFF_CANDIDATE
+
+
+"Call chol directly on the literal matrix {2 1, 1 2}, with no intermediate variable."
+
+
+Expected behavior:
+- Every coverage dimension COMPLETE, evidence profile BROAD, readiness HANDOFF_CANDIDATE.
+

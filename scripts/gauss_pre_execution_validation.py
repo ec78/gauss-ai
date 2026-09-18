@@ -1171,7 +1171,14 @@ _SYNTAX_RULE_REGISTRY: dict[str, SyntaxRule] = {
             'the let is optional" (so the same literal syntax applies to a bare `x = {...}` assignment); '
             "confirmed by real `tgauss.exe -b` execution (v0.76.0 development session): a `;`-separated "
             "literal is NOT rejected by GAUSS -- it is silently misparsed into a single malformed row "
-            "containing a denormal/garbage element, rather than raising an error."
+            "containing a denormal/garbage element, rather than raising an error. v0.77.0's differential "
+            "baseline corpus run re-confirmed this exact silent misparse live (`x = { 1 2; 3 4 };\\nprint "
+            'x;` produced stdout containing a literal `+DEN` denormal token) -- this rule is a DELIBERATE, '
+            "evidence-justified exception to this milestone's own real-GAUSS-acceptance oracle: real GAUSS's "
+            "process exits cleanly (no error), so the differential harness records this as a syntax "
+            "'false positive' against raw process acceptance, but the rule is kept INVALID intentionally "
+            "because raw acceptance here masks a dangerous silent misparse, not a correct parse -- see "
+            "docs/differential-syntax-validation.md's 'intentional divergences' section."
         ),
         applies_to="matrix_literal",
     ),
@@ -1202,15 +1209,31 @@ _SYNTAX_RULE_REGISTRY: dict[str, SyntaxRule] = {
         ),
         applies_to="assignment",
     ),
-    "call_argument_separator": SyntaxRule(
-        name="call_argument_separator",
+    "call_argument_missing_separator": SyntaxRule(
+        name="call_argument_missing_separator",
         description=(
-            "A call's argument list must not contain an empty slot between commas (e.g. `f(a,,b)`, "
-            "`f(a,)`, `f(,a)`)."
+            "Two adjacent tokens (identifiers, numeric literals, or a masked string) separated only by "
+            "whitespace within one call argument, with no comma and no operator between them (e.g. "
+            "`rndu(1e5 4)`, `reshape(5 3)`, `sprintf(\"...\" pi)`) -- GAUSS requires an explicit comma or "
+            "operator between them."
         ),
         source=(
-            "Structural convention: every documented call signature this module can extract "
-            "(extract_documented_signature(...)) never contains an empty positional slot."
+            "v0.77.0 differential baseline corpus run (this milestone's own real `tgauss.exe -b` "
+            "execution, 2026-09-18): five independent mutated snippets sharing this exact shape "
+            "(`meanc(rndu(1e5 4))`, `rndn(n n)`, `reshape(5 3)`, `sprintf(\"...\" pi)`, `ones(3 2)`) "
+            "were all real syntax FALSE NEGATIVES under the pre-v0.77.0 validator (reported VALIDATED) "
+            "-- real GAUSS rejects every one with \"error G0063: Operator expected\", the same code "
+            "`bare_multi_token_literal_requires_let_or_braces` already catches for an assignment RHS. "
+            "This rule generalizes that same grammar gap to call arguments. A second real false "
+            "negative was found the same session by a fresh live-Ollama stress batch (Phase 15, "
+            "scenario `D-007`): a real model wrote `print(\"Standard Deviation of x: \" std_dev);` -- "
+            "the identical missing-separator shape, but inside a `print(...)` call, which the "
+            "checker's own symbol-skip list (`_LANGUAGE_CONSTRUCT_KEYWORDS`, which includes `print` to "
+            "avoid misreading GAUSS's bare `print x, y;` form as a call) exempted entirely. Real "
+            "`tgauss.exe -b` confirmed `error G0063` for this exact snippet. Fixed by narrowing this "
+            "check's own skip list to `_BLOCK_CONSTRUCT_KEYWORDS` (genuine loop/conditional/proc "
+            "headers only), so a genuinely parenthesized, call-shaped `print(...)` is checked like any "
+            "other call."
         ),
         applies_to="call",
     ),
@@ -1442,25 +1465,109 @@ def _split_top_level_args_keep_empty(raw: str) -> list[str]:
     return parts
 
 
-def _check_call_argument_separators(code: str) -> list[SyntaxIssue]:
+#: v0.77.0: an earlier version of this module flagged an empty slot between
+#: commas in a call's argument list (`f(a,,b)`, `f(a,)`) as INVALID, on a
+#: purely structural assumption ("no documented signature shows an empty
+#: positional slot") with no real-runtime evidence behind it. This
+#: milestone's own differential baseline corpus run (2026-09-18) directly
+#: contradicted that assumption: real `tgauss.exe -b` execution of
+#: `x = ones(3,, 2); print x;` and `x = meanc(rndu(1e5,, 4)); print rows(x);`
+#: showed GAUSS silently and CORRECTLY collapses the doubled comma -- the
+#: computed result is identical to the single-comma form, not a silent
+#: misparse (contrast `matrix_literal_row_separator` above, which IS a
+#: confirmed silent misparse and is deliberately kept). Per this milestone's
+#: own Phase 10 ("prefer measurable disagreement over intuition-driven rule
+#: expansion"), the check was removed entirely rather than patched --
+#: `_check_call_argument_separators`/the `call_argument_separator` rule no
+#: longer exist. See docs/differential-syntax-validation.md's "validator
+#: hardening" section for the full evidence trail.
+
+
+def _mask_bracketed_spans(text: str, *, open_ch: str, close_ch: str) -> str:
+    """Replaces the INTERIOR of every top-level `open_ch...close_ch` span
+    with `@` (same length, preserving line numbers) -- used so a call-
+    argument-level check never mistakes legitimate whitespace-separated
+    matrix-literal elements (`{2 1, 1 2}`) or indexing content (`x[1, 2]`)
+    for a missing-separator violation. Length-preserving and does not touch
+    the delimiter characters themselves."""
+    result = list(text)
+    idx = 0
+    while True:
+        open_idx = text.find(open_ch, idx)
+        if open_idx == -1:
+            break
+        close_idx = _find_matching_brace(text, open_idx) if open_ch == "{" else _find_matching_bracket(text, open_idx)
+        if close_idx is None:
+            break
+        for i in range(open_idx + 1, close_idx):
+            if text[i] != "\n":
+                result[i] = "@"
+        idx = close_idx + 1
+    return "".join(result)
+
+
+def _find_matching_bracket(text: str, open_idx: int) -> int | None:
+    depth = 0
+    for i in range(open_idx, len(text)):
+        if text[i] == "[":
+            depth += 1
+        elif text[i] == "]":
+            depth -= 1
+            if depth == 0:
+                return i
+    return None
+
+
+#: Matches a token-ending character directly followed by whitespace directly
+#: followed by a token-starting character, with NOTHING else (no comma, no
+#: operator, no delimiter) between them -- `#` is included because a masked
+#: quoted string (see `_mask_quoted_strings`) is represented as a run of `#`.
+_ADJACENT_BARE_TOKENS_RE = re.compile(r"[A-Za-z0-9_'#\)\]]\s+[A-Za-z0-9_#\(]")
+
+
+def _check_call_argument_missing_separator(masked_code: str) -> list[SyntaxIssue]:
+    """See `call_argument_missing_separator`'s own registry entry for the
+    real `tgauss.exe -b`-verified regression cluster this closes. Operates
+    on `masked_code` (comments/strings already masked by the caller) with
+    matrix-literal and indexing spans additionally masked here, so a
+    legitimate whitespace-separated matrix literal or index list passed as a
+    call argument (e.g. `invpd({2 1, 1 2})`) is never mistaken for this
+    violation.
+
+    v0.77.0 (found by this milestone's own fresh live-Ollama stress batch,
+    scenario `D-007`): skips only `_BLOCK_CONSTRUCT_KEYWORDS` (a genuine
+    loop/conditional/proc HEADER), NOT the wider `_LANGUAGE_CONSTRUCT_
+    KEYWORDS` `extract_generated_calls(...)` uses -- `print` is a member of
+    the wider set (to avoid misreading GAUSS's own bare `print x, y;` form
+    as a call), but a real model output `print("..." x);` (parenthesized,
+    genuinely call-shaped) is real, confirmed-invalid GAUSS (`error G0063`)
+    that this check must still be able to see. Skipping the wider set here
+    silently exempted every `print(...)` call from this check entirely --
+    the exact false negative `D-007` found."""
+    scan_text = _mask_bracketed_spans(masked_code, open_ch="{", close_ch="}")
+    scan_text = _mask_bracketed_spans(scan_text, open_ch="[", close_ch="]")
     issues: list[SyntaxIssue] = []
-    for match in _CALL_SHAPED_RE.finditer(code):
+    for match in _CALL_SHAPED_RE.finditer(scan_text):
         symbol = match.group(1)
-        if symbol.lower() in _LANGUAGE_CONSTRUCT_KEYWORDS:
+        if symbol.lower() in _BLOCK_CONSTRUCT_KEYWORDS:
             continue
-        close_idx = _find_matching_paren(code, match.end() - 1)
+        close_idx = _find_matching_paren(scan_text, match.end() - 1)
         if close_idx is None:
             continue  # reported by _check_balanced_delimiters instead
-        raw = code[match.end() : close_idx]
+        raw = scan_text[match.end() : close_idx]
         if not raw.strip():
             continue  # a genuine zero-argument call, e.g. f()
-        parts = _split_top_level_args_keep_empty(raw)
-        if any(not p for p in parts):
-            issues.append(SyntaxIssue(
-                rule="call_argument_separator",
-                message=f"call to `{symbol}` has a malformed argument list (an empty slot between commas)",
-                line_number=code.count("\n", 0, match.start()) + 1, construct="call",
-            ))
+        for arg in _split_top_level_args_keep_empty(raw):
+            if _ADJACENT_BARE_TOKENS_RE.search(arg):
+                issues.append(SyntaxIssue(
+                    rule="call_argument_missing_separator",
+                    message=(
+                        f"call to `{symbol}` has an argument with adjacent tokens separated only by "
+                        f"whitespace and no comma or operator between them (`{arg.strip()}`)"
+                    ),
+                    line_number=scan_text.count("\n", 0, match.start()) + 1, construct="call",
+                ))
+                break  # one issue per call is enough; avoid duplicate reports for the same call
     return issues
 
 
@@ -1558,7 +1665,7 @@ def validate_syntax(code: str) -> SyntaxValidationResult:
         ))
     assignment_found = dangling_found or bool(_ASSIGNMENT_RE.search(masked))
 
-    issues.extend(_check_call_argument_separators(code))
+    issues.extend(_check_call_argument_missing_separator(masked))
     call_found = bool(_CALL_SHAPED_RE.search(code))
 
     string_found = bool(_QUOTED_STRING_RE.search(code))

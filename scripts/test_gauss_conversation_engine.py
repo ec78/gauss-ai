@@ -455,7 +455,13 @@ def test_29_two_command_request_grounds_both() -> None:
         docs_root = _fixture_docs_root(tmp)
         bundle = engine_mod.ground_multi("Show me reshape and meanc.", docs_root_str=str(docs_root))
         check("status is GROUNDED", bundle.status == engine_mod.GroundingStatus.GROUNDED)
-        check("both topics matched", bundle.matched_topics == ("reshape", "meanc"))
+        # v0.77.0: exact ORDER is no longer asserted here -- `_candidate_tokens`'s
+        # Phase 12 reprioritization deliberately promotes a token that is
+        # itself a curated concept-alias symbol (`meanc`) ahead of a plain
+        # exact-documented-symbol-stem match (`reshape`) that merely appears
+        # earlier in the sentence. Both are still matched; only WHICH order
+        # they're discovered in changed, which is the whole point of the fix.
+        check("both topics matched, order-independent", set(bundle.matched_topics) == {"reshape", "meanc"})
         check("two distinct sources", len(bundle.sources) == 2)
         check("no unmatched topics", bundle.unmatched_topics == ())
 
@@ -465,7 +471,8 @@ def test_30_three_command_request_grounds_all_three() -> None:
         docs_root = _fixture_docs_root(tmp)
         bundle = engine_mod.ground_multi("Show me reshape, meanc, and stdc.", docs_root_str=str(docs_root))
         check("status is GROUNDED", bundle.status == engine_mod.GroundingStatus.GROUNDED)
-        check("all three topics matched", bundle.matched_topics == ("reshape", "meanc", "stdc"))
+        # v0.77.0: order-independent for the same reason as test_29 above.
+        check("all three topics matched, order-independent", set(bundle.matched_topics) == {"reshape", "meanc", "stdc"})
         check("three distinct sources", len(bundle.sources) == 3)
 
 
@@ -1648,6 +1655,86 @@ def test_112_no_automatic_execution_handoff_is_ever_triggered() -> None:
     source = inspect.getsource(engine_mod.ConversationEngine.ask)
     for token in ("execute(", "run_gauss", "apply_repair", "subprocess", "os.system"):
         check(f"ask(...) source does not contain {token!r}", token not in source)
+
+
+def test_112b_grounding_token_cap_regression_reaches_both_late_function_names() -> None:
+    """v0.77.0 (Phase 12): the EXACT real, disclosed v0.76.0 finding --
+    `evaluations/runs/2026-09-14-code-assistant-gauss-syntax-validation-run-
+    002.md`'s own note -- reproduced verbatim. The original `66.2` benchmark
+    wording placed `meanc`/`reshape` at the very end of a long sentence;
+    `_candidate_tokens`'s pre-existing left-to-right-only MAX_TOKEN_LOOKUPS=6
+    cap consumed its budget on `computes`/`means`/`reshaped`/`version`/
+    `element`/`vector` first, so NEITHER function was ever attempted as a
+    grounding candidate. This test proves the reprioritized
+    `_candidate_tokens`/`resolve_concepts` now reaches both."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        question = (
+            "Write GAUSS code that computes the column means of a reshaped 2x3 version of a "
+            "6-element vector x, using meanc and reshape."
+        )
+        candidates = engine_mod._candidate_tokens(question, docs_root=docs_root)
+        check("meanc reachable within the cap", "meanc" in candidates)
+        check("reshape reachable within the cap", "reshape" in candidates)
+        check("cap itself is unchanged", len(candidates) <= engine_mod.MAX_TOKEN_LOOKUPS)
+
+        resolutions = engine_mod.resolve_concepts(question, docs_root_str=str(docs_root))
+        resolved_symbols = {r.resolved_symbol for r in resolutions if r.status == engine_mod.ResolutionStatus.RESOLVED.value}
+        check("meanc actually resolved", "meanc" in resolved_symbols)
+        check("reshape actually resolved", "reshape" in resolved_symbols)
+
+
+def test_112c_candidate_tokens_without_docs_root_keeps_original_order_for_ties() -> None:
+    """Backward compatibility: when `docs_root`/`recent_topics` are omitted
+    (as every pre-v0.77.0 call site implicitly did), tokens with no tier-0/
+    tier-1/tier-2 signal keep their original left-to-right order -- the
+    reprioritization changes WHICH tokens are chosen, never the tie-break
+    order among equally-unprioritized ones."""
+    tokens = engine_mod._candidate_tokens("alpha beta gamma delta epsilon zeta eta theta")
+    check("still exactly the first six in original order", tokens == ["alpha", "beta", "gamma", "delta", "epsilon", "zeta"])
+
+
+def test_112d_call_shaped_token_in_question_gets_top_priority() -> None:
+    """Tier 0: a token immediately followed by `(` in the raw question text
+    outranks a tier-1 concept-alias match and ordinary lexical tokens."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        question = (
+            "I was reading about averaging and statistics summaries and general numeric data "
+            "handling techniques when I noticed stdc(x) mentioned somewhere."
+        )
+        tokens = engine_mod._candidate_tokens(question, docs_root=docs_root)
+        check("call-shaped stdc reaches the front", tokens[0] == "stdc")
+
+
+def test_112e_concept_alias_symbol_outranks_plain_lexical_tokens() -> None:
+    """Tier 1: a bare token that IS itself a curated concept-alias symbol
+    (e.g. 'meanc') is promoted ahead of ordinary lexical tokens, even with
+    no docs_root/recent_topics supplied at all."""
+    tokens = engine_mod._candidate_tokens(
+        "computing something about averaging summarizing numbers involving meanc directly"
+    )
+    check("meanc promoted ahead of earlier lexical tokens", tokens.index("meanc") < tokens.index("computing"))
+
+
+def test_113_v0_77_0_module_never_imports_differential_harness_tooling() -> None:
+    """v0.77.0 adds a real-GAUSS-invoking differential syntax-validation
+    harness (gauss_differential_harness.py) plus its corpus builder
+    (build_differential_corpus.py) -- both are evaluation infrastructure
+    only. Re-confirms the same structural guarantee test_49/test_94/test_111
+    already cover, extended with the new module names, plus the execution
+    adapter those tools route real GAUSS invocation through."""
+    forbidden_modules = (
+        "gauss_execution_workflow", "gauss_repair_application", "gauss_repair_draft",
+        "gauss_repair_planner", "gauss_repair_approval", "gauss_verification_execution",
+        "gauss_verification_review", "gauss_code_execution", "gauss_workspace", "subprocess",
+        "gauss_differential_harness", "build_differential_corpus", "gauss_execution_adapter",
+    )
+    for line in Path(engine_mod.__file__).read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped.startswith(("import ", "from ")):
+            for token in forbidden_modules:
+                check(f"import line {stripped!r} does not reference {token!r}", token not in stripped)
 
 
 def run_tests() -> int:

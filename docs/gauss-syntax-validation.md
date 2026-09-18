@@ -1,6 +1,6 @@
 # GAUSS Syntax Validation
 
-**Status: `v0.76.0`.** Extends [docs/pre-execution-validation.md](pre-execution-validation.md) (`v0.74.0`/`v0.75.0`). Read that first — this page only covers the new deterministic syntax-validation layer, `gauss_pre_execution_validation.validate_syntax(...)`.
+**Status: `v0.77.0`.** Extends [docs/pre-execution-validation.md](pre-execution-validation.md) (`v0.74.0`/`v0.75.0`). Read that first — this page covers the deterministic syntax-validation layer, `gauss_pre_execution_validation.validate_syntax(...)`. See [docs/differential-syntax-validation.md](differential-syntax-validation.md) for `v0.77.0`'s systematic differential-testing methodology and evidence trail behind every rule change below.
 
 ## Why this exists
 
@@ -29,9 +29,11 @@ Deliberately **not a parser**. Every rule is small, bounded, and textual, with i
 | `matrix_literal_row_shape` | `{1 2 3, 4 5}` (ragged rows), `{1 2, , 3 4}` (empty row) | `let.rst` (official docs) |
 | `balanced_delimiters` | Unmatched/mismatched `{}`/`()`/`[]`, including an incomplete call like `meanc(` | Structural convention across every real syntax example in this repository's own fixtures |
 | `dangling_assignment` | `x = ;` | Real `tgauss.exe -b` execution: `error G0105: Bad expression or missing arguments` |
-| `call_argument_separator` | `f(a,,b)`, `f(a,)`, `f(,a)` | Structural convention: a documented call's own argument list never has an empty slot |
 | `unterminated_string` | A `"` opened but not closed on the same line | `let.rst`'s own `"dog""cat"` example — double quotes are GAUSS's unambiguous string delimiter. A single quote is deliberately **not** checked: it is overwhelmingly the transpose operator (`x'`) in generated code, and treating it as a string delimiter would be a real false-positive risk. |
 | `bare_multi_token_literal_requires_let_or_braces` | `x = -1 0;` — a bare, brace-less, non-`let` list of two-or-more numeric tokens | A live CLI smoke test of the semicolon-matrix regression through the installed `gauss-ai` binary produced this exact shape from a real model. Real `tgauss.exe -b` execution: `x = -1 0;` alone raises `error G0063: Operator expected before '0'`; the identical literal prefixed with `let` (`let x = -1 0;`) executes successfully, matching `let.rst`'s own documented convention. Structurally scoped (two-or-more bare numeric tokens, no `let`, no `{...}`) so it can never match a real expression (`x = a + b;`), a real call (`x = meanc(y);`), or a single scalar (`x = 5;`). |
+| `call_argument_missing_separator` (**new in `v0.77.0`**) | `reshape(5 3)`, `rndn(n n)`, `sprintf("..." pi)` — two tokens inside one call argument separated only by whitespace, no comma, no operator | `v0.77.0`'s own differential baseline corpus run (real `tgauss.exe -b`, 2026-09-18): five independent mutated snippets sharing this shape were real syntax false negatives; real GAUSS rejects every one with `error G0063: Operator expected` — the same underlying grammar gap `bare_multi_token_literal_requires_let_or_braces` already caught for an assignment right-hand side, generalized to call arguments. Masks matrix-literal (`{...}`) and indexing (`[...]`) spans first so a legitimate literal or index list is never mistaken for this violation. |
+
+**Removed in `v0.77.0`: `call_argument_separator`** (previously flagged `f(a,,b)`/`f(a,)`/`f(,a)` as invalid). This rule was never backed by real-runtime evidence — only a structural assumption ("no documented signature shows an empty slot"). `v0.77.0`'s differential baseline corpus run directly contradicted it: real `tgauss.exe -b` execution of `x = ones(3,, 2); print x;` and `x = meanc(rndu(1e5,, 4)); print rows(x);` showed GAUSS silently and **correctly** collapses the doubled/trailing comma — the computed result is identical to the single-comma form, not a silent misparse. The rule was removed entirely rather than patched, per this milestone's own "prefer measurable disagreement over intuition-driven rule expansion" discipline.
 
 Operates on already comment-stripped code, the same convention every other check in this module follows.
 

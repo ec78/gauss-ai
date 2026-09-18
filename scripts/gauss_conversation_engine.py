@@ -150,6 +150,7 @@ v0.72.0 additions -- conversational GAUSS code generation:
 from __future__ import annotations
 
 import enum
+import functools
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -389,16 +390,78 @@ def _extract_error_code(question: str) -> str | None:
     return catalog.normalize_error_code(match.group(0)) if match else None
 
 
-def _candidate_tokens(question: str) -> list[str]:
+@functools.lru_cache(maxsize=8)
+def _known_symbol_stems(docs_root_str: str) -> frozenset[str]:
+    """v0.77.0 (Phase 12): a one-time, per-distinct-`docs_root`, cached,
+    FILENAME-only scan (no file content is read) of the caller's own
+    documentation checkout -- used ONLY to prioritize which of a long
+    question's candidate tokens `_candidate_tokens(...)` attempts first once
+    `MAX_TOKEN_LOOKUPS` truncates the list. Never used to skip, replace, or
+    short-circuit a real `command_doc_lookup.lookup(...)` call -- it only
+    reorders candidates before that same bounded number of real lookups
+    happens (the cap itself, and the total number of real lookups performed,
+    are both unchanged). `functools.lru_cache` means this scan runs at most
+    once per distinct `docs_root_str` value for the life of the process, not
+    once per question -- a deliberate, bounded, one-time cost, not a broader
+    retrieval rewrite."""
+    try:
+        return frozenset(p.stem.lower() for p in Path(docs_root_str).rglob("*.rst"))
+    except OSError:
+        return frozenset()
+
+
+#: v0.77.0 (Phase 12): matches `token` immediately followed by `(` in the
+#: ORIGINAL question text -- a real, disclosed regression (see
+#: `_candidate_tokens(...)`'s own docstring) found that
+#: `_candidate_tokens`'s pre-existing left-to-right-only order let early,
+#: generic sentence words exhaust `MAX_TOKEN_LOOKUPS` before a real function
+#: name mentioned later in a long question was ever attempted.
+def _token_priority(
+    token: str, *, question: str, docs_root: Path | None, recent_topics: tuple[str, ...],
+) -> int:
+    """Lower is higher priority. Tier 0: the token appears call-shaped in
+    the raw question (`meanc(...)`). Tier 1: the token IS the resolved
+    symbol of a curated concept-alias entry (`_CONCEPT_ALIAS_INDEX`) --
+    cheap, already-loaded, no extra I/O. Tier 2: the token matches a
+    recently confirmed conversation topic. Tier 3: the token is an exact,
+    real documented-symbol filename stem (`_known_symbol_stems(...)`,
+    cached). Tier 4: everything else (the original, sole, left-to-right
+    behavior). This function performs NO new real documentation lookup --
+    only cheap string/set membership checks plus, at most once per
+    `docs_root`, the cached filename scan above."""
+    if re.search(rf"\b{re.escape(token)}\s*\(", question, re.IGNORECASE):
+        return 0
+    if any(token == entry.symbol.lower() for entry in _CONCEPT_ALIAS_INDEX):
+        return 1
+    if token in {t.lower() for t in recent_topics}:
+        return 2
+    if docs_root is not None and token in _known_symbol_stems(str(docs_root)):
+        return 3
+    return 4
+
+
+def _candidate_tokens(
+    question: str, *, docs_root: Path | None = None, recent_topics: tuple[str, ...] = (),
+) -> list[str]:
+    """v0.77.0 (Phase 12): collects EVERY distinct non-stopword candidate
+    token first (no early truncation), sorts by `_token_priority(...)`
+    (stable, so same-tier tokens keep their original left-to-right order),
+    THEN truncates to `MAX_TOKEN_LOOKUPS` -- the bound on real lookups
+    performed by callers is unchanged; only which `MAX_TOKEN_LOOKUPS`
+    candidates are chosen changes. `docs_root`/`recent_topics` are both
+    optional so every existing call site remains valid with the original,
+    pure left-to-right behavior when omitted."""
     seen: list[str] = []
     for word in _TOKEN_RE.findall(question):
         lowered = word.lower()
         if lowered in _STOPWORDS or lowered in seen:
             continue
         seen.append(lowered)
-        if len(seen) >= MAX_TOKEN_LOOKUPS:
-            break
-    return seen
+    ranked = sorted(
+        enumerate(seen),
+        key=lambda pair: (_token_priority(pair[1], question=question, docs_root=docs_root, recent_topics=recent_topics), pair[0]),
+    )
+    return [token for _index, token in ranked[:MAX_TOKEN_LOOKUPS]]
 
 
 def _format_doc_match(best_match: dict, *, max_chars: int = MAX_GROUNDING_CHARS) -> str:
@@ -464,7 +527,8 @@ def ground(question: str, *, docs_root_str: str | None, last_topic: str | None =
 
     docs_root = _resolve_docs_root(docs_root_str)
     if docs_root is not None:
-        for token in _candidate_tokens(question):
+        recent_topics = (last_topic,) if last_topic else ()
+        for token in _candidate_tokens(question, docs_root=docs_root, recent_topics=recent_topics):
             result = _lookup_command(token, docs_root)
             if result is not None:
                 return result
@@ -716,7 +780,9 @@ def _iter_alias_matches(lowered_question: str):
                 break  # one match per entry is enough; move to the next entry
 
 
-def resolve_concepts(question: str, *, docs_root_str: str | None) -> tuple[FunctionResolution, ...]:
+def resolve_concepts(
+    question: str, *, docs_root_str: str | None, recent_topics: tuple[str, ...] = (),
+) -> tuple[FunctionResolution, ...]:
     """v0.73.0: resolves both literal command-name tokens (`MatchType.
     EXACT_SYMBOL`, the same retrieval `v0.72.0`'s `ground_multi(...)`
     already performed per-token) and curated natural-language phrases
@@ -740,7 +806,7 @@ def resolve_concepts(question: str, *, docs_root_str: str | None) -> tuple[Funct
     lowered = question.lower()
     error_code = _extract_error_code(question)
 
-    for token in _candidate_tokens(question):
+    for token in _candidate_tokens(question, docs_root=docs_root, recent_topics=recent_topics):
         if error_code is not None and token == error_code.lower():
             continue  # handled by the error catalog, not documentation lookup
         result = doc_lookup_mod.lookup(token, docs_root, max_results=3)
@@ -944,7 +1010,10 @@ def ground_multi(
             _add_unmatched(error_code)
 
     docs_root = _resolve_docs_root(docs_root_str)
-    resolutions = resolve_concepts(question, docs_root_str=docs_root_str) if docs_root is not None else ()
+    resolutions = (
+        resolve_concepts(question, docs_root_str=docs_root_str, recent_topics=recent_topics)
+        if docs_root is not None else ()
+    )
 
     for resolution in resolutions:
         if resolution.status == ResolutionStatus.RESOLVED.value:

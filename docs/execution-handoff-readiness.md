@@ -1,6 +1,6 @@
 # Execution-Handoff Readiness
 
-**Status: `v0.76.0`.** Extends [docs/pre-execution-validation.md](pre-execution-validation.md) and [docs/gauss-syntax-validation.md](gauss-syntax-validation.md). Read those first.
+**Status: `v0.77.0`.** Extends [docs/pre-execution-validation.md](pre-execution-validation.md), [docs/gauss-syntax-validation.md](gauss-syntax-validation.md), and [docs/differential-syntax-validation.md](differential-syntax-validation.md). Read those first. `v0.77.0`'s own Phase 14 re-verification: `compute_handoff_readiness(...)`'s logic itself is **unchanged** from `v0.76.0` (the four rules below are byte-for-byte the same) — this milestone hardened the syntax validator feeding INTO it, not the readiness computation itself. Re-run live against the hardened validator: `INVALID` syntax still forces `NOT_READY` (confirmed live, `67.3`/`67.4` — the headline semicolon regression reproduced and caught again), `PARTIAL`/`UNKNOWN` syntax and an `UNVERIFIED` runtime-dependent precondition still force `REVIEW_REQUIRED` rather than either extreme (confirmed live, `67.8` — the first live exercise of a genuine runtime-variable precondition, `chol(x)` with `x` a real variable), and `HANDOFF_CANDIDATE` remains live-reachable and real-GAUSS-confirmed-accepted (`67.10`, independently cross-checked by the differential corpus run itself, item `D-025`).
 
 ## What this is — and what it is not
 

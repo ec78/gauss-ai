@@ -935,15 +935,25 @@ def test_86b_merge_of_no_blocks_is_none() -> None:
     check("none", validation_mod.merge_syntax_results(()) is None)
 
 
-def test_86c_stray_comma_in_call_arguments_is_invalid() -> None:
+# v0.77.0: test_86c/test_86d previously asserted a stray/trailing comma
+# between call arguments is INVALID, on a purely structural assumption with
+# no real-runtime evidence. This milestone's own differential baseline
+# corpus run (2026-09-18) directly contradicted that assumption via real
+# `tgauss.exe -b` execution -- see `call_argument_missing_separator`'s
+# registry entry and the removed `call_argument_separator` rule's own
+# comment in gauss_pre_execution_validation.py for the full evidence trail.
+# The old behavior is superseded, not merely relaxed: GAUSS genuinely,
+# correctly tolerates a doubled/trailing comma (confirmed by a real printed
+# result identical to the single-comma form), so the validator must not
+# flag it at all.
+def test_86c_stray_comma_in_call_arguments_is_not_flagged_invalid() -> None:
     result = validation_mod.validate_syntax("y = meanc(x,,y);\n")
-    check("invalid", result.status == validation_mod.SyntaxStatus.INVALID.value)
-    check("names malformed call", any("malformed argument list" in i.message for i in result.issues))
+    check("not invalid -- real GAUSS accepts and correctly collapses the doubled comma", result.status != validation_mod.SyntaxStatus.INVALID.value)
 
 
-def test_86d_trailing_comma_in_call_arguments_is_invalid() -> None:
+def test_86d_trailing_comma_in_call_arguments_is_not_flagged_invalid() -> None:
     result = validation_mod.validate_syntax("y = meanc(x,);\n")
-    check("invalid", result.status == validation_mod.SyntaxStatus.INVALID.value)
+    check("not invalid -- real GAUSS accepts a trailing comma", result.status != validation_mod.SyntaxStatus.INVALID.value)
 
 
 def test_86e_control_flow_block_is_partial_not_invalid() -> None:
@@ -981,7 +991,7 @@ def test_86h_matrix_literal_with_character_elements_is_not_falsely_flagged_inval
 def test_86i_rule_registry_has_provenance_for_every_rule_a_check_can_produce() -> None:
     produced_rules = {
         "matrix_literal_row_separator", "matrix_literal_row_shape", "balanced_delimiters",
-        "dangling_assignment", "call_argument_separator", "unterminated_string",
+        "dangling_assignment", "call_argument_missing_separator", "unterminated_string",
     }
     for rule_name in produced_rules:
         rule = validation_mod._SYNTAX_RULE_REGISTRY.get(rule_name)
@@ -1317,6 +1327,91 @@ def test_107_syntax_and_readiness_functions_have_no_execution_shell_or_file_writ
         source = inspect.getsource(fn)
         for token in forbidden:
             check(f"{fn.__name__} source does not contain {token!r}", token not in source)
+
+
+# ---------------------------------------------------------------------------
+# v0.77.0: call_argument_missing_separator -- closes a real, five-item false-
+# negative cluster found by the differential baseline corpus run
+# (2026-09-18). See that rule's own _SYNTAX_RULE_REGISTRY entry for the
+# real tgauss.exe -b provenance.
+# ---------------------------------------------------------------------------
+
+
+def test_108_missing_separator_in_single_arg_call_is_invalid() -> None:
+    """Real regression B-057/B-059/B-063 shape: two bare numeric tokens with
+    only whitespace between them, inside a call's sole argument."""
+    for snippet in ("x = reshape(5 3);\n", "x = ones(3 2);\n", "y = meanc(rndu(1e5 4));\n"):
+        result = validation_mod.validate_syntax(snippet)
+        check(f"{snippet!r} invalid", result.status == validation_mod.SyntaxStatus.INVALID.value)
+        check(f"{snippet!r} names call_argument_missing_separator", any(i.rule == "call_argument_missing_separator" for i in result.issues))
+
+
+def test_109_missing_separator_between_identifiers_is_invalid() -> None:
+    """Real regression B-058 shape: two bare identifiers, no comma."""
+    result = validation_mod.validate_syntax("A = rndn(n n);\n")
+    check("invalid", result.status == validation_mod.SyntaxStatus.INVALID.value)
+    check("names rule", any(i.rule == "call_argument_missing_separator" for i in result.issues))
+
+
+def test_110_missing_separator_after_masked_string_is_invalid() -> None:
+    """Real regression B-061 shape: a quoted-string argument immediately
+    followed by a bare identifier with no comma -- must fire even though the
+    preceding token is a string, not a bare number/identifier."""
+    result = validation_mod.validate_syntax('s1 = sprintf("Pi is equal to %.4f" pi);\n')
+    check("invalid", result.status == validation_mod.SyntaxStatus.INVALID.value)
+    check("names rule", any(i.rule == "call_argument_missing_separator" for i in result.issues))
+
+
+def test_111_matrix_literal_argument_is_not_falsely_flagged_missing_separator() -> None:
+    """A literal matrix passed directly as a call argument (whitespace-
+    separated elements within a row) must never be mistaken for a missing
+    call-argument separator."""
+    result = validation_mod.validate_syntax("y = invpd({2 1, 1 2});\n")
+    check("not invalid", result.status != validation_mod.SyntaxStatus.INVALID.value)
+
+
+def test_112_indexing_argument_is_not_falsely_flagged_missing_separator() -> None:
+    result = validation_mod.validate_syntax("y = meanc(x[1, 2]);\n")
+    check("not invalid", result.status != validation_mod.SyntaxStatus.INVALID.value)
+
+
+def test_113_real_expression_argument_with_operator_is_not_flagged() -> None:
+    """An operator between two tokens (already valid GAUSS) must never be
+    mistaken for a missing separator -- only a BARE whitespace gap with no
+    operator/comma at all is a violation."""
+    result = validation_mod.validate_syntax("y = meanc(x + z);\n")
+    check("not invalid", result.status != validation_mod.SyntaxStatus.INVALID.value)
+
+
+def test_114_nested_call_argument_is_not_falsely_flagged() -> None:
+    result = validation_mod.validate_syntax("z = meanc(reshape(x, 2, 2));\n")
+    check("not invalid", result.status != validation_mod.SyntaxStatus.INVALID.value)
+
+
+def test_115_missing_separator_inside_print_call_is_invalid() -> None:
+    """Real regression D-007 (found by v0.77.0's own fresh live-Ollama stress
+    batch, Phase 15): a real model wrote `print("..." std_dev);` -- the same
+    missing-separator shape as test_110, but inside a parenthesized `print(
+    ...)` call. Real `tgauss.exe -b` confirms `error G0063`. Before the fix,
+    `print` was skipped entirely (it is a member of the wider
+    `_LANGUAGE_CONSTRUCT_KEYWORDS` this check used to reference), so this was
+    a genuine, confirmed false negative."""
+    result = validation_mod.validate_syntax('print("Standard Deviation of x: " std_dev);\n')
+    check("invalid", result.status == validation_mod.SyntaxStatus.INVALID.value)
+    check("names rule", any(i.rule == "call_argument_missing_separator" for i in result.issues))
+
+
+def test_116_bare_print_statement_without_parens_is_unaffected() -> None:
+    """GAUSS's own documented bare `print x, y;` form (no parens at all) must
+    never be mistaken for a call with a missing separator -- there is no
+    `print(` call-shape for `_CALL_SHAPED_RE` to even match here."""
+    result = validation_mod.validate_syntax("print x, y;\n")
+    check("not invalid", result.status != validation_mod.SyntaxStatus.INVALID.value)
+
+
+def test_117_well_formed_print_call_with_parens_is_not_flagged() -> None:
+    result = validation_mod.validate_syntax('print("Standard Deviation of x: ", std_dev);\n')
+    check("not invalid", result.status != validation_mod.SyntaxStatus.INVALID.value)
 
 
 def run_tests() -> int:

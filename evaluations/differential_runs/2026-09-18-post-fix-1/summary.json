@@ -1,0 +1,101 @@
+{
+  "combined": {
+    "total": 214,
+    "agreement_class_counts": {
+      "inconclusive": 103,
+      "agree_accept": 83,
+      "false_positive": 6,
+      "agree_reject": 22
+    },
+    "validator_status_counts": {
+      "unknown": 6,
+      "validated": 91,
+      "partial": 12,
+      "invalid": 105
+    },
+    "gauss_outcome_counts": {
+      "accepted": 77,
+      "runtime_error": 115,
+      "rejected_syntax_or_parse": 22
+    },
+    "false_negatives": [],
+    "false_positives": [
+      "B-025",
+      "B-050",
+      "B-051",
+      "B-054",
+      "B-062",
+      "C-023"
+    ]
+  },
+  "by_origin": {
+    "docs_valid": {
+      "total": 50,
+      "agreement_class_counts": {
+        "inconclusive": 13,
+        "agree_accept": 37
+      },
+      "validator_status_counts": {
+        "unknown": 4,
+        "validated": 38,
+        "partial": 8
+      },
+      "gauss_outcome_counts": {
+        "accepted": 41,
+        "runtime_error": 9
+      },
+      "false_negatives": [],
+      "false_positives": []
+    },
+    "model_output_historical": {
+      "total": 29,
+      "agreement_class_counts": {
+        "agree_accept": 21,
+        "inconclusive": 6,
+        "false_positive": 1,
+        "agree_reject": 1
+      },
+      "validator_status_counts": {
+        "validated": 26,
+        "invalid": 3
+      },
+      "gauss_outcome_counts": {
+        "accepted": 17,
+        "runtime_error": 11,
+        "rejected_syntax_or_parse": 1
+      },
+      "false_negatives": [],
+      "false_positives": [
+        "C-023"
+      ]
+    },
+    "mutation": {
+      "total": 135,
+      "agreement_class_counts": {
+        "inconclusive": 84,
+        "agree_accept": 25,
+        "false_positive": 5,
+        "agree_reject": 21
+      },
+      "validator_status_counts": {
+        "invalid": 102,
+        "validated": 27,
+        "unknown": 2,
+        "partial": 4
+      },
+      "gauss_outcome_counts": {
+        "runtime_error": 95,
+        "accepted": 19,
+        "rejected_syntax_or_parse": 21
+      },
+      "false_negatives": [],
+      "false_positives": [
+        "B-025",
+        "B-050",
+        "B-051",
+        "B-054",
+        "B-062"
+      ]
+    }
+  }
+}
