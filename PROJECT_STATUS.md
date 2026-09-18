@@ -4,7 +4,7 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 
 ## Current Objective
 
-None active. `v0.77.0 — Differential GAUSS Syntax Validation & Corpus Hardening` is implemented, tested, and committed. Per this repository's own workflow rule, tagging/pushing/GitHub-release require explicit, separate user confirmation before proceeding — not yet done as of this update. The next milestone (including any controlled-execution-handoff milestone) must NOT be started automatically; that needs a deliberate, separate decision from the user, informed by `planning/v0.77.0-differential-syntax-validation.md`'s own Section 18 recommendation.
+None active. `v0.77.0 — Differential GAUSS Syntax Validation & Corpus Hardening` is **complete, committed, pushed, and released**. `main` is at `4b4fbb9` both locally and on `origin`; tag `v0.77.0` points at `4b4fbb9` on both; GitHub release published at https://github.com/ec78/gauss-ai/releases/tag/v0.77.0 (user explicitly confirmed tag/push/release after reviewing the final report). Per this repository's own workflow rule, the next milestone (including any controlled-execution-handoff milestone) must NOT be started automatically; that needs a deliberate, separate decision from the user, informed by `planning/v0.77.0-differential-syntax-validation.md`'s own Section 18 recommendation.
 
 ## Completed Work
 
@@ -38,7 +38,7 @@ None active. `v0.77.0 — Differential GAUSS Syntax Validation & Corpus Hardenin
 
 ## Next Steps
 
-None committed. `v0.77.0` is implemented, tested, and (per this session's own final step) committed locally. Tagging `v0.77.0`, pushing, and creating a GitHub release all require explicit, separate user confirmation before proceeding — a hard `CLAUDE.md` workflow rule. Do not start a next milestone (including any controlled-execution-handoff milestone) without an explicit, separate decision from the user; if requested, read `planning/v0.77.0-differential-syntax-validation.md` Section 18 first.
+None committed. `v0.77.0` is fully released (pushed + GitHub release live). Do not start a next milestone (including any controlled-execution-handoff milestone) without an explicit, separate decision from the user; if requested, read `planning/v0.77.0-differential-syntax-validation.md` Section 18 first.
 
 ## Handoff Notes
 
