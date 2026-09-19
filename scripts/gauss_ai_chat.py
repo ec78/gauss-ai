@@ -15,11 +15,14 @@ read -- nothing more.
 
 from __future__ import annotations
 
+import uuid
+from datetime import datetime, timezone
 from typing import Callable
 
 import gauss_ai_config as config_mod
 import gauss_chat_provider as provider_mod
 import gauss_conversation_engine as engine_mod
+import gauss_execution_handoff as handoff_mod
 import gauss_pre_execution_validation as validation_mod
 
 BANNER = "GAUSS AI Assistant"
@@ -34,14 +37,22 @@ HELP_TEXT: tuple[str, ...] = (
     "  Write GAUSS code to estimate an OLS regression.",
     "  Can you give me an example using reshape and meanc?",
     "Generated code is always labeled with whether it's grounded in official documentation, and is",
-    "never executed, verified, or written to a file -- see docs/conversational-code-generation.md.",
+    "never verified or written to a file -- see docs/conversational-code-generation.md. This chat",
+    "does not execute code on its own initiative under any circumstances.",
+    "",
+    "When generated code reaches HANDOFF_CANDIDATE readiness (the strongest deterministic evidence",
+    "level), you may type 'run this' or 'execute this' to review the exact code and execution details",
+    "and explicitly approve a single controlled execution -- see docs/controlled-execution-handoff.md.",
+    "Nothing is ever executed without that explicit, per-request approval; a decline, a changed",
+    "answer, or a prior execution never carries approval forward to a new request.",
     "",
     "Commands:",
     "  help           Show this message",
     "  reset / new    Start a new conversation (clears history)",
     "  exit / quit    Leave the assistant",
     "",
-    "This chat does not execute GAUSS code, edit files, or apply repairs. For that, use:",
+    "This chat does not edit files or apply repairs, and does not execute code except through the",
+    "explicit, per-request controlled-execution approval described above. For file-based repair, use:",
     "  gauss-ai repair <file.gss>",
 )
 
@@ -124,6 +135,28 @@ def _render_answer(print_fn: Callable[[str], None], result: "engine_mod.AnswerRe
     print_fn("")
     print_fn(result.text)
     print_fn("")
+    if _execution_offer_eligible(result):
+        print_fn(
+            "This code has reached HANDOFF_CANDIDATE readiness -- the strongest deterministic evidence level. "
+            "Type 'run this' or 'execute this' to review the exact code and execution details and explicitly "
+            "approve a single controlled execution."
+        )
+        print_fn("")
+
+
+def _execution_offer_eligible(result: "engine_mod.AnswerResult") -> bool:
+    """Deterministic gate for OFFERING a controlled-execution handoff --
+    never a decision to execute anything. Requires exactly one generated
+    code block (v0.78.0's deliberate single-snippet scope narrowing, see
+    planning/v0.78-controlled-execution-handoff.md Section 7) and a current
+    `HandoffReadiness.HANDOFF_CANDIDATE` verdict, computed entirely upstream
+    by `gauss_pre_execution_validation.compute_handoff_readiness(...)` --
+    this function reads that verdict, it never computes or overrides it."""
+    return (
+        result.handoff_readiness is not None
+        and result.handoff_readiness.state == validation_mod.HandoffReadiness.HANDOFF_CANDIDATE.value
+        and len(result.generated_code) == 1
+    )
 
 
 def _startup_status_lines(engine: "engine_mod.ConversationEngine") -> tuple[str, ...]:
@@ -161,6 +194,102 @@ def _startup_status_lines(engine: "engine_mod.ConversationEngine") -> tuple[str,
     return tuple(lines)
 
 
+def _default_id_fn() -> str:
+    return str(uuid.uuid4())
+
+
+def _default_clock_fn() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _resolve_execution_handoff_settings(
+    *,
+    cli_runner: str | None,
+    cli_gauss_executable: str | None,
+    cli_workspace_parent: str | None,
+    cli_timeout_seconds: float | None,
+    config: "config_mod.GaussAiConfig",
+    env: dict[str, str] | None,
+) -> tuple[str, str | None, str | None, float]:
+    """Mirrors `gauss_ai_guided_repair.run_guided_repair`'s own resolution
+    block exactly, reusing the same config primitives -- no new resolution
+    logic, no new config field. Returns (runner, executable_path,
+    workspace_parent, timeout_seconds)."""
+    runner = config_mod.resolve_default_runner(cli_value=cli_runner, config=config, env=env).value
+    executable_path = config_mod.resolve_gauss_executable(cli_value=cli_gauss_executable, config=config, env=env).value
+    workspace_parent = config_mod.resolve_workspace_parent(cli_value=cli_workspace_parent, config=config, env=env).value
+    timeout_seconds = config_mod.resolve_default_timeout_seconds(
+        cli_value=cli_timeout_seconds, config=config, env=env
+    ).value
+    return runner, executable_path, workspace_parent, timeout_seconds
+
+
+def _run_execution_handoff_flow(
+    *,
+    code: str,
+    readiness_state: str,
+    prompt_fn: Callable[[str], str],
+    print_fn: Callable[[str], None],
+    store: "handoff_mod.ExecutionHandoffApprovalStore",
+    runner: str,
+    executable_path: str | None,
+    workspace_parent: str | None,
+    timeout_seconds: float,
+    id_fn: Callable[[], str],
+    clock_fn: Callable[[], str],
+) -> None:
+    """Phases 4-13 of the milestone brief, in one linear, non-looping flow:
+    build the request, display it, parse an explicit approval response
+    (bounded retries, never coerced), and only on an actual `\"approved\"`
+    parse result, build the approval and execute exactly once through the
+    existing `gauss_execution_adapter.GaussExecutionAdapter` (via
+    `gauss_execution_handoff.execute_execution_handoff`). Never retries,
+    never repairs, never constructs a second request or approval."""
+    try:
+        request = handoff_mod.create_execution_handoff_request(
+            code=code, readiness_state=readiness_state, request_id=id_fn(), created_at=clock_fn(),
+            runner=runner, executable_path=executable_path, timeout_seconds=timeout_seconds,
+            workspace_parent=workspace_parent,
+        )
+    except (handoff_mod.HandoffNotEligibleError, handoff_mod.HandoffRequestValidationError) as exc:
+        print_fn(f"Cannot prepare this execution: {exc}")
+        if runner == "gauss" and not executable_path:
+            print_fn("Run 'gauss-ai config set gauss-executable <path>' or 'gauss-ai doctor' to fix this.")
+        print_fn("")
+        return
+
+    print_fn(handoff_mod.render_execution_handoff_prompt(request))
+
+    decision: str | None = None
+    for attempt in range(2):
+        response = prompt_fn("approve execution [yes/no]> ")
+        parsed = handoff_mod.parse_execution_approval_response(response)
+        if parsed in ("approved", "declined"):
+            decision = parsed
+            break
+        if attempt == 0:
+            print_fn("Please answer exactly 'yes' or 'no'.")
+    if decision is None:
+        print_fn("Execution not approved -- cancelling. No code was executed.")
+        print_fn("")
+        return
+
+    approval = handoff_mod.create_execution_handoff_approval(
+        request, decision=decision, approval_id=id_fn(), decided_at=clock_fn(),
+    )
+    store.record(approval)
+
+    if decision == "declined":
+        print_fn(approval.consent_statement)
+        print_fn("")
+        return
+
+    helper = handoff_mod.select_helper(request.runner)
+    result = handoff_mod.execute_execution_handoff(request, approval, store=store, helper=helper)
+    print_fn(handoff_mod.render_conversational_execution_result(result))
+    print_fn("")
+
+
 def run_chat(
     *,
     prompt_fn: Callable[[str], str] = input,
@@ -169,9 +298,16 @@ def run_chat(
     cli_model: str | None = None,
     cli_docs_root: str | None = None,
     cli_ollama_endpoint: str | None = None,
+    cli_runner: str | None = None,
+    cli_gauss_executable: str | None = None,
+    cli_workspace_parent: str | None = None,
+    cli_timeout_seconds: float | None = None,
     config: "config_mod.GaussAiConfig | None" = None,
     env: dict[str, str] | None = None,
     engine: "engine_mod.ConversationEngine | None" = None,
+    approval_store: "handoff_mod.ExecutionHandoffApprovalStore | None" = None,
+    id_fn: Callable[[], str] = _default_id_fn,
+    clock_fn: Callable[[], str] = _default_clock_fn,
 ) -> "engine_mod.ConversationEngine | None":
     """Runs the interactive chat loop against `engine` if supplied (tests
     always supply their own, so they can inspect its state afterward and so
@@ -208,6 +344,17 @@ def run_chat(
     print_fn("Type a GAUSS question, or 'help' for more, 'exit' to leave.")
     print_fn("")
 
+    store = approval_store if approval_store is not None else handoff_mod.ExecutionHandoffApprovalStore()
+    #: The most recently answered HANDOFF_CANDIDATE single-code-block turn,
+    #: or `None`. Deliberately re-derived from the LATEST answer only (reset
+    #: on every `engine.ask(...)` call, including a non-code-shaped one) --
+    #: this is what guarantees "the exact code should already be visible
+    #: immediately above" (Phase 23): a stale offer from several turns ago
+    #: can never be silently executed. This is plain local UI-loop state,
+    #: not conversation-engine state -- gauss_conversation_engine.py is not
+    #: modified by this milestone and knows nothing about execution.
+    pending_handoff: tuple[str, str] | None = None
+
     while True:
         try:
             line = prompt_fn("> ")
@@ -226,6 +373,7 @@ def run_chat(
             continue
         if lowered in {"reset", "new"}:
             engine.reset()
+            pending_handoff = None
             print_fn("Conversation reset -- starting fresh.")
             print_fn("")
             continue
@@ -236,7 +384,43 @@ def run_chat(
             )
             print_fn("")
             continue
+        if handoff_mod.looks_like_execution_request(stripped):
+            # v0.78.0: this deliberately takes priority over
+            # gauss_conversation_engine.py's own, broader, pre-existing
+            # "execution-imperative question" detector (which matches e.g.
+            # exactly "run this"/"execute this" among other phrases and
+            # returns the fixed EXECUTION_BOUNDARY_MESSAGE). That detector
+            # is unmodified and still applies to every OTHER phrasing it
+            # recognizes (e.g. "run this script", "execute that") and to
+            # these same exact phrases whenever no HANDOFF_CANDIDATE is
+            # pending would also be handled here (see the message below) --
+            # never silently falling through to a stale/incorrect "cannot
+            # execute" claim once a controlled path genuinely exists.
+            if pending_handoff is None:
+                print_fn(
+                    "There is no HANDOFF_CANDIDATE code available to execute right now -- ask for GAUSS code "
+                    "first, and this offer will appear once it reaches that readiness level."
+                )
+                print_fn("")
+                continue
+            runner, executable_path, workspace_parent, timeout_seconds = _resolve_execution_handoff_settings(
+                cli_runner=cli_runner, cli_gauss_executable=cli_gauss_executable,
+                cli_workspace_parent=cli_workspace_parent, cli_timeout_seconds=cli_timeout_seconds,
+                config=resolved_config, env=env,
+            )
+            code, readiness_state = pending_handoff
+            _run_execution_handoff_flow(
+                code=code, readiness_state=readiness_state, prompt_fn=prompt_fn, print_fn=print_fn, store=store,
+                runner=runner, executable_path=executable_path, workspace_parent=workspace_parent,
+                timeout_seconds=timeout_seconds, id_fn=id_fn, clock_fn=clock_fn,
+            )
+            continue
         result = engine.ask(stripped)
         _render_answer(print_fn, result)
+        pending_handoff = (
+            (result.generated_code[0], result.handoff_readiness.state)
+            if _execution_offer_eligible(result)
+            else None
+        )
 
     return engine

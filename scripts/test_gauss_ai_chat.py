@@ -23,6 +23,8 @@ import gauss_ai_chat as chat_mod  # noqa: E402
 import gauss_ai_config as config_mod  # noqa: E402
 import gauss_chat_provider as provider_mod  # noqa: E402
 import gauss_conversation_engine as engine_mod  # noqa: E402
+import gauss_execution_handoff as handoff_mod  # noqa: E402
+import gauss_pre_execution_validation as validation_mod  # noqa: E402
 
 
 _failures: list[str] = []
@@ -91,6 +93,39 @@ def _fixture_docs_root(tmp: str) -> Path:
     (root / "reshape.rst").write_text(_RESHAPE_RST, encoding="utf-8")
     (root / "meanc.rst").write_text(_MEANC_RST, encoding="utf-8")
     (root / "invinvpd.rst").write_text(_INV_RST, encoding="utf-8")
+    return root
+
+
+#: v0.78.0: `_INV_RST` above deliberately has no `Input`/`:type:` section
+#: (existing tests 33/34 only need eligibility wording, not a resolved
+#: parameter-role check), so it always leaves `parameter_role_check`
+#: UNKNOWN and never reaches HANDOFF_CANDIDATE. The controlled-execution-
+#: handoff tests need a real, reproducible HANDOFF_CANDIDATE turn, so this
+#: is a separate, disposable fixture with a typed `x` parameter -- the
+#: exact same shape `test_gauss_conversation_engine.py`'s own `_INV_RST` /
+#: `test_105_correctly_formatted_matrix_literal_equivalent_is_syntax_
+#: validated` already uses to reach real broad-evidence handoff candidacy.
+_TYPED_INV_RST = """inv, invpd
+==========
+
+.. function:: xi = inv(x)
+              xi = invpd(x)
+
+Purpose
+-------
+inv returns the inverse of an invertible matrix. invpd returns the inverse of a symmetric, positive definite matrix.
+
+Input
+-----
+    :param x: data
+    :type x: NxN matrix
+"""
+
+
+def _fixture_docs_root_handoff_candidate(tmp: str) -> Path:
+    root = Path(tmp) / "docs"
+    root.mkdir()
+    (root / "invinvpd.rst").write_text(_TYPED_INV_RST, encoding="utf-8")
     return root
 
 
@@ -415,7 +450,19 @@ def test_29_help_text_mentions_code_generation_and_its_limits() -> None:
     chat_mod.run_chat(prompt_fn=_scripted(["help", "exit"]), print_fn=messages.append, engine=_fake_engine())
     joined = "\n".join(messages)
     check("help mentions asking for GAUSS code", "GAUSS code" in joined)
-    check("help still states the no-execution/no-file-edit boundary", "does not execute" in joined)
+    # v0.78.0: superseded the old blanket "does not execute" wording -- this
+    # chat now DOES support one narrow, explicit, per-request controlled
+    # execution path (gauss_execution_handoff.py) for HANDOFF_CANDIDATE
+    # code, so help text must describe that boundary precisely rather than
+    # claim a no-execution guarantee that is no longer literally true.
+    check(
+        "help states code never executes on its own initiative",
+        "does not execute code on its own initiative" in joined,
+    )
+    check(
+        "help states the controlled-execution approval boundary",
+        "explicit, per-request controlled-execution approval" in joined,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -576,6 +623,181 @@ def test_39_fully_supported_example_shows_handoff_candidate_through_the_full_cha
         joined = "\n".join(messages)
         check("syntax validated shown", "Syntax: validated" in joined)
         check("still discloses this was never executed", "This code has not been executed." in joined)
+
+
+# ---------------------------------------------------------------------------
+# v0.78.0: Controlled Execution Handoff -- conversational wiring
+# ---------------------------------------------------------------------------
+
+
+def _counting_id_fn():
+    counter = {"n": 0}
+
+    def _fn() -> str:
+        counter["n"] += 1
+        return f"id-{counter['n']}"
+
+    return _fn
+
+
+def _fixed_clock_fn() -> str:
+    return "2026-09-19T00:00:00Z"
+
+
+def _handoff_engine(tmp: str) -> "engine_mod.ConversationEngine":
+    """The exact fixture shape `test_gauss_conversation_engine.py`'s own
+    `test_105_correctly_formatted_matrix_literal_equivalent_is_syntax_
+    validated` uses to reach real, broad-evidence `HANDOFF_CANDIDATE` --
+    a literal (not runtime-variable) SPD argument plus a typed `x`
+    parameter, so every coverage dimension is COMPLETE."""
+    docs_root = _fixture_docs_root_handoff_candidate(tmp)
+    provider = provider_mod.FakeModelProvider(canned_answer="```gauss\ny = invpd({2 1, 1 2});\nprint y;\n```")
+    return engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+
+
+def _minimal_answer_result(**overrides) -> "engine_mod.AnswerResult":
+    defaults = dict(
+        text="some answer", grounded=True, grounding_source="official_docs", grounding_topic="invpd",
+        provider_name="fake", provider_model=None, provider_success=True, provider_error=None,
+    )
+    defaults.update(overrides)
+    return engine_mod.AnswerResult(**defaults)
+
+
+def test_40_execution_offer_appears_only_for_handoff_candidate() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        engine = _handoff_engine(tmp)
+        messages: list[str] = []
+        chat_mod.run_chat(
+            prompt_fn=_scripted(["Use invpd to invert this matrix.", "exit"]), print_fn=messages.append,
+            engine=engine, config=config_mod.GaussAiConfig(), env={},
+        )
+        joined = "\n".join(messages)
+        check("execution offer is printed for a HANDOFF_CANDIDATE answer", "HANDOFF_CANDIDATE readiness" in joined)
+        check("offer mentions the trigger phrase", "run this" in joined)
+
+
+def test_41_no_offer_for_non_candidate_answer() -> None:
+    messages: list[str] = []
+    chat_mod.run_chat(
+        prompt_fn=_scripted(["What does reshape do?", "exit"]), print_fn=messages.append,
+        engine=_fake_engine(), config=config_mod.GaussAiConfig(), env={},
+    )
+    joined = "\n".join(messages)
+    check("no execution offer for a plain QA answer", "HANDOFF_CANDIDATE readiness" not in joined)
+
+
+def test_42_eligibility_gate_rejects_not_ready_and_review_required_and_multi_block() -> None:
+    not_ready = _minimal_answer_result(
+        generated_code=("print 1+1;",),
+        handoff_readiness=validation_mod.ReadinessResult(state=validation_mod.HandoffReadiness.NOT_READY.value, reasons=()),
+    )
+    review_required = _minimal_answer_result(
+        generated_code=("print 1+1;",),
+        handoff_readiness=validation_mod.ReadinessResult(state=validation_mod.HandoffReadiness.REVIEW_REQUIRED.value, reasons=()),
+    )
+    candidate = _minimal_answer_result(
+        generated_code=("print 1+1;",),
+        handoff_readiness=validation_mod.ReadinessResult(state=validation_mod.HandoffReadiness.HANDOFF_CANDIDATE.value, reasons=()),
+    )
+    multi_block_candidate = _minimal_answer_result(
+        generated_code=("print 1+1;", "print 2+2;"),
+        handoff_readiness=validation_mod.ReadinessResult(state=validation_mod.HandoffReadiness.HANDOFF_CANDIDATE.value, reasons=()),
+    )
+    no_code = _minimal_answer_result(generated_code=(), handoff_readiness=None)
+
+    check("NOT_READY never offers execution", not chat_mod._execution_offer_eligible(not_ready))
+    check("REVIEW_REQUIRED never offers execution", not chat_mod._execution_offer_eligible(review_required))
+    check("HANDOFF_CANDIDATE with exactly one code block offers execution", chat_mod._execution_offer_eligible(candidate))
+    check("HANDOFF_CANDIDATE with multiple code blocks does NOT offer execution (v0.78.0 scope)", not chat_mod._execution_offer_eligible(multi_block_candidate))
+    check("no generated code never offers execution", not chat_mod._execution_offer_eligible(no_code))
+
+
+def test_43_run_this_with_no_pending_candidate_gives_a_clear_message() -> None:
+    messages: list[str] = []
+    chat_mod.run_chat(
+        prompt_fn=_scripted(["run this", "exit"]), print_fn=messages.append,
+        engine=_fake_engine(), config=config_mod.GaussAiConfig(), env={},
+    )
+    joined = "\n".join(messages)
+    check("clear no-pending-candidate message shown", "no HANDOFF_CANDIDATE code available" in joined)
+
+
+def test_44_approve_and_execute_fake_success_end_to_end() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        engine = _handoff_engine(tmp)
+        messages: list[str] = []
+        chat_mod.run_chat(
+            prompt_fn=_scripted(["Use invpd to invert this matrix.", "run this", "yes", "exit"]),
+            print_fn=messages.append, engine=engine, config=config_mod.GaussAiConfig(), env={},
+            id_fn=_counting_id_fn(), clock_fn=_fixed_clock_fn,
+        )
+        joined = "\n".join(messages)
+        check("exact code shown before approval", "y = invpd({2 1, 1 2});\nprint y;" in joined)
+        check("approval question shown", "Approve this exact execution" in joined)
+        check("execution completed rendered", "Execution completed." in joined)
+        check(
+            "methodological caveat shown after success",
+            "does not establish methodological correctness" in joined,
+        )
+
+
+def test_45_decline_blocks_execution() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        engine = _handoff_engine(tmp)
+        messages: list[str] = []
+        chat_mod.run_chat(
+            prompt_fn=_scripted(["Use invpd to invert this matrix.", "run this", "no", "exit"]),
+            print_fn=messages.append, engine=engine, config=config_mod.GaussAiConfig(), env={},
+        )
+        joined = "\n".join(messages)
+        check("decline statement shown", "This request was declined" in joined)
+        check("no execution occurred", "Execution completed." not in joined)
+
+
+def test_46_unrecognized_response_reprompts_then_cancels_safely() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        engine = _handoff_engine(tmp)
+        messages: list[str] = []
+        chat_mod.run_chat(
+            prompt_fn=_scripted(["Use invpd to invert this matrix.", "run this", "sure", "looks good", "exit"]),
+            print_fn=messages.append, engine=engine, config=config_mod.GaussAiConfig(), env={},
+        )
+        joined = "\n".join(messages)
+        check("re-prompt shown for an unrecognized response", "Please answer exactly 'yes' or 'no'." in joined)
+        check("cancels safely after a second unrecognized response", "cancelling. No code was executed." in joined)
+        check("no execution occurred", "Execution completed." not in joined)
+
+
+def test_47_second_run_this_is_a_brand_new_request_not_a_replay() -> None:
+    # Approving once, executing, then asking to "run this" AGAIN re-enters
+    # the flow from scratch -- a brand new request/approval, never a replay
+    # of the consumed one. No consent is inherited: the second "run this"
+    # must show the prompt and ask for approval again, and must execute
+    # again (a fresh, explicit consent for identical code is not a replay).
+    with tempfile.TemporaryDirectory() as tmp:
+        engine = _handoff_engine(tmp)
+        messages: list[str] = []
+        chat_mod.run_chat(
+            prompt_fn=_scripted([
+                "Use invpd to invert this matrix.", "run this", "yes", "run this", "yes", "exit",
+            ]),
+            print_fn=messages.append, engine=engine, config=config_mod.GaussAiConfig(), env={},
+            id_fn=_counting_id_fn(), clock_fn=_fixed_clock_fn,
+        )
+        joined_count = "\n".join(messages).count("Execution completed.")
+        approval_count = "\n".join(messages).count("Approve this exact execution")
+        check("execution completed twice (two fresh approvals, not a replay)", joined_count == 2)
+        check("approval was explicitly asked for twice", approval_count == 2)
+
+
+def test_48_chat_module_never_imports_subprocess_or_the_real_helper_directly() -> None:
+    forbidden = ("subprocess", "gauss_code_execution")
+    for line in Path(chat_mod.__file__).read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped.startswith(("import ", "from ")):
+            for token in forbidden:
+                check(f"import line {stripped!r} does not reference {token!r}", token not in stripped)
 
 
 def run_tests() -> int:

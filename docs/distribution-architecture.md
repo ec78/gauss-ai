@@ -8,7 +8,7 @@ GAUSS AI's own code — not any language model — owns every one of the followi
 
 - Documentation grounding (local `.rst` lookup, see [gauss-documentation-setup.md](gauss-documentation-setup.md))
 - Verified GAUSS error knowledge (the error catalog)
-- The execution boundary (conversational chat never executes GAUSS code)
+- The execution boundary (conversational chat executes GAUSS code only through the narrow, explicit, single-use `HANDOFF_CANDIDATE` approval path added in `v0.78.0` — see [controlled-execution-handoff.md](controlled-execution-handoff.md); nothing else in chat executes code)
 - Diagnostics (`gauss-ai doctor`)
 - Repair planning, drafting, approval, application, and safety checks
 - Verification of execution results

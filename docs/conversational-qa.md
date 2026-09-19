@@ -92,7 +92,7 @@ If you type something that looks like a `gauss-ai` command (for example, `gauss-
 
 ## Execution boundary
 
-This chat never executes GAUSS code, never applies a repair, and never writes a file. If you show intent to run or execute something, you'll get an honest message pointing you to `gauss-ai repair <file.gss>` — the existing, fully supported, human-approved repair workflow. Any GAUSS code shown as part of an answer is always followed by a note that it has not been executed in the conversation, regardless of how the answer was produced.
+This chat never applies a repair and never writes a file. As of `v0.78.0`, it CAN execute a generated code snippet, but only through one narrow, explicit path: the code must have reached `HANDOFF_CANDIDATE` readiness (the strongest deterministic evidence level), you must see the exact code and execution details, and you must explicitly answer `yes` to a single-use approval question — see [docs/controlled-execution-handoff.md](controlled-execution-handoff.md). For anything short of that readiness level, showing intent to run or execute something gets an honest message rather than a silent no-op, and repair-shaped intent still points you to `gauss-ai repair <file.gss>` — the existing, fully supported, human-approved repair workflow. Any GAUSS code shown as part of an answer is always followed by a note that it has not yet been executed in the conversation, regardless of how the answer was produced, unless and until you've explicitly approved and completed a controlled execution of that exact code.
 
 ## How to leave or reset a conversation
 
