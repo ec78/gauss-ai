@@ -4,7 +4,7 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 
 ## Current Objective
 
-None active. `v0.78.0 — Controlled Execution Handoff` is **complete, committed locally, NOT pushed, NOT tagged/released**. `main` is at `072e5a3` locally (one commit ahead of `origin/main`, which is still at `707226b`/`v0.77.0`). Per this repository's own workflow rule, do not tag/push/create a GitHub release without explicit user confirmation, and do not auto-start the next milestone (e.g. conversational repair) without a deliberate, separate decision from the user.
+None active. `v0.78.0 — Controlled Execution Handoff` is **complete, committed, pushed, and released**. `main` is at `997a344` both locally and on `origin`; tag `v0.78.0` points at `997a344` on both; GitHub release published at https://github.com/ec78/gauss-ai/releases/tag/v0.78.0 (user explicitly confirmed tag/push/release after reviewing the final report). Per this repository's own workflow rule, the next milestone (including any conversational-repair milestone) must NOT be started automatically; that needs a deliberate, separate decision from the user.
 
 ## Completed Work
 
@@ -38,7 +38,7 @@ None active. `v0.78.0 — Controlled Execution Handoff` is **complete, committed
 
 ## Next Steps
 
-None committed. `v0.78.0` is implemented, tested, evaluated, documented, and committed locally — NOT pushed, NOT tagged, NOT released. Per this repository's release-confirmation rule, tagging/pushing/releasing requires an explicit, separate decision from the user (permission to implement the milestone is not permission to release it). Do not start a next milestone (including any conversational-repair milestone) without an explicit, separate decision from the user.
+None committed. `v0.78.0` is fully released (pushed + GitHub release live). Do not start a next milestone (including any conversational-repair milestone) without an explicit, separate decision from the user.
 
 ## Handoff Notes
 
