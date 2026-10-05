@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "gauss-ai": {
+      "command": "gauss-ai-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}

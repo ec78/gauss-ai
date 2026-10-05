@@ -1,0 +1,9 @@
+{
+  "name": "gauss-ai-mcp",
+  "version": "0.79.0",
+  "description": "Conversational GAUSS assistant and guided repair pipeline, exposed as a local MCP server (chat/Q&A, code generation, the controlled execution handoff, and the full guided repair REPL).",
+  "author": { "name": "Eric Clower" },
+  "license": "MIT",
+  "homepage": "https://github.com/ec78/gauss-ai",
+  "mcpServers": "./.mcp.json"
+}

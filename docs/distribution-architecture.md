@@ -13,7 +13,7 @@ GAUSS AI's own code — not any language model — owns every one of the followi
 - Repair planning, drafting, approval, application, and safety checks
 - Verification of execution results
 - Provenance/evidence tracking through the guided repair workflow
-- Any future tool orchestration
+- Any future tool orchestration — including the `v0.79.0` MCP server (`scripts/gauss_mcp_server.py`): it is a transport layer that calls this same orchestration unchanged, exposing it to other MCP clients over stdio, never a second, independent decision-maker.
 
 A model provider — `fake`, `ollama`, or `anthropic` today — supplies exactly one thing: turning a grounded prompt into fluent natural-language text. `gauss_chat_provider.ModelProvider` is a narrow interface (`ChatMessage` in, `ProviderResult` out) specifically so that swapping which model answers a question changes nothing about any of the responsibilities above. No provider implementation is permitted to read or write arbitrary files, invoke GAUSS, invoke a shell command, or apply a repair — this is enforced by the interface itself, not by convention, and is covered by this repository's own structural tests.
 

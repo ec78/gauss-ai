@@ -1,0 +1,11 @@
+{
+  "name": "gauss-ai",
+  "owner": { "name": "Eric Clower" },
+  "plugins": [
+    {
+      "name": "gauss-ai-mcp",
+      "source": "./",
+      "description": "Conversational GAUSS assistant and guided repair pipeline, exposed as a local MCP server."
+    }
+  ]
+}

@@ -15,7 +15,12 @@ unmodified `gauss_code_assistant_cli.main(...)` -- `python scripts/
 gauss_code_assistant_cli.py` continues to work exactly as before, unaffected
 by anything in this module. As of `v0.70.0`, the no-subcommand default is
 `chat`, not `repl` -- nothing that worked before is removed; it moved
-behind an explicit, discoverable name.
+behind an explicit, discoverable name. `mcp` (v0.79.0) lazily delegates to
+`gauss_mcp_server.main()`, the local MCP server exposing the conversational
+assistant and guided repair pipeline as tools for other MCP clients; the
+import is lazy specifically so this dispatcher -- and every other
+subcommand -- keeps working with zero third-party dependencies when the
+optional `mcp` extra (`pip install -e ".[mcp]"`) is not installed.
 """
 
 from __future__ import annotations
@@ -40,7 +45,7 @@ import gauss_chat_provider as provider_mod  # noqa: E402
 import gauss_code_assistant_cli as cli_mod  # noqa: E402
 import gauss_environment_check as environment_check_mod  # noqa: E402
 
-__version__ = "0.78.0"
+__version__ = "0.79.0"
 
 
 def _cmd_version(args: list[str]) -> int:
@@ -262,6 +267,23 @@ def _cmd_chat(args: list[str]) -> int:
     return 0 if engine is not None else 2
 
 
+def _cmd_mcp(args: list[str]) -> int:
+    """Delegates to `gauss_mcp_server.main()` -- the EXISTING, unmodified
+    MCP server module -- never a second implementation here. `mcp` is an
+    optional extra (`pip install -e ".[mcp]"`); this import is deliberately
+    lazy (inside this function, not at module top level) so that every
+    other `gauss-ai` subcommand keeps working with zero third-party
+    dependencies even when the extra is not installed."""
+    del args
+    try:
+        import gauss_mcp_server as mcp_server_mod
+    except ImportError as exc:
+        print(f"gauss-ai mcp requires the optional 'mcp' extra, which is not installed: {exc}")
+        print('Install it with: pip install -e ".[mcp]"')
+        return 2
+    return mcp_server_mod.main()
+
+
 def _launch_repl(argv: list[str]) -> int:
     """Resolves gauss-ai's own configuration precedence (CLI arg > env var >
     config file > default) for the three settings the underlying REPL
@@ -305,6 +327,7 @@ def _print_top_help() -> None:
     print("  gauss-ai config --help                Full configuration and chat-provider reference")
     print("  gauss-ai repair <file.gss> [--export-session PATH]  Guided repair workflow for one file")
     print("  gauss-ai repl [--runner ...] [...]      Launch the full command-by-command workflow REPL (advanced)")
+    print("  gauss-ai mcp                           Run the local MCP server (requires: pip install -e \".[mcp]\")")
     print("")
     print("No API key? Try a local model: gauss-ai config set chat-provider ollama  (see 'gauss-ai config --help')")
     print(
@@ -335,6 +358,8 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_chat(rest)
         if command == "repl":
             return _launch_repl(rest)
+        if command == "mcp":
+            return _cmd_mcp(rest)
     return _cmd_chat(argv)
 
 

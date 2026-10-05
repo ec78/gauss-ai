@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gauss-ai"
-version = "0.78.0"
+version = "0.79.0"
 description = "GAUSS Code Assistant -- alpha CLI for a governed, human-in-the-loop GAUSS repair workflow."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -23,8 +23,14 @@ classifiers = [
 Homepage = "https://github.com/ec78/gauss-ai"
 Repository = "https://github.com/ec78/gauss-ai"
 
+[project.optional-dependencies]
+# Only required to run the local MCP server (`gauss-ai mcp` / `gauss-ai-mcp`);
+# the base CLI remains stdlib-only with no third-party runtime dependency.
+mcp = ["mcp>=2.3.0"]
+
 [project.scripts]
 gauss-ai = "gauss_ai_cli:main"
+gauss-ai-mcp = "gauss_mcp_server:main"
 
 [tool.setuptools]
 package-dir = { "" = "scripts" }
@@ -55,6 +61,7 @@ py-modules = [
     "gauss_execution_interpreter",
     "gauss_execution_session",
     "gauss_execution_workflow",
+    "gauss_mcp_server",
     "gauss_orchestration_state_store",
     "gauss_package_inspection",
     "gauss_pre_execution_validation",
