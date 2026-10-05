@@ -4,7 +4,7 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 
 ## Current Objective
 
-None active. `v0.79.0 — MCP Server` is **implemented, committed locally (`74339e5`), not yet pushed or released**. Per this repository's workflow rule, pushing/tagging/releasing requires a separate, explicit confirmation from the user — not yet given this session. The next milestone must not be auto-started either.
+None active. `v0.79.0 — MCP Server` is **complete, committed, pushed, and released**. `main` is at `143df52` both locally and on `origin`; tag `v0.79.0` points at `143df52` on both; GitHub release published at https://github.com/ec78/gauss-ai/releases/tag/v0.79.0 (user explicitly confirmed push/tag/release). Per this repository's own workflow rule, the next milestone (including a live-MCP-client evaluation) must NOT be started automatically; that needs a deliberate, separate decision from the user. The user's stated next step is to try the server against a real Claude Code connection.
 
 ## Completed Work
 
