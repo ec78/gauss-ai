@@ -7137,3 +7137,29 @@ Expected behavior:
 Expected behavior:
 - `colmean` is an unresolved/unsupported symbol -> INELIGIBLE -> readiness NOT_READY; 'run this' reports no HANDOFF_CANDIDATE code is available; no request is ever constructed.
 
+## MCP Server Live-Client Validation
+
+Unlike every prior category, this one is not exercised through the installed `gauss-ai` CLI at
+all -- it validates `scripts/gauss_mcp_server.py` (v0.79.0) through a REAL, connected MCP client
+(Claude Code, over stdio), something the automated test suite cannot do (it calls the tool
+functions directly, never through a real MCP transport). The automated suite's 18 tests already
+cover every tool's logic in isolation; this category's sole purpose is proving the wire protocol,
+session-state handling across separate tool calls, and the real deterministic-logic modules it
+wraps all work correctly end to end through an actual client connection.
+
+### Prompt 69.1: Full conversational handoff round trip through a real connected MCP client
+
+Via a real Claude Code session with `gauss-ai` registered as a project-scoped MCP server
+(`.mcp.json`, `gauss-ai-mcp` running over stdio): `gauss_chat_start` (runner=fake, real
+`ollama`/`qwen2.5-coder:7b` provider, real configured `docs_root`) -> `gauss_chat_ask` ("Write
+exactly one minimal GAUSS statement, no comments, no explanation, no separate variable for the
+matrix: y = invpd({2 1, 1 2}); print y;") -> `gauss_execution_prepare` -> human approval ('yes')
+relayed through the connected client -> `gauss_execution_decide`.
+
+Expected behavior:
+- Real local-model answer is grounded in real official documentation; reaching `HANDOFF_CANDIDATE`
+  makes `execution_offer_eligible: true`; `gauss_execution_prepare` returns the exact code and a
+  digest for a human to review before anything executes; approval is read from the actual human,
+  not asserted by the tool; `gauss_execution_decide` returns `outcome: "success"` with fake-runner
+  evidence, no real GAUSS touched.
+
