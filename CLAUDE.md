@@ -31,7 +31,7 @@ Durable, project-wide guidance for Claude Code sessions in this repository. For 
 
 ## Important Commands
 
-- Run one test module: `python scripts/test_<module>.py` (each is a standalone `unittest` script — there is no pytest/tox/Makefile in this repo).
+- Run one test module: `python scripts/test_<module>.py` (each is a standalone script using a small local `check(name, condition)` harness, not `unittest` — there is no pytest/tox/Makefile in this repo). Run the whole suite by looping over `scripts/test_*.py`. `test_gauss_mcp_server.py` skips cleanly (exit 0) unless the `mcp` extra is installed.
 - Release-readiness check (also runs in CI on every push/PR): `python scripts/check_release_readiness.py`.
 - CLI help: `gauss-ai --help`; conversational assistant: `gauss-ai` (no subcommand); guided repair: `gauss-ai repair <file.gss>`.
 
