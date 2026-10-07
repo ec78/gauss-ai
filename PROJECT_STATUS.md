@@ -4,7 +4,7 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 
 ## Current Objective
 
-`v0.80.0 — Hybrid MCP Validation, Docs Fetch, and Validation Hardening` is **implemented and committed locally (`a440c50`). It is not tagged, pushed, or released.** Pushing, tagging and releasing need a separate, explicit confirmation from the user.
+None active. `v0.80.0 — Hybrid MCP Validation, Docs Fetch, and Validation Hardening` is **complete, pushed, tagged, and released** (user confirmed): https://github.com/ec78/gauss-ai/releases/tag/v0.80.0. Tag `v0.80.0` points at `b877af1`. Do not start the next milestone without an explicit decision from the user.
 
 The live MCP evaluation `70.1`-`70.6` **has been run and recorded**, after the user reloaded the VS Code window. All six scenarios passed. It found one client-side issue: Claude Code keeps stale descriptions for tools whose names didn't change. This is cosmetic, because the server accepted `validation_id` anyway.
 
@@ -52,7 +52,9 @@ The live MCP evaluation `70.1`-`70.6` **has been run and recorded**, after the u
 
 ## Next Steps
 
-1. Tag, push and release v0.80.0, but only on explicit user confirmation.
+None committed. Possible follow-ups, for the user to decide:
+- switch the user's `docs-root` to the fresh published copy (`gauss-ai docs fetch`);
+- the public-release questions (PyPI, MCP directory listing, Private Alpha status).
 
 ## Handoff Notes
 
