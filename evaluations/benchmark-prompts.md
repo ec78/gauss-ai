@@ -7163,3 +7163,59 @@ Expected behavior:
   not asserted by the tool; `gauss_execution_decide` returns `outcome: "success"` with fake-runner
   evidence, no real GAUSS touched.
 
+
+## Hybrid MCP Validation (Live Client)
+
+Validates the v0.80.0 hybrid path through a REAL connected MCP client (Claude Code over stdio,
+`gauss-ai-mcp` v0.80.0), using this machine's real configuration (local `develop`-branch docs
+clone as `docs_root`, `chat-provider: ollama`). The calling Claude session plays the "client
+model": it searches the docs, writes GAUSS code itself, and submits it for a server-computed
+verdict. `runner="fake"` throughout -- real-GAUSS execution is covered by `68.x`.
+
+### Prompt 70.1: Hybrid round trip -- search, client-written code, validate, prepare, decide
+
+`gauss_search_docs("How do I compute the column means of a matrix?")` -> client writes
+`y = meanc({1 2, 3 4, 5 6}); print y;` -> `gauss_validate_code` -> `gauss_execution_prepare(validation_id)`
+-> the human's own "yes" -> `gauss_execution_decide`.
+
+Expected behavior:
+- `meanc` grounded from official docs; verdict `handoff_candidate` with a `validation_id`; prepare
+  shows exactly the validated code; execution only after the human's approval; `outcome: success`.
+
+### Prompt 70.2: Hallucinated function behind `print` is rejected
+
+`gauss_validate_code("print colmean(x);")`
+
+Expected behavior:
+- `colmean` flagged unknown/unsupported -> `not_ready`, no `validation_id` (the pre-v0.80.0
+  keyword-line gap let this shape through unchecked).
+
+### Prompt 70.3: Violated documented precondition behind `print` is rejected
+
+`gauss_validate_code("print invpd({2 1, 3 2});")`
+
+Expected behavior:
+- `invpd` precondition `violated` (not symmetric) -> `not_ready`, no `validation_id`.
+
+### Prompt 70.4: System-touching statement blocks otherwise-valid code
+
+`gauss_validate_code('y = invpd({2 1, 1 2}); print y; dos "dir";')`
+
+Expected behavior:
+- `invpd` precondition `satisfied`, yet `dos` (os_command) forces `not_ready`, no `validation_id`.
+
+### Prompt 70.5: A validation_id is single-use
+
+Repeat `gauss_execution_prepare` with the `validation_id` already consumed in 70.1.
+
+Expected behavior:
+- Refused with `unknown_or_used_validation_id`; nothing prepared.
+
+### Prompt 70.6: Strict-mode chat tools present only with a real provider
+
+With `chat-provider: ollama` configured, `gauss_chat_ask(session_id, "What does the meanc function do?")`.
+
+Expected behavior:
+- Tool is registered (real provider configured); the engine is built lazily on first use; answer is
+  grounded in official docs and carries an honest deterministic readiness verdict. (The
+  `fake`-provider absence case is covered by `test_gauss_mcp_server.py` test_01/test_02, not live.)

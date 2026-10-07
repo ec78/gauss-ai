@@ -6,9 +6,7 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 
 `v0.80.0 — Hybrid MCP Validation, Docs Fetch, and Validation Hardening` is **implemented and committed locally (`a440c50`). It is not tagged, pushed, or released.** Pushing, tagging and releasing need a separate, explicit confirmation from the user.
 
-The planned live MCP evaluation (`70.x`) is **not yet run**. It requires the user to reload the VS Code window first:
-- the session's `gauss-ai-mcp` process was stopped (with permission) so the editable reinstall could complete;
-- a reload restarts it with the v0.80.0 tools.
+The live MCP evaluation `70.1`-`70.6` **has been run and recorded**, after the user reloaded the VS Code window. All six scenarios passed. It found one client-side issue: Claude Code keeps stale descriptions for tools whose names didn't change. This is cosmetic, because the server accepted `validation_id` anyway.
 
 ## Completed Work
 
@@ -54,16 +52,7 @@ The planned live MCP evaluation (`70.x`) is **not yet run**. It requires the use
 
 ## Next Steps
 
-1. User reloads the VS Code window, then run live evaluation `70.x` per `planning/v0.80-hybrid-mcp-validation.md` / the plan:
-   - (a) hybrid round trip;
-   - (b) `print colmean(x)` → NOT_READY;
-   - (c) `print invpd({2 1, 3 2})` → NOT_READY;
-   - (d) a `dos` statement → NOT_READY;
-   - (e) `validation_id` reuse refused;
-   - (f) chat tools absent with provider `fake`. Note the user's config has `chat_provider: ollama`, so they WILL be present on their machine.
-   
-   Record it in `evaluations/` (benchmark-prompts, coverage, runs, INDEX).
-2. Tag/push/release v0.80.0 only on explicit user confirmation.
+1. Tag, push and release v0.80.0, but only on explicit user confirmation.
 
 ## Handoff Notes
 
