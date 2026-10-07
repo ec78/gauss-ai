@@ -29,5 +29,6 @@ A model provider — `fake`, `ollama`, or `anthropic` today — supplies exactly
 
 - **Ollama is optional.** `gauss-ai` does not require it to be installed, and no command fails simply because Ollama is absent, unless you have explicitly configured `chat-provider: ollama`.
 - **No bundled model weights.** `gauss-ai`'s own package/repository never ships a model file of any kind. You obtain and manage models entirely through Ollama's own tooling (or Anthropic's own API, for that provider).
+- **Documentation is fetched per user, never bundled.** `gauss-ai docs fetch` (`v0.80.0`) downloads the published GAUSS documentation from docs.aptech.com into `~/.gauss-ai/docs/`, only when the user explicitly runs it. It is the one network download outside a user-enabled model provider; retrieval itself stays local and offline, and no copy of the documentation is ever redistributed by `gauss-ai`.
 - **No permanent dependency on any one provider.** The `ModelProvider` interface exists so a future provider can be added without redesigning `ConversationEngine` or any downstream workflow.
 - **Before any future bundled distribution** of a specific model (should that ever be considered), its license would need to be evaluated on its own terms — that has not happened, and is out of scope for this milestone.

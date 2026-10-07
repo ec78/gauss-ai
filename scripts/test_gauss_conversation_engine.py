@@ -1737,6 +1737,135 @@ def test_113_v0_77_0_module_never_imports_differential_harness_tooling() -> None
                 check(f"import line {stripped!r} does not reference {token!r}", token not in stripped)
 
 
+# ---------------------------------------------------------------------------
+# v0.80.0: the unknown-symbol checker and the call extractor share
+# gauss_pre_execution_validation.call_scan_text(...) -- the bare-`print`
+# gap reproduced live in evaluation 69.1.
+# ---------------------------------------------------------------------------
+
+
+def test_114_print_wrapped_hallucinated_call_is_flagged_unknown() -> None:
+    result = engine_mod.check_generated_symbols("print colmean(x);", supported_symbols=())
+    check("colmean flagged unknown", result.unknown_call_symbols == ("colmean",))
+
+
+def test_115_checker_and_extractor_see_the_same_call_symbols() -> None:
+    """Drift guard: the two scanners must never disagree about which
+    symbols are calls, or a call could be validated but not symbol-checked
+    (or vice versa)."""
+    import gauss_pre_execution_validation as validation_mod
+
+    snippets = (
+        "print colmean(x);", "printfm(x, 1, mask);", "forecast = arima(y, 1);", "retp(f(x));",
+        "if f(x) > 0;", "for i (1, rows(x), 1);", "proc (1) = myf(x);", "local a, b;",
+        'print "Inverse (2x2):";', "do while i <= rows(x);", "y = invpd({2 1, 1 2});\nprint y;",
+    )
+    for code in snippets:
+        extracted = {c.symbol.lower() for c in validation_mod.extract_generated_calls(code)}
+        checked = engine_mod.check_generated_symbols(code, supported_symbols=())
+        seen = {s.lower() for s in checked.supported_symbols + checked.unknown_call_symbols + checked.user_defined_or_ambiguous_symbols}
+        check(f"same call symbols for {code!r}", extracted == seen)
+
+
+def test_116_print_wrapped_precondition_violation_reaches_not_ready_through_ask() -> None:
+    """End to end: previously this answer's `invpd` call was never extracted,
+    so its non-symmetric literal escaped the documented-precondition check."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs_root = _fixture_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(canned_answer="```gauss\nprint invpd({2 1, 3 2});\n```")
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
+        result = engine.ask("Use invpd to invert this matrix.")
+        check("precondition evaluated", len(result.precondition_checks) > 0)
+        check("violation detected", any(pc.status == "violated" for pc in result.precondition_checks))
+        check("readiness is not_ready", result.handoff_readiness is not None and result.handoff_readiness.state == "not_ready")
+
+
+def test_117_system_statement_in_otherwise_candidate_code_is_not_ready_through_ask() -> None:
+    """v0.80.0: code that would otherwise reach HANDOFF_CANDIDATE (the typed
+    invpd fixture shape) becomes NOT_READY once it also shells out."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "docs"
+        root.mkdir()
+        (root / "invinvpd.rst").write_text(_INV_RST.replace(
+            "    :param x: data", "    :param x: data\n    :type x: NxN matrix",
+        ), encoding="utf-8")
+        provider = provider_mod.FakeModelProvider(canned_answer='```gauss\ny = invpd({2 1, 1 2});\nprint y;\ndos "dir";\n```')
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(root))
+        result = engine.ask("Use invpd to invert this matrix.")
+        check("dos found", [(f.name, f.category) for f in result.system_statements] == [("dos", "os_command")])
+        check("not_ready", result.handoff_readiness is not None and result.handoff_readiness.state == "not_ready")
+
+
+# ---------------------------------------------------------------------------
+# v0.80.0: validate_code(...) -- client-authored code, server-computed verdict
+# ---------------------------------------------------------------------------
+
+
+def _typed_docs_root(tmp: str) -> str:
+    root = Path(tmp) / "docs"
+    root.mkdir()
+    (root / "invinvpd.rst").write_text(_INV_RST.replace(
+        "    :param x: data", "    :param x: data\n    :type x: NxN matrix",
+    ), encoding="utf-8")
+    return str(root)
+
+
+def test_118_validate_code_reaches_candidate_for_documented_literal_code() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        result = engine_mod.validate_code("y = invpd({2 1, 1 2});\nprint y;", docs_root=_typed_docs_root(tmp))
+        check("called invpd", result.called_symbols == ("invpd",))
+        check("y is user-defined, not looked up", "y" in result.user_defined_symbols)
+        check("handoff_candidate", result.handoff_readiness.state == "handoff_candidate")
+        check("generated_code is exactly the input", result.generated_code == ("y = invpd({2 1, 1 2});\nprint y;",))
+
+
+def test_119_validate_code_rejects_hallucinated_violating_and_system_code() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _typed_docs_root(tmp)
+        hallucinated = engine_mod.validate_code("print colmean(x);", docs_root=root)
+        check("colmean not_ready", hallucinated.handoff_readiness.state == "not_ready")
+        check("colmean unsupported", "colmean" in hallucinated.unsupported_topics)
+        violating = engine_mod.validate_code("print invpd({2 1, 3 2});", docs_root=root)
+        check("non-symmetric literal not_ready", violating.handoff_readiness.state == "not_ready")
+        system = engine_mod.validate_code('y = invpd({2 1, 1 2});\nprint y;\ndos "dir";', docs_root=root)
+        check("dos not_ready", system.handoff_readiness.state == "not_ready")
+
+
+def test_120_validate_code_no_documented_calls_is_not_ready_with_a_note() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        result = engine_mod.validate_code("x = {1 2, 3 4};\nprint x;", docs_root=_typed_docs_root(tmp))
+        check("not_ready", result.handoff_readiness.state == "not_ready")
+        check("explains why", result.notes == (engine_mod.NO_DOCUMENTED_CALLS_NOTE,))
+
+
+def test_121_validate_code_structural_rejections_never_raise() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _typed_docs_root(tmp)
+        cases = {
+            "": "empty_code",
+            "```gauss\nprint 1;\n```": "fenced_code",
+            "x" * (engine_mod.MAX_VALIDATE_CODE_CHARS + 1): "code_too_large",
+            "\n".join(f"y{i} = f{i}(1);" for i in range(engine_mod.MAX_VALIDATE_CODE_SYMBOLS + 1)): "too_many_symbols",
+        }
+        for code, reason in cases.items():
+            result = engine_mod.validate_code(code, docs_root=root)
+            check(f"{reason} rejected", result.rejected_reason == reason and result.handoff_readiness.state == "not_ready")
+    check("no docs root rejected", engine_mod.validate_code("y = meanc(x);", docs_root=None).rejected_reason == "docs_root_not_configured")
+
+
+def test_122_validation_functions_contain_no_execution_or_write_primitives() -> None:
+    import inspect
+
+    for fn in (engine_mod.validate_code, engine_mod.validate_generated_code):
+        source = inspect.getsource(fn)
+        for forbidden in ("open(", "write_", "subprocess.", "eval(", "exec("):
+            check(f"{fn.__name__} has no {forbidden!r}", forbidden not in source)
+        params = inspect.signature(fn).parameters
+        check(f"{fn.__name__} takes no model/provider argument", not any(
+            "model" in p or "provider" in p for p in params
+        ))
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

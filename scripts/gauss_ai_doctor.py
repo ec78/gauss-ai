@@ -193,6 +193,30 @@ def _check_chat_provider(*, config: "config_mod.GaussAiConfig", env: dict[str, s
     return DoctorCheckResult("chat_provider", PASS, f"{resolved.value} (source: {resolved.source})")
 
 
+def _check_docs_root(*, config: "config_mod.GaussAiConfig", env: dict[str, str]) -> DoctorCheckResult:
+    """v0.80.0. Local filesystem only -- never downloads or probes the
+    network; `gauss-ai docs fetch` is the separate, explicit command for
+    that."""
+    resolved = config_mod.resolve_docs_root(config=config, env=env)
+    if not resolved.value:
+        return DoctorCheckResult(
+            "docs_root", WARN, "not configured -- answers and code validation cannot be grounded in official GAUSS docs",
+            next_step="Run 'gauss-ai docs fetch' (one-time download), or 'gauss-ai config set docs-root <path>'.",
+        )
+    root = Path(resolved.value).expanduser()
+    if not root.is_dir():
+        return DoctorCheckResult(
+            "docs_root", FAIL, f"{root} does not exist or is not a directory (source: {resolved.source})",
+            next_step="Run 'gauss-ai docs fetch', or point docs-root at an existing documentation folder.",
+        )
+    if next(root.rglob("*.rst"), None) is None:
+        return DoctorCheckResult(
+            "docs_root", FAIL, f"{root} contains no .rst documentation files (source: {resolved.source})",
+            next_step="Run 'gauss-ai docs fetch' to download the official documentation.",
+        )
+    return DoctorCheckResult("docs_root", PASS, f"{root} (source: {resolved.source})")
+
+
 def _check_ollama_service(
     *,
     config: "config_mod.GaussAiConfig",
@@ -286,6 +310,7 @@ def run_doctor(
         _check_gauss_executable_configured(cli_value=cli_gauss_executable, config=resolved_config, env=env),
         _check_gauss_executable_valid(cli_value=cli_gauss_executable, config=resolved_config, env=env),
         _check_chat_provider(config=resolved_config, env=env),
+        _check_docs_root(config=resolved_config, env=env),
         _check_config_file_validity(config_path),
         _check_package_version(),
     ]

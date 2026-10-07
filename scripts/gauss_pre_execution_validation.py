@@ -241,6 +241,45 @@ def _find_matching_paren(line: str, open_idx: int) -> int | None:
     return None
 
 
+#: v0.80.0: the only lines skipped WHOLESALE when scanning for calls --
+#: genuine declaration lines, whose `name(...)` text is a definition or a
+#: declaration, never a call. Every other keyword-led line (`print`,
+#: `retp`, `if`, `elseif`, `while`, `until`, `do while`, `for`) is scanned,
+#: because it can legitimately contain real calls (`print invpd(x);`,
+#: `retp(meanc(x));`, `if rows(x) > 1;`); the keyword itself is still
+#: filtered out symbol-by-symbol wherever this is used.
+_DECLARATION_LINE_KEYWORDS = frozenset({"proc", "endp", "local"})
+
+_FOR_HEADER_LOOP_VAR_RE = re.compile(r"^(\s*for\s+)([A-Za-z_][A-Za-z0-9_]*)", re.IGNORECASE)
+
+
+def call_scan_text(line: str) -> str:
+    """v0.80.0: the ONE shared definition of "which part of this line may
+    contain a function call", used by both `extract_generated_calls(...)`
+    here and `gauss_conversation_engine.check_generated_symbols(...)`, so the
+    call extractor and the unknown-symbol checker can never disagree.
+
+    Replaces a whole-line `startswith(keyword)` skip that had two real
+    defects: it dropped every call on any keyword-led line (so a
+    hallucinated `print colmean(x);` was neither extracted nor flagged
+    unknown, and `print invpd({2 1, 3 2});` escaped its precondition check
+    -- reproduced live in evaluation 69.1), and it had no word boundary (so
+    `printfm(...)`, `format = ...`, `forecast = arima(...)` lines were
+    dropped too -- the same class of defect v0.76.0 fixed for `formula`).
+
+    Returns a string of the SAME LENGTH as `line` (so match offsets stay
+    valid against the original text, from which argument text is still
+    sliced), or `""` for a declaration line. Double-quoted string contents
+    are masked, so `print "Inverse (2x2):";` is never read as a call to
+    `Inverse`, and a `for` header's loop variable is blanked, so
+    `for i (1, 3, 1);` is never read as a call to `i`."""
+    stripped = line.strip().lower()
+    if any(_starts_with_keyword(stripped, keyword) for keyword in _DECLARATION_LINE_KEYWORDS):
+        return ""
+    scan = _QUOTED_STRING_RE.sub(lambda m: "#" * len(m.group(0)), line)
+    return _FOR_HEADER_LOOP_VAR_RE.sub(lambda m: m.group(1) + " " * len(m.group(2)), scan, count=1)
+
+
 # ---------------------------------------------------------------------------
 # Phase 4: documented call-signature extraction
 # ---------------------------------------------------------------------------
@@ -486,23 +525,25 @@ class GeneratedCall:
 
 
 def extract_generated_calls(code: str) -> tuple[GeneratedCall, ...]:
-    """Conservative: same call-shape/control-flow-line-skipping discipline
-    as `gauss_conversation_engine.check_generated_symbols(...)` -- not a
-    GAUSS parser, no type inference, never interprets prose as code.
-    Argument text is split at the top level only, so `f(g(x), y)` is
-    extracted as a call to `f` with two top-level arguments (`g(x)` and
-    `y`); `g` is separately extracted as its own nested call on the same
-    line."""
+    """Conservative: shares `call_scan_text(...)` with
+    `gauss_conversation_engine.check_generated_symbols(...)` -- not a GAUSS
+    parser, no type inference, never interprets prose as code. Argument
+    text is split at the top level only, so `f(g(x), y)` is extracted as a
+    call to `f` with two top-level arguments (`g(x)` and `y`); `g` is
+    separately extracted as its own nested call on the same line. Matches
+    and paren-matching run against the masked scan text; argument text is
+    sliced from the original line (same offsets), so a string-literal
+    argument keeps its real content and quotes."""
     calls: list[GeneratedCall] = []
     for line_no, line in enumerate(code.splitlines(), start=1):
-        stripped = line.strip().lower()
-        if any(stripped.startswith(keyword) for keyword in _LANGUAGE_CONSTRUCT_KEYWORDS):
+        scan = call_scan_text(line)
+        if not scan:
             continue
-        for match in _CALL_SHAPED_RE.finditer(line):
+        for match in _CALL_SHAPED_RE.finditer(scan):
             symbol = match.group(1)
             if symbol.lower() in _LANGUAGE_CONSTRUCT_KEYWORDS:
                 continue
-            close_idx = _find_matching_paren(line, match.end() - 1)
+            close_idx = _find_matching_paren(scan, match.end() - 1)
             if close_idx is None:
                 continue  # unterminated on this line -- skip rather than guess
             raw = line[match.end():close_idx]
@@ -1775,6 +1816,8 @@ class PreExecutionValidationResult:
     #: condition as `coverage` above (no code-shaped content in the answer).
     syntax: "SyntaxValidationResult | None" = None
     readiness: "ReadinessResult | None" = None
+    #: v0.80.0: any system-touching statement found (forces NOT_READY).
+    system_statements: "tuple[SystemStatementFinding, ...]" = ()
 
 
 def compute_eligibility(
@@ -2203,6 +2246,128 @@ def compute_evidence_profile(coverage: ValidationCoverage) -> str:
 
 
 # ---------------------------------------------------------------------------
+# v0.80.0: system-touching statements
+# ---------------------------------------------------------------------------
+#
+# Found during v0.80.0 planning: nothing in the readiness chain looked at
+# statements that reach outside GAUSS's own memory, so `y = invpd({2 1, 1 2});
+# dos "...";` could reach HANDOFF_CANDIDATE -- and the execution helper does
+# not sandbox GAUSS code (gauss_code_execution.py accepts `allow_file_write`
+# only for input-contract completeness and discards it). The controlled
+# execution handoff is for self-contained snippets that compute in memory
+# (it already runs in an empty temp directory with no input files); any
+# statement that runs OS commands, launches or ends processes, pulls in
+# other source files, changes the working directory, or reads/writes/deletes
+# files makes a snippet NOT_READY. File- and OS-level work belongs to the
+# guided repair pipeline, which operates on real files with its own
+# approvals. User decision (v0.80.0 plan): NOT_READY, not REVIEW_REQUIRED.
+
+
+class SystemStatementCategory(str, enum.Enum):
+    OS_COMMAND = "os_command"
+    PROCESS_LAUNCH = "process_launch"
+    PROCESS_CONTROL = "process_control"
+    SOURCE_INCLUSION = "source_inclusion"
+    DIRECTORY_CHANGE = "directory_change"
+    FILE_DELETE = "file_delete"
+    FILE_WRITE = "file_write"
+    FILE_READ = "file_read"
+
+
+@dataclass(frozen=True)
+class SystemStatementRule:
+    """Provenance record, mirroring `SyntaxRule`: every entry was verified
+    to exist as a real page in the official GAUSS documentation (aptech/docs,
+    as published at docs.aptech.com/gauss) during v0.80.0 development, and
+    `doc_page` names that page. Matching is by name only -- any statement-
+    position use (`dos "..."`, `load x = f;`) or call-shaped use (`loadd(`)
+    -- so a name never has to guess which syntactic form a caller chose."""
+
+    name: str
+    category: str
+    doc_page: str
+
+
+def _rules(category: SystemStatementCategory, *pairs: tuple[str, str]) -> tuple[SystemStatementRule, ...]:
+    return tuple(SystemStatementRule(name=name, category=category.value, doc_page=page) for name, page in pairs)
+
+
+_LOAD_PAGE = "loadloadfloadkloadmloadploads.rst"
+
+_SYSTEM_STATEMENT_REGISTRY: tuple[SystemStatementRule, ...] = (
+    *_rules(SystemStatementCategory.OS_COMMAND, ("dos", "dos.rst"), ("shell", "shell.rst")),
+    *_rules(SystemStatementCategory.PROCESS_LAUNCH, ("exec", "exec.rst"), ("execbg", "execbg.rst")),
+    *_rules(SystemStatementCategory.PROCESS_CONTROL, ("system", "system.rst")),
+    *_rules(SystemStatementCategory.SOURCE_INCLUSION, ("run", "run.rst"), ("#include", "include.rst")),
+    *_rules(SystemStatementCategory.DIRECTORY_CHANGE, ("chdir", "chdir.rst"), ("changedir", "changedir.rst")),
+    *_rules(SystemStatementCategory.FILE_DELETE, ("deletefile", "deletefile.rst")),
+    *_rules(
+        SystemStatementCategory.FILE_WRITE,
+        ("save", "save.rst"), ("saveall", "saveall.rst"), ("saved", "saved.rst"),
+        ("savestruct", "savestruct.rst"), ("output", "output.rst"), ("create", "create.rst"),
+        ("datacreate", "datacreate.rst"), ("writer", "writer.rst"), ("fputs", "fputs.rst"),
+        ("fputst", "fputst.rst"), ("csvwritem", "csvwritem.rst"), ("xlswrite", "xlswrite.rst"),
+        ("xlswritem", "xlswritem.rst"), ("xlswritesa", "xlswritesa.rst"), ("fopen", "fopen.rst"),
+    ),
+    *_rules(
+        SystemStatementCategory.FILE_READ,
+        ("load", _LOAD_PAGE), ("loadf", _LOAD_PAGE), ("loadk", _LOAD_PAGE), ("loadm", _LOAD_PAGE),
+        ("loadp", _LOAD_PAGE), ("loads", _LOAD_PAGE), ("loadd", "loadd.rst"), ("loaddsa", "loaddsa.rst"),
+        ("loadstruct", "loadstruct.rst"), ("loadarray", "loadarray.rst"), ("open", "open.rst"),
+        ("dataopen", "dataopen.rst"), ("readr", "readr.rst"), ("getf", "getf.rst"),
+        ("csvreadm", "csvreadm.rst"), ("csvreadsa", "csvreadsa.rst"), ("xlsreadm", "xlsreadm.rst"),
+        ("xlsreadsa", "xlsreadsa.rst"), ("xlsgetsheetcount", "xlsgetsheetcount.rst"),
+        ("fgets", "fgets.rst"), ("fgetsa", "fgetsa.rst"), ("fgetsat", "fgetsat.rst"), ("fgetst", "fgetst.rst"),
+        ("filesa", "filesa.rst"), ("fileinfo", "fileinfo.rst"),
+    ),
+)
+
+_SYSTEM_RULES_BY_NAME = {rule.name: rule for rule in _SYSTEM_STATEMENT_REGISTRY}
+_SYSTEM_IDENTIFIER_NAMES = sorted((n for n in _SYSTEM_RULES_BY_NAME if not n.startswith("#")), key=len, reverse=True)
+_SYSTEM_NAME_ALTERNATION = "|".join(re.escape(n) for n in _SYSTEM_IDENTIFIER_NAMES)
+#: Statement position: at the start of a line or right after a `;`, and not
+#: an assignment TO a variable that happens to share the name (`run = 5;`).
+_SYSTEM_STATEMENT_RE = re.compile(
+    r"(?:^|;)\s*(" + _SYSTEM_NAME_ALTERNATION + r")\b(?!\s*=(?!=))", re.IGNORECASE,
+)
+_SYSTEM_CALL_RE = re.compile(r"\b(" + _SYSTEM_NAME_ALTERNATION + r")\s*\(", re.IGNORECASE)
+_INCLUDE_DIRECTIVE_RE = re.compile(r"^\s*#include\b", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class SystemStatementFinding:
+    name: str
+    category: str
+    line_number: int
+    doc_page: str
+
+
+def check_system_statements(code: str) -> tuple[SystemStatementFinding, ...]:
+    """Deterministic, no I/O, no model input. Expects comment-stripped code
+    (the engine strips comments before calling); masks double-quoted string
+    contents first, so `print "dos is fine";` never matches. Fails closed: a
+    match is never second-guessed as "probably harmless"."""
+    findings: list[SystemStatementFinding] = []
+    seen: set[tuple[str, int]] = set()
+    for line_no, line in enumerate(code.splitlines(), start=1):
+        masked = _QUOTED_STRING_RE.sub(lambda m: "#" * len(m.group(0)), line)
+        names: list[str] = []
+        if _INCLUDE_DIRECTIVE_RE.match(line):
+            names.append("#include")
+        names.extend(m.group(1).lower() for m in _SYSTEM_STATEMENT_RE.finditer(masked))
+        names.extend(m.group(1).lower() for m in _SYSTEM_CALL_RE.finditer(masked))
+        for name in names:
+            if (name, line_no) in seen:
+                continue
+            seen.add((name, line_no))
+            rule = _SYSTEM_RULES_BY_NAME[name]
+            findings.append(SystemStatementFinding(
+                name=name, category=rule.category, line_number=line_no, doc_page=rule.doc_page,
+            ))
+    return tuple(findings)
+
+
+# ---------------------------------------------------------------------------
 # Phase 9/10/11/16 (v0.76.0): future execution-handoff readiness
 # ---------------------------------------------------------------------------
 
@@ -2231,13 +2396,15 @@ class ReadinessResult:
 def compute_handoff_readiness(
     *, eligibility: str, unresolved_issues: tuple[str, ...], syntax: SyntaxValidationResult | None,
     call_validations: tuple[CallValidationResult, ...], preconditions: tuple[PreconditionCheck, ...],
-    evidence_profile: str,
+    evidence_profile: str, system_statements: tuple[SystemStatementFinding, ...] = (),
 ) -> ReadinessResult:
     """Deterministic, provider-independent: reads only its own arguments,
     calls no model, performs no I/O -- the model can never influence this
     verdict, exactly like `compute_eligibility(...)`. Conservative by
     design (Phase 10's own default policy):
 
+    0. (v0.80.0) Any system-touching statement -> `NOT_READY`, checked
+       first so its reason is always reported, whatever else is wrong.
     1. `eligibility != ELIGIBLE_FOR_VALIDATION` -> `NOT_READY` (both
        `INELIGIBLE` and `REQUIRES_CLARIFICATION` -- there is nothing yet
        for a future handoff workflow to consider).
@@ -2256,6 +2423,13 @@ def compute_handoff_readiness(
        evidence profile is not `BROAD`.
     4. No violation and no gap -> `HANDOFF_CANDIDATE`.
     """
+    if system_statements:
+        reasons = tuple(
+            f"line {f.line_number}: `{f.name}` is a system-touching statement ({f.category}) -- controlled "
+            "execution only runs self-contained snippets that compute in memory"
+            for f in system_statements
+        )
+        return ReadinessResult(HandoffReadiness.NOT_READY.value, reasons)
     if eligibility == ExecutionEligibility.INELIGIBLE.value:
         reasons = unresolved_issues if unresolved_issues else ("code failed deterministic eligibility checks",)
         return ReadinessResult(HandoffReadiness.NOT_READY.value, tuple(reasons))
@@ -2314,7 +2488,7 @@ def render_validation_report(
     preconditions: tuple[PreconditionCheck, ...], companion_hints: tuple[tuple[str, str], ...],
     parameter_role_checks: tuple[ParameterRoleCheck, ...] = (), predicted_output: PredictedOutputClaim | None = None,
     coverage: ValidationCoverage | None = None, syntax: SyntaxValidationResult | None = None,
-    readiness: ReadinessResult | None = None,
+    readiness: ReadinessResult | None = None, system_statements: tuple[SystemStatementFinding, ...] = (),
 ) -> str:
     """Advisory, human-readable summary of this module's own evidence.
     Never implies real GAUSS execution occurred -- callers are expected to
@@ -2370,6 +2544,11 @@ def render_validation_report(
             lines.append(
                 "  - Not checked by this version: " + ", ".join(syntax.unknown_constructs)
             )
+
+    if system_statements:
+        lines.append("- System-touching statements (never run by controlled execution):")
+        for finding in system_statements:
+            lines.append(f"  - line {finding.line_number}: {finding.name} ({finding.category})")
 
     lines.append(f"- Execution eligibility: {eligibility}")
     if eligibility == ExecutionEligibility.ELIGIBLE_FOR_VALIDATION.value:

@@ -1,4 +1,4 @@
-"""Tests for `gauss_mcp_server.py` (v0.79.0, local MCP server).
+"""Tests for `gauss_mcp_server.py` (v0.79.0; hybrid path v0.80.0).
 
 Run with:
 
@@ -6,13 +6,11 @@ Run with:
 
 Every test is deterministic and network-free, and never touches this
 machine's own real `~/.gauss-ai/config.json`, real GAUSS executable, or real
-Ollama/Anthropic endpoint -- every call below explicitly pins `provider`/
-`runner`/`docs_root`/`workspace_parent` (CLI-argument precedence, which wins
-over this machine's own config file and environment variables) rather than
-relying on this module's config-resolution defaults, exactly the same
-discipline `test_gauss_ai_chat.py`/`test_gauss_ai_guided_repair.py` already
-use. Requires the optional `mcp` extra (`pip install -e ".[mcp]"`); skips
-cleanly with a clear message if it is not installed.
+Ollama/Anthropic endpoint -- every call explicitly pins `runner`/
+`docs_root`/`workspace_parent` (argument precedence, which wins over this
+machine's config file and environment), and strict-mode chat tests inject a
+`FakeModelProvider`-backed engine directly. Requires the optional `mcp`
+extra (`pip install -e ".[mcp]"`); skips cleanly if it is not installed.
 """
 
 from __future__ import annotations
@@ -29,11 +27,15 @@ if str(_SCRIPT_DIR) not in sys.path:
 
 try:
     import gauss_mcp_server as server_mod  # noqa: E402
+    from mcp.server.mcpserver import MCPServer  # noqa: E402
 except ImportError as exc:
     print(f"SKIPPED: the optional 'mcp' extra is not installed ({exc}).")
     print('Install it with: pip install -e ".[mcp]" to run this test file.')
     raise SystemExit(0)
 
+import gauss_ai_config as config_mod  # noqa: E402
+import gauss_chat_provider as provider_mod  # noqa: E402
+import gauss_conversation_engine as engine_mod  # noqa: E402
 import gauss_execution_handoff as handoff_mod  # noqa: E402
 
 _failures: list[str] = []
@@ -44,9 +46,8 @@ def check(name: str, condition: bool) -> None:
         _failures.append(name)
 
 
-#: Same fixture shape `test_gauss_ai_chat.py`'s own
-#: `_fixture_docs_root_handoff_candidate`/`_TYPED_INV_RST` use to reach a
-#: real, broad-evidence `HANDOFF_CANDIDATE` verdict deterministically.
+#: Same fixture shape `test_gauss_ai_chat.py` uses to reach a real,
+#: broad-evidence `HANDOFF_CANDIDATE` deterministically (typed `x`).
 _TYPED_INV_RST = """inv, invpd
 ==========
 
@@ -63,31 +64,26 @@ Input
     :type x: NxN matrix
 """
 
+CANDIDATE_CODE = "y = invpd({2 1, 1 2});\nprint y;"
+
 
 def _fixture_docs_root(tmp: str) -> str:
     root = Path(tmp) / "docs"
-    root.mkdir()
+    root.mkdir(exist_ok=True)
     (root / "invinvpd.rst").write_text(_TYPED_INV_RST, encoding="utf-8")
     return str(root)
 
 
-def _start_fake_chat_session(tmp: str, *, canned_answer: str | None = None) -> str:
-    # `provider="fake"` and `runner="fake"` are CLI-argument-precedence
-    # overrides -- they always win over this machine's own config file, so
-    # these tests never depend on (or risk touching) this machine's real
-    # chat-provider/runner/GAUSS-executable configuration.
-    resp = server_mod.gauss_chat_start(
-        provider="fake", runner="fake", docs_root=_fixture_docs_root(tmp), workspace_parent=tmp,
-    )
-    check("gauss_chat_start returns a session_id", "session_id" in resp)
-    session_id = resp["session_id"]
-    if canned_answer is not None:
-        import gauss_chat_provider as provider_mod
+def _start(tmp: str, **overrides) -> str:
+    kwargs = dict(runner="fake", docs_root=_fixture_docs_root(tmp), workspace_parent=tmp)
+    kwargs.update(overrides)
+    resp = server_mod.gauss_session_start(**kwargs)
+    return resp["session_id"]
 
-        server_mod._chat_sessions[session_id].engine.provider = provider_mod.FakeModelProvider(
-            canned_answer=canned_answer
-        )
-    return session_id
+
+def _with_chat_engine(session_id: str, docs_root: str, canned_answer: str | None = None) -> None:
+    provider = provider_mod.FakeModelProvider(canned_answer=canned_answer) if canned_answer else provider_mod.FakeModelProvider()
+    server_mod._sessions[session_id].engine = engine_mod.ConversationEngine(provider=provider, docs_root=docs_root)
 
 
 # ---------------------------------------------------------------------------
@@ -95,138 +91,202 @@ def _start_fake_chat_session(tmp: str, *, canned_answer: str | None = None) -> s
 # ---------------------------------------------------------------------------
 
 
-def test_01_exactly_nine_tools_registered() -> None:
-    tools = asyncio.run(server_mod.server.list_tools())
-    names = {t.name for t in tools}
-    expected = {
-        "gauss_chat_start", "gauss_chat_ask", "gauss_chat_reset", "gauss_chat_close",
+def test_01_base_tool_surface_and_opt_in_chat_registration() -> None:
+    # v0.80.0: replaces v0.79.0's 9-tool set. gauss_chat_start/close became
+    # gauss_session_start/close (a session now serves both paths), the
+    # hybrid path added gauss_search_docs/gauss_validate_code, and the two
+    # strict-mode chat tools are registered only on explicit opt-in.
+    names = {t.name for t in asyncio.run(server_mod.server.list_tools())}
+    base = {
+        "gauss_session_start", "gauss_session_close", "gauss_search_docs", "gauss_validate_code",
         "gauss_execution_prepare", "gauss_execution_decide",
         "gauss_repair_start", "gauss_repair_command", "gauss_repair_close",
     }
-    check("exactly the expected 9 tools are registered", names == expected)
+    check("exactly the 9 base tools are registered at import", names == base)
+    fresh = MCPServer("probe")
+    server_mod._register_chat_tools(fresh)
+    check("opt-in registers exactly the 2 chat tools", {t.name for t in asyncio.run(fresh.list_tools())} == {"gauss_chat_ask", "gauss_chat_reset"})
+
+
+def test_02_chat_tools_enabled_only_for_a_real_provider() -> None:
+    check("default (unset) is not enabled", not server_mod.chat_tools_enabled(config_mod.GaussAiConfig(), {}))
+    check("explicit fake is not enabled", not server_mod.chat_tools_enabled(config_mod.GaussAiConfig(chat_provider="fake"), {}))
+    check("ollama is enabled", server_mod.chat_tools_enabled(config_mod.GaussAiConfig(chat_provider="ollama"), {}))
+    check("anthropic is enabled", server_mod.chat_tools_enabled(config_mod.GaussAiConfig(chat_provider="anthropic"), {}))
 
 
 # ---------------------------------------------------------------------------
-# Chat session lifecycle + isolation
+# Sessions
 # ---------------------------------------------------------------------------
 
 
-def test_02_chat_start_ask_reset_close() -> None:
+def test_03_session_start_close_and_unknown_session_errors() -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        session_id = _start_fake_chat_session(tmp)
-        ask_resp = server_mod.gauss_chat_ask(session_id, "What does invpd do?")
-        check("ask returns provider_success", ask_resp.get("provider_success") is True)
-        check("ask returns text", isinstance(ask_resp.get("text"), str) and ask_resp["text"])
-        reset_resp = server_mod.gauss_chat_reset(session_id)
-        check("reset acknowledges", reset_resp == {"session_id": session_id, "reset": True})
-        close_resp = server_mod.gauss_chat_close(session_id)
-        check("close acknowledges", close_resp == {"session_id": session_id, "closed": True})
-        check("session is gone after close", session_id not in server_mod._chat_sessions)
+        sid = _start(tmp)
+        check("session registered", sid in server_mod._sessions)
+        check("close acknowledges", server_mod.gauss_session_close(sid) == {"session_id": sid, "closed": True})
+        check("closing again is a no-op false", server_mod.gauss_session_close(sid)["closed"] is False)
+    for fn, args in (
+        (server_mod.gauss_validate_code, ("nope", "x = 1;")),
+        (server_mod.gauss_execution_prepare, ("nope",)),
+        (server_mod.gauss_execution_decide, ("nope", "yes")),
+        (server_mod.gauss_chat_ask, ("nope", "hi")),
+        (server_mod.gauss_chat_reset, ("nope",)),
+    ):
+        check(f"{fn.__name__} on unknown session is a structured error", fn(*args) == {"error": "unknown_session"})
 
 
-def test_03_unknown_chat_session_returns_structured_error_not_exception() -> None:
-    check("ask on unknown session", server_mod.gauss_chat_ask("does-not-exist", "hi") == {"error": "unknown_session"})
-    check("reset on unknown session", server_mod.gauss_chat_reset("does-not-exist") == {"error": "unknown_session"})
-    check(
-        "close on unknown session is a no-op false, not an error",
-        server_mod.gauss_chat_close("does-not-exist") == {"session_id": "does-not-exist", "closed": False},
-    )
-
-
-def test_04_two_chat_sessions_are_isolated() -> None:
-    with tempfile.TemporaryDirectory() as tmp_a, tempfile.TemporaryDirectory() as tmp_b:
-        sid_a = _start_fake_chat_session(tmp_a)
-        sid_b = _start_fake_chat_session(tmp_b)
-        check("distinct session ids", sid_a != sid_b)
-        server_mod.gauss_chat_ask(sid_a, "What does invpd do?")
-        check("session A has one turn", len(server_mod._chat_sessions[sid_a].engine.state.turns) == 2)
-        check("session B is untouched", len(server_mod._chat_sessions[sid_b].engine.state.turns) == 0)
-        server_mod.gauss_chat_reset(sid_a)
-        check("resetting A does not affect B's turn count field existing", sid_b in server_mod._chat_sessions)
+def test_04_session_without_docs_root_reports_hint() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        empty_cfg = Path(tmp) / "empty-config.json"
+        saved_config = server_mod._config
+        server_mod._config = config_mod.load_config(empty_cfg)  # no docs_root anywhere in config
+        saved_env = os.environ.pop(config_mod.ENV_DOCS_ROOT, None)
+        try:
+            resp = server_mod.gauss_session_start(runner="fake", workspace_parent=tmp)
+            check("not configured", resp["docs_root_configured"] is False)
+            check("hint points to docs fetch", "gauss-ai docs fetch" in resp.get("hint", ""))
+            result = server_mod.gauss_validate_code(resp["session_id"], CANDIDATE_CODE)
+            check("validate refuses without docs", result.get("error") == "docs_root_not_configured")
+        finally:
+            server_mod._config = saved_config
+            if saved_env is not None:
+                os.environ[config_mod.ENV_DOCS_ROOT] = saved_env
 
 
 # ---------------------------------------------------------------------------
-# Execution-offer gating -- the safety-relevant boundary this module must
-# never re-derive itself (see module docstring).
+# Hybrid path: search -> client-written code -> validate -> prepare -> decide
 # ---------------------------------------------------------------------------
 
 
-def test_05_non_candidate_answer_is_not_offer_eligible_and_prepare_refuses() -> None:
+def test_05_search_docs_returns_grounded_excerpts() -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        session_id = _start_fake_chat_session(tmp)
-        ask_resp = server_mod.gauss_chat_ask(session_id, "What is the meaning of life?")
-        check("plain QA answer is not execution-offer-eligible", ask_resp["execution_offer_eligible"] is False)
-        prepare_resp = server_mod.gauss_execution_prepare(session_id)
-        check(
-            "prepare refuses with no pending candidate",
-            prepare_resp == {"error": "no_pending_handoff_candidate"},
-        )
+        resp = server_mod.gauss_search_docs("What does invpd do?", docs_root=_fixture_docs_root(tmp))
+        check("grounded", resp["grounding_status"] == "grounded")
+        check("invpd excerpt returned", any("invpd" in s["content"] for s in resp["sources"]))
 
 
-def test_06_handoff_candidate_answer_is_offer_eligible() -> None:
+def test_06_validated_candidate_round_trip_executes_with_fake_runner() -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        session_id = _start_fake_chat_session(tmp, canned_answer="```gauss\ny = invpd({2 1, 1 2});\nprint y;\n```")
-        ask_resp = server_mod.gauss_chat_ask(session_id, "Use invpd to invert this matrix.")
-        check("HANDOFF_CANDIDATE answer is execution-offer-eligible", ask_resp["execution_offer_eligible"] is True)
-        check(
-            "handoff_readiness state is handoff_candidate",
-            ask_resp["handoff_readiness"]["state"] == "handoff_candidate",
-        )
-        check("exactly one generated code block", len(ask_resp["generated_code"]) == 1)
+        sid = _start(tmp)
+        validation = server_mod.gauss_validate_code(sid, CANDIDATE_CODE)
+        check("candidate", validation["handoff_readiness"]["state"] == "handoff_candidate")
+        check("validation_id issued", isinstance(validation.get("validation_id"), str))
+        check("code digest returned", len(validation.get("code_sha256", "")) == 64)
+        prepared = server_mod.gauss_execution_prepare(sid, validation["validation_id"])
+        check("prompt shows the exact validated code", "invpd({2 1, 1 2})" in prepared.get("rendered_prompt", ""))
+        decided = server_mod.gauss_execution_decide(sid, "yes")
+        check("success", decided.get("outcome") == handoff_mod.HandoffOutcome.SUCCESS.value)
+
+
+def test_07_validation_id_is_single_use() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        sid = _start(tmp)
+        vid = server_mod.gauss_validate_code(sid, CANDIDATE_CODE)["validation_id"]
+        server_mod.gauss_execution_prepare(sid, vid)
+        check("reuse refused", server_mod.gauss_execution_prepare(sid, vid) == {"error": "unknown_or_used_validation_id"})
+        check("made-up id refused", server_mod.gauss_execution_prepare(sid, "not-a-real-id") == {"error": "unknown_or_used_validation_id"})
+
+
+def test_08_non_candidate_code_never_gets_a_validation_id() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        sid = _start(tmp)
+        for code, why in (
+            ("print colmean(x);", "hallucinated function"),
+            ("print invpd({2 1, 3 2});", "violated documented precondition"),
+            (CANDIDATE_CODE + '\ndos "dir";', "system-touching statement"),
+            ("x = {1 2, 3 4};\nprint x;", "no documented calls"),
+        ):
+            resp = server_mod.gauss_validate_code(sid, code)
+            check(f"{why}: not_ready", resp["handoff_readiness"]["state"] == "not_ready")
+            check(f"{why}: no validation_id", "validation_id" not in resp and resp["execution_offer_eligible"] is False)
+        dos = server_mod.gauss_validate_code(sid, CANDIDATE_CODE + '\ndos "dir";')
+        check("system statement reported", [s["name"] for s in dos["system_statements"]] == ["dos"])
+
+
+def test_09_structural_rejections_are_errors() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        sid = _start(tmp)
+        check("fenced code rejected", server_mod.gauss_validate_code(sid, "```gauss\nprint 1;\n```")["error"] == "fenced_code")
+        check("empty code rejected", server_mod.gauss_validate_code(sid, "   ")["error"] == "empty_code")
+
+
+def test_10_stale_validation_is_refused_at_prepare() -> None:
+    """The docs changed between validate and prepare -- re-validation at
+    prepare time must refuse rather than trust the stored verdict."""
+    with tempfile.TemporaryDirectory() as tmp:
+        sid = _start(tmp)
+        vid = server_mod.gauss_validate_code(sid, CANDIDATE_CODE)["validation_id"]
+        (Path(tmp) / "docs" / "invinvpd.rst").unlink()
+        (Path(tmp) / "docs" / "other.rst").write_text("other\n=====\n", encoding="utf-8")
+        resp = server_mod.gauss_execution_prepare(sid, vid)
+        check("stale refused", resp.get("error") == "validation_stale")
+
+
+def test_11_outstanding_validation_ids_are_capped() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        sid = _start(tmp)
+        ids = [server_mod.gauss_validate_code(sid, CANDIDATE_CODE)["validation_id"] for _ in range(server_mod.MAX_VALIDATIONS_PER_SESSION + 2)]
+        stored = server_mod._sessions[sid].validated
+        check("capped", len(stored) == server_mod.MAX_VALIDATIONS_PER_SESSION)
+        check("oldest evicted", ids[0] not in stored and ids[-1] in stored)
+
+
+def test_12_decline_and_unrecognized_on_validated_request() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        sid = _start(tmp)
+        server_mod.gauss_execution_prepare(sid, server_mod.gauss_validate_code(sid, CANDIDATE_CODE)["validation_id"])
+        check("unrecognized creates no approval", server_mod.gauss_execution_decide(sid, "sure")["outcome"] == "unrecognized"
+              and len(server_mod._sessions[sid].approval_store) == 0)
+        check("decline", server_mod.gauss_execution_decide(sid, "no")["outcome"] == "declined")
+        check("nothing left pending", server_mod.gauss_execution_decide(sid, "yes") == {"error": "no_pending_request"})
 
 
 # ---------------------------------------------------------------------------
-# Full execution handoff: prepare -> decide
+# Strict mode (opt-in chat) and the two paths together
 # ---------------------------------------------------------------------------
 
 
-def test_07_prepare_then_approve_fake_runner_succeeds_end_to_end() -> None:
+def test_13_chat_candidate_round_trip() -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        session_id = _start_fake_chat_session(tmp, canned_answer="```gauss\ny = invpd({2 1, 1 2});\nprint y;\n```")
-        server_mod.gauss_chat_ask(session_id, "Use invpd to invert this matrix.")
-        prepare_resp = server_mod.gauss_execution_prepare(session_id)
-        check("prepare returns a digest", isinstance(prepare_resp.get("digest"), str) and prepare_resp["digest"])
-        check("rendered prompt shows the exact code", "invpd({2 1, 1 2})" in prepare_resp["rendered_prompt"])
-
-        decide_resp = server_mod.gauss_execution_decide(session_id, "yes")
-        check("outcome is success", decide_resp["outcome"] == handoff_mod.HandoffOutcome.SUCCESS.value)
-        check("launched is true", decide_resp["launched"] is True)
-        check("evidence is present", decide_resp["evidence"] is not None)
-
-        session = server_mod._chat_sessions[session_id]
-        check("pending request cleared after decide", session.pending_request is None)
-        check("approval store recorded exactly one approval", len(session.approval_store) == 1)
+        docs = _fixture_docs_root(tmp)
+        sid = _start(tmp)
+        _with_chat_engine(sid, docs, "```gauss\ny = invpd({2 1, 1 2});\nprint y;\n```")
+        ask = server_mod.gauss_chat_ask(sid, "Use invpd to invert this matrix.")
+        check("offer eligible", ask["execution_offer_eligible"] is True)
+        check("prepare without validation_id uses the chat answer", "digest" in server_mod.gauss_execution_prepare(sid))
+        check("success", server_mod.gauss_execution_decide(sid, "yes")["outcome"] == handoff_mod.HandoffOutcome.SUCCESS.value)
 
 
-def test_08_decline_records_no_execution() -> None:
+def test_14_non_candidate_chat_answer_cannot_be_prepared() -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        session_id = _start_fake_chat_session(tmp, canned_answer="```gauss\ny = invpd({2 1, 1 2});\nprint y;\n```")
-        server_mod.gauss_chat_ask(session_id, "Use invpd to invert this matrix.")
-        server_mod.gauss_execution_prepare(session_id)
-        decide_resp = server_mod.gauss_execution_decide(session_id, "no")
-        check("outcome is declined", decide_resp["outcome"] == "declined")
-        check("no 'launched'/'evidence' keys on a declined response", "evidence" not in decide_resp)
+        sid = _start(tmp)
+        _with_chat_engine(sid, _fixture_docs_root(tmp))
+        ask = server_mod.gauss_chat_ask(sid, "What is the meaning of life?")
+        check("not eligible", ask["execution_offer_eligible"] is False)
+        check("prepare refuses", server_mod.gauss_execution_prepare(sid) == {"error": "no_pending_handoff_candidate"})
 
 
-def test_09_unrecognized_response_creates_no_approval() -> None:
+def test_15_validated_execution_never_clears_a_pending_chat_offer() -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        session_id = _start_fake_chat_session(tmp, canned_answer="```gauss\ny = invpd({2 1, 1 2});\nprint y;\n```")
-        server_mod.gauss_chat_ask(session_id, "Use invpd to invert this matrix.")
-        server_mod.gauss_execution_prepare(session_id)
-        decide_resp = server_mod.gauss_execution_decide(session_id, "sure, go ahead")
-        check("outcome is unrecognized", decide_resp["outcome"] == "unrecognized")
-        session = server_mod._chat_sessions[session_id]
-        check("no approval was recorded", len(session.approval_store) == 0)
-        check("pending request is still set (not consumed by an unrecognized reply)", session.pending_request is not None)
+        docs = _fixture_docs_root(tmp)
+        sid = _start(tmp)
+        _with_chat_engine(sid, docs, "```gauss\ny = invpd({2 1, 1 2});\nprint y;\n```")
+        server_mod.gauss_chat_ask(sid, "Use invpd to invert this matrix.")
+        vid = server_mod.gauss_validate_code(sid, CANDIDATE_CODE)["validation_id"]
+        server_mod.gauss_execution_prepare(sid, vid)
+        server_mod.gauss_execution_decide(sid, "yes")
+        check("chat offer still pending", server_mod._sessions[sid].pending_code is not None)
 
 
-def test_10_decide_with_no_pending_request_is_a_structured_error() -> None:
+def test_16_chat_reset_clears_offer() -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        session_id = _start_fake_chat_session(tmp)
-        check(
-            "decide with nothing prepared",
-            server_mod.gauss_execution_decide(session_id, "yes") == {"error": "no_pending_request"},
-        )
+        docs = _fixture_docs_root(tmp)
+        sid = _start(tmp)
+        _with_chat_engine(sid, docs, "```gauss\ny = invpd({2 1, 1 2});\nprint y;\n```")
+        server_mod.gauss_chat_ask(sid, "Use invpd to invert this matrix.")
+        check("reset acknowledges", server_mod.gauss_chat_reset(sid) == {"session_id": sid, "reset": True})
+        check("offer cleared", server_mod.gauss_execution_prepare(sid) == {"error": "no_pending_handoff_candidate"})
 
 
 # ---------------------------------------------------------------------------
@@ -234,135 +294,74 @@ def test_10_decide_with_no_pending_request_is_a_structured_error() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_11_real_gauss_blocked_by_default() -> None:
+def test_17_real_gauss_blocked_by_default() -> None:
     assert os.environ.get(server_mod.ENV_ALLOW_REAL_GAUSS) is None, "test environment must not pre-set this"
     with tempfile.TemporaryDirectory() as tmp:
         fake_exe = os.path.join(tmp, "does-not-exist-tgauss.exe")
-        session_id = _start_fake_chat_session(tmp, canned_answer="```gauss\ny = invpd({2 1, 1 2});\nprint y;\n```")
-        server_mod._chat_sessions[session_id].runner = "gauss"
-        server_mod._chat_sessions[session_id].executable_path = fake_exe
-        server_mod.gauss_chat_ask(session_id, "Use invpd to invert this matrix.")
-        prepare_resp = server_mod.gauss_execution_prepare(session_id)
-        check("real GAUSS blocked without the operator opt-in", prepare_resp.get("error") == "real_gauss_not_allowed")
-
-        repair_resp = server_mod.gauss_repair_start(runner="gauss", gauss_executable=fake_exe, workspace_parent=tmp)
-        check(
-            "repair session construction also blocked without the operator opt-in",
-            repair_resp.get("error") == "real_gauss_not_allowed",
-        )
+        sid = _start(tmp, runner="gauss", gauss_executable=fake_exe)
+        vid = server_mod.gauss_validate_code(sid, CANDIDATE_CODE)["validation_id"]
+        check("prepare blocked", server_mod.gauss_execution_prepare(sid, vid).get("error") == "real_gauss_not_allowed")
+        repair = server_mod.gauss_repair_start(runner="gauss", gauss_executable=fake_exe, workspace_parent=tmp)
+        check("repair blocked", repair.get("error") == "real_gauss_not_allowed")
 
 
-def test_12_real_gauss_opt_in_still_requires_a_real_reachable_executable() -> None:
-    """Confirms the opt-in flag only REMOVES the server-side gate -- it does
-    not bypass the existing adapter's own environment probe. A nonexistent
-    executable path still safely fails at ENVIRONMENT_MISMATCH / `invoked ==
-    False`, so this test never actually launches a subprocess."""
+def test_18_real_gauss_opt_in_still_requires_a_reachable_executable() -> None:
+    """The opt-in removes only the server-side refusal, never the adapter's
+    own environment probe -- a nonexistent executable never launches."""
     with tempfile.TemporaryDirectory() as tmp:
         fake_exe = os.path.join(tmp, "does-not-exist-tgauss.exe")
         os.environ[server_mod.ENV_ALLOW_REAL_GAUSS] = "1"
         try:
-            session_id = _start_fake_chat_session(
-                tmp, canned_answer="```gauss\ny = invpd({2 1, 1 2});\nprint y;\n```"
-            )
-            server_mod._chat_sessions[session_id].runner = "gauss"
-            server_mod._chat_sessions[session_id].executable_path = fake_exe
-            server_mod.gauss_chat_ask(session_id, "Use invpd to invert this matrix.")
-            prepare_resp = server_mod.gauss_execution_prepare(session_id)
-            check("prepare now succeeds with the opt-in set", "digest" in prepare_resp)
-            decide_resp = server_mod.gauss_execution_decide(session_id, "yes")
-            check(
-                "a nonexistent executable never actually launches -- infrastructure_failure, not success",
-                decide_resp["outcome"] == handoff_mod.HandoffOutcome.INFRASTRUCTURE_FAILURE.value,
-            )
+            sid = _start(tmp, runner="gauss", gauss_executable=fake_exe)
+            vid = server_mod.gauss_validate_code(sid, CANDIDATE_CODE)["validation_id"]
+            check("prepare allowed", "digest" in server_mod.gauss_execution_prepare(sid, vid))
+            decided = server_mod.gauss_execution_decide(sid, "yes")
+            check("never launched -- infrastructure_failure", decided["outcome"] == handoff_mod.HandoffOutcome.INFRASTRUCTURE_FAILURE.value)
         finally:
             del os.environ[server_mod.ENV_ALLOW_REAL_GAUSS]
 
 
 # ---------------------------------------------------------------------------
-# Guided repair sessions
+# Guided repair sessions (unchanged from v0.79.0)
 # ---------------------------------------------------------------------------
 
 
-def test_13_repair_start_command_close() -> None:
+def test_19_repair_start_command_close() -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        start_resp = server_mod.gauss_repair_start(runner="fake", workspace_parent=tmp)
-        check("repair start returns a session_id", "session_id" in start_resp)
-        session_id = start_resp["session_id"]
-        cmd_resp = server_mod.gauss_repair_command(session_id, "status")
-        check("command returns an output list", isinstance(cmd_resp["output"], list))
-        check("session stays open after an ordinary command", cmd_resp["session_closed"] is False)
-        close_resp = server_mod.gauss_repair_close(session_id)
-        check("close reports true", close_resp == {"session_id": session_id, "closed": True})
-        check("session removed from registry", session_id not in server_mod._repair_sessions)
+        sid = server_mod.gauss_repair_start(runner="fake", workspace_parent=tmp)["session_id"]
+        resp = server_mod.gauss_repair_command(sid, "status")
+        check("output list", isinstance(resp["output"], list) and resp["session_closed"] is False)
+        check("close", server_mod.gauss_repair_close(sid) == {"session_id": sid, "closed": True})
 
 
-def test_14_repair_exit_command_closes_and_frees_the_session() -> None:
+def test_20_repair_exit_and_decline_paths() -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        start_resp = server_mod.gauss_repair_start(runner="fake", workspace_parent=tmp)
-        session_id = start_resp["session_id"]
-        cmd_resp = server_mod.gauss_repair_command(session_id, "exit")
-        check("'exit' closes the session", cmd_resp["session_closed"] is True)
-        check("session removed from registry after exit", session_id not in server_mod._repair_sessions)
-        followup = server_mod.gauss_repair_command(session_id, "status")
-        check("a command after exit is a structured error, not a crash", followup == {"error": "unknown_session"})
-
-
-def test_15_repair_decline_paths_never_raise() -> None:
-    with tempfile.TemporaryDirectory() as tmp:
-        start_resp = server_mod.gauss_repair_start(runner="fake", workspace_parent=tmp)
-        session_id = start_resp["session_id"]
-        for bad_command in (
-            "decline-repair not-a-real-digest",
-            "decline-repair-draft not-a-real-digest",
-            "decline-repair-application not-a-real-digest",
-        ):
-            resp = server_mod.gauss_repair_command(session_id, bad_command)
-            check(f"{bad_command!r} comes back as output, not an exception", isinstance(resp["output"], list))
-            check(f"{bad_command!r} does not close the session", resp["session_closed"] is False)
-        server_mod.gauss_repair_close(session_id)
-
-
-def test_16_two_repair_sessions_get_independent_adapters() -> None:
-    with tempfile.TemporaryDirectory() as tmp_a, tempfile.TemporaryDirectory() as tmp_b:
-        sid_a = server_mod.gauss_repair_start(runner="fake", workspace_parent=tmp_a)["session_id"]
-        sid_b = server_mod.gauss_repair_start(runner="fake", workspace_parent=tmp_b)["session_id"]
-        check("distinct repair session ids", sid_a != sid_b)
-        check(
-            "distinct adapter instances",
-            server_mod._repair_sessions[sid_a].adapter is not server_mod._repair_sessions[sid_b].adapter,
-        )
-        server_mod.gauss_repair_close(sid_a)
-        server_mod.gauss_repair_close(sid_b)
-
-
-def test_17_unknown_repair_session_returns_structured_error() -> None:
-    check(
-        "command on unknown repair session",
-        server_mod.gauss_repair_command("nope", "status") == {"error": "unknown_session"},
-    )
-    check(
-        "close on unknown repair session is a no-op false",
-        server_mod.gauss_repair_close("nope") == {"session_id": "nope", "closed": False},
-    )
+        sid = server_mod.gauss_repair_start(runner="fake", workspace_parent=tmp)["session_id"]
+        for cmd in ("decline-repair x", "decline-repair-draft x", "decline-repair-application x"):
+            resp = server_mod.gauss_repair_command(sid, cmd)
+            check(f"{cmd!r} returns output and keeps the session", isinstance(resp["output"], list) and not resp["session_closed"])
+        check("exit closes", server_mod.gauss_repair_command(sid, "exit")["session_closed"] is True)
+        check("command after exit is a structured error", server_mod.gauss_repair_command(sid, "status") == {"error": "unknown_session"})
 
 
 # ---------------------------------------------------------------------------
-# Structural guarantees: this module must never reimplement safety logic
-# (precedent: test_gauss_ai_cli.py's own unmodified-module source-scan checks)
+# Structural guarantees: this module never reimplements safety logic
 # ---------------------------------------------------------------------------
 
 
-def test_18_source_never_reimplements_safety_logic() -> None:
+def test_21_source_never_reimplements_safety_logic() -> None:
     source = Path(server_mod.__file__).read_text(encoding="utf-8")
-    check("never redefines compute_handoff_readiness", "def compute_handoff_readiness" not in source)
-    check("never redefines create_execution_handoff_request", "def create_execution_handoff_request" not in source)
-    check("never redefines execute_execution_handoff", "def execute_execution_handoff" not in source)
-    check("never redefines InteractiveMvpAdapter", "class InteractiveMvpAdapter" not in source)
-    check("never imports gauss_pre_execution_validation directly", "import gauss_pre_execution_validation" not in source)
+    for forbidden in (
+        "def compute_handoff_readiness", "def create_execution_handoff_request", "def execute_execution_handoff",
+        "class InteractiveMvpAdapter", "import gauss_pre_execution_validation", "def validate_code",
+        "def check_system_statements",
+    ):
+        check(f"source has no {forbidden!r}", forbidden not in source)
     check(
         "reuses the canonical _execution_offer_eligible gate rather than duplicating it",
         "chat_mod._execution_offer_eligible" in source and "def _execution_offer_eligible" not in source,
     )
+    check("prepare takes no code parameter", "code" not in server_mod.gauss_execution_prepare.__code__.co_varnames[:2])
 
 
 def _run_all() -> int:

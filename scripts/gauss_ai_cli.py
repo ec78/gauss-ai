@@ -43,9 +43,10 @@ import gauss_ai_guided_repair as guided_repair_mod  # noqa: E402
 import gauss_ai_init as init_mod  # noqa: E402
 import gauss_chat_provider as provider_mod  # noqa: E402
 import gauss_code_assistant_cli as cli_mod  # noqa: E402
+import gauss_docs_fetch as docs_fetch_mod  # noqa: E402
 import gauss_environment_check as environment_check_mod  # noqa: E402
 
-__version__ = "0.79.0"
+__version__ = "0.80.0"
 
 
 def _cmd_version(args: list[str]) -> int:
@@ -120,8 +121,9 @@ def _print_config_help() -> None:
     print("             gauss-ai config set chat-provider anthropic")
     print("")
     print("Documentation grounding (optional, all providers): without docs-root configured, conversational")
-    print("answers about specific GAUSS commands are not grounded in official documentation. See")
-    print("docs/conversational-qa.md and docs/gauss-documentation-setup.md for how to obtain and point at one.")
+    print("answers about specific GAUSS commands are not grounded in official documentation. The easiest way")
+    print("to get it: 'gauss-ai docs fetch' (one-time download from docs.aptech.com). See")
+    print("docs/gauss-documentation-setup.md for details and alternatives.")
     print("")
     print("Run 'gauss-ai config show' to see your current configuration and its sources, and")
     print("'gauss-ai doctor' to check whether your configured provider is actually reachable.")
@@ -267,6 +269,69 @@ def _cmd_chat(args: list[str]) -> int:
     return 0 if engine is not None else 2
 
 
+def _print_docs_help() -> None:
+    print("Usage: gauss-ai docs fetch [--yes]   Download the official GAUSS documentation for local grounding")
+    print("       gauss-ai docs status          Show which documentation gauss-ai is using")
+    print("")
+    print(f"'docs fetch' downloads the source of every page published at {docs_fetch_mod.DOCS_BASE_URL}")
+    print(f"(about 1,800 small text files, a few minutes) into {docs_fetch_mod.default_cache_dir()}. It runs only")
+    print("when you ask for it; nothing is uploaded, and searching the docs afterwards is local and offline.")
+    print("Re-run it any time to refresh. If docs-root is unset, it is pointed at the downloaded copy.")
+
+
+def _cmd_docs(args: list[str]) -> int:
+    """`docs fetch` is the one explicit, user-invoked network download in
+    gauss-ai besides a model provider the user enabled (see CLAUDE.md and
+    `gauss_docs_fetch.py`). Never runs implicitly."""
+    if not args or args[0] in {"-h", "--help", "help"}:
+        _print_docs_help()
+        return 0
+    sub, rest = args[0], args[1:]
+    if sub == "status":
+        config = config_mod.load_config()
+        resolved = config_mod.resolve_docs_root(config=config, env=os.environ)
+        cache = docs_fetch_mod.default_cache_dir()
+        print(f"docs-root: {resolved.value or '(not set)'} (source: {resolved.source})")
+        using_cache = bool(resolved.value) and Path(resolved.value).expanduser().resolve() == cache.resolve()
+        print(f"Downloaded copy: {cache}" + (" (in use)" if using_cache else ""))
+        manifest = docs_fetch_mod.read_manifest(cache)
+        if manifest:
+            print(f"  fetched {manifest.get('file_count')} pages from {manifest.get('source_url')} at {manifest.get('fetched_at')}")
+        else:
+            print("  not downloaded yet -- run: gauss-ai docs fetch")
+        return 0
+    if sub == "fetch":
+        if rest not in ([], ["--yes"]):
+            print("Usage: gauss-ai docs fetch [--yes]")
+            return 2
+        cache = docs_fetch_mod.default_cache_dir()
+        if rest != ["--yes"]:
+            print(f"This downloads the official GAUSS documentation (about 1,800 pages) from {docs_fetch_mod.DOCS_BASE_URL}")
+            print(f"into {cache}, for local use only. It takes a few minutes: the site rate-limits, so gauss-ai")
+            print("downloads politely and backs off when asked to.")
+            if input("Continue? [y/N]: ").strip().lower() != "y":
+                print("Cancelled. Nothing was downloaded.")
+                return 1
+
+        def _progress(done: int, total: int) -> None:
+            if done == total or done % 200 == 0:
+                print(f"  {done}/{total} pages")
+
+        try:
+            result = docs_fetch_mod.fetch_docs(cache_dir=cache, progress_fn=_progress)
+        except docs_fetch_mod.DocsFetchError as exc:
+            print(f"Documentation download failed: {exc}")
+            print("Any previously downloaded copy was left unchanged.")
+            return 1
+        print(f"Downloaded {result.file_count} pages to {result.cache_dir}.")
+        _updated, message = docs_fetch_mod.point_config_at_cache(result.cache_dir)
+        print(message)
+        return 0
+    print(f"Unknown docs subcommand: {sub!r}")
+    _print_docs_help()
+    return 2
+
+
 def _cmd_mcp(args: list[str]) -> int:
     """Delegates to `gauss_mcp_server.main()` -- the EXISTING, unmodified
     MCP server module -- never a second implementation here. `mcp` is an
@@ -327,6 +392,7 @@ def _print_top_help() -> None:
     print("  gauss-ai config --help                Full configuration and chat-provider reference")
     print("  gauss-ai repair <file.gss> [--export-session PATH]  Guided repair workflow for one file")
     print("  gauss-ai repl [--runner ...] [...]      Launch the full command-by-command workflow REPL (advanced)")
+    print("  gauss-ai docs fetch | status          Download / inspect the official GAUSS docs used for grounding")
     print("  gauss-ai mcp                           Run the local MCP server (requires: pip install -e \".[mcp]\")")
     print("")
     print("No API key? Try a local model: gauss-ai config set chat-provider ollama  (see 'gauss-ai config --help')")
@@ -360,6 +426,8 @@ def main(argv: list[str] | None = None) -> int:
             return _launch_repl(rest)
         if command == "mcp":
             return _cmd_mcp(rest)
+        if command == "docs":
+            return _cmd_docs(rest)
     return _cmd_chat(argv)
 
 

@@ -198,6 +198,10 @@ def run_init(
             "warning above. Every other setting above was saved normally."
         )
     print_fn("Next steps:")
+    if not new_config.docs_root:
+        # v0.80.0: deliberately a pointer, not a prompt -- init stays offline
+        # and quick; the download is its own explicit command.
+        print_fn("  gauss-ai docs fetch       -- download the official GAUSS docs once, so answers are grounded")
     print_fn("  gauss-ai doctor           -- verify this configuration")
     print_fn("  gauss-ai repair <file.gss> -- guided repair of a specific file")
     print_fn("  gauss-ai                 -- the full interactive command set")

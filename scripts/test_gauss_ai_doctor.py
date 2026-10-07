@@ -213,10 +213,20 @@ def test_16_overall_status_is_warn_if_only_warnings() -> None:
 
 
 def test_17_overall_status_pass_when_fully_configured() -> None:
+    # v0.80.0: "fully configured" now includes documentation -- the new
+    # docs_root check rightly WARNs when none is configured -- so this test
+    # supplies a minimal docs folder (via env, which also keeps the real
+    # environment out of the result).
     with tempfile.TemporaryDirectory() as tmp:
         p = Path(tmp) / "tgauss.exe"
         p.write_bytes(b"")
-        report = doctor_mod.run_doctor(cli_gauss_executable=str(p), cli_workspace_parent=tmp, config_path=Path(tmp) / "config.json")
+        docs = Path(tmp) / "docs"
+        docs.mkdir()
+        (docs / "meanc.rst").write_text("meanc\n=====\n", encoding="utf-8")
+        report = doctor_mod.run_doctor(
+            cli_gauss_executable=str(p), cli_workspace_parent=tmp, config_path=Path(tmp) / "config.json",
+            env={"GAUSS_AI_DOCS_ROOT": str(docs)},
+        )
     non_advisory = [c for c in report.checks if c.name != "package_version"]
     check("every non-metadata check passes when fully and correctly configured", all(c.status == doctor_mod.PASS for c in non_advisory))
 
@@ -324,6 +334,34 @@ def test_26_doctor_ollama_checks_remain_read_only() -> None:
     the only doctor-side caller of) only ever calls GET /api/tags."""
     source = Path(provider_mod.__file__).read_text(encoding="utf-8")
     check("check_ollama_service uses only the tags path constant", "OLLAMA_TAGS_PATH" in source)
+
+
+# ---------------------------------------------------------------------------
+# v0.80.0: docs_root check (local filesystem only, never downloads)
+# ---------------------------------------------------------------------------
+
+
+def _docs_check(env: dict[str, str]) -> "doctor_mod.DoctorCheckResult":
+    with tempfile.TemporaryDirectory() as tmp:
+        report = doctor_mod.run_doctor(config=config_mod.GaussAiConfig(), config_path=Path(tmp) / "c.json", env=env)
+    return next(c for c in report.checks if c.name == "docs_root")
+
+
+def test_27_docs_root_unset_warns_and_points_to_docs_fetch() -> None:
+    result = _docs_check({})
+    check("WARN", result.status == doctor_mod.WARN)
+    check("next step names docs fetch", "gauss-ai docs fetch" in (result.next_step or ""))
+
+
+def test_28_docs_root_missing_or_empty_fails_and_present_passes() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        check("missing path FAILs", _docs_check({"GAUSS_AI_DOCS_ROOT": str(Path(tmp) / "nope")}).status == doctor_mod.FAIL)
+        empty = Path(tmp) / "empty"
+        empty.mkdir()
+        check("folder without .rst FAILs", _docs_check({"GAUSS_AI_DOCS_ROOT": str(empty)}).status == doctor_mod.FAIL)
+        (empty / "sub").mkdir()
+        (empty / "sub" / "meanc.rst").write_text("meanc", encoding="utf-8")
+        check("folder with nested .rst PASSes", _docs_check({"GAUSS_AI_DOCS_ROOT": str(empty)}).status == doctor_mod.PASS)
 
 
 def run_tests() -> int:

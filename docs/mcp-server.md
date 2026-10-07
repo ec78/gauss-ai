@@ -1,72 +1,87 @@
-# MCP Server (v0.79.0)
+# MCP Server
 
-`gauss-ai` can run as a local MCP (Model Context Protocol) server, so other MCP clients on the same machine — Claude Code, Claude Desktop — can call the conversational assistant and the guided repair pipeline as tools, instead of (or alongside) the interactive CLI. This is a transport layer only: every tool here is a thin wrapper around the same deterministic code the CLI already uses. Nothing described in this document changes any safety decision, approval flow, or execution boundary — see `docs/distribution-architecture.md` and `docs/controlled-execution-handoff.md` for those.
+**Status: added in `v0.79.0`; hybrid validation path added in `v0.80.0`.**
 
-## Install
+`gauss-ai` can run as a local MCP (Model Context Protocol) server, so MCP clients on the same machine (Claude Code, Claude Desktop) can use it as a GAUSS toolkit:
 
-The base `gauss-ai` CLI has zero third-party runtime dependencies. The MCP server needs one additional package, installed via an optional extra:
+- search the official documentation;
+- deterministically validate GAUSS code;
+- run validated code through a controlled, human-approved execution handoff;
+- drive the guided repair pipeline.
 
-```
-pip install -e ".[mcp]"
-```
+This is a transport layer only. Every tool wraps the same deterministic code the CLI uses, and no safety decision is made by a model.
 
-Everything else (`gauss-ai version`, `gauss-ai chat`, `gauss-ai repair`, ...) works identically whether or not this extra is installed.
-
-## Running it
-
-Two equivalent entry points:
+## Install and run
 
 ```
-gauss-ai mcp          # subcommand on the main CLI
-gauss-ai-mcp          # standalone console script (what the plugin's .mcp.json points at)
+pip install -e ".[mcp]"      # the base CLI stays dependency-free; only the server needs this
+gauss-ai docs fetch          # one-time download of the official docs (see gauss-documentation-setup.md)
 ```
 
-Both run the same server over stdio — the standard transport for a locally-spawned MCP server. There is no network/HTTP/port surface to configure or secure.
-
-Add it to a client with, for example:
+Run the server with `gauss-ai mcp` or `gauss-ai-mcp`. Either one starts it over stdio, with no network port. Register it with a client, for example:
 
 ```
 claude mcp add --transport stdio gauss-ai gauss-ai-mcp
 ```
 
+This repository also ships a project-scoped `.mcp.json` and a Claude Code plugin manifest (`.claude-plugin/`).
+
+## Two ways to get from a question to code
+
+**Hybrid (always available, no extra model).** The client's own model (Claude, ChatGPT, ...) writes the GAUSS code, and `gauss-ai` judges it:
+
+1. `gauss_session_start`
+2. `gauss_search_docs` to look up the functions you need
+3. write the code
+4. `gauss_validate_code`
+5. if eligible: `gauss_execution_prepare(validation_id)` → the user's own yes/no → `gauss_execution_decide`
+
+The code comes from the client; the readiness verdict is always computed by `gauss-ai`.
+
+**Strict (opt-in).** `gauss_chat_ask` uses `gauss-ai`'s *own* configured model. The difference is that it can refuse to generate code at all for a topic it can't ground, while the hybrid path can only refuse to validate or execute code after it has been written. These tools exist only when `chat-provider` is set to `ollama` or `anthropic`. The default `fake` provider never enables them, and a running Ollama is never auto-detected.
+
 ## Tools
 
-### Chat (conversational Q&A and code generation)
-
 | Tool | Purpose |
 | --- | --- |
-| `gauss_chat_start` | Start a session. Optional `provider`/`model`/`docs_root`/`ollama_endpoint`/`runner`/`gauss_executable`/`workspace_parent`/`timeout_seconds`/`session_id`; anything omitted resolves the same way `gauss-ai chat` resolves it (environment variable, then `gauss-ai config`, then a safe default). Returns `session_id`. |
-| `gauss_chat_ask` | Ask one question. Returns grounding status, any generated code, deterministic pre-execution validation evidence, and `execution_offer_eligible`. |
-| `gauss_chat_reset` | Clear a session's history and any pending execution offer. |
-| `gauss_chat_close` | End a session. |
+| `gauss_session_start` | Starts a session. Optional `runner`, `gauss_executable`, `workspace_parent`, `timeout_seconds`, `docs_root`, `session_id`; anything omitted resolves like the CLI (environment variable, then `gauss-ai config`, then a safe default). |
+| `gauss_session_close` | Ends a session. |
+| `gauss_search_docs` | Returns official-documentation excerpts (and verified error-catalog entries for codes like `G0025`) for a question or function names. Local and read-only. |
+| `gauss_validate_code` | Deterministic verdict on raw GAUSS code: documented call signatures, documented preconditions (e.g. `invpd` needs a symmetric positive-definite matrix), syntax, unknown (possibly hallucinated) functions, and system-touching statements. Code that reaches `handoff_candidate` gets a single-use `validation_id`. |
+| `gauss_execution_prepare` | Step 1 of execution. Takes a `validation_id` (hybrid) or nothing (strict: the last chat answer). Never accepts code directly. The stored code is re-validated first, and refused with `validation_stale` if the docs changed underneath it. Returns the exact code and a digest for the human to review. |
+| `gauss_execution_decide` | Step 2. Takes the human's own raw `yes`/`no`; anything else is `unrecognized` and approves nothing. On approval, runs the existing GAUSS execution adapter exactly once. |
+| `gauss_repair_start` / `gauss_repair_command` / `gauss_repair_close` | Drive the guided repair pipeline one REPL command per call (`workspace create`, `request`, `plan`, `confirm <hash>`, `execute`, `diagnose`, `repair-plan`, `approve-repair <digest>`, ...), identical to `gauss-ai repl`. |
+| `gauss_chat_ask` / `gauss_chat_reset` | Strict mode only (see above). |
 
-Generated code is never executed, verified, or written to a file by these tools. See `docs/conversational-code-generation.md` and `docs/conversational-qa.md` for the underlying grounding/generation rules, unchanged here.
+## What can never be executed
 
-### Execution handoff (the real bridge)
+Only `handoff_candidate` code can be offered for execution:
 
-| Tool | Purpose |
-| --- | --- |
-| `gauss_execution_prepare` | Usable only right after a `gauss_chat_ask` reply with `execution_offer_eligible: true`. Builds the exact request from that session's own last answer — never from a caller-supplied code string — and returns the code/runner/executable/timeout/digest for a human to review. Nothing is executed yet. |
-| `gauss_execution_decide` | Takes the human's raw yes/no text. An unrecognized reply creates no approval. An approved reply immediately records the approval and invokes the existing GAUSS execution adapter exactly once — real execution, not advisory-only. |
+- grounded in the official documentation;
+- no unknown functions;
+- compatible documented signatures;
+- no violated documented precondition;
+- validated syntax;
+- broad evidence.
 
-This is the same two-step, digest-bound, single-use-approval flow `docs/controlled-execution-handoff.md` describes for the CLI chat, split across two tool calls instead of one terminal prompt.
+In addition, **any system-touching statement always makes code `not_ready`**:
 
-**Real GAUSS execution requires an additional, server-operator-only gate.** Setting `runner="gauss"` on a session is not enough by itself: the `gauss-ai-mcp` process must also have been started with `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1` in its own environment. Without it, `gauss_execution_prepare`/`gauss_repair_start` refuse with `real_gauss_not_allowed`. This is deliberate: an MCP client is one step further removed from the human at the keyboard than someone typing `--runner gauss` into a terminal, so this milestone adds one more opt-in, controlled only by whoever launches the server process — on top of, never instead of, the per-request approval above.
+- OS commands: `dos`, `shell`
+- programs or process control: `exec`, `execbg`, `system`
+- other source files: `run`, `#include`
+- directory changes: `chdir`, `changedir`
+- any file read, write or delete: `load`/`loadd`, `save`/`saved`, `fopen`, `csvReadM`, `xlsWriteM`, `deleteFile`, `output file=`, ...
 
-### Guided repair
+The handoff is for self-contained snippets that compute in memory. Work with real files belongs in the guided repair pipeline.
 
-| Tool | Purpose |
-| --- | --- |
-| `gauss_repair_start` | Start a repair session for one file's workflow (not bound to a specific file path yet — that happens via the `request` REPL command, same as `gauss-ai repl`). |
-| `gauss_repair_command` | Send one REPL command line (`workspace create`, `request`, `plan`, `confirm <hash>`, `execute`, `diagnose`, `repair-plan`, `approve-repair <digest>` / `decline-repair <digest>`, `suggest-repair-draft`, `repair-draft`, `approve-repair-draft` / `decline-repair-draft`, `approve-repair-application` / `decline-repair-application`, `check-repair-application-gate`, `apply-repair`, `verify-repair`, `review-verification`, `show-repair-session`, `status`, `read`, `reset`, `exit`, ...). Every command behaves identically to `gauss-ai repl`; errors come back as plain output lines, never a crash. |
-| `gauss_repair_close` | End a session without sending `exit`. |
+## Real GAUSS needs an extra opt-in
 
-Driving the pipeline this way — one command per tool call — lets a human approve or decline at every gate exactly as they would in a terminal, just relayed through whichever MCP client they're using.
+A `runner="gauss"` request is refused unless the server process itself was started with `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1`. That gate is controlled only by whoever launches the server, and it comes on top of the per-request approval. It never bypasses the execution adapter's own checks: a nonexistent executable still never launches.
 
 ## Session model
 
-Chat and repair sessions are independent, in-memory, and process-local — nothing is persisted, and nothing survives a server restart. A client can hold several of each kind at once. There is no idle-session eviction in this version; call `gauss_chat_close`/`gauss_repair_close` when done, or restart the server. An abrupt disconnect still cleans up repair sessions' temporary workspaces via an `atexit` hook.
+Sessions are in-memory and process-local. Nothing is persisted, and nothing survives a server restart. At most 8 `validation_id`s are outstanding per session; the oldest is evicted first, and each is single-use. There is no idle eviction: close sessions when done, or restart the server. An abrupt disconnect still cleans up repair workspaces.
 
-## Claude Code plugin
+## Updating on Windows
 
-This repository also ships `.claude-plugin/plugin.json` + `.mcp.json` so it can be installed as a Claude Code plugin (`/plugin marketplace add` against this repo, then `/plugin install gauss-ai-mcp`). The plugin assumes `pip install -e ".[mcp]"` has already been run and `gauss-ai-mcp` is on `PATH` — installing the plugin does not run `pip` for you.
+A running `gauss-ai-mcp.exe` (for example, one started by a Claude Code window) locks its executable. Stop it, or close the client, before `pip install -e ".[mcp]"`. Otherwise the reinstall fails partway and leaves `gauss-ai` uninstalled until you run it again.

@@ -1,61 +1,67 @@
-"""Local MCP (Model Context Protocol) server for gauss-ai (v0.79.0) -- exposes
-the existing conversational assistant and guided repair pipeline as MCP
-tools for other local MCP clients (Claude Code, Claude Desktop) to call over
-stdio.
+"""Local MCP (Model Context Protocol) server for gauss-ai -- exposes the
+conversational assistant, deterministic code validation, the controlled
+execution handoff, and the guided repair pipeline as MCP tools for other
+local MCP clients (Claude Code, Claude Desktop) over stdio. v0.79.0 added
+the server; v0.80.0 added the "hybrid" path.
 
-This module is orchestration/transport glue ONLY, exactly the same
-convention `gauss_ai_chat.py` and `gauss_ai_guided_repair.py` already
-established for their own front-ends. It implements no grounding logic, no
-model-request logic, no readiness/eligibility computation, no digest/
-approval logic, and no repair-pipeline logic of its own -- every real
-decision is delegated to the EXISTING, unmodified modules:
-`gauss_conversation_engine.ConversationEngine` (conversational QA/codegen),
-`gauss_execution_handoff` (the v0.78.0 controlled execution bridge), and
-`gauss_code_assistant_cli.InteractiveMvpAdapter` (the guided repair REPL).
+Two ways to get from a question to code (v0.80.0):
+
+- **Hybrid (always available).** The calling model searches the docs
+  (`gauss_search_docs`), writes GAUSS code itself, and submits it to
+  `gauss_validate_code`, which computes the readiness verdict here,
+  deterministically. No second model is involved -- the calling client IS
+  the model. The code may come from the caller; the verdict never does.
+- **Strict (opt-in).** `gauss_chat_ask`/`gauss_chat_reset` wrap
+  `ConversationEngine.ask()` whole, including its own provider call, so the
+  generation gate can block ungrounded code before any is written. These
+  two tools are registered only when the configured `chat-provider` is a
+  real model (`ollama`/`anthropic`) -- an explicit choice, never
+  auto-detected.
+
+This module is orchestration/transport glue ONLY, the same convention
+`gauss_ai_chat.py` and `gauss_ai_guided_repair.py` established for their own
+front-ends. It implements no grounding, readiness, digest, approval, or
+repair logic of its own -- every real decision is delegated to the
+existing modules: `gauss_conversation_engine` (`ConversationEngine`,
+`validate_code`, `ground_multi`), `gauss_execution_handoff` (the v0.78.0
+controlled execution bridge), and `gauss_code_assistant_cli.
+InteractiveMvpAdapter` (the guided repair REPL).
 
 Hard boundaries (structurally enforced and tested, see
 test_gauss_mcp_server.py):
 
-- This module never recomputes a `HandoffReadiness` verdict, never
-  reimplements digest/approval logic, and never redefines
-  `InteractiveMvpAdapter` -- it only reads fields already computed by the
-  modules above and forwards calls to them, exactly as
-  `gauss_ai_chat._execution_offer_eligible` already does (imported and
-  reused here directly rather than duplicated, despite the leading
-  underscore -- a deliberate choice to single-source this safety gate
-  rather than risk two copies silently drifting apart).
-- A chat session's pending execution-handoff code/readiness state is read
-  ONLY from the session's own last `ConversationEngine.ask(...)` result --
-  never accepted as a caller-supplied tool argument. An MCP client cannot
-  assert its own readiness state or inject arbitrary code into the
-  execution-handoff flow.
+- This module never recomputes a readiness verdict and never reimplements
+  digest/approval logic or `InteractiveMvpAdapter`. Whether execution may
+  even be offered is read through `gauss_ai_chat._execution_offer_eligible`
+  (imported and reused rather than duplicated, despite the underscore, so
+  the two front-ends can never drift on this gate).
+- Execution can only ever be prepared for code this server itself
+  validated or generated: either the session's own last `gauss_chat_ask`
+  answer, or a server-issued, single-use `validation_id` from
+  `gauss_validate_code`, re-validated at prepare time.
 - Real GAUSS execution (`runner="gauss"`) additionally requires the server
   OPERATOR to have set `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1` in the server
-  process's own environment at startup -- an extra, server-side-only gate on
-  top of the existing per-request digest/approval flow, since an MCP client
-  is one step further removed from the human at the keyboard than a
-  terminal user typing `--runner gauss` directly.
-- Every session (`ChatSession`, `RepairSession`) is process-local, in-memory
-  only, exactly like `gauss_execution_handoff.ExecutionHandoffApprovalStore`
-  and `gauss_repair_application_approval.ApplicationApprovalStore` -- no
-  persistence, nothing shared across server processes.
+  process's own environment at startup -- an extra gate on top of the
+  per-request digest/approval flow, since an MCP client is one step further
+  removed from the human at the keyboard than a terminal user.
+- Sessions are process-local and in-memory only, like every other approval
+  store in this repository.
 
-The `mcp` package (https://pypi.org/project/mcp/) is an OPTIONAL runtime
-dependency (`pip install -e ".[mcp]"`) -- importing this module without it
-installed raises a clear `ImportError` naming the extra to install, instead
-of the SDK's own bare `ModuleNotFoundError`. The base `gauss-ai` CLI itself
-(`gauss_ai_cli.py`) only imports this module lazily, inside its `mcp`
-subcommand, so it remains fully usable with zero third-party dependencies
-regardless of whether this extra is installed.
+The `mcp` package is an OPTIONAL runtime dependency
+(`pip install -e ".[mcp]"`); importing this module without it raises a
+clear `ImportError`. `gauss_ai_cli.py` imports this module lazily, so the
+base CLI stays stdlib-only.
 """
 
 from __future__ import annotations
 
 import atexit
 import dataclasses
+import hashlib
 import os
 import uuid
-from dataclasses import dataclass
+from collections import OrderedDict
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
@@ -74,12 +80,16 @@ import gauss_code_assistant_cli as cli_mod
 import gauss_conversation_engine as engine_mod
 import gauss_execution_handoff as handoff_mod
 
-__version__ = "0.79.0"
+__version__ = "0.80.0"
 
 #: Set by the server OPERATOR in the process's own environment before
-#: launch -- never read from a tool-call argument, and never anything an
-#: MCP client can set remotely. See module docstring.
+#: launch -- never read from a tool-call argument. See module docstring.
 ENV_ALLOW_REAL_GAUSS = "GAUSS_AI_MCP_ALLOW_REAL_GAUSS"
+
+#: Per-session cap on outstanding validation_ids (oldest evicted first).
+MAX_VALIDATIONS_PER_SESSION = 8
+
+DOCS_FETCH_HINT = "Run 'gauss-ai docs fetch' once to download the official GAUSS documentation."
 
 
 def _real_gauss_allowed(env: dict[str, str] | None = None) -> bool:
@@ -87,41 +97,49 @@ def _real_gauss_allowed(env: dict[str, str] | None = None) -> bool:
     return env.get(ENV_ALLOW_REAL_GAUSS, "").strip() == "1"
 
 
-def _new_session_id() -> str:
+def _new_id() -> str:
     return uuid.uuid4().hex
 
 
-def _default_id_fn() -> str:
-    return str(uuid.uuid4())
-
-
-def _default_clock_fn() -> str:
+def _clock() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
 # ---------------------------------------------------------------------------
-# Session state -- process-local, in-memory only (see module docstring)
+# Session state -- process-local, in-memory only
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class ValidatedCode:
+    code: str
+    readiness_state: str
+    docs_root: str | None
+
+
 @dataclass
-class ChatSession:
-    engine: "engine_mod.ConversationEngine"
+class Session:
     approval_store: "handoff_mod.ExecutionHandoffApprovalStore"
     runner: str
     executable_path: str | None
     workspace_parent: str | None
     timeout_seconds: float
-    #: The single generated code block and readiness state from the most
-    #: recent `ask(...)` call that reached `_execution_offer_eligible(...)`,
-    #: or `None`. Reset on every `ask(...)` call, mirroring
-    #: `gauss_ai_chat.run_chat`'s own `pending_handoff` loop variable exactly
-    #: -- a stale offer from an earlier turn can never be silently executed.
+    docs_root: str | None
+    #: Built lazily by the first `gauss_chat_ask` (strict mode only).
+    engine: "engine_mod.ConversationEngine | None" = None
+    #: The last chat answer's single code block and readiness state, if it
+    #: was offer-eligible. Reset on every `gauss_chat_ask`, mirroring
+    #: `gauss_ai_chat.run_chat`'s own `pending_handoff`.
     pending_code: str | None = None
     pending_readiness_state: str | None = None
-    #: The in-flight `ExecutionHandoffRequest` awaiting a yes/no decision via
-    #: `gauss_execution_decide`, or `None`.
+    #: Server-issued validation_ids for HANDOFF_CANDIDATE code from
+    #: `gauss_validate_code`; single-use, popped by `gauss_execution_prepare`.
+    validated: "OrderedDict[str, ValidatedCode]" = field(default_factory=OrderedDict)
+    #: The prepared request awaiting `gauss_execution_decide`, and which path
+    #: produced it ("chat" or "validated"), so deciding on a validated
+    #: request never clears an unrelated pending chat offer.
     pending_request: "handoff_mod.ExecutionHandoffRequest | None" = None
+    pending_source: str | None = None
 
 
 @dataclass
@@ -129,14 +147,13 @@ class RepairSession:
     adapter: "cli_mod.InteractiveMvpAdapter"
 
 
-_chat_sessions: dict[str, ChatSession] = {}
+_sessions: dict[str, Session] = {}
 _repair_sessions: dict[str, RepairSession] = {}
 _config: "config_mod.GaussAiConfig | None" = None
 
 
 def _get_config() -> "config_mod.GaussAiConfig":
-    """Loaded once per server process, not once per tool call -- avoids
-    redundant disk reads on every chat/repair turn."""
+    """Loaded once per server process, not once per tool call."""
     global _config
     if _config is None:
         _config = config_mod.load_config()
@@ -145,35 +162,32 @@ def _get_config() -> "config_mod.GaussAiConfig":
 
 def _close_all_sessions() -> None:
     """Registered with `atexit` so an abrupt stdio disconnect still cleans
-    up every live repair session's real `tempfile.TemporaryDirectory`/SQLite
-    state -- there is no terminal EOF here to trigger the REPL's own
-    `finally: adapter.close()` (see `gauss_code_assistant_cli.run_repl`)."""
-    for session in list(_repair_sessions.values()):
+    up every live repair session's real temporary workspace -- there is no
+    terminal EOF here to trigger the REPL's own cleanup."""
+    for repair_session in list(_repair_sessions.values()):
         try:
-            session.adapter.close()
+            repair_session.adapter.close()
         except Exception:  # noqa: BLE001 - best-effort cleanup only, never raises during shutdown
             pass
     _repair_sessions.clear()
-    _chat_sessions.clear()
+    _sessions.clear()
 
 
 atexit.register(_close_all_sessions)
 
 
+# ---------------------------------------------------------------------------
+# Serialization -- JSON-safe views, never raw objects by reference
+# ---------------------------------------------------------------------------
+
+
+def _readiness_dict(readiness: Any) -> dict[str, Any] | None:
+    if readiness is None:
+        return None
+    return {"state": readiness.state, "reasons": list(readiness.reasons)}
+
+
 def _answer_result_to_dict(result: "engine_mod.AnswerResult", *, execution_offer_eligible: bool) -> dict[str, Any]:
-    """Flattens the fields of `AnswerResult` a client actually needs into a
-    JSON-serializable dict -- never returns a raw dataclass/object by
-    reference. Deliberately curated, not a blanket `dataclasses.asdict`,
-    since several fields (`call_validations`, `precondition_checks`, etc.)
-    are internal validation evidence already summarized by
-    `pre_execution_eligibility`/`pre_execution_issues` for a tool caller's
-    purposes."""
-    handoff_readiness = None
-    if result.handoff_readiness is not None:
-        handoff_readiness = {
-            "state": result.handoff_readiness.state,
-            "reasons": list(result.handoff_readiness.reasons),
-        }
     return {
         "text": result.text,
         "intent": result.intent,
@@ -193,173 +207,204 @@ def _answer_result_to_dict(result: "engine_mod.AnswerResult", *, execution_offer
         "ambiguous_topics": list(result.ambiguous_topics),
         "pre_execution_eligibility": result.pre_execution_eligibility,
         "pre_execution_issues": list(result.pre_execution_issues),
-        "handoff_readiness": handoff_readiness,
+        "system_statements": [dataclasses.asdict(f) for f in result.system_statements],
+        "handoff_readiness": _readiness_dict(result.handoff_readiness),
         "execution_offer_eligible": execution_offer_eligible,
     }
 
 
+def _validation_to_dict(result: "engine_mod.CodeValidationResult") -> dict[str, Any]:
+    pre = result.pre_execution
+    return {
+        "handoff_readiness": _readiness_dict(result.handoff_readiness),
+        "called_symbols": list(result.called_symbols),
+        "user_defined_symbols": list(result.user_defined_symbols),
+        "grounding_status": result.grounding_status,
+        "grounding_sources": [{"topic": s.topic, "citation": s.citation} for s in result.grounding_sources],
+        "unsupported_topics": list(result.unsupported_topics),
+        "ambiguous_topics": list(result.ambiguous_topics),
+        "unknown_symbols": list(pre.unknown_symbols) if pre else [],
+        "eligibility": pre.eligibility if pre else None,
+        "issues": list(pre.unresolved_issues) if pre else [],
+        "syntax": pre.syntax.status if pre and pre.syntax else None,
+        "preconditions": [
+            {"symbol": c.precondition.symbol, "status": c.status, "explanation": c.explanation}
+            for c in (pre.preconditions if pre else ())
+        ],
+        "system_statements": [dataclasses.asdict(f) for f in (pre.system_statements if pre else ())],
+        "companion_hints": [list(pair) for pair in (pre.companion_hints if pre else ())],
+        "notes": list(result.notes),
+    }
+
+
 # ---------------------------------------------------------------------------
-# MCP server + tools
+# MCP server + always-registered tools
 # ---------------------------------------------------------------------------
 
 server = MCPServer(
     name="gauss-ai",
     version=__version__,
     instructions=(
-        "Conversational GAUSS assistant and guided repair pipeline. Chat tools answer GAUSS questions and "
-        "generate code grounded in local official documentation, never executing anything on their own "
-        "initiative. When a chat answer reaches HANDOFF_CANDIDATE readiness, gauss_execution_prepare / "
-        "gauss_execution_decide offer a single, explicitly-approved, digest-bound execution of that exact "
-        "code -- the same controlled bridge the gauss-ai CLI chat already uses. gauss_repair_* tools drive "
-        "the full guided execute-diagnose-repair-verify-review pipeline for one file, one REPL command per "
-        "call, so a human can approve or decline at every step."
+        "GAUSS programming assistant backed by the official GAUSS documentation and deterministic checks. "
+        "Recommended flow: gauss_session_start -> gauss_search_docs to look up the functions you need -> write "
+        "the GAUSS code yourself -> gauss_validate_code to get a deterministic verdict (signatures, documented "
+        "preconditions, syntax, unknown functions, and system-touching statements). Only code that reaches "
+        "handoff_candidate gets a validation_id; to run it, call gauss_execution_prepare(validation_id), show the "
+        "user the exact prompt it returns, and pass the user's own yes/no to gauss_execution_decide. Never answer "
+        "yes on the user's behalf. gauss_repair_* tools drive the guided repair pipeline for real files, one REPL "
+        "command per call. gauss_chat_ask exists only when the server is configured with its own model."
     ),
 )
 
 
 @server.tool()
-def gauss_chat_start(
-    provider: str | None = None,
-    model: str | None = None,
-    docs_root: str | None = None,
-    ollama_endpoint: str | None = None,
+def gauss_session_start(
     runner: str | None = None,
     gauss_executable: str | None = None,
     workspace_parent: str | None = None,
     timeout_seconds: float | None = None,
+    docs_root: str | None = None,
     session_id: str | None = None,
 ) -> dict[str, Any]:
-    """Start a new gauss-ai conversational session (GAUSS Q&A and code
-    generation). Resolves provider/model/docs-root/runner/executable exactly
-    as `gauss-ai chat` does on the command line (CLI argument > environment
-    variable > config file > default), so a session with no arguments picks
-    up whatever this machine's `gauss-ai config` already has set. Returns a
-    `session_id` to pass to every other `gauss_chat_*`/`gauss_execution_*`
-    tool."""
+    """Start a session for validating and (optionally) executing GAUSS
+    code. Settings left out resolve exactly as the gauss-ai CLI resolves
+    them (argument > environment variable > config file > default). Returns
+    a `session_id` for the other gauss_* tools."""
     config = _get_config()
     env = os.environ
-    provider_name = config_mod.resolve_chat_provider(cli_value=provider, config=config, env=env).value
-    resolved_model = config_mod.resolve_chat_model(cli_value=model, config=config, env=env).value
+    sid = session_id or _new_id()
     resolved_docs_root = config_mod.resolve_docs_root(cli_value=docs_root, config=config, env=env).value
-    endpoint = config_mod.resolve_ollama_endpoint(cli_value=ollama_endpoint, config=config, env=env).value
-    try:
-        build_kwargs: dict[str, Any] = {"model": resolved_model}
-        if endpoint is not None:
-            build_kwargs["endpoint"] = endpoint
-        provider_obj = provider_mod.build_provider(provider_name, **build_kwargs)
-    except ValueError as exc:
-        return {"error": "configuration_error", "detail": str(exc)}
-
-    resolved_runner = config_mod.resolve_default_runner(cli_value=runner, config=config, env=env).value
-    resolved_executable = config_mod.resolve_gauss_executable(cli_value=gauss_executable, config=config, env=env).value
-    resolved_workspace_parent = config_mod.resolve_workspace_parent(
-        cli_value=workspace_parent, config=config, env=env
-    ).value
-    resolved_timeout = config_mod.resolve_default_timeout_seconds(
-        cli_value=timeout_seconds, config=config, env=env
-    ).value
-
-    engine = engine_mod.ConversationEngine(provider=provider_obj, docs_root=resolved_docs_root)
-    sid = session_id or _new_session_id()
-    _chat_sessions[sid] = ChatSession(
-        engine=engine,
+    _sessions[sid] = Session(
         approval_store=handoff_mod.ExecutionHandoffApprovalStore(),
-        runner=resolved_runner,
-        executable_path=resolved_executable,
-        workspace_parent=resolved_workspace_parent,
-        timeout_seconds=resolved_timeout,
+        runner=config_mod.resolve_default_runner(cli_value=runner, config=config, env=env).value,
+        executable_path=config_mod.resolve_gauss_executable(cli_value=gauss_executable, config=config, env=env).value,
+        workspace_parent=config_mod.resolve_workspace_parent(cli_value=workspace_parent, config=config, env=env).value,
+        timeout_seconds=config_mod.resolve_default_timeout_seconds(cli_value=timeout_seconds, config=config, env=env).value,
+        docs_root=resolved_docs_root,
     )
-    return {
+    response: dict[str, Any] = {
         "session_id": sid,
-        "provider": provider_name,
-        "model": resolved_model,
+        "runner": _sessions[sid].runner,
         "docs_root_configured": resolved_docs_root is not None,
     }
+    if resolved_docs_root is None:
+        response["hint"] = DOCS_FETCH_HINT
+    return response
 
 
 @server.tool()
-def gauss_chat_ask(session_id: str, question: str) -> dict[str, Any]:
-    """Ask one GAUSS question or request GAUSS code in a session started by
-    `gauss_chat_start`. Returns the grounding status, any generated code,
-    deterministic pre-execution validation evidence, and whether this answer
-    is eligible for a controlled-execution offer (`execution_offer_eligible`
-    -- read `gauss_execution_prepare`'s docstring next if so). Generated
-    code is never executed, verified, or written to a file by this tool."""
-    session = _chat_sessions.get(session_id)
-    if session is None:
-        return {"error": "unknown_session"}
-    result = session.engine.ask(question)
-    session.pending_code = None
-    session.pending_readiness_state = None
-    session.pending_request = None
-    eligible = chat_mod._execution_offer_eligible(result)
-    if eligible:
-        session.pending_code = result.generated_code[0]
-        session.pending_readiness_state = result.handoff_readiness.state
-    return _answer_result_to_dict(result, execution_offer_eligible=eligible)
-
-
-@server.tool()
-def gauss_chat_reset(session_id: str) -> dict[str, Any]:
-    """Clear a chat session's conversation history and any pending
-    execution offer -- equivalent to the `reset`/`new` command in
-    `gauss-ai chat`."""
-    session = _chat_sessions.get(session_id)
-    if session is None:
-        return {"error": "unknown_session"}
-    session.engine.reset()
-    session.pending_code = None
-    session.pending_readiness_state = None
-    session.pending_request = None
-    return {"session_id": session_id, "reset": True}
-
-
-@server.tool()
-def gauss_chat_close(session_id: str) -> dict[str, Any]:
-    """End a chat session and free its state."""
-    existed = _chat_sessions.pop(session_id, None) is not None
+def gauss_session_close(session_id: str) -> dict[str, Any]:
+    """End a session and free its state."""
+    existed = _sessions.pop(session_id, None) is not None
     return {"session_id": session_id, "closed": existed}
 
 
 @server.tool()
-def gauss_execution_prepare(session_id: str) -> dict[str, Any]:
-    """Step 1 of 2 in the controlled execution handoff. Only usable
-    immediately after a `gauss_chat_ask` reply with
-    `execution_offer_eligible: true` -- the code and readiness state come
-    ONLY from that session's own last answer, never from a caller-supplied
-    argument, so a client cannot assert its own readiness verdict. Returns
-    the exact code, runner, executable, timeout, and a request digest for a
-    human to review before deciding; nothing is executed by this call.
-    Real GAUSS execution (`runner="gauss"`) additionally requires this
-    server process to have been started with GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1."""
-    session = _chat_sessions.get(session_id)
+def gauss_search_docs(query: str, docs_root: str | None = None) -> dict[str, Any]:
+    """Search the official GAUSS documentation (and the verified GAUSS error
+    catalog, for codes like G0025) for a natural-language question or
+    function names. Returns the matching documentation excerpts to read
+    before writing code. Purely local and read-only."""
+    resolved = config_mod.resolve_docs_root(cli_value=docs_root, config=_get_config(), env=os.environ).value
+    bundle = engine_mod.ground_multi(query, docs_root_str=resolved)
+    response: dict[str, Any] = {
+        "grounding_status": bundle.status.value,
+        "sources": [
+            {"source": s.source, "topic": s.topic, "citation": s.citation, "content": s.content}
+            for s in bundle.sources
+        ],
+        "unmatched_topics": list(bundle.unmatched_topics),
+        "ambiguous_topics": list(bundle.ambiguous_topics),
+        "docs_root_configured": resolved is not None,
+    }
+    if resolved is None:
+        response["hint"] = DOCS_FETCH_HINT + " Until then only error-code lookups can be grounded."
+    return response
+
+
+@server.tool()
+def gauss_validate_code(session_id: str, code: str) -> dict[str, Any]:
+    """Deterministically validate GAUSS code you wrote: documented
+    signatures, documented preconditions, syntax, unknown (possibly
+    hallucinated) functions, and system-touching statements. Pass raw GAUSS
+    code, not a Markdown block. Nothing is executed. If the result reaches
+    handoff_candidate, the response includes a single-use `validation_id`
+    for `gauss_execution_prepare`."""
+    session = _sessions.get(session_id)
     if session is None:
         return {"error": "unknown_session"}
-    if session.pending_code is None or session.pending_readiness_state is None:
-        return {"error": "no_pending_handoff_candidate"}
+    result = engine_mod.validate_code(code, docs_root=session.docs_root)
+    if result.rejected_reason is not None:
+        response: dict[str, Any] = {
+            "error": result.rejected_reason,
+            "detail": result.handoff_readiness.reasons[0] if result.handoff_readiness.reasons else "",
+        }
+        if result.rejected_reason == "docs_root_not_configured":
+            response["hint"] = DOCS_FETCH_HINT
+        return response
+    response = _validation_to_dict(result)
+    eligible = chat_mod._execution_offer_eligible(result)
+    response["execution_offer_eligible"] = eligible
+    if eligible:
+        validation_id = _new_id()
+        session.validated[validation_id] = ValidatedCode(
+            code=code, readiness_state=result.handoff_readiness.state, docs_root=session.docs_root,
+        )
+        while len(session.validated) > MAX_VALIDATIONS_PER_SESSION:
+            session.validated.popitem(last=False)
+        response["validation_id"] = validation_id
+        response["code_sha256"] = hashlib.sha256(code.encode("utf-8")).hexdigest()
+    return response
+
+
+@server.tool()
+def gauss_execution_prepare(session_id: str, validation_id: str | None = None) -> dict[str, Any]:
+    """Step 1 of 2 in the controlled execution handoff. Prepares exactly
+    the code the server itself validated (`validation_id` from
+    `gauss_validate_code`, single-use) or, without a validation_id, the
+    session's last offer-eligible `gauss_chat_ask` answer. Code is never
+    accepted directly here. Returns the exact code, runner, timeout and a
+    digest for the human to review; nothing is executed by this call. Real
+    GAUSS (`runner="gauss"`) also requires the server to have been started
+    with GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1."""
+    session = _sessions.get(session_id)
+    if session is None:
+        return {"error": "unknown_session"}
+
+    if validation_id is not None:
+        entry = session.validated.pop(validation_id, None)
+        if entry is None:
+            return {"error": "unknown_or_used_validation_id"}
+        # The docs may have changed since validation (e.g. a `gauss-ai docs
+        # fetch` in between) -- re-validate rather than trust a stale verdict.
+        recheck = engine_mod.validate_code(entry.code, docs_root=entry.docs_root)
+        if not chat_mod._execution_offer_eligible(recheck):
+            return {"error": "validation_stale", "handoff_readiness": _readiness_dict(recheck.handoff_readiness)}
+        code, readiness_state, source = entry.code, recheck.handoff_readiness.state, "validated"
+    else:
+        if session.pending_code is None or session.pending_readiness_state is None:
+            return {"error": "no_pending_handoff_candidate"}
+        code, readiness_state, source = session.pending_code, session.pending_readiness_state, "chat"
+
     if session.runner == "gauss" and not _real_gauss_allowed():
         return {
             "error": "real_gauss_not_allowed",
             "detail": (
                 "This session is configured for runner 'gauss', but the gauss-ai-mcp server process was not "
                 f"started with {ENV_ALLOW_REAL_GAUSS}=1. Real GAUSS execution via MCP requires this explicit "
-                "server-operator opt-in, in addition to the per-request approval below."
+                "server-operator opt-in, in addition to the per-request approval."
             ),
         }
     try:
         request = handoff_mod.create_execution_handoff_request(
-            code=session.pending_code,
-            readiness_state=session.pending_readiness_state,
-            request_id=_default_id_fn(),
-            created_at=_default_clock_fn(),
-            runner=session.runner,
-            executable_path=session.executable_path,
-            timeout_seconds=session.timeout_seconds,
-            workspace_parent=session.workspace_parent,
+            code=code, readiness_state=readiness_state, request_id=str(uuid.uuid4()), created_at=_clock(),
+            runner=session.runner, executable_path=session.executable_path,
+            timeout_seconds=session.timeout_seconds, workspace_parent=session.workspace_parent,
         )
     except (handoff_mod.HandoffNotEligibleError, handoff_mod.HandoffRequestValidationError) as exc:
         return {"error": "request_rejected", "detail": str(exc)}
     session.pending_request = request
+    session.pending_source = source
     return {
         "request_id": request.request_id,
         "digest": request.digest,
@@ -369,16 +414,13 @@ def gauss_execution_prepare(session_id: str) -> dict[str, Any]:
 
 @server.tool()
 def gauss_execution_decide(session_id: str, response_text: str) -> dict[str, Any]:
-    """Step 2 of 2 in the controlled execution handoff. `response_text` is
-    the human's raw yes/no answer to the prompt `gauss_execution_prepare`
-    returned -- parsed server-side via the same narrow, deterministic parser
-    `gauss-ai chat` uses (only exactly "yes"/"approve" or "no"/"decline";
-    anything else comes back as `outcome: "unrecognized"` and creates no
-    approval). On an approved decision, this immediately records the
-    approval and, in the same call, invokes the existing GAUSS execution
-    adapter exactly once -- this is the real execution bridge; it is not
-    advisory-only."""
-    session = _chat_sessions.get(session_id)
+    """Step 2 of 2. `response_text` must be the human's own raw answer to
+    the prompt `gauss_execution_prepare` returned -- parsed server-side by
+    the same narrow parser `gauss-ai chat` uses (only "yes"/"approve" or
+    "no"/"decline"; anything else returns `outcome: "unrecognized"` and
+    creates no approval). On approval, records it and invokes the existing
+    GAUSS execution adapter exactly once, in this same call."""
+    session = _sessions.get(session_id)
     if session is None:
         return {"error": "unknown_session"}
     request = session.pending_request
@@ -390,29 +432,30 @@ def gauss_execution_decide(session_id: str, response_text: str) -> dict[str, Any
 
     try:
         approval = handoff_mod.create_execution_handoff_approval(
-            request, decision=parsed, approval_id=_default_id_fn(), decided_at=_default_clock_fn()
+            request, decision=parsed, approval_id=str(uuid.uuid4()), decided_at=_clock(),
         )
         session.approval_store.record(approval)
     except handoff_mod.ExecutionApprovalValidationError as exc:
         return {"error": "approval_rejected", "detail": str(exc)}
 
+    if session.pending_source == "chat":
+        session.pending_code = None
+        session.pending_readiness_state = None
     session.pending_request = None
-    session.pending_code = None
-    session.pending_readiness_state = None
+    session.pending_source = None
 
     if parsed == "declined":
         return {"outcome": "declined", "consent_statement": approval.consent_statement}
 
     helper = handoff_mod.select_helper(request.runner)
     result = handoff_mod.execute_execution_handoff(request, approval, store=session.approval_store, helper=helper)
-    evidence = dataclasses.asdict(result.evidence) if result.evidence is not None else None
     return {
         "outcome": result.outcome,
         "launched": result.launched,
         "blocked_reason": result.blocked_reason,
         "result_digest": result.result_digest,
         "rendered": handoff_mod.render_conversational_execution_result(result),
-        "evidence": evidence,
+        "evidence": dataclasses.asdict(result.evidence) if result.evidence is not None else None,
     }
 
 
@@ -423,13 +466,11 @@ def gauss_repair_start(
     workspace_parent: str | None = None,
     session_id: str | None = None,
 ) -> dict[str, Any]:
-    """Start a new guided-repair session for one file, resolving
-    runner/executable/workspace-parent exactly as `gauss-ai repair` does.
-    Returns a `session_id` to drive with `gauss_repair_command`, one REPL
-    command at a time (e.g. "workspace create", "request", "plan",
+    """Start a guided-repair session, resolving runner/executable/workspace
+    exactly as `gauss-ai repair` does. Drive it with `gauss_repair_command`,
+    one REPL command at a time (e.g. "workspace create", "request", "plan",
     "confirm <hash>", "execute", "diagnose", "repair-plan",
-    "approve-repair <digest>", ... -- the full command set `gauss-ai repl`'s
-    own `help` command lists is available here unchanged)."""
+    "approve-repair <digest>", ... -- the full `gauss-ai repl` command set)."""
     config = _get_config()
     env = os.environ
     resolved_runner = config_mod.resolve_default_runner(cli_value=runner, config=config, env=env).value
@@ -464,12 +505,10 @@ def gauss_repair_start(
 
 @server.tool()
 def gauss_repair_command(session_id: str, command: str) -> dict[str, Any]:
-    """Send one REPL command line to a guided-repair session started by
-    `gauss_repair_start` -- the exact same dispatcher `gauss-ai repl` uses,
-    so every command (and every decline path -- `decline-repair`,
-    `decline-repair-draft`, `decline-repair-application`) behaves
-    identically. Errors come back as ordinary output lines, never a raised
-    exception. `command: "exit"` or `"quit"` closes and frees the session."""
+    """Send one REPL command line to a guided-repair session -- the same
+    dispatcher `gauss-ai repl` uses, so every command and decline path
+    behaves identically. Errors come back as output lines, never a raised
+    exception. "exit" or "quit" closes the session."""
     repair_session = _repair_sessions.get(session_id)
     if repair_session is None:
         return {"error": "unknown_session"}
@@ -482,8 +521,8 @@ def gauss_repair_command(session_id: str, command: str) -> dict[str, Any]:
 
 @server.tool()
 def gauss_repair_close(session_id: str) -> dict[str, Any]:
-    """Explicitly end a guided-repair session and free its workspace/state,
-    for a client that disconnects without sending "exit"."""
+    """End a guided-repair session and free its workspace, for a client
+    that disconnects without sending "exit"."""
     repair_session = _repair_sessions.pop(session_id, None)
     if repair_session is None:
         return {"session_id": session_id, "closed": False}
@@ -491,17 +530,80 @@ def gauss_repair_close(session_id: str) -> dict[str, Any]:
     return {"session_id": session_id, "closed": True}
 
 
+# ---------------------------------------------------------------------------
+# Opt-in strict-mode chat tools -- registered by `main()` only when the
+# configured chat provider is a real model (see module docstring)
+# ---------------------------------------------------------------------------
+
+
+def gauss_chat_ask(session_id: str, question: str) -> dict[str, Any]:
+    """Strict mode: ask gauss-ai's own configured model a GAUSS question or
+    for GAUSS code. Unlike writing code yourself and validating it, this
+    path can refuse to generate code at all for ungrounded topics. Returns
+    grounding status, generated code, deterministic validation evidence,
+    and whether the answer may be offered for controlled execution
+    (`execution_offer_eligible` -- then call `gauss_execution_prepare`
+    without a validation_id). Nothing is executed or written."""
+    session = _sessions.get(session_id)
+    if session is None:
+        return {"error": "unknown_session"}
+    if session.engine is None:
+        config = _get_config()
+        env = os.environ
+        provider_name = config_mod.resolve_chat_provider(config=config, env=env).value
+        model = config_mod.resolve_chat_model(config=config, env=env).value
+        endpoint = config_mod.resolve_ollama_endpoint(config=config, env=env).value
+        try:
+            build_kwargs: dict[str, Any] = {"model": model}
+            if endpoint is not None:
+                build_kwargs["endpoint"] = endpoint
+            provider = provider_mod.build_provider(provider_name, **build_kwargs)
+        except ValueError as exc:
+            return {"error": "configuration_error", "detail": str(exc)}
+        session.engine = engine_mod.ConversationEngine(provider=provider, docs_root=session.docs_root)
+    result = session.engine.ask(question)
+    session.pending_code = None
+    session.pending_readiness_state = None
+    eligible = chat_mod._execution_offer_eligible(result)
+    if eligible:
+        session.pending_code = result.generated_code[0]
+        session.pending_readiness_state = result.handoff_readiness.state
+    return _answer_result_to_dict(result, execution_offer_eligible=eligible)
+
+
+def gauss_chat_reset(session_id: str) -> dict[str, Any]:
+    """Strict mode: clear the session's conversation history and any
+    pending chat execution offer -- equivalent to `reset` in `gauss-ai chat`."""
+    session = _sessions.get(session_id)
+    if session is None:
+        return {"error": "unknown_session"}
+    if session.engine is not None:
+        session.engine.reset()
+    session.pending_code = None
+    session.pending_readiness_state = None
+    return {"session_id": session_id, "reset": True}
+
+
+def _register_chat_tools(target_server: "MCPServer") -> None:
+    target_server.add_tool(gauss_chat_ask)
+    target_server.add_tool(gauss_chat_reset)
+
+
+def chat_tools_enabled(config: "config_mod.GaussAiConfig", env: dict[str, str]) -> bool:
+    """Strict-mode chat is an explicit opt-in: the configured chat provider
+    must be a real model. `fake` (the default) never enables it, and a
+    running Ollama service is never auto-detected."""
+    return config_mod.resolve_chat_provider(config=config, env=env).value != provider_mod.FAKE_PROVIDER
+
+
 def main(argv: list[str] | None = None) -> int:
     """Runs the gauss-ai MCP server over stdio -- the standard transport for
-    a locally-spawned MCP server, with no network/port/TLS surface to
-    operate. Takes no CLI flags: every tool already resolves its own
-    provider/runner/docs/executable configuration via the same
-    CLI-argument > environment-variable > config-file > default precedence
-    `gauss-ai chat`/`gauss-ai repair` use, per-call, so there is nothing new
-    to configure at process startup beyond the existing `gauss-ai config`
-    file and environment variables (plus GAUSS_AI_MCP_ALLOW_REAL_GAUSS, see
-    module docstring)."""
+    a locally-spawned MCP server, with no network/port/TLS surface. Takes
+    no CLI flags: configuration comes from `gauss-ai config` and environment
+    variables, exactly as for the CLI (plus GAUSS_AI_MCP_ALLOW_REAL_GAUSS)."""
     del argv
+    if chat_tools_enabled(_get_config(), dict(os.environ)):
+        _register_chat_tools(server)
     server.run(transport="stdio")
     return 0
 

@@ -79,7 +79,7 @@ ENV_OLLAMA_ENDPOINT = "GAUSS_AI_OLLAMA_ENDPOINT"
 #: was expected (e.g. into `workspace-parent`). Not a general shell-command
 #: detector; see that function's own docstring for the precise, narrow scope.
 _KNOWN_CLI_SUBCOMMANDS = (
-    "version", "doctor", "init", "config", "repair", "chat", "repl", "help",
+    "version", "doctor", "init", "config", "repair", "chat", "repl", "help", "docs", "mcp",
 )
 
 
@@ -193,8 +193,9 @@ def is_config_file_valid(path: str | Path | None = None) -> tuple[bool, str]:
 
 def save_config(config: GaussAiConfig, path: str | Path | None = None) -> Path:
     """Writes the config file, creating `~/.gauss-ai/` if needed. Only ever
-    called after explicit user confirmation (`gauss-ai init`) or an explicit
-    `gauss-ai config set` command -- never automatically."""
+    called after explicit user confirmation (`gauss-ai init`), an explicit
+    `gauss-ai config set` command, or an explicit `gauss-ai docs fetch`
+    (which sets `docs_root` only if it was unset) -- never automatically."""
     p = Path(path) if path is not None else config_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     payload: dict[str, Any] = dataclasses.asdict(config)
@@ -334,7 +335,9 @@ def resolve_docs_root(
     """No default path is asserted -- this repository bundles no GAUSS
     documentation; an unset value means conversational grounding against
     local official documentation is unavailable, honestly, not silently
-    assumed."""
+    assumed. (v0.80.0: `gauss-ai docs fetch` downloads the published docs
+    into `~/.gauss-ai/docs/` and sets this if it was unset -- still an
+    explicit user action, never a silent default.)"""
     env = env if env is not None else os.environ
     if cli_value:
         return ResolvedValue(cli_value, "cli_argument")

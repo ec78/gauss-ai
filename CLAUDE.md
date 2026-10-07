@@ -13,7 +13,8 @@ Durable, project-wide guidance for Claude Code sessions in this repository. For 
 - `scripts/` — all implementation and tests live here as flat Python modules (`gauss_*.py`) plus one `test_*.py` per module. `pyproject.toml` maps `scripts/` via `package-dir` and lists every module explicitly under `[tool.setuptools] py-modules`; **a new module must be added there or it will not be packaged/installed**.
 - `gauss_ai_cli.py` — the `gauss-ai` console-script entry point (thin dispatcher).
 - `gauss_ai_chat.py` + `gauss_conversation_engine.py` + `gauss_chat_provider.py` — the conversational layer: intent classification, grounding, generation gating, symbol checking, and the `ModelProvider` abstraction (`fake` / `ollama` / `anthropic`).
-- `command_doc_lookup.py` — local retrieval over a real official-GAUSS `.rst` documentation checkout (`docs_root`, user-configured, not part of this repo).
+- `command_doc_lookup.py` — local retrieval over official-GAUSS `.rst` documentation under `docs_root` (user-configured; typically the copy `gauss-ai docs fetch` downloads into `~/.gauss-ai/docs/` via `gauss_docs_fetch.py`). Documentation is never bundled in or redistributed by this repo.
+- `gauss_mcp_server.py` — local MCP server (stdio; optional `mcp` extra). Hybrid path: the client model writes code, `gauss_conversation_engine.validate_code` computes the verdict deterministically, and execution is only possible via a server-issued, single-use `validation_id`. Strict-mode chat tools are opt-in (real `chat-provider` only).
 - `gauss_error_catalog.py` — the verified GAUSS error-code knowledge base.
 - The repair pipeline (`gauss_code_assistant_workflow.py`, `gauss_execution_*`, `gauss_repair_*`, `gauss_verification_*`) — the original governed execute→diagnose→repair→verify→review pipeline. The conversational layer has **no import path into any of these modules** (structurally enforced and tested).
 - `planning/v{X}-*.md` — one design/readiness document per milestone, mirroring that milestone's required final-report structure.
@@ -23,10 +24,10 @@ Durable, project-wide guidance for Claude Code sessions in this repository. For 
 
 ## Development Environment
 
-- Python 3.10+, **zero third-party runtime dependencies** (stdlib only) — this is an intentional, long-standing constraint; don't add one without a strong reason.
-- Install: `pip install -e .` — re-run this after every `git pull`/branch switch that touches `scripts/`, since a stale editable install can silently resolve to a different checkout.
+- Python 3.10+, **zero third-party runtime dependencies** for the base CLI (stdlib only) — this is an intentional, long-standing constraint; don't add one without a strong reason. The only exception is the optional `mcp` extra (`pip install -e ".[mcp]"`), imported lazily so the base CLI never needs it.
+- Install: `pip install -e .` — re-run this after every `git pull`/branch switch that touches `scripts/`, since a stale editable install can silently resolve to a different checkout. On Windows, a running `gauss-ai-mcp.exe` (e.g. spawned by a Claude Code window) locks its executable and makes the reinstall fail partway, leaving `gauss-ai` uninstalled — stop that process first, then reinstall.
 - Verify install: `gauss-ai version`, `gauss-ai doctor`.
-- Optional real backends used only for manual/live validation, never by automated tests: a local **Ollama** install (`chat-provider=ollama`, default model `qwen2.5-coder:7b`) and a real GAUSS installation (`tgauss.exe`, configured via `gauss-ai config set gauss-executable <path>`). A real documentation checkout (`docs-root` config setting) is also machine-specific and gitignored.
+- Optional real backends used only for manual/live validation, never by automated tests: a local **Ollama** install (`chat-provider=ollama`, default model `qwen2.5-coder:7b`) and a real GAUSS installation (`tgauss.exe`, configured via `gauss-ai config set gauss-executable <path>`). The documentation under `docs-root` is also machine-specific (downloaded or cloned per user, never committed).
 
 ## Important Commands
 
@@ -50,9 +51,10 @@ Durable, project-wide guidance for Claude Code sessions in this repository. For 
 
 ## Project-Wide Constraints (do not relax without explicit user sign-off)
 
-- Conversational code generation never executes, never writes a file, never applies a repair, and never bypasses any existing approval layer.
+- Generated code — whether written by gauss-ai's own provider or, on the MCP hybrid path, by the calling client's model — never executes except through the controlled execution handoff (deterministic `HANDOFF_CANDIDATE` verdict + explicit, digest-bound, single-use human approval), never writes a file, never applies a repair, and never bypasses any existing approval layer. Code may come from a caller; a readiness verdict never does.
+- Code that reaches outside GAUSS's own memory (OS commands, processes, `#include`/`run`, directory changes, file reads/writes/deletes — see `_SYSTEM_STATEMENT_REGISTRY`) is always `NOT_READY` for the handoff.
 - The model can never override a deterministic safety decision (an execution/repair boundary, a generation gate, a validation/eligibility verdict) — these are computed and enforced entirely outside any provider call.
-- No telemetry, no network calls except to a user-configured model provider the user explicitly enabled.
+- No telemetry. Network calls are allowed only to (a) a model provider the user explicitly enabled, and (b) the explicit, user-invoked `gauss-ai docs fetch` download from docs.aptech.com — never automatic, never per-query.
 
 ## Workflow Rules
 

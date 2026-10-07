@@ -1414,6 +1414,110 @@ def test_117_well_formed_print_call_with_parens_is_not_flagged() -> None:
     check("not invalid", result.status != validation_mod.SyntaxStatus.INVALID.value)
 
 
+# ---------------------------------------------------------------------------
+# v0.80.0: shared call_scan_text(...) -- keyword-led lines are scanned, not
+# skipped (the bare-`print` gap reproduced live in evaluation 69.1), with
+# real word boundaries (the `printfm`/`format`/`forecast` prefix gap).
+# ---------------------------------------------------------------------------
+
+
+def _symbols(code: str) -> list[tuple[str, int]]:
+    return [(c.symbol, c.argument_count) for c in validation_mod.extract_generated_calls(code)]
+
+
+def test_118_keyword_prefixed_identifiers_are_no_longer_skipped() -> None:
+    check("printfm extracted", _symbols("printfm(x, 1, mask);") == [("printfm", 3)])
+    check("format = line scanned", _symbols('format = sprintf("%d", 1);') == [("sprintf", 2)])
+    check("forecast = line scanned", _symbols("forecast = arima(y, 1);") == [("arima", 2)])
+    check("dotfeq (starts with 'do') extracted", _symbols("dotfeq(a, b);") == [("dotfeq", 2)])
+    check("iff = line (starts with 'if') scanned", _symbols("iff = invpd(x);") == [("invpd", 1)])
+    check("localx = line (starts with 'local') scanned", _symbols("localx = f(y);") == [("f", 1)])
+
+
+def test_119_calls_on_keyword_led_lines_are_extracted() -> None:
+    check("print f(...) extracted", _symbols("print invpd({2 1, 1 2});") == [("invpd", 1)])
+    check("uppercase PRINT", _symbols("PRINT meanc(x);") == [("meanc", 1)])
+    check("retp(f(x)) yields f only", _symbols("retp(f(x));") == [("f", 1)])
+    check("if f(x) > 0 yields f", _symbols("if f(x) > 0;") == [("f", 1)])
+    check("do while header call extracted", _symbols("do while i <= rows(x);") == [("rows", 1)])
+    check("struct initializer call extracted", _symbols("struct DS d = dsCreate();") == [("dsCreate", 0)])
+    check("keyword-as-call still filtered", _symbols("print(y);") == [] and _symbols("retp(a+b);") == [])
+
+
+def test_120_declarations_loop_headers_and_strings_never_yield_calls() -> None:
+    check("for-header loop variable is not a call", _symbols("for i (1, 3, 1);") == [])
+    check("for-header still exposes real calls", _symbols("for i (1, rows(x), 1);") == [("rows", 1)])
+    check("proc header skipped", _symbols("proc (1) = myf(x);") == [])
+    check("local declaration skipped", _symbols("local a, b;") == [])
+    check("parens inside a string are not calls", _symbols('print "Inverse (2x2):";') == [])
+    calls = validation_mod.extract_generated_calls('s = sprintf("%d, %d", a, b);')
+    check("string argument text and quotes preserved", calls[0].raw_arguments == ('"%d, %d"', "a", "b"))
+
+
+def test_121_print_wrapped_precondition_violation_is_now_caught() -> None:
+    """The exact 69.1 shape: a `print`-wrapped call was never extracted, so
+    its documented precondition was never checked."""
+    code = "print invpd({2 1, 3 2});"
+    calls = validation_mod.extract_generated_calls(code)
+    checks = [pc for call in calls for pc in validation_mod.check_preconditions(call, code=code)]
+    check("invpd precondition evaluated", len(checks) > 0)
+    check("non-symmetric literal is VIOLATED", any(pc.status == validation_mod.PreconditionStatus.VIOLATED.value for pc in checks))
+
+
+# ---------------------------------------------------------------------------
+# v0.80.0: system-touching statement gate
+# ---------------------------------------------------------------------------
+
+
+def _system_names(code: str) -> list[tuple[str, str]]:
+    return [(f.name, f.category) for f in validation_mod.check_system_statements(code)]
+
+
+def test_122_system_statements_detected_in_every_category() -> None:
+    cases = {
+        'y = 1; dos "dir";': ("dos", "os_command"),
+        "shell ^cmd;": ("shell", "os_command"),
+        'r = EXEC("x.exe", "");': ("exec", "process_launch"),
+        "system;": ("system", "process_control"),
+        "run myprog.gss;": ("run", "source_inclusion"),
+        '#include "helpers.src"': ("#include", "source_inclusion"),
+        'changeDir("C:/");': ("changedir", "directory_change"),
+        'ret = deleteFile("a.txt");': ("deletefile", "file_delete"),
+        "output file=out.txt on;": ("output", "file_write"),
+        'ret = saveStruct(s, "f");': ("savestruct", "file_write"),
+        'x = loadd("auto2.dta");': ("loadd", "file_read"),
+        "load x = mydata;": ("load", "file_read"),
+        "open fh = mydata;": ("open", "file_read"),
+    }
+    for code, expected in cases.items():
+        check(f"{code!r} -> {expected}", _system_names(code) == [expected])
+
+
+def test_123_system_statement_gate_ignores_strings_and_same_named_variables() -> None:
+    for code in ('print "dos is fine";', "run = 5;", "output = x * 2;", "saveresults = meanc(x);",
+                 'print "Use loadd(file) to read data";', "loaded = 1;", "x = rndn(3, 3); print x;"):
+        check(f"{code!r} has no findings", _system_names(code) == [])
+
+
+def test_124_system_statement_forces_not_ready_ahead_of_everything_else() -> None:
+    finding = validation_mod.check_system_statements('dos "dir";')
+    readiness = validation_mod.compute_handoff_readiness(
+        eligibility=validation_mod.ExecutionEligibility.ELIGIBLE_FOR_VALIDATION.value, unresolved_issues=(),
+        syntax=None, call_validations=(), preconditions=(),
+        evidence_profile=validation_mod.EvidenceProfile.BROAD.value, system_statements=finding,
+    )
+    check("NOT_READY", readiness.state == validation_mod.HandoffReadiness.NOT_READY.value)
+    check("reason names the statement", any("`dos`" in r for r in readiness.reasons))
+
+
+def test_125_every_registry_entry_has_doc_provenance_and_unique_name() -> None:
+    names = [rule.name for rule in validation_mod._SYSTEM_STATEMENT_REGISTRY]
+    check("names unique", len(names) == len(set(names)))
+    check("every rule cites a doc page", all(rule.doc_page.endswith(".rst") for rule in validation_mod._SYSTEM_STATEMENT_REGISTRY))
+    valid = {c.value for c in validation_mod.SystemStatementCategory}
+    check("every category valid", all(rule.category in valid for rule in validation_mod._SYSTEM_STATEMENT_REGISTRY))
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

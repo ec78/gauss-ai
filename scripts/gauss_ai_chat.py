@@ -131,6 +131,7 @@ def _render_answer(print_fn: Callable[[str], None], result: "engine_mod.AnswerRe
             companion_hints=result.companion_hints, parameter_role_checks=result.parameter_role_checks,
             predicted_output=result.predicted_output, coverage=result.validation_coverage,
             syntax=result.syntax_validation, readiness=result.handoff_readiness,
+            system_statements=result.system_statements,
         ))
     print_fn("")
     print_fn(result.text)

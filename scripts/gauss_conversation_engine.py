@@ -1243,16 +1243,14 @@ class GeneratedSymbolCheck:
     user_defined_or_ambiguous_symbols: tuple[str, ...]
 
 
-def _looks_like_control_flow_line(line: str) -> bool:
-    stripped = line.strip().lower()
-    return any(stripped.startswith(keyword) for keyword in _LANGUAGE_CONSTRUCT_KEYWORDS)
-
-
 def check_generated_symbols(code: str, *, supported_symbols: tuple[str, ...]) -> GeneratedSymbolCheck:
-    """Extracts call-shaped identifiers (`name(`) from `code`, skipping any
-    line that begins with a known control-flow/declaration keyword (so a
-    GAUSS `for`-loop's own header syntax, e.g. `for j (1, 3, 1);`, is never
-    mistaken for a call to a function named `j`). `supported_symbols`
+    """Extracts call-shaped identifiers (`name(`) from `code`, scanning only
+    the text `gauss_pre_execution_validation.call_scan_text(...)` exposes --
+    the SAME definition the call extractor uses (v0.80.0; previously a
+    separate whole-line keyword skip here let a hallucinated
+    `print colmean(x);` go unflagged). That helper skips declaration lines,
+    masks string literals, and blanks a `for` header's loop variable (so
+    `for j (1, 3, 1);` is never mistaken for a call to `j`). `supported_symbols`
     should be the current turn's own grounded/resolved topics
     (case-insensitive). Deliberately conservative: a symbol is flagged as
     `unknown_call_symbols` only when it is neither supported, a known
@@ -1271,9 +1269,8 @@ def check_generated_symbols(code: str, *, supported_symbols: tuple[str, ...]) ->
     seen: set[str] = set()
 
     for line in code.splitlines():
-        if _looks_like_control_flow_line(line):
-            continue
-        for match in _CALL_SHAPED_RE.finditer(line):
+        scan = validation_mod.call_scan_text(line)
+        for match in _CALL_SHAPED_RE.finditer(scan):
             symbol = match.group(1)
             lowered = symbol.lower()
             if lowered in seen or lowered in _LANGUAGE_CONSTRUCT_KEYWORDS:
@@ -1405,6 +1402,9 @@ class AnswerResult:
     #: condition as `pre_execution_eligibility` above.
     syntax_validation: "validation_mod.SyntaxValidationResult | None" = None
     handoff_readiness: "validation_mod.ReadinessResult | None" = None
+    #: v0.80.0: system-touching statements found in the generated code
+    #: (any finding forces `handoff_readiness` to NOT_READY).
+    system_statements: tuple["validation_mod.SystemStatementFinding", ...] = ()
 
 
 class ConversationEngine:
@@ -1530,41 +1530,6 @@ class ConversationEngine:
         # code-generation request.
         generated_code = extract_code_blocks(text) if code_shaped else ()
 
-        # v0.73.0 Phase 8: a conservative, best-effort POST-generation check
-        # -- catches a future `colmean(...)`-shaped hallucination even if the
-        # model ignored its own prompt instructions, which is exactly what
-        # v0.72.0's own live evaluation proved can happen. `supported_symbols`
-        # includes not just each source's own topic name but every call-
-        # shaped identifier appearing in that source's own retrieved content
-        # -- live evaluation found `invinvpd.rst` (grounded topic `inv`)
-        # legitimately documents `invpd` too, and the real model correctly
-        # used it; since the CONTENT is real, retrieved documentation text,
-        # never fabricated, treating names within it as supported carries no
-        # fabrication risk.
-        unknown_symbols: tuple[str, ...] = ()
-        if generated_code:
-            # v0.74.0 live evaluation (category 64.x, scenario 64.10) found
-            # a real false positive: a multi-turn follow-up that legitimately
-            # reuses a function grounded in an EARLIER turn (e.g. "now use
-            # that result inside invpd") does not re-mention that function's
-            # own name/description, so it is not among THIS turn's own
-            # `bundle.matched_topics` -- the model correctly reused it
-            # anyway, and it was flagged unknown purely because of where in
-            # the conversation it was last grounded. `recent_topics` were
-            # each independently verified via a real `command_doc_lookup.
-            # lookup(...)` earlier in this SAME session (never fabricated),
-            # so folding them into the known-symbol vocabulary here is safe.
-            supported = set(bundle.matched_topics) | {t.lower() for t in self.state.recent_topics}
-            for source in bundle.sources:
-                supported.update(m.group(1) for m in _CALL_SHAPED_RE.finditer(source.content))
-            all_unknown: list[str] = []
-            for block in generated_code:
-                block_check = check_generated_symbols(_strip_comments_for_analysis(block), supported_symbols=tuple(supported))
-                for symbol in block_check.unknown_call_symbols:
-                    if symbol not in all_unknown:
-                        all_unknown.append(symbol)
-            unknown_symbols = tuple(all_unknown)
-
         # v0.74.0: deterministic pre-execution validation. v0.75.0: this is
         # now UNCONDITIONAL on `generated_code` alone -- previously also
         # required `gate.policy in (FULL, SUPPORTED_ONLY)`, which meant a
@@ -1583,12 +1548,19 @@ class ConversationEngine:
         # come out `INELIGIBLE`/`REQUIRES_CLARIFICATION` via
         # `compute_eligibility(...)`'s own `generation_policy`/
         # `ambiguous_topics` checks -- nothing here silently passes it.
+        # v0.80.0: the unknown-symbol pass and the validation chain now live
+        # in the shared module-level `validate_generated_code(...)` (also used
+        # by `validate_code(...)` for client-authored code). It runs before
+        # `remember_topics` below, so `recent_topics` are the PREVIOUS turns'
+        # topics, exactly as before.
         pre_execution: "validation_mod.PreExecutionValidationResult | None" = None
+        unknown_symbols: tuple[str, ...] = ()
         if generated_code:
-            pre_execution = self._validate_pre_execution(
-                generated_code=generated_code, bundle=bundle, gate=gate, unknown_symbols=unknown_symbols,
-                answer_text=text,
+            pre_execution = validate_generated_code(
+                generated_code, bundle=bundle, gate=gate, docs_root_str=self.docs_root,
+                recent_topics=tuple(self.state.recent_topics), answer_text=text,
             )
+            unknown_symbols = pre_execution.unknown_symbols
 
         self.state.add("user", question)
         self.state.add("assistant", text)
@@ -1612,137 +1584,294 @@ class ConversationEngine:
             validation_coverage=pre_execution.coverage if pre_execution else None,
             syntax_validation=pre_execution.syntax if pre_execution else None,
             handoff_readiness=pre_execution.readiness if pre_execution else None,
+            system_statements=pre_execution.system_statements if pre_execution else (),
         )
 
-    def _validate_pre_execution(
-        self, *, generated_code: tuple[str, ...], bundle: "GroundingBundle", gate: "GenerationGateResult",
-        unknown_symbols: tuple[str, ...], answer_text: str,
-    ) -> "validation_mod.PreExecutionValidationResult":
-        """Re-fetches each grounded topic's own `best_match` (a second real
-        `command_doc_lookup.lookup(...)` call, same simplicity-over-
-        performance tradeoff `ground_multi(...)` already makes -- this
-        module never caches documentation content) to extract a documented
-        signature and collect real companion-symbol names, then validates
-        every call-shaped expression actually found in the generated code
-        against that evidence. Contains no execution capability: no
-        subprocess, no shell, no file write."""
-        docs_root = _resolve_docs_root(self.docs_root)
-        # Includes `_COMMON_BUILTIN_SYMBOLS` for the same reason
-        # `check_generated_symbols(...)` does -- a real GAUSS builtin (e.g.
-        # `rows`) should never be reported "not documented" here merely
-        # because it wasn't this turn's own grounded topic. v0.74.0 live
-        # evaluation (category 64.x, scenario 64.7) found this set had
-        # drifted out of sync with `check_generated_symbols`'s own,
-        # producing a confusing (though not eligibility-affecting, since
-        # UNKNOWN never blocks eligibility) "not documented" label for a
-        # real builtin.
-        documented_symbols = (
-            {t.lower() for t in bundle.matched_topics}
-            | {t.lower() for t in self.state.recent_topics}
-            | set(_COMMON_BUILTIN_SYMBOLS)
-        )
-        for source in bundle.sources:
-            documented_symbols.update(m.group(1).lower() for m in _CALL_SHAPED_RE.finditer(source.content))
 
-        documented_signatures: dict[str, validation_mod.DocumentedSignature] = {}
-        companions: set[str] = set()
-        if docs_root is not None:
-            for topic in bundle.matched_topics:
-                result = doc_lookup_mod.lookup(topic, docs_root, max_results=1)
-                if result["status"] == "found" and result["best_match"]:
-                    best_match = result["best_match"]
-                    documented_signatures[topic.lower()] = validation_mod.extract_documented_signature(topic, best_match)
-                    companions.update(
-                        link for link in (best_match.get("related_links") or ())
-                        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", link)
-                    )
+def validate_generated_code(
+    generated_code: tuple[str, ...], *, bundle: "GroundingBundle", gate: "GenerationGateResult",
+    docs_root_str: str | None, recent_topics: tuple[str, ...], answer_text: str,
+) -> "validation_mod.PreExecutionValidationResult":
+    """The ONE implementation of the post-generation validation chain
+    (v0.80.0: formerly `ConversationEngine._validate_pre_execution`, plus
+    the unknown-symbol pass that used to sit inline in `ask()`), shared by
+    `ConversationEngine.ask()` and `validate_code(...)` so the two paths can
+    never drift. Deterministic, provider-independent: takes no model or
+    provider argument.
 
-        all_calls: list[validation_mod.GeneratedCall] = []
-        for block in generated_code:
-            all_calls.extend(validation_mod.extract_generated_calls(_strip_comments_for_analysis(block)))
+    Computes unknown call symbols, then re-fetches each grounded topic's
+    own `best_match` (a second real `command_doc_lookup.lookup(...)` call,
+    same simplicity-over-performance tradeoff `ground_multi(...)` already
+    makes -- this module never caches documentation content) to extract a
+    documented signature and collect real companion-symbol names, then
+    validates every call-shaped expression actually found in the generated
+    code against that evidence. Contains no execution capability: no
+    subprocess, no shell, no file write."""
+    # v0.73.0 Phase 8: a conservative, best-effort POST-generation check --
+    # catches a `colmean(...)`-shaped hallucination even if the model
+    # ignored its own prompt instructions. `supported` includes not just
+    # each source's own topic name but every call-shaped identifier in that
+    # source's own retrieved content (live evaluation found `invinvpd.rst`,
+    # grounded topic `inv`, legitimately documents `invpd` too). v0.74.0
+    # (scenario 64.10) also folds in `recent_topics`: each was verified by a
+    # real `command_doc_lookup.lookup(...)` earlier in the same session, so
+    # a follow-up turn that reuses an earlier-grounded function is not
+    # falsely flagged.
+    supported = set(bundle.matched_topics) | {t.lower() for t in recent_topics}
+    for source in bundle.sources:
+        supported.update(m.group(1) for m in _CALL_SHAPED_RE.finditer(source.content))
+    all_unknown: list[str] = []
+    for block in generated_code:
+        block_check = check_generated_symbols(_strip_comments_for_analysis(block), supported_symbols=tuple(supported))
+        for symbol in block_check.unknown_call_symbols:
+            if symbol not in all_unknown:
+                all_unknown.append(symbol)
+    unknown_symbols = tuple(all_unknown)
 
-        call_validations = tuple(
-            validation_mod.validate_call(
-                call, documented_signatures=documented_signatures, documented_symbols=frozenset(documented_symbols),
-            )
-            for call in all_calls
-        )
+    docs_root = _resolve_docs_root(docs_root_str)
+    # Includes `_COMMON_BUILTIN_SYMBOLS` for the same reason
+    # `check_generated_symbols(...)` does -- a real GAUSS builtin (e.g.
+    # `rows`) should never be reported "not documented" here merely
+    # because it wasn't this turn's own grounded topic. v0.74.0 live
+    # evaluation (category 64.x, scenario 64.7) found this set had
+    # drifted out of sync with `check_generated_symbols`'s own,
+    # producing a confusing (though not eligibility-affecting, since
+    # UNKNOWN never blocks eligibility) "not documented" label for a
+    # real builtin.
+    documented_symbols = (
+        {t.lower() for t in bundle.matched_topics}
+        | {t.lower() for t in recent_topics}
+        | set(_COMMON_BUILTIN_SYMBOLS)
+    )
+    for source in bundle.sources:
+        documented_symbols.update(m.group(1).lower() for m in _CALL_SHAPED_RE.finditer(source.content))
 
-        precondition_checks: list[validation_mod.PreconditionCheck] = []
-        for block in generated_code:
-            cleaned_block = _strip_comments_for_analysis(block)
-            for call in validation_mod.extract_generated_calls(cleaned_block):
-                precondition_checks.extend(validation_mod.check_preconditions(call, code=cleaned_block))
-
-        # v0.75.0 Phase 5/6: parameter-role/type validation -- positional,
-        # against whatever documented parameter metadata
-        # `extract_documented_signature(...)` above could extract (empty for
-        # a symbol whose documentation did not support it, per that
-        # function's own conservative discipline).
-        parameter_role_checks: list[validation_mod.ParameterRoleCheck] = []
-        for call in all_calls:
-            signature = documented_signatures.get(call.symbol.lower())
-            parameter_role_checks.extend(validation_mod.check_parameter_roles(call, signature=signature))
-
-        # v0.75.0 Phase 9/10/11: a structured, never-model-self-labeled
-        # predicted-output claim, with limited deterministic verification
-        # for the small set of literal patterns `verify_predicted_output(...)`
-        # can actually compute. Kept entirely separate from `eligibility`
-        # below -- see `compute_eligibility(...)`'s own docstring for why.
-        cleaned_generated_code = tuple(_strip_comments_for_analysis(block) for block in generated_code)
-        predicted_output = validation_mod.analyze_predicted_output(answer_text, generated_code=cleaned_generated_code)
-
-        # v0.76.0 Phase 2-7: deterministic syntax validation -- one
-        # `SyntaxValidationResult` per code block, merged into a single
-        # per-answer result via `merge_syntax_results(...)` (re-derives
-        # status from the combined evidence rather than a separate ranking
-        # scheme; see that function's own docstring).
-        syntax = validation_mod.merge_syntax_results(
-            tuple(validation_mod.validate_syntax(block) for block in cleaned_generated_code)
-        )
-
-        companion_hints: list[tuple[str, str]] = []
-        for symbol in unknown_symbols:
-            hint = validation_mod.find_companion_hint(symbol, companions=frozenset(companions))
-            if hint is None and docs_root is not None:
-                # v0.74.0 live evaluation (category 64.x, scenario 64.7)
-                # found the real `tscsFit` documentation mentions
-                # "tscsmtControl" only in plain prose, with no `:func:`/
-                # backtick markup at all -- so it was never captured as a
-                # companion via the grounded topic's own related_links.
-                # Fall back to a direct, bounded, real documentation lookup
-                # on the unknown symbol itself: `command_doc_lookup.
-                # lookup(...)`'s own substring-in-filename scoring (already
-                # used everywhere else in this module) can still find a
-                # real, differently-named companion page this way (e.g.
-                # `tscsmtcontrolcreate.rst` for `tscsmtControl`) without
-                # ever fabricating one.
-                fallback = doc_lookup_mod.lookup(symbol, docs_root, max_results=3)
-                fallback_names = frozenset(
-                    Path(m["file_path"]).stem for m in fallback.get("matches", []) if m.get("file_path")
+    documented_signatures: dict[str, validation_mod.DocumentedSignature] = {}
+    companions: set[str] = set()
+    if docs_root is not None:
+        for topic in bundle.matched_topics:
+            result = doc_lookup_mod.lookup(topic, docs_root, max_results=1)
+            if result["status"] == "found" and result["best_match"]:
+                best_match = result["best_match"]
+                documented_signatures[topic.lower()] = validation_mod.extract_documented_signature(topic, best_match)
+                companions.update(
+                    link for link in (best_match.get("related_links") or ())
+                    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", link)
                 )
-                hint = validation_mod.find_companion_hint(symbol, companions=fallback_names)
-            if hint:
-                companion_hints.append((symbol, hint))
 
-        eligibility, issues = validation_mod.compute_eligibility(
-            generation_policy=gate.policy, unknown_symbols=unknown_symbols, ambiguous_topics=bundle.ambiguous_topics,
-            call_validations=call_validations, preconditions=tuple(precondition_checks), code_extraction_ok=True,
-            parameter_role_checks=tuple(parameter_role_checks),
+    all_calls: list[validation_mod.GeneratedCall] = []
+    for block in generated_code:
+        all_calls.extend(validation_mod.extract_generated_calls(_strip_comments_for_analysis(block)))
+
+    call_validations = tuple(
+        validation_mod.validate_call(
+            call, documented_signatures=documented_signatures, documented_symbols=frozenset(documented_symbols),
         )
-        coverage = validation_mod.compute_validation_coverage(
-            has_code=True, call_validations=call_validations, parameter_role_checks=tuple(parameter_role_checks),
-            preconditions=tuple(precondition_checks), predicted_output=predicted_output, syntax=syntax,
+        for call in all_calls
+    )
+
+    precondition_checks: list[validation_mod.PreconditionCheck] = []
+    for block in generated_code:
+        cleaned_block = _strip_comments_for_analysis(block)
+        for call in validation_mod.extract_generated_calls(cleaned_block):
+            precondition_checks.extend(validation_mod.check_preconditions(call, code=cleaned_block))
+
+    # v0.75.0 Phase 5/6: parameter-role/type validation -- positional,
+    # against whatever documented parameter metadata
+    # `extract_documented_signature(...)` above could extract (empty for
+    # a symbol whose documentation did not support it, per that
+    # function's own conservative discipline).
+    parameter_role_checks: list[validation_mod.ParameterRoleCheck] = []
+    for call in all_calls:
+        signature = documented_signatures.get(call.symbol.lower())
+        parameter_role_checks.extend(validation_mod.check_parameter_roles(call, signature=signature))
+
+    # v0.75.0 Phase 9/10/11: a structured, never-model-self-labeled
+    # predicted-output claim, with limited deterministic verification
+    # for the small set of literal patterns `verify_predicted_output(...)`
+    # can actually compute. Kept entirely separate from `eligibility`
+    # below -- see `compute_eligibility(...)`'s own docstring for why.
+    cleaned_generated_code = tuple(_strip_comments_for_analysis(block) for block in generated_code)
+    predicted_output = validation_mod.analyze_predicted_output(answer_text, generated_code=cleaned_generated_code)
+
+    # v0.76.0 Phase 2-7: deterministic syntax validation -- one
+    # `SyntaxValidationResult` per code block, merged into a single
+    # per-answer result via `merge_syntax_results(...)` (re-derives
+    # status from the combined evidence rather than a separate ranking
+    # scheme; see that function's own docstring).
+    syntax = validation_mod.merge_syntax_results(
+        tuple(validation_mod.validate_syntax(block) for block in cleaned_generated_code)
+    )
+    system_statements = tuple(
+        finding for block in cleaned_generated_code for finding in validation_mod.check_system_statements(block)
+    )
+
+    companion_hints: list[tuple[str, str]] = []
+    for symbol in unknown_symbols:
+        hint = validation_mod.find_companion_hint(symbol, companions=frozenset(companions))
+        if hint is None and docs_root is not None:
+            # v0.74.0 live evaluation (category 64.x, scenario 64.7)
+            # found the real `tscsFit` documentation mentions
+            # "tscsmtControl" only in plain prose, with no `:func:`/
+            # backtick markup at all -- so it was never captured as a
+            # companion via the grounded topic's own related_links.
+            # Fall back to a direct, bounded, real documentation lookup
+            # on the unknown symbol itself: `command_doc_lookup.
+            # lookup(...)`'s own substring-in-filename scoring (already
+            # used everywhere else in this module) can still find a
+            # real, differently-named companion page this way (e.g.
+            # `tscsmtcontrolcreate.rst` for `tscsmtControl`) without
+            # ever fabricating one.
+            fallback = doc_lookup_mod.lookup(symbol, docs_root, max_results=3)
+            fallback_names = frozenset(
+                Path(m["file_path"]).stem for m in fallback.get("matches", []) if m.get("file_path")
+            )
+            hint = validation_mod.find_companion_hint(symbol, companions=fallback_names)
+        if hint:
+            companion_hints.append((symbol, hint))
+
+    eligibility, issues = validation_mod.compute_eligibility(
+        generation_policy=gate.policy, unknown_symbols=unknown_symbols, ambiguous_topics=bundle.ambiguous_topics,
+        call_validations=call_validations, preconditions=tuple(precondition_checks), code_extraction_ok=True,
+        parameter_role_checks=tuple(parameter_role_checks),
+    )
+    coverage = validation_mod.compute_validation_coverage(
+        has_code=True, call_validations=call_validations, parameter_role_checks=tuple(parameter_role_checks),
+        preconditions=tuple(precondition_checks), predicted_output=predicted_output, syntax=syntax,
+    )
+    evidence_profile = validation_mod.compute_evidence_profile(coverage)
+    readiness = validation_mod.compute_handoff_readiness(
+        eligibility=eligibility, unresolved_issues=issues, syntax=syntax, call_validations=call_validations,
+        preconditions=tuple(precondition_checks), evidence_profile=evidence_profile,
+        system_statements=system_statements,
+    )
+    return validation_mod.PreExecutionValidationResult(
+        generation_policy=gate.policy, unknown_symbols=unknown_symbols,
+        companion_hints=tuple(companion_hints), call_validations=call_validations,
+        preconditions=tuple(precondition_checks), unresolved_issues=issues, eligibility=eligibility,
+        parameter_role_checks=tuple(parameter_role_checks), predicted_output=predicted_output,
+        coverage=coverage, syntax=syntax, readiness=readiness, system_statements=system_statements,
+    )
+
+
+# ---------------------------------------------------------------------------
+# v0.80.0: validating client-authored code (the MCP "hybrid" path)
+# ---------------------------------------------------------------------------
+#
+# In the hybrid path, a calling model (Claude, ChatGPT, ...) writes GAUSS code
+# itself; gauss-ai's job is to deterministically validate it. The code may
+# come from the caller -- a readiness VERDICT never does: this function
+# computes it here, from the code and the configured documentation alone.
+# Grounding is derived from the code's own called symbols (each one looked
+# up exactly the way `resolve_concepts(...)` looks up a literal token: real
+# `command_doc_lookup.lookup(...)`, `max_results=3`, `MIN_DOC_CONFIDENCE`),
+# not from `ground_multi(...)`, which is built for natural-language questions
+# (6-token cap, alias matching, 4-source cap) and would be a poor fit.
+
+MAX_VALIDATE_CODE_CHARS = 20_000
+MAX_VALIDATE_CODE_SYMBOLS = 24
+
+NO_DOCUMENTED_CALLS_NOTE = (
+    "No documented GAUSS function call was found to ground this code against. Code with no documented calls "
+    "is never eligible for controlled execution -- there is no documentation evidence to validate it with."
+)
+
+
+@dataclass(frozen=True)
+class CodeValidationResult:
+    """Immutable verdict on one piece of client-authored code. Exposes
+    `generated_code` and `handoff_readiness` with the same meaning as
+    `AnswerResult`'s, so `gauss_ai_chat._execution_offer_eligible(...)` reads
+    it unchanged. `rejected_reason` is set (and readiness is NOT_READY)
+    when the input could not be validated at all."""
+
+    code: str
+    generated_code: tuple[str, ...]
+    called_symbols: tuple[str, ...]
+    user_defined_symbols: tuple[str, ...]
+    grounding_status: str
+    grounding_sources: tuple[GroundingSource, ...]
+    unsupported_topics: tuple[str, ...]
+    ambiguous_topics: tuple[str, ...]
+    generation_policy: str | None
+    pre_execution: "validation_mod.PreExecutionValidationResult | None"
+    handoff_readiness: "validation_mod.ReadinessResult"
+    notes: tuple[str, ...] = ()
+    rejected_reason: str | None = None
+
+
+def _rejected(code: str, reason: str, message: str) -> CodeValidationResult:
+    return CodeValidationResult(
+        code=code, generated_code=(), called_symbols=(), user_defined_symbols=(),
+        grounding_status=GroundingStatus.UNGROUNDED.value, grounding_sources=(), unsupported_topics=(),
+        ambiguous_topics=(), generation_policy=None, pre_execution=None,
+        handoff_readiness=validation_mod.ReadinessResult(validation_mod.HandoffReadiness.NOT_READY.value, (message,)),
+        rejected_reason=reason,
+    )
+
+
+def validate_code(code: str, *, docs_root: str | None) -> CodeValidationResult:
+    """Deterministic validation of client-authored GAUSS code: no model
+    call, no provider argument, no execution. Never raises for bad input --
+    a rejection is a NOT_READY result with `rejected_reason` set."""
+    if not code or not code.strip():
+        return _rejected(code, "empty_code", "no code was provided")
+    if len(code) > MAX_VALIDATE_CODE_CHARS:
+        return _rejected(code, "code_too_large", f"code exceeds {MAX_VALIDATE_CODE_CHARS} characters")
+    if "```" in code:
+        return _rejected(code, "fenced_code", "pass raw GAUSS code, not a fenced Markdown block")
+    resolved_root = _resolve_docs_root(docs_root)
+    if resolved_root is None:
+        return _rejected(code, "docs_root_not_configured", "no GAUSS documentation is configured to validate against")
+
+    cleaned = _strip_comments_for_analysis(code)
+    user_defined = {m.lower() for m in _PROC_DEFINITION_RE.findall(cleaned)} | {
+        m.lower() for m in _ASSIGNMENT_TARGET_RE.findall(cleaned)
+    }
+    called: list[str] = []
+    for call in validation_mod.extract_generated_calls(cleaned):
+        symbol = call.symbol.lower()
+        if symbol not in user_defined and symbol not in called:
+            called.append(symbol)
+    if len(called) > MAX_VALIDATE_CODE_SYMBOLS:
+        # Fail closed rather than silently validating only a prefix.
+        return _rejected(
+            code, "too_many_symbols",
+            f"code calls {len(called)} distinct functions; at most {MAX_VALIDATE_CODE_SYMBOLS} can be validated",
         )
-        evidence_profile = validation_mod.compute_evidence_profile(coverage)
-        readiness = validation_mod.compute_handoff_readiness(
-            eligibility=eligibility, unresolved_issues=issues, syntax=syntax, call_validations=call_validations,
-            preconditions=tuple(precondition_checks), evidence_profile=evidence_profile,
-        )
-        return validation_mod.PreExecutionValidationResult(
-            generation_policy=gate.policy, unknown_symbols=unknown_symbols,
-            companion_hints=tuple(companion_hints), call_validations=call_validations,
-            preconditions=tuple(precondition_checks), unresolved_issues=issues, eligibility=eligibility,
-            parameter_role_checks=tuple(parameter_role_checks), predicted_output=predicted_output,
-            coverage=coverage, syntax=syntax, readiness=readiness,
-        )
+
+    sources: list[GroundingSource] = []
+    matched: list[str] = []
+    unmatched: list[str] = []
+    ambiguous: list[str] = []
+    for symbol in called:
+        result = doc_lookup_mod.lookup(symbol, resolved_root, max_results=3)
+        if result["status"] == "found" and result["best_match"] and result["confidence"] >= MIN_DOC_CONFIDENCE:
+            best_match = result["best_match"]
+            sources.append(GroundingSource(
+                source="official_docs", topic=symbol,
+                content=_format_doc_match(best_match, max_chars=MAX_GROUNDING_CHARS_BUNDLED),
+                citation=best_match.get("file_path"), origin="literal",
+            ))
+            matched.append(symbol)
+        elif result["status"] == "ambiguous" and result["confidence"] >= MIN_DOC_CONFIDENCE and result["matches"]:
+            ambiguous.append(symbol)
+        else:
+            unmatched.append(symbol)
+
+    bundle = GroundingBundle(
+        sources=tuple(sources), matched_topics=tuple(matched), unmatched_topics=tuple(unmatched),
+        ambiguous_topics=tuple(ambiguous),
+    )
+    gate = compute_generation_gate(bundle)
+    pre_execution = validate_generated_code(
+        (code,), bundle=bundle, gate=gate, docs_root_str=docs_root, recent_topics=(), answer_text="",
+    )
+    return CodeValidationResult(
+        code=code, generated_code=(code,), called_symbols=tuple(called),
+        user_defined_symbols=tuple(sorted(user_defined)), grounding_status=bundle.status.value,
+        grounding_sources=bundle.sources, unsupported_topics=bundle.unmatched_topics,
+        ambiguous_topics=bundle.ambiguous_topics, generation_policy=gate.policy, pre_execution=pre_execution,
+        handoff_readiness=pre_execution.readiness,
+        notes=() if matched else (NO_DOCUMENTED_CALLS_NOTE,),
+    )
