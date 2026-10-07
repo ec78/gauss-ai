@@ -4,48 +4,69 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 
 ## Current Objective
 
-None active. `v0.79.0 — MCP Server` is **complete, committed, pushed, and released**. `main` is at `143df52` both locally and on `origin`; tag `v0.79.0` points at `143df52` on both; GitHub release published at https://github.com/ec78/gauss-ai/releases/tag/v0.79.0 (user explicitly confirmed push/tag/release). Per this repository's own workflow rule, the next milestone (including a live-MCP-client evaluation) must NOT be started automatically; that needs a deliberate, separate decision from the user. The user's stated next step is to try the server against a real Claude Code connection.
+`v0.80.0 — Hybrid MCP Validation, Docs Fetch, and Validation Hardening` is **implemented and committed locally (`a440c50`). It is not tagged, pushed, or released.** Pushing, tagging and releasing need a separate, explicit confirmation from the user.
+
+The planned live MCP evaluation (`70.x`) is **not yet run**. It requires the user to reload the VS Code window first:
+- the session's `gauss-ai-mcp` process was stopped (with permission) so the editable reinstall could complete;
+- a reload restarts it with the v0.80.0 tools.
 
 ## Completed Work
 
-- `v0.79.0` exposes both existing `gauss-ai` subsystems — the conversational assistant (`gauss_conversation_engine.ConversationEngine`, including the `v0.78.0` controlled execution handoff) and the full guided repair pipeline (`gauss_code_assistant_cli.InteractiveMvpAdapter`) — as a local MCP (Model Context Protocol) server over stdio, so other MCP clients (Claude Code, Claude Desktop) on the same machine can call them as tools. This is a transport layer only: the new module adds no new safety, grounding, readiness, digest, or approval logic anywhere.
-- New `scripts/gauss_mcp_server.py` (9 tools): `gauss_chat_start`/`gauss_chat_ask`/`gauss_chat_reset`/`gauss_chat_close` wrap `ConversationEngine.ask(...)` whole — deliberately never decomposed into separately-callable primitives (doc lookup, syntax validation, etc.), since that would hand a safety-relevant readiness judgment to whichever model drives the calling MCP client. `gauss_execution_prepare`/`gauss_execution_decide` wrap the existing, unmodified `gauss_execution_handoff.py` functions unchanged — the pending code/readiness state is read only from the session's own last `ask(...)` result, never a caller-supplied tool argument, and `gauss_ai_chat._execution_offer_eligible` (the existing eligibility gate) is imported and reused directly rather than duplicated. `gauss_repair_start`/`gauss_repair_command`/`gauss_repair_close` forward one REPL command line at a time to the existing, unmodified `InteractiveMvpAdapter.handle_line(...)` — the same dispatcher `gauss-ai repl` already drives, which already catches every internal exception and returns it as an output line, so the entire ~30-command vocabulary needed no new error-mapping code.
-- New server-operator-only gate: `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1`, read from the `gauss-ai-mcp` process's own environment (never a tool-call argument) — a `runner="gauss"` request cannot even be prepared unless the server was started with this set, in addition to, never instead of, the existing per-request digest/approval flow. Verified the opt-in only removes the server-side refusal, not the adapter's own environment probe: a nonexistent executable path still safely resolves to `INFRASTRUCTURE_FAILURE` with no subprocess ever launched (`test_12_real_gauss_opt_in_still_requires_a_real_reachable_executable`).
-- `pyproject.toml` gained its first-ever `[project.optional-dependencies]` table (`mcp = ["mcp>=2.3.0"]`) and a new `gauss-ai-mcp` console script, plus `gauss_mcp_server` added to `py-modules`. `gauss_ai_cli.py` gained a thin `mcp` subcommand (`_cmd_mcp`) that imports `gauss_mcp_server` **lazily, inside the function body** — the base `gauss-ai` CLI remains fully usable with zero third-party dependencies regardless of whether the extra is installed; verified directly by running the full test suite and `gauss-ai version` against the base Python environment with `mcp` NOT installed.
-- Added a Claude Code plugin wrapper in this same repository: `.claude-plugin/plugin.json`, `.mcp.json` (stdio, `command: "gauss-ai-mcp"`), `.claude-plugin/marketplace.json` (plugin name `gauss-ai-mcp`).
-- MCP SDK specifics were verified directly against the actually-published package, not assumed from training-era memory: `mcp` is currently at `2.3.0`, where the v1-era `FastMCP` class was renamed to `MCPServer` (`from mcp.server.mcpserver import MCPServer`); confirmed via a throwaway probe venv that `@server.tool()` leaves a plain function directly callable (no transport needed for unit tests) and that `server.run()` defaults to `transport="stdio"`.
-- New `planning/v0.79-mcp-server.md` (full design doc) and `docs/mcp-server.md` (tool-by-tool reference, session model, the real-GAUSS gate, plugin install steps). Updated `README.md` ("Current Status" + new "Key Capabilities" bullet), `CHANGELOG.md` (`[Unreleased]`), `KNOWN_LIMITATIONS.md`, `docs/distribution-architecture.md` (one-sentence addition confirming the MCP server is a transport-layer addition, never a new decision-maker).
+- **v0.79.0** (MCP server) was released. A live client evaluation, `69.1`, was recorded and pushed (`4fc4a2c`).
+- **Hybrid MCP path:**
+  - The client model writes code; `gauss_validate_code` → `gauss_conversation_engine.validate_code(...)` computes the verdict deterministically.
+  - Execution only goes through a server-issued, single-use `validation_id`, re-validated at prepare time (`validation_stale`). Prepare never accepts code directly.
+  - `gauss_chat_ask`/`gauss_chat_reset` are opt-in (registered only when `chat-provider` ≠ `fake`).
+  - Tools were renamed: `gauss_chat_start`/`close` → `gauss_session_start`/`close`. `gauss_search_docs` was added.
+- **Validation fixes (pre-existing gaps):**
+  - A shared `call_scan_text(...)` fixes keyword-led lines (e.g. `print colmean(x);`) escaping extraction and the unknown-symbol check.
+  - A 50-entry, doc-verified `_SYSTEM_STATEMENT_REGISTRY` forces `NOT_READY` for OS, process, include, directory and file I/O statements.
+- **Refactor:** `_validate_pre_execution` + the inline unknown-symbol pass became `validate_generated_code(...)`. It was proven byte-identical via `AnswerResult` snapshots across 12 scenarios.
+- **`gauss-ai docs fetch` / `docs status`** (`gauss_docs_fetch.py`) download the 1,826 published pages from docs.aptech.com into `~/.gauss-ai/docs/`.
+  - The real fetch succeeded: 272s, with backoff after rate-limit 403s.
+  - Doctor gained a `docs_root` check; init points to `docs fetch`.
+- **`CLAUDE.md`:** the network rule was amended to allow the explicit docs fetch, with user sign-off.
 
-## Decisions
+## Decisions (user-approved)
 
-- Wrap `ConversationEngine.ask(...)` whole as a single MCP tool rather than exposing its internal primitives (doc lookup, syntax validator, generation gate, etc.) as separately-callable tools — decomposing it would let the calling MCP client's own model assemble a readiness judgment itself, violating this repository's deterministic-by-design rule that no safety-relevant decision may be inferred by a model.
-- Reuse `gauss_ai_chat._execution_offer_eligible` by importing `gauss_ai_chat` and calling it directly, despite the leading underscore (user's explicit choice) — single-sourcing this exact safety gate was judged more important than module-boundary purity, since two independent copies could silently drift apart.
-- Real GAUSS execution via MCP requires an additional, server-operator-only opt-in (`GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1`) beyond the existing per-request approval flow (user's explicit choice) — an MCP client is one step further removed from the human at the keyboard than a terminal user typing `--runner gauss` directly.
-- Add both a `gauss-ai mcp` subcommand and a standalone `gauss-ai-mcp` console script (user's explicit choice), with the subcommand's import of `gauss_mcp_server` kept lazy so the base CLI's zero-third-party-dependency guarantee is never put at risk by the new optional extra.
-- Repair-session design: construct `InteractiveMvpAdapter` directly (exactly as `gauss_ai_guided_repair.run_guided_repair` already does), exposing `handle_line(command: str)` as a single generic command-forwarding tool rather than ~30 individual per-command tools — `run_guided_repair` itself is not usable, since its own human-approval mechanism is a blocking `prompt_fn` call baked into one non-resumable straight-through function; `InteractiveMvpAdapter` is explicitly documented as safe to drive this way ("Tests call `handle_line(...)` directly").
-- The execution handoff is two human round-trips, not three: `gauss_execution_prepare` (show the request) and `gauss_execution_decide` (parse yes/no, then immediately approve+execute back-to-back on approval) — mirrors `gauss_ai_chat._run_execution_handoff_flow`'s own shape exactly.
-- stdio-only transport (no HTTP/SSE) — this is explicitly a local bridge for other MCP clients on the same machine, not a shared remote service; `ollama` is documented as the recommended provider (not a new default) to avoid a redundant second LLM hop when the calling MCP client is itself a Claude session.
+- Hybrid plus opt-in strict mode, not either alone.
+- Docs come from the **published site** (`_sources` via `searchindex.js`), not the GitHub archive.
+- System-touching statements → **NOT_READY** (not REVIEW_REQUIRED). File reads are included.
+- Deviation: `init` got a next-step pointer instead of an interactive download prompt. An extra prompt would break every scripted init test, and keeping init offline is preferable.
 
 ## Tests / Validation
 
-- New `scripts/test_gauss_mcp_server.py`: 18 deterministic, network-free tests following the repository's standalone `check(name, condition)` harness. Every test pins `provider`/`runner`/`docs_root`/`workspace_parent` via explicit CLI-argument-precedence tool parameters, so none of them can touch this machine's own real `~/.gauss-ai/config.json`, GAUSS executable, or Ollama/Anthropic endpoint. The file imports `gauss_mcp_server` inside a `try/except ImportError` and skips cleanly (prints a message, exits 0) when the optional `mcp` extra is not installed — confirmed this is exactly what happens when run under the base Python environment.
-- Full suite re-run under the base Python environment (no `mcp` installed): **47 test files, 0 failed** (46 pre-existing + the new one, which skips). Full suite re-run under a throwaway probe venv with `mcp==2.3.0` installed: the new test file itself passes, **18/18**.
-- `python scripts/check_release_readiness.py`: PASS (only the same pre-existing, previously-documented historical warnings).
-- `pip install -e ".[mcp]"` succeeded in the probe venv; `gauss-ai-mcp` and `gauss-ai mcp` both resolved and started the stdio server cleanly (confirmed via a closed-stdin smoke test — exits 0 on EOF, no traceback). `gauss-ai version` (base environment) correctly reports `0.79.0`.
-- `pyproject.toml` and the three new JSON plugin files were parsed directly (`tomllib`/`json`) to confirm no syntax errors.
-- **Not yet done**: a live evaluation connecting an actual MCP client (Claude Code or Claude Desktop) to a running `gauss-ai-mcp` process over real stdio — the automated suite calls the tool functions directly, never through a real MCP transport. This is disclosed in `KNOWN_LIMITATIONS.md` as a tracked follow-up, not fabricated as done.
+- Full suite: 48 files, all passing; `check_release_readiness.py` passes.
+- Zero diff since v0.79.0 in core execution/repair/verification/approval modules, `command_doc_lookup.py`, and `gauss_chat_provider.py`.
+- 33 new tests (net).
+- `mcp` is installed in the real Python env, so `test_gauss_mcp_server.py` runs (21 tests) rather than skipping.
 
 ## Known Issues
 
-- See `KNOWN_LIMITATIONS.md`'s new top paragraph for the current, authoritative list: no remote/shared server (stdio/local only, by design), no idle-session eviction, no persistence across server restarts, single-code-block execution offers (inherited from `v0.78.0`), and no live-MCP-client evaluation performed yet (tracked, not fabricated).
+- See the top paragraph of `KNOWN_LIMITATIONS.md`.
+- The user's local docs clone (`C:/Users/eclow/Documents/GitHub/docs`, `develop` branch, last updated 2026-06-02) is stale compared with the published site:
+  - 146 published pages it lacks;
+  - 383 unpublished drafts;
+  - about 26% of shared pages differ.
+  
+  Their `docs_root` still points at that clone. `docs fetch` deliberately did not override it.
+- Leftover pip debris `~auss_ai-0.79.0.dist-info` in site-packages (from the interrupted reinstall) causes a harmless "Ignoring invalid distribution" warning. The user was told how to remove it; it was not deleted automatically.
 
 ## Next Steps
 
-None committed. Before this milestone is considered fully released, per the repository's own release sequence: confirm with the user before pushing `74339e5` / creating a `v0.79.0` tag and GitHub release. A manual live evaluation against a real MCP client (next sequential evaluation category after `68.x`) would be a reasonable next action within this same milestone if the user wants stronger evidence before release, but has not been requested yet. Do not start a next milestone without an explicit, separate decision from the user.
+1. User reloads the VS Code window, then run live evaluation `70.x` per `planning/v0.80-hybrid-mcp-validation.md` / the plan:
+   - (a) hybrid round trip;
+   - (b) `print colmean(x)` → NOT_READY;
+   - (c) `print invpd({2 1, 3 2})` → NOT_READY;
+   - (d) a `dos` statement → NOT_READY;
+   - (e) `validation_id` reuse refused;
+   - (f) chat tools absent with provider `fake`. Note the user's config has `chat_provider: ollama`, so they WILL be present on their machine.
+   
+   Record it in `evaluations/` (benchmark-prompts, coverage, runs, INDEX).
+2. Tag/push/release v0.80.0 only on explicit user confirmation.
 
 ## Handoff Notes
 
-- This session planned (via Claude Code's plan-mode workflow, with two parallel Explore-agent research passes and one Plan-agent design pass, each independently verified against the actual source before being trusted) and then implemented the full `v0.79.0` milestone in one continuous run: repository research, three targeted `AskUserQuestion` decisions (eligibility-gate reuse, the real-GAUSS gate, CLI integration — all resolved to the recommended option), implementation (`gauss_mcp_server.py`, `pyproject.toml`, `gauss_ai_cli.py`), a throwaway probe venv used to verify the real `mcp` SDK's current API before writing code against it (rather than assuming training-era `FastMCP` naming, which turned out to be stale — v2.x renamed it to `MCPServer`), a new test file (18 tests, iterated twice against real failures — a docs-root directory collision in a shared-fixture test, and a truncated RST fixture missing a `:type:` line needed to reach real `HANDOFF_CANDIDATE` evidence breadth), documentation (`planning/v0.79-mcp-server.md`, `docs/mcp-server.md`, README/CHANGELOG/KNOWN_LIMITATIONS/distribution-architecture updates), a Claude Code plugin wrapper, and a local commit (`74339e5`) — all real evidence (actual test runs, actual installs, actual SDK inspection), no fabricated results.
-- The throwaway probe venv (`mcp==2.3.0` installed) lives under this session's scratchpad temp directory, not committed and not part of this repository — it was used only to verify the real SDK API and to run `test_gauss_mcp_server.py`/`pip install -e ".[mcp]"` against a real installation. Future sessions needing to re-verify the MCP server against a real install should create their own (`pip install -e ".[mcp]"` into any venv).
-- Four untracked directories under `evaluations/differential_runs/2026-09-18-*` were present at the start of this session (carried over from the `v0.77.0` session, noted as deliberately left untouched in the prior `v0.78.0` handoff) and were again deliberately left untouched — not part of this milestone's own work, not staged, not committed.
-- Real-environment paths referenced by this machine's own `gauss-ai` config (unchanged this session, confirmed via `gauss-ai version`): GAUSS executable `C:\gauss26\tgauss.exe`, `default_runner: "gauss"`, `chat_model: "qwen2.5-coder:7b"`. Every automated test this session explicitly overrode `provider`/`runner`/`docs_root`/`workspace_parent` via CLI-argument-precedence tool parameters specifically to avoid this machine's own config leaking into test behavior — this matters more for the MCP server than for prior CLI-only milestones, since `gauss_mcp_server.py`'s tool functions have no injectable `config=`/`engine=` test seam the way `run_chat`/`run_guided_repair` do; CLI-argument-precedence pinning is the substitute mechanism, documented at the top of `test_gauss_mcp_server.py`.
+- **Windows reinstall gotcha (now in `CLAUDE.md`):** a running `gauss-ai-mcp.exe` locks its executable, so `pip install -e ".[mcp]"` fails partway and leaves `gauss-ai` uninstalled. Stop the process first.
+- The real-fetch copy used for verification is in this session's scratchpad (`realfetch/docs`), not committed.
+- The `evaluations/differential_runs/2026-09-18-*` untracked directories are still deliberately untouched.
