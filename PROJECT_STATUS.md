@@ -4,7 +4,7 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 
 ## Current Objective
 
-**`v0.81.0 — Idiomatic Handoff Candidacy`: committed and tagged locally on 2026-10-08. Not pushed, not released.** The design and live results are in `planning/v0.81-idiomatic-handoff-candidacy.md` (§5.1).
+None active. **`v0.81.0 — Idiomatic Handoff Candidacy` was released on 2026-10-08:** https://github.com/ec78/gauss-ai/releases/tag/v0.81.0. The design and live results are in `planning/v0.81-idiomatic-handoff-candidacy.md` (§5.1). The next milestone has not been chosen; do not auto-start one.
 
 Done:
 - code and tests (48 files pass), version 0.81.0, README/CHANGELOG/KNOWN_LIMITATIONS;
@@ -15,11 +15,9 @@ Done:
   - **71.3 gap:** a preallocate-and-fill `for` loop stays review_required, because any block caps syntax coverage at partial;
   - minor `gauss_search_docs` noise in 71.5.
 
-Remaining:
-1. **Confirm with the user before `git push` / `git push origin v0.81.0` / creating the GitHub release.**
-2. Open user decisions:
-   - switch `docs_root` to `~/.gauss-ai/docs` (recommended, not done);
-   - enable `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1` in user-scope MCP config, if live real-GAUSS runs through MCP are wanted. It was off during 71.x, so 71.1's real-run request was refused.
+Follow-ups:
+1. `docs_root` was switched to `C:/Users/Owner/.gauss-ai/docs` (the published copy) on 2026-10-08, at the user's request. `gauss-ai doctor` passes. The old clone at `C:/Users/eclow/Documents/GitHub/docs/docs` is no longer used.
+2. `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1` stays **off**. The user deferred it, and the 71.3 follow-up doesn't need it (it is validator-only). Revisit only for a milestone that wants live real-GAUSS runs through MCP.
 3. The planned 71.x negative probes (hallucinated symbol, SPD violation through a variable, system statement) were not run live. They could be added as 71.6-71.8 if wanted.
 4. Next-milestone candidate from 71.3: bounded syntax coverage for simple `for i(a,b,c); ... endfor;` blocks with plain-assignment bodies.
 
