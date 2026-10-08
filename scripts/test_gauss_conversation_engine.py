@@ -1853,6 +1853,162 @@ def test_121_validate_code_structural_rejections_never_raise() -> None:
     check("no docs root rejected", engine_mod.validate_code("y = meanc(x);", docs_root=None).rejected_reason == "docs_root_not_configured")
 
 
+# ---------------------------------------------------------------------------
+# v0.81.0: idiomatic (assign-then-call) code reaches HANDOFF_CANDIDATE through
+# real traced evidence; every NOT_READY protection still holds
+# ---------------------------------------------------------------------------
+
+#: Synthetic, typed fixtures modelled on the real `.. function::` blocks
+#: (`:type`/`:rtype` lines), never a real docs checkout.
+_TYPED_V081_RST = {
+    "meanc.rst": "meanc\n=====\n\n.. function:: y = meanc(x)\n\n    :param x: data\n    :type x: NxK matrix\n\n"
+                 "    :return y: column means\n    :rtype y: Kx1 matrix\n",
+    "stdc.rst": "stdc\n====\n\n.. function:: y = stdc(x)\n\n    :param x: data\n    :type x: NxK matrix\n\n"
+                "    :return y: column standard deviations\n    :rtype y: Kx1 matrix\n",
+    "rndu.rst": "rndu\n====\n\n.. function:: y = rndu(r, c)\n\n    :param r: row dimension.\n    :type r: scalar\n\n"
+                "    :param c: column dimension.\n    :type c: scalar\n\n    :return y: uniform random numbers.\n"
+                "    :rtype y: RxC matrix\n",
+    "zeros.rst": "zeros\n=====\n\n.. function:: y = zeros(r, c)\n\n    :param r: rows\n    :type r: scalar\n\n"
+                 "    :param c: columns\n    :type c: scalar\n\n    :return y: zeros\n    :rtype y: RxC matrix\n",
+    "invinvpd.rst": _INV_RST.replace("    :param x: data", "    :param x: data\n    :type x: NxN matrix"),
+}
+
+
+def _typed_v081_docs_root(tmp: str) -> str:
+    root = Path(tmp) / "docs"
+    root.mkdir()
+    for name, text in _TYPED_V081_RST.items():
+        (root / name).write_text(text, encoding="utf-8")
+    return str(root)
+
+
+def test_123_v081_idiomatic_assign_then_call_code_reaches_candidate() -> None:
+    """Every snippet here was `review_required` (or, for the vector/scalar
+    literal rows, falsely `not_ready`) before v0.81.0 -- see
+    `planning/v0.81-idiomatic-handoff-candidacy.md`."""
+    snippets = (
+        "x = {1 2, 3 4};\ny = meanc(x);",
+        "x = rndu(100, 4);\ny = meanc(x);",
+        "x = rndu(1e5, 4);\ny = meanc(x);",
+        "n = 5;\nx = zeros(n, 1);",
+        "y = meanc({1,2,3});",
+        "y = meanc(5);",
+        "x = {1,2,3}; m = meanc(x); s = stdc(x); print m s;",
+        "a = {2 1, 1 2};\nai = invpd(a);\nprint ai;",
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _typed_v081_docs_root(tmp)
+        for code in snippets:
+            result = engine_mod.validate_code(code, docs_root=root)
+            check(f"candidate: {code!r}", result.handoff_readiness.state == "handoff_candidate")
+
+
+def test_124_v081_protections_still_not_ready_through_traced_variables() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _typed_v081_docs_root(tmp)
+        cases = (
+            "x = {1 2, 2 1};\ny = invpd(x);",                  # not positive definite, via a variable
+            "x = {2 1, 1 2};\nx = {-1 0, 0 -1};\ny = invpd(x);",  # the governing (latest) assignment violates
+            "y = meanc(\"abc\");",                             # string where a matrix is documented
+            "y = zeros({1 2}, 3);",                            # vector where a scalar is documented
+            "y = meanc(1, 2);",                                # argument count
+            "x = colmean({1,2});",                             # hallucinated symbol
+            "x = {2 1, 1 2};\ny = invpd(x);\ndos \"dir\";",    # system statement
+        )
+        for code in cases:
+            result = engine_mod.validate_code(code, docs_root=root)
+            check(f"not_ready: {code!r}", result.handoff_readiness.state == "not_ready")
+
+
+def test_125_v081_untraceable_variables_stay_review_required() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _typed_v081_docs_root(tmp)
+        cases = (
+            "x = rndu(100, 3);\nb = invpd(x'x);",           # an expression is never evaluated
+            "x = {1,2,3};\nx[1] = 9;\ny = meanc(x);",       # indexed write
+            "x = {1,2,3};\nfor i(1, 3, 1);\n  x = x + 1;\nendfor;\ny = meanc(x);",  # write inside a block
+        )
+        for code in cases:
+            result = engine_mod.validate_code(code, docs_root=root)
+            check(f"review_required: {code!r}", result.handoff_readiness.state == "review_required")
+
+
+def test_126_v081_ask_path_extracts_signature_for_called_ungrounded_builtin() -> None:
+    """Run 2026-09-12 (pre-execution validation run-002): on the `ask()`
+    path, `rndu` -- a `_COMMON_BUILTIN_SYMBOLS` entry, not the grounded
+    topic -- got "signature: unknown". It now gets its documented one."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _typed_v081_docs_root(tmp)
+        provider = provider_mod.FakeModelProvider(canned_answer="```gauss\nx = rndu(100, 4);\ny = meanc(x);\n```")
+        engine = engine_mod.ConversationEngine(provider=provider, docs_root=root)
+        result = engine.ask("Use meanc to compute the column means of a matrix.")
+        rndu = [cv for cv in result.call_validations if cv.symbol == "rndu"]
+        check("rndu validated", len(rndu) == 1)
+        check("rndu signature now known", bool(rndu) and rndu[0].signature_known)
+        check("meanc(x) traced to rndu's documented return", any(
+            c.symbol == "meanc" and c.origin == "documented_return" and c.status == "match"
+            for c in result.parameter_role_checks
+        ))
+        check("candidate", result.handoff_readiness is not None and result.handoff_readiness.state == "handoff_candidate")
+
+
+_VCMVCX_RST = """vcm, vcx
+========
+
+Purpose
+-------
+Computes a variance-covariance matrix.
+
+.. function:: vc = vcm(m [, ddof])
+              vc = vcx(x [, ddof])
+
+    :param x: data
+    :type x: NxK matrix
+
+    :return vc: variance-covariance matrix
+    :rtype vc: KxK matrix
+"""
+
+_VCMSVCXS_RST = """vcms, vcxs
+==========
+
+Purpose
+-------
+Computes the observed variance-covariance matrix. :func:`vcxs` is kept for backwards compatibility.
+
+.. function:: vc = vcms(m)
+              vc = vcxs(x)
+
+    :param x: data
+    :type x: NxK matrix
+
+.. seealso:: Functions :func:`vcx`, :func:`vcm`
+"""
+
+
+def test_127_v081_ambiguous_lookup_resolved_when_exactly_one_page_defines_the_call() -> None:
+    """v0.81.0 re-baseline finding: `vcx` (on combined page `vcmvcx.rst`)
+    scored ambiguous against `vcmsvcxs.rst`, which defines only `vcxs`."""
+    import command_doc_lookup as doc_lookup_mod
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(_typed_v081_docs_root(tmp))
+        (root / "vcmvcx.rst").write_text(_VCMVCX_RST, encoding="utf-8")
+        (root / "vcmsvcxs.rst").write_text(_VCMSVCXS_RST, encoding="utf-8")
+        raw = doc_lookup_mod.lookup("vcx", root, max_results=3)
+        check("fixture reproduces the ambiguity", raw["status"] == "ambiguous")
+        result = engine_mod.validate_code("x = rndu(5, 2);\nv = vcx(x);", docs_root=str(root))
+        check("vcx grounded", "vcx" in result.pre_execution.call_validations[1].symbol and not result.ambiguous_topics)
+        check("cites the defining page", any(s.citation and s.citation.endswith("vcmvcx.rst") for s in result.grounding_sources))
+        check("candidate", result.handoff_readiness.state == "handoff_candidate")
+
+        # Both pages defining `vcx(` -> still ambiguous, still not_ready.
+        (root / "vcmsvcxs.rst").write_text(_VCMSVCXS_RST.replace("vc = vcxs(x)", "vc = vcx(x)"), encoding="utf-8")
+        both = engine_mod.validate_code("x = rndu(5, 2);\nv = vcx(x);", docs_root=str(root))
+        check("two defining pages stay ambiguous", both.ambiguous_topics == ("vcx",))
+        check("two defining pages stay not_ready", both.handoff_readiness.state == "not_ready")
+
+
 def test_122_validation_functions_contain_no_execution_or_write_primitives() -> None:
     import inspect
 

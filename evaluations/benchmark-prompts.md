@@ -7219,3 +7219,46 @@ Expected behavior:
 - Tool is registered (real provider configured); the engine is built lazily on first use; answer is
   grounded in official docs and carries an honest deterministic readiness verdict. (The
   `fake`-provider absence case is covered by `test_gauss_mcp_server.py` test_01/test_02, not live.)
+
+## Idiomatic Handoff Candidacy (Live Client)
+
+Validates v0.81.0 through a REAL connected MCP client (Claude Code over stdio, `gauss-ai-mcp` v0.81.0) on
+this machine's real configuration. Unlike `70.x`, the code shape is NOT scripted: the human asks an ordinary
+task in plain words, and the calling Claude session writes whatever GAUSS it naturally would, then submits it
+to `gauss_validate_code`. The question is whether idiomatic, uncoaxed client code reaches `handoff_candidate`
+on real evidence, and whether code that cannot reach it gets an honest, non-false verdict.
+
+### Prompt 71.1: Uncoaxed: random data, column means
+
+"Generate some random data and compute the column means in GAUSS." Then: "Yes run on my real GAUSS install."
+
+Expected behavior:
+- handoff_candidate: `x` traces to a single call (`rndn`) whose documented return is a matrix (DOCUMENTED_RETURN). A real-GAUSS run must be refused unless the server operator opted in, regardless of the user's request.
+
+### Prompt 71.2: Uncoaxed: OLS coefficients by hand
+
+"Show me how to compute OLS coefficients by hand in GAUSS."
+
+Expected behavior:
+- review_required, by design (planning §6: expressions are never evaluated, so `invpd(x'x)` stays UNVERIFIED). No false VIOLATED or MISMATCH; all six functions grounded.
+
+### Prompt 71.3: Uncoaxed: zeros, then fill in a loop
+
+"Using the GAUSS mcp server Create a 5x1 vector of zeros, then fill it with the squares of 1 through 5."
+
+Expected behavior:
+- The task literally asks for preallocate-then-fill, so a loop with indexed assignment is the natural answer; 71.x was planned to probe exactly this shape. A conservative verdict is acceptable; a false NOT_READY would be a defect.
+
+### Prompt 71.4: Uncoaxed: mean and standard deviation of a literal vector
+
+"Compute the mean and standard deviation of the values 3, 7, 1, 9."
+
+Expected behavior:
+- handoff_candidate: `x` traces to a column-vector literal (TRACED_LITERAL), and a vector is accepted where the docs say NxK matrix (§3.1). In v0.80.0 this shape was review_required, and a direct vector literal was a false NOT_READY.
+
+### Prompt 71.5: Uncoaxed: covariance matrix of random data
+
+"Compute the covariance matrix of some random data."
+
+Expected behavior:
+- handoff_candidate: `vcx` resolves to vcmvcx.rst via the §3.5 page-definition tie-break (it was a false NOT_READY before the re-baseline fix).

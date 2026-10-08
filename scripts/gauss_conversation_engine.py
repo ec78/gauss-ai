@@ -780,6 +780,31 @@ def _iter_alias_matches(lowered_question: str):
                 break  # one match per entry is enough; move to the next entry
 
 
+def _resolve_ambiguous_by_definition(symbol: str, result: dict) -> dict:
+    """v0.81.0: a deterministic tie-break for an `"ambiguous"` lookup.
+    Found in the v0.81.0 re-baseline against the published docs: `x = rndu(5,
+    2); v = vcx(x);` was NOT_READY because `vcx` is documented on the combined
+    page `vcmvcx.rst` (`vc = vcx(x [, ddof])`), and `vcmsvcxs.rst` (which
+    documents a different function, `vcxs`) scored within
+    `command_doc_lookup`'s 25-point ambiguity margin. If EXACTLY ONE candidate
+    page's own syntax blocks define `symbol(...)` as a call (whole name --
+    `vcxs(` never counts as `vcx(`) with confidence >= `MIN_DOC_CONFIDENCE`,
+    the result is returned as `"found"` with that page as `best_match`. Zero
+    or several defining pages leave the result ambiguous, unchanged. This
+    reads only retrieved documentation text; it never guesses."""
+    if result.get("status") != "ambiguous":
+        return result
+    definition_re = re.compile(rf"(?<![A-Za-z0-9_.]){re.escape(symbol)}\s*\(", re.IGNORECASE)
+    defining = [
+        m for m in result.get("matches") or ()
+        if m.get("confidence", 0) >= MIN_DOC_CONFIDENCE
+        and any(definition_re.search(block) for block in m.get("syntax_blocks") or ())
+    ]
+    if len(defining) != 1:
+        return result
+    return {**result, "status": "found", "best_match": defining[0], "confidence": defining[0]["confidence"]}
+
+
 def resolve_concepts(
     question: str, *, docs_root_str: str | None, recent_topics: tuple[str, ...] = (),
 ) -> tuple[FunctionResolution, ...]:
@@ -809,7 +834,7 @@ def resolve_concepts(
     for token in _candidate_tokens(question, docs_root=docs_root, recent_topics=recent_topics):
         if error_code is not None and token == error_code.lower():
             continue  # handled by the error catalog, not documentation lookup
-        result = doc_lookup_mod.lookup(token, docs_root, max_results=3)
+        result = _resolve_ambiguous_by_definition(token, doc_lookup_mod.lookup(token, docs_root, max_results=3))
         if result["status"] == "found" and result["best_match"] and result["confidence"] >= MIN_DOC_CONFIDENCE:
             seen_symbols.add(token)
             best_match = result["best_match"]
@@ -1663,6 +1688,32 @@ def validate_generated_code(
     for block in generated_code:
         all_calls.extend(validation_mod.extract_generated_calls(_strip_comments_for_analysis(block)))
 
+    # v0.81.0: a call to a documented symbol that is not this turn's own
+    # grounded topic -- a `_COMMON_BUILTIN_SYMBOLS` entry or an earlier
+    # turn's topic -- used to get no signature at all, so on the `ask()`
+    # path `x = rndu(1000, 4); y = meanc(x);` reported "signature: unknown"
+    # for `rndu` (run 2026-09-12-...-run-002) and could never be a
+    # candidate. Look each one up the same way, bounded like
+    # `validate_code(...)`. Checking evidence only: the grounding bundle and
+    # generation gate were computed before this point and are unaffected.
+    if docs_root is not None:
+        extra_lookups = 0
+        for call in all_calls:
+            symbol = call.symbol.lower()
+            if symbol in documented_signatures or symbol not in documented_symbols:
+                continue
+            if extra_lookups >= MAX_VALIDATE_CODE_SYMBOLS:
+                break
+            extra_lookups += 1
+            result = doc_lookup_mod.lookup(symbol, docs_root, max_results=1)
+            if (
+                result["status"] == "found" and result["best_match"]
+                and result["confidence"] >= MIN_DOC_CONFIDENCE
+            ):
+                documented_signatures[symbol] = validation_mod.extract_documented_signature(
+                    call.symbol, result["best_match"],
+                )
+
     call_validations = tuple(
         validation_mod.validate_call(
             call, documented_signatures=documented_signatures, documented_symbols=frozenset(documented_symbols),
@@ -1681,10 +1732,17 @@ def validate_generated_code(
     # `extract_documented_signature(...)` above could extract (empty for
     # a symbol whose documentation did not support it, per that
     # function's own conservative discipline).
+    # v0.81.0: per block, so each call's variable arguments are traced only
+    # within the snippet they were written in (see
+    # `validation_mod.resolve_argument_category(...)`).
     parameter_role_checks: list[validation_mod.ParameterRoleCheck] = []
-    for call in all_calls:
-        signature = documented_signatures.get(call.symbol.lower())
-        parameter_role_checks.extend(validation_mod.check_parameter_roles(call, signature=signature))
+    for block in generated_code:
+        cleaned_block = _strip_comments_for_analysis(block)
+        for call in validation_mod.extract_generated_calls(cleaned_block):
+            signature = documented_signatures.get(call.symbol.lower())
+            parameter_role_checks.extend(validation_mod.check_parameter_roles(
+                call, signature=signature, code=cleaned_block, signatures=documented_signatures,
+            ))
 
     # v0.75.0 Phase 9/10/11: a structured, never-model-self-labeled
     # predicted-output claim, with limited deterministic verification
@@ -1845,7 +1903,7 @@ def validate_code(code: str, *, docs_root: str | None) -> CodeValidationResult:
     unmatched: list[str] = []
     ambiguous: list[str] = []
     for symbol in called:
-        result = doc_lookup_mod.lookup(symbol, resolved_root, max_results=3)
+        result = _resolve_ambiguous_by_definition(symbol, doc_lookup_mod.lookup(symbol, resolved_root, max_results=3))
         if result["status"] == "found" and result["best_match"] and result["confidence"] >= MIN_DOC_CONFIDENCE:
             best_match = result["best_match"]
             sources.append(GroundingSource(

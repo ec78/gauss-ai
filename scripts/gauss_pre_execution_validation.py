@@ -412,6 +412,28 @@ def _extract_documented_parameter_types(inputs_section: str | None) -> dict[str,
     return type_by_name
 
 
+#: v0.81.0: the `:rtype` twin of `_PARAM_TYPE_LINE_RE`, read from
+#: `best_match["outputs_section"]` (the same `.. function::` block's own
+#: `:return`/`:rtype` lines -- see `command_doc_lookup.extract_match(...)`).
+_RETURN_TYPE_LINE_RE = re.compile(r":rtype\s+&?([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.+)")
+
+
+def _extract_documented_return_categories(outputs_section: str | None) -> tuple[str, ...]:
+    """Only the FIRST `:rtype` line counts: a single-target assignment
+    `x = f(...)` receives a function's first return value, and a later
+    return (e.g. `rndu`'s `newstate`, an "Opaque vector") never reaches it.
+    An unclassifiable first return is `()`, never a guess."""
+    if not outputs_section:
+        return ()
+    match = _RETURN_TYPE_LINE_RE.search(outputs_section)
+    if not match:
+        return ()
+    categories, _shape = classify_documented_type(match.group(2).strip())
+    if TypeClass.UNKNOWN.value in categories:
+        return ()
+    return categories
+
+
 @dataclass(frozen=True)
 class DocumentedSignature:
     """`arg_ranges` holds one `(min_args, max_args)` pair per documented
@@ -434,6 +456,14 @@ class DocumentedSignature:
     source: str | None
     extraction_status: str
     parameters: tuple[DocumentedParameter, ...] = ()
+    #: v0.81.0: the categories `classify_documented_type(...)` gives the
+    #: FIRST documented `:rtype` line in the same `.. function::` block
+    #: (e.g. real `rndu.rst`: `:rtype y: RxC matrix` -> `("matrix",)`) --
+    #: the value a single-target assignment `x = f(...)` receives in GAUSS.
+    #: `()` when no `:rtype` line exists or it is unclassifiable; used only
+    #: by `resolve_argument_category(...)` to trace a variable to the call
+    #: that produced it, never to claim anything about the call itself.
+    return_categories: tuple[str, ...] = ()
 
 
 def _parse_signature_occurrence(raw_args: str) -> tuple[int, int, tuple[str, ...]]:
@@ -504,6 +534,7 @@ def extract_documented_signature(symbol: str, best_match: dict) -> DocumentedSig
         symbol=symbol, arg_ranges=tuple(ranges), parameter_names=tuple(names),
         source=best_match.get("file_path"), extraction_status=SIGNATURE_EXTRACTED,
         parameters=parameters,
+        return_categories=_extract_documented_return_categories(best_match.get("outputs_section")),
     )
 
 
@@ -522,6 +553,11 @@ class GeneratedCall:
     argument_count: int
     raw_arguments: tuple[str, ...]
     line_number: int
+    #: v0.81.0: 0-based offset of the call's name within its line, so a
+    #: same-line assignment (`x = {1,2,3}; m = meanc(x);`, a form models
+    #: write routinely) can be ordered before or after the call. `None`
+    #: (hand-built calls) means "end of the line".
+    column: int | None = None
 
 
 def extract_generated_calls(code: str) -> tuple[GeneratedCall, ...]:
@@ -548,7 +584,10 @@ def extract_generated_calls(code: str) -> tuple[GeneratedCall, ...]:
                 continue  # unterminated on this line -- skip rather than guess
             raw = line[match.end():close_idx]
             args = tuple(_split_top_level_args(raw))
-            calls.append(GeneratedCall(symbol=symbol, argument_count=len(args), raw_arguments=args, line_number=line_no))
+            calls.append(GeneratedCall(
+                symbol=symbol, argument_count=len(args), raw_arguments=args, line_number=line_no,
+                column=match.start(),
+            ))
     return tuple(calls)
 
 
@@ -618,7 +657,11 @@ def validate_call(
 # parameter-role validation
 # ---------------------------------------------------------------------------
 
-_NUMERIC_LITERAL_RE = re.compile(r"^-?\d+(\.\d+)?$")
+#: v0.81.0: accepts exponent and leading-dot forms (`1e5`, `1.5E-3`, `.5`).
+#: The real `meanc.rst` example is `meanc(rndu(1e5, 4))`, and models copy
+#: it almost verbatim (runs 63.2, 70.6) -- `1e5` used to be UNKNOWN, which
+#: alone kept `x = rndu(1e5, 4);` short of complete role coverage.
+_NUMERIC_LITERAL_RE = re.compile(r"^-?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?$")
 _STRING_LITERAL_RE = re.compile(r'^"(?:[^"\\]|\\.)*"$|^\'(?:[^\'\\]|\\.)*\'$')
 
 
@@ -679,17 +722,112 @@ class ParameterRoleCheck:
     inferred_category: str
     status: str
     explanation: str
+    #: v0.81.0: where `inferred_category` came from -- one of the
+    #: `ArgumentOrigin` values. Defaulted so pre-v0.81.0 constructions of
+    #: this type remain valid unchanged.
+    origin: str = "literal"
 
 
-def check_parameter_roles(call: GeneratedCall, *, signature: DocumentedSignature | None) -> tuple[ParameterRoleCheck, ...]:
+#: v0.81.0: which literal categories a DOCUMENTED category accepts. Before
+#: v0.81.0 the role check required an exact category match, so
+#: `meanc({1,2,3})` and `meanc(5)` were MISMATCH -> NOT_READY, although both
+#: are ordinary GAUSS: everything numeric in GAUSS is a matrix. The docs say
+#: so themselves -- `stof.rst`: "x will be a 1x1 matrix equal to 3.14";
+#: `between.rst`: `:type left: 1x1 matrix`; and `meanc.rst` documents its
+#: own column-vector result as `:rtype y: Kx1 matrix`. So a documented
+#: `matrix` accepts a vector or scalar, and a documented `vector` accepts a
+#: scalar (a 1x1 vector). The reverse never holds: a `{1 2}` literal passed
+#: where the docs name only `scalar` stays a MISMATCH, and `string`/
+#: `control`/`dataset` remain distinct from every numeric category, so
+#: `meanc("abc")` is still a MISMATCH.
+_CATEGORY_ACCEPTS: dict[str, frozenset[str]] = {
+    TypeClass.MATRIX.value: frozenset({TypeClass.MATRIX.value, TypeClass.VECTOR.value, TypeClass.SCALAR.value}),
+    TypeClass.VECTOR.value: frozenset({TypeClass.VECTOR.value, TypeClass.SCALAR.value}),
+}
+
+
+def _category_accepted(inferred: str, documented: tuple[str, ...]) -> bool:
+    return any(inferred in _CATEGORY_ACCEPTS.get(doc, frozenset({doc})) for doc in documented)
+
+
+class ArgumentOrigin(str, enum.Enum):
+    """v0.81.0: how `resolve_argument_category(...)` classified an argument.
+    `TRACED_LITERAL` and `DOCUMENTED_RETURN` both require the variable's
+    single governing assignment to be found by `_governing_assignment(...)`
+    -- see that function for every case that is refused instead."""
+
+    LITERAL = "literal"
+    TRACED_LITERAL = "traced_literal"
+    DOCUMENTED_RETURN = "documented_return"
+    UNRESOLVED = "unresolved"
+
+
+#: A whole right-hand side that is exactly one call, `f(...)`, and nothing
+#: else (no trailing transpose, operator, or index).
+_SINGLE_CALL_RHS_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*\(")
+
+
+def resolve_argument_category(
+    argument: str, *, code: str | None = None, line_number: int | None = None, column: int | None = None,
+    signatures: "dict[str, DocumentedSignature] | None" = None,
+) -> tuple[tuple[str, ...], str]:
+    """v0.81.0: returns `(categories, origin)` for one call argument.
+
+    1. A literal (`5`, `1e5`, `"s"`, `{1 2, 3 4}`) -> `infer_literal_category`.
+    2. A simple identifier (optionally `x'`) whose governing assignment
+       earlier in the SAME snippet (see `_governing_assignment(...)`) is
+       `x = <literal>;` -> that literal's category (`TRACED_LITERAL`).
+    3. ... or is `x = f(...);`, exactly one call to a symbol whose own docs
+       give a classifiable first `:rtype` -> those categories
+       (`DOCUMENTED_RETURN`, e.g. `x = rndu(100, 4);` -> `matrix`).
+
+    Anything else -- an expression (`x'x`, `x*2`), an untraceable or
+    ambiguously-written variable, a call with no `:rtype` -- is
+    `((UNKNOWN,), UNRESOLVED)`. Nothing is ever evaluated."""
+    category, _shape = infer_literal_category(argument)
+    if category != TypeClass.UNKNOWN.value:
+        return (category,), ArgumentOrigin.LITERAL.value
+    unresolved = ((TypeClass.UNKNOWN.value,), ArgumentOrigin.UNRESOLVED.value)
+    argument = argument.strip()
+    if code is None or not _SIMPLE_IDENTIFIER_RE.fullmatch(argument):
+        return unresolved
+    rhs = _governing_assignment(argument.rstrip("'"), code=code, line_number=line_number, column=column)
+    if rhs is None:
+        return unresolved
+    category, _shape = infer_literal_category(rhs)
+    if category != TypeClass.UNKNOWN.value:
+        return (category,), ArgumentOrigin.TRACED_LITERAL.value
+    call_match = _SINGLE_CALL_RHS_RE.match(rhs)
+    if call_match and signatures:
+        if _find_matching_paren(rhs, call_match.end() - 1) == len(rhs) - 1:
+            signature = signatures.get(call_match.group(1).lower())
+            if signature is not None and signature.return_categories:
+                return signature.return_categories, ArgumentOrigin.DOCUMENTED_RETURN.value
+    return unresolved
+
+
+def check_parameter_roles(
+    call: GeneratedCall, *, signature: DocumentedSignature | None, code: str | None = None,
+    signatures: "dict[str, DocumentedSignature] | None" = None,
+) -> tuple[ParameterRoleCheck, ...]:
     """Positional: argument `i` is compared against `signature.parameters[i]`.
     An extra argument beyond the documented parameter list is skipped here
     (argument-COUNT mismatches are already `validate_call(...)`'s own job,
     per `CallValidationResult`); this function never attempts to guess a
-    role for a parameter with no reliable documented category, and never
-    considers a runtime variable's true type. Returns `()` when `signature`
-    is `None` or has no extracted parameter metadata at all -- an honest
-    "nothing to check", not a fabricated pass."""
+    role for a parameter with no reliable documented category. Returns `()`
+    when `signature` is `None` or has no extracted parameter metadata at
+    all -- an honest "nothing to check", not a fabricated pass.
+
+    v0.81.0: given `code` (the comment-stripped snippet the call came from)
+    and `signatures` (every documented signature known for this snippet),
+    a variable argument is traced to its own assignment via
+    `resolve_argument_category(...)`. Live evaluations 66.1/66.2/66.10/70.6
+    found that the way models naturally write GAUSS -- assign, then call --
+    always left this check UNKNOWN, so the evidence profile could never be
+    BROAD. A `DOCUMENTED_RETURN` origin can produce MATCH or UNKNOWN but
+    never MISMATCH: a documented "matrix" return may be 1x1 at run time
+    (e.g. `sumc` of a column vector), so disagreement there is a gap, not a
+    known violation."""
     if signature is None or not signature.parameters:
         return ()
     checks: list[ParameterRoleCheck] = []
@@ -697,27 +835,42 @@ def check_parameter_roles(call: GeneratedCall, *, signature: DocumentedSignature
         if position >= len(signature.parameters):
             break
         param = signature.parameters[position]
-        inferred_category, _inferred_shape = infer_literal_category(argument)
+        inferred, origin = resolve_argument_category(
+            argument, code=code, line_number=call.line_number, column=call.column, signatures=signatures,
+        )
+        inferred_label = "/".join(inferred)
         documented = param.category
-        if TypeClass.UNKNOWN.value in documented or inferred_category == TypeClass.UNKNOWN.value:
+        traced = {
+            ArgumentOrigin.TRACED_LITERAL.value: f" (traced to its literal assignment `{argument.strip()} = ...`)",
+            ArgumentOrigin.DOCUMENTED_RETURN.value: (
+                f" (traced to `{argument.strip()} = ...`, a call whose documented return type is {inferred_label})"
+            ),
+        }.get(origin, "")
+        if TypeClass.UNKNOWN.value in documented or TypeClass.UNKNOWN.value in inferred:
             status = ParameterRoleStatus.UNKNOWN.value
             explanation = (
                 "the documented parameter type or this argument's own literal category could not be "
                 "confidently determined"
             )
-        elif inferred_category in documented:
+        elif all(_category_accepted(c, documented) for c in inferred):
             status = ParameterRoleStatus.MATCH.value
-            explanation = f"the argument's literal category ({inferred_category}) matches the documented parameter type"
+            explanation = f"the argument's category ({inferred_label}){traced} matches the documented parameter type"
+        elif origin == ArgumentOrigin.DOCUMENTED_RETURN.value:
+            status = ParameterRoleStatus.UNKNOWN.value
+            explanation = (
+                f"the argument{traced} may not fit the documented type for parameter {param.name!r} "
+                f"({'/'.join(documented)}); a documented return type is not precise enough to call this a mismatch"
+            )
         else:
             status = ParameterRoleStatus.MISMATCH.value
             explanation = (
-                f"the argument's literal category ({inferred_category}) does not match the documented type "
+                f"the argument's literal category ({inferred_label}){traced} does not match the documented type "
                 f"for parameter {param.name!r} ({'/'.join(documented)})"
             )
         checks.append(ParameterRoleCheck(
             symbol=call.symbol, position=position, parameter_name=param.name,
-            documented_category=documented, inferred_category=inferred_category,
-            status=status, explanation=explanation,
+            documented_category=documented, inferred_category=inferred_label,
+            status=status, explanation=explanation, origin=origin,
         ))
     return tuple(checks)
 
@@ -892,25 +1045,97 @@ def _parse_literal_matrix(text: str) -> list[list[float]] | None:
     return rows
 
 
-def _find_literal_matrix_for_argument(argument: str, *, code: str) -> list[list[float]] | None:
+_BLOCK_OPEN_KEYWORDS = ("if", "for", "do", "proc", "keyword")
+_BLOCK_CLOSE_KEYWORDS = ("endif", "endfor", "endo", "endp")
+
+
+def _masked_statements(code: str):
+    """Yields `(line_number, start, end, masked, original)` for each
+    `;`-separated statement, string contents masked (same `_QUOTED_STRING_RE`
+    masking `call_scan_text(...)` uses) so a `;` or `=` inside a string is
+    never read as code. `start`/`end` are column offsets within the line."""
+    for line_no, line in enumerate(code.splitlines(), start=1):
+        masked = _QUOTED_STRING_RE.sub(lambda m: "#" * len(m.group(0)), line)
+        start = 0
+        while start < len(masked):
+            semi = masked.find(";", start)
+            end = len(masked) if semi == -1 else semi
+            if masked[start:end].strip():
+                yield line_no, start, end, masked[start:end], line[start:end]
+            start = end + 1
+
+
+def _governing_assignment(
+    name: str, *, code: str, line_number: int | None = None, column: int | None = None,
+) -> str | None:
+    """v0.81.0: the ONE shared answer to "which assignment gives `name` its
+    value at this call?", used by both the role check and the precondition
+    tracer. Returns the right-hand-side text of the most recent plain
+    top-level `name = <rhs>;` statement that ENDS before the call position
+    `(line_number, column)` (`None` means end of line / end of code), or
+    `None` when no such assignment exists or the answer would be a guess.
+
+    Replaces the pre-v0.81.0 precondition tracer's whole-code `matches[-1]`,
+    which had two defects: an assignment written AFTER the call drove the
+    verdict (`x = {2 1, 1 2}; y = invpd(x); x = {-1 0, 0 -1};` was VIOLATED),
+    and a literal followed by an operator (`x = {2 1, 1 2} * -1;`) was read
+    as the bare literal. Refuses (returns `None`) whenever `name` is also
+    written in any way this function does not model: inside a control-flow
+    or `proc` block, as an indexed or member target (`x[1,1] = 5;`), as one
+    of several targets (`{x, y} = f();`), as a `for` loop variable, or by
+    `clear`. A refusal is always an honest gap, never a fabricated value."""
+    target = (
+        line_number if line_number is not None else float("inf"),
+        column if column is not None else float("inf"),
+    )
+    escaped = re.escape(name)
+    plain_re = re.compile(rf"^\s*(?:let\s+)?{escaped}\s*=(?!=)", re.IGNORECASE)
+    other_write_res = (
+        re.compile(rf"^\s*{escaped}\s*(?:\[|\.[A-Za-z_])", re.IGNORECASE),
+        re.compile(rf"^\s*\{{[^}}]*\b{escaped}\b[^}}]*\}}\s*=(?!=)", re.IGNORECASE),
+        re.compile(rf"^\s*for\s+{escaped}\b", re.IGNORECASE),
+        re.compile(rf"^\s*clear(?:all)?\b.*\b{escaped}\b", re.IGNORECASE),
+    )
+    depth = 0
+    governing: str | None = None
+    for line_no, _start, end, masked, original in _masked_statements(code):
+        lowered = masked.strip().lower()
+        if any(_starts_with_keyword(lowered, kw) for kw in _BLOCK_CLOSE_KEYWORDS):
+            depth = max(0, depth - 1)
+            continue
+        if any(r.search(masked) for r in other_write_res):
+            return None
+        plain = plain_re.search(masked)
+        if plain is not None:
+            if depth > 0:
+                return None
+            if (line_no, end) < target:
+                governing = original[plain.end():].strip()
+        if any(_starts_with_keyword(lowered, kw) for kw in _BLOCK_OPEN_KEYWORDS):
+            depth += 1
+    return governing
+
+
+def _find_literal_matrix_for_argument(
+    argument: str, *, code: str, line_number: int | None = None, column: int | None = None,
+) -> list[list[float]] | None:
     """`argument` is the raw text of one call argument (e.g. `"x"` or
     `"{1 2, 2 1}"`). If it is itself a `{...}` literal, parses it directly.
-    If it is a simple identifier (optionally transposed, `x'`), looks for
-    that identifier's own most recent `{...}` literal assignment earlier in
-    the SAME code text. Any more complex expression (e.g. the real
-    documented `invpd(x'x)` OLS example, a matrix product) is deliberately
-    left unresolved -- this function never partially evaluates a runtime
+    If it is a simple identifier (optionally transposed, `x'`), uses the
+    right-hand side of its governing assignment (`_governing_assignment(
+    ...)`, v0.81.0), but only when that whole right-hand side is a `{...}`
+    literal. Any more complex expression (e.g. the real documented
+    `invpd(x'x)` OLS example, a matrix product) is deliberately left
+    unresolved -- this function never partially evaluates a runtime
     expression, and returns `None` (never a fabricated matrix) in that
     case."""
     argument = argument.strip()
     if "{" in argument:
         return _parse_literal_matrix(argument)
     if _SIMPLE_IDENTIFIER_RE.fullmatch(argument):
-        base = argument.rstrip("'")
-        assign_re = re.compile(rf"\b{re.escape(base)}\s*=\s*(\{{[^{{}}]*\}})")
-        matches = assign_re.findall(code)
-        if matches:
-            return _parse_literal_matrix(matches[-1])
+        rhs = _governing_assignment(argument.rstrip("'"), code=code, line_number=line_number, column=column)
+        if rhs is not None and rhs.startswith("{") and rhs.endswith("}"):
+            return _parse_literal_matrix(rhs)
     return None
 
 
@@ -1007,7 +1232,9 @@ def _literal_matrix_for_precondition_argument(
     second argument)."""
     if argument_index >= len(call.raw_arguments):
         return None, "the documented argument this precondition applies to was not found in this call"
-    rows = _find_literal_matrix_for_argument(call.raw_arguments[argument_index], code=code)
+    rows = _find_literal_matrix_for_argument(
+        call.raw_arguments[argument_index], code=code, line_number=call.line_number, column=call.column,
+    )
     if rows is None:
         return None, (
             "the input is a runtime value or expression, not a literal matrix -- this cannot be checked "
@@ -2068,7 +2295,9 @@ def verify_predicted_output(claim: PredictedOutputClaim, *, generated_code: str)
         symbol = call.symbol.lower()
         if symbol not in ("meanc", "sumc", "inv", "invpd") or not call.raw_arguments:
             continue
-        rows = _find_literal_matrix_for_argument(call.raw_arguments[0], code=cleaned_code)
+        rows = _find_literal_matrix_for_argument(
+            call.raw_arguments[0], code=cleaned_code, line_number=call.line_number, column=call.column,
+        )
         if rows is None or len(rows) > MAX_CHECKED_MATRIX_DIM or len(rows[0]) > MAX_CHECKED_MATRIX_DIM:
             continue
         if symbol == "meanc":

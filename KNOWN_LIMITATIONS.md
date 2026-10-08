@@ -2,6 +2,15 @@
 
 See also [docs/known-alpha-limitations.md](docs/known-alpha-limitations.md) for a shorter, tester-facing summary of current-phase limitations.
 
+`v0.81.0` lets assign-then-call code reach `HANDOFF_CANDIDATE` by tracing variables to their assignments. Limitations:
+- **Expressions are never evaluated.** `invpd(x'x)`, `x*2` and `x + 1` stay unknown, so the documented OLS idiom `b = invpd(x'x)*x'y` remains `review_required` by design.
+- **Tracing is one level and straight-line only.** `y = x; f(y)` is not followed through `x`. Any write to a variable inside a control-flow or `proc` block makes it untraceable for the whole snippet, even where that write cannot reach the call.
+- **Call results are traced only through the first documented `:rtype`,** and only when the right-hand side is exactly one call. A documented return type that disagrees with a parameter is reported as a gap, never a violation, because a documented "matrix" may be 1x1 at run time.
+- **Pointer writes (`&x`) are not modelled.**
+- **Any `for`/`do`/`while`/`if`/`proc` block caps syntax coverage at partial,** so code containing one is at best `review_required`, however simple the body. Found live in 71.3: the natural preallocate-and-fill answer (`v = zeros(5, 1); for i(1, 5, 1); v[i] = i^2; endfor;`) cannot reach `HANDOFF_CANDIDATE`. The verdict is safe; the gap is that a very common shape has no path to candidacy.
+- **`gauss_search_docs` grounding status is noisier than validation's** (found live in 71.5). A natural-language query can report `partially_grounded`, with ordinary words listed as unmatched or the whole query listed as ambiguous, even when the correct page is returned. `gauss_validate_code` grounds on the code's own calls and is unaffected.
+- **The extracted `Syntax:` line on some combined doc pages is garbled** (found live in 71.5: `vcmvcx.rst` has a ddof description spliced into it). Parameter blocks, and therefore signature checking, are unaffected.
+
 `v0.80.0` adds the MCP "hybrid" path (client-written code, deterministic server-side verdict), `gauss-ai docs fetch`, and two validation fixes. Limitations:
 - **The hybrid path cannot prevent ungrounded code from being written**, only from being validated or executed. The calling model writes whatever it writes, so the pre-generation gate applies only in the opt-in strict mode (`gauss_chat_ask`).
 - **Code with no documented GAUSS calls is never executable** through the handoff (no documentation evidence to validate against). This is conservative by design.

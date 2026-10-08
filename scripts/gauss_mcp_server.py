@@ -80,7 +80,7 @@ import gauss_code_assistant_cli as cli_mod
 import gauss_conversation_engine as engine_mod
 import gauss_execution_handoff as handoff_mod
 
-__version__ = "0.80.0"
+__version__ = "0.81.0"
 
 #: Set by the server OPERATOR in the process's own environment before
 #: launch -- never read from a tool-call argument. See module docstring.

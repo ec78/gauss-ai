@@ -10,6 +10,7 @@ documentation checkout, no model provider of any kind.
 
 from __future__ import annotations
 
+import dataclasses
 import sys
 from pathlib import Path
 
@@ -1516,6 +1517,160 @@ def test_125_every_registry_entry_has_doc_provenance_and_unique_name() -> None:
     check("every rule cites a doc page", all(rule.doc_page.endswith(".rst") for rule in validation_mod._SYSTEM_STATEMENT_REGISTRY))
     valid = {c.value for c in validation_mod.SystemStatementCategory}
     check("every category valid", all(rule.category in valid for rule in validation_mod._SYSTEM_STATEMENT_REGISTRY))
+
+
+# ---------------------------------------------------------------------------
+# v0.81.0: GAUSS category compatibility, exponent literals, and same-snippet
+# variable tracing (`_governing_assignment` / `resolve_argument_category`)
+# ---------------------------------------------------------------------------
+
+
+def _matrix_param_signature() -> validation_mod.DocumentedSignature:
+    return _signature_with_params(validation_mod.DocumentedParameter(
+        name="x", required=True, position=0, category=(validation_mod.TypeClass.MATRIX.value,), shape="unknown",
+        source="NxK matrix",
+    ))
+
+
+def _scalar_param_signature() -> validation_mod.DocumentedSignature:
+    return _signature_with_params(validation_mod.DocumentedParameter(
+        name="r", required=True, position=0, category=(validation_mod.TypeClass.SCALAR.value,), shape="unknown",
+        source="scalar",
+    ))
+
+
+def _role_status(signature, argument: str, *, code: str | None = None, line: int = 1, signatures=None) -> str:
+    call = validation_mod.GeneratedCall(symbol="f", argument_count=1, raw_arguments=(argument,), line_number=line)
+    return validation_mod.check_parameter_roles(call, signature=signature, code=code, signatures=signatures)[0].status
+
+
+def test_126_vector_and_scalar_literals_are_accepted_where_matrix_is_documented() -> None:
+    match = validation_mod.ParameterRoleStatus.MATCH.value
+    mismatch = validation_mod.ParameterRoleStatus.MISMATCH.value
+    check("column vector -> matrix", _role_status(_matrix_param_signature(), "{1,2,3}") == match)
+    check("row vector -> matrix", _role_status(_matrix_param_signature(), "{1 2 3}") == match)
+    check("scalar -> matrix", _role_status(_matrix_param_signature(), "5") == match)
+    check("string -> matrix still mismatch", _role_status(_matrix_param_signature(), '"abc"') == mismatch)
+    check("vector -> scalar still mismatch", _role_status(_scalar_param_signature(), "{1 2}") == mismatch)
+    check("matrix -> scalar still mismatch", _role_status(_scalar_param_signature(), "{1 2, 3 4}") == mismatch)
+
+
+def test_127_exponent_and_leading_dot_numerals_are_scalars() -> None:
+    for literal in ("1e5", "1.5E-3", ".5", "-2e+3", "3."):
+        check(f"{literal} scalar", validation_mod.infer_literal_category(literal)[0] == validation_mod.TypeClass.SCALAR.value)
+    for not_literal in ("e5", "1e", "1.2.3", "x1"):
+        check(f"{not_literal} not scalar", validation_mod.infer_literal_category(not_literal)[0] == validation_mod.TypeClass.UNKNOWN.value)
+
+
+def test_128_variable_traced_to_literal_or_scalar_assignment() -> None:
+    match = validation_mod.ParameterRoleStatus.MATCH.value
+    check("matrix literal", _role_status(_matrix_param_signature(), "x", code="x = {1 2, 3 4};\ny = f(x);", line=2) == match)
+    check("scalar", _role_status(_scalar_param_signature(), "n", code="n = 5;\ny = f(n);", line=2) == match)
+    check("transposed", _role_status(_matrix_param_signature(), "x'", code="x = {1 2 3};\ny = f(x');", line=2) == match)
+    check("case-insensitive name", _role_status(_matrix_param_signature(), "X", code="x = {1 2};\ny = f(X);", line=2) == match)
+    check("let form", _role_status(_matrix_param_signature(), "x", code="let x = {1 2};\ny = f(x);", line=2) == match)
+    check("traced literal can still mismatch", _role_status(
+        _scalar_param_signature(), "v", code="v = {1 2};\ny = f(v);", line=2,
+    ) == validation_mod.ParameterRoleStatus.MISMATCH.value)
+
+
+def test_129_same_line_assignment_ordering_uses_call_column() -> None:
+    code = "x = {1,2,3}; m = meanc(x);"
+    call = validation_mod.extract_generated_calls(code)[0]
+    check("column recorded", call.column == code.index("meanc"))
+    check("prior same-line assignment governs", validation_mod._governing_assignment(
+        "x", code=code, line_number=1, column=call.column,
+    ) == "{1,2,3}")
+    later = "m = meanc(x); x = {1,2,3};"
+    later_call = validation_mod.extract_generated_calls(later)[0]
+    check("later same-line assignment does not", validation_mod._governing_assignment(
+        "x", code=later, line_number=1, column=later_call.column,
+    ) is None)
+    inside = "x = {1,2}; x = sumc(x);"
+    inside_call = validation_mod.extract_generated_calls(inside)[0]
+    check("the call's own statement never governs its argument", validation_mod._governing_assignment(
+        "x", code=inside, line_number=1, column=inside_call.column,
+    ) == "{1,2}")
+
+
+def test_130_variable_traced_to_documented_return_type() -> None:
+    rndu = validation_mod.DocumentedSignature(
+        symbol="rndu", arg_ranges=((2, 2),), parameter_names=("r", "c"), source="rndu.rst",
+        extraction_status=validation_mod.SIGNATURE_EXTRACTED, return_categories=(validation_mod.TypeClass.MATRIX.value,),
+    )
+    signatures = {"rndu": rndu}
+    code = "x = rndu(100, 4);\ny = f(x);"
+    check("matrix return -> matrix param matches", _role_status(
+        _matrix_param_signature(), "x", code=code, line=2, signatures=signatures,
+    ) == validation_mod.ParameterRoleStatus.MATCH.value)
+    check("matrix return -> scalar param is a gap, never a mismatch", _role_status(
+        _scalar_param_signature(), "x", code=code, line=2, signatures=signatures,
+    ) == validation_mod.ParameterRoleStatus.UNKNOWN.value)
+    check("trailing operator after the call is not traced", _role_status(
+        _matrix_param_signature(), "x", code="x = rndu(100, 4)';\ny = f(x);", line=2, signatures=signatures,
+    ) == validation_mod.ParameterRoleStatus.UNKNOWN.value)
+    no_rtype = {"rndu": dataclasses.replace(rndu, return_categories=())}
+    check("no documented rtype -> unknown", _role_status(
+        _matrix_param_signature(), "x", code=code, line=2, signatures=no_rtype,
+    ) == validation_mod.ParameterRoleStatus.UNKNOWN.value)
+
+
+def test_131_untraceable_writes_make_the_variable_unresolved() -> None:
+    cases = {
+        "reassigned inside a block": "x = {1 2};\nif 1;\n  x = {3 4};\nendif;\ny = f(x);",
+        "indexed write": "x = {1 2};\nx[1] = 5;\ny = f(x);",
+        "multi-target": "x = {1 2};\n{x, z} = g(1);\ny = f(x);",
+        "loop variable": "x = 1;\nfor x(1, 3, 1);\nendfor;\ny = f(x);",
+        "cleared": "x = {1 2};\nclear x;\ny = f(x);",
+        "expression rhs": "x = {1 2} * 2;\ny = f(x);",
+        "assigned only after the call": "y = f(x);\nx = {1 2};",
+        "x'x expression argument": "x = {1 2};\ny = f(x'x);",
+    }
+    for name, code in cases.items():
+        argument = "x'x" if "x'x" in name else "x"
+        line = next(i for i, l in enumerate(code.splitlines(), start=1) if "f(" in l)
+        check(name, _role_status(_matrix_param_signature(), argument, code=code, line=line) == validation_mod.ParameterRoleStatus.UNKNOWN.value)
+
+
+def test_132_string_contents_are_never_read_as_assignments() -> None:
+    code = 'print "x = {1 2}; done";\ny = f(x);'
+    check("masked", validation_mod._governing_assignment("x", code=code, line_number=2) is None)
+
+
+def test_133_precondition_tracer_ignores_assignments_after_the_call() -> None:
+    """Pre-v0.81.0 the tracer took the LAST `{...}` assignment anywhere in
+    the code, so a reassignment written after `invpd(x)` falsely drove a
+    VIOLATED verdict."""
+    code = "x = {2 1, 1 2};\ny = invpd(x);\nx = {-1 0, 0 -1};"
+    call = validation_mod.extract_generated_calls(code)[0]
+    checks = validation_mod.check_preconditions(call, code=code)
+    check("satisfied by the governing assignment", checks[0].status == validation_mod.PreconditionStatus.SATISFIED.value)
+
+
+def test_134_precondition_tracer_still_catches_a_violating_reassignment_before_the_call() -> None:
+    code = "x = {2 1, 1 2};\nx = {-1 0, 0 -1};\ny = invpd(x);"
+    call = validation_mod.extract_generated_calls(code)[0]
+    checks = validation_mod.check_preconditions(call, code=code)
+    check("violated", checks[0].status == validation_mod.PreconditionStatus.VIOLATED.value)
+
+
+def test_135_precondition_tracer_never_reads_a_literal_followed_by_an_operator() -> None:
+    code = "x = {2 1, 1 2} * -1;\ny = invpd(x);"
+    call = validation_mod.extract_generated_calls(code)[0]
+    checks = validation_mod.check_preconditions(call, code=code)
+    check("unverified, not satisfied", checks[0].status == validation_mod.PreconditionStatus.UNVERIFIED.value)
+
+
+def test_136_documented_return_categories_use_the_first_rtype_only() -> None:
+    best_match = {
+        "syntax_blocks": [".. function:: y = rndu(r, c)"], "file_path": "rndu.rst",
+        "inputs_section": ":param r: rows\n:type r: scalar\n:param c: cols\n:type c: scalar",
+        "outputs_section": ":return y: numbers\n:rtype y: RxC matrix\n\n:return newstate: state\n:rtype newstate: Opaque vector",
+    }
+    signature = validation_mod.extract_documented_signature("rndu", best_match)
+    check("first rtype only", signature.return_categories == (validation_mod.TypeClass.MATRIX.value,))
+    no_outputs = validation_mod.extract_documented_signature("rndu", {**best_match, "outputs_section": None})
+    check("absent -> ()", no_outputs.return_categories == ())
 
 
 def run_tests() -> int:

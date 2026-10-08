@@ -4,7 +4,26 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 
 ## Current Objective
 
-None active. `v0.80.0 — Hybrid MCP Validation, Docs Fetch, and Validation Hardening` is **complete, pushed, tagged, and released**: https://github.com/ec78/gauss-ai/releases/tag/v0.80.0 (tag `v0.80.0` → `b877af1`; `main` at `c541bad` or later). The next milestone has **not** been chosen or started. See "Next Milestone Handoff" below, and wait for the user's explicit go-ahead.
+**`v0.81.0 — Idiomatic Handoff Candidacy`: committed and tagged locally on 2026-10-08. Not pushed, not released.** The design and live results are in `planning/v0.81-idiomatic-handoff-candidacy.md` (§5.1).
+
+Done:
+- code and tests (48 files pass), version 0.81.0, README/CHANGELOG/KNOWN_LIMITATIONS;
+- re-baseline against the published docs (identical verdicts; found the `vcx` fix, §3.5);
+- live category `71.1`-`71.5` (real Claude Code client, uncoaxed code):
+  - 3/5 reached handoff_candidate;
+  - OLS stayed review_required by design;
+  - **71.3 gap:** a preallocate-and-fill `for` loop stays review_required, because any block caps syntax coverage at partial;
+  - minor `gauss_search_docs` noise in 71.5.
+
+Remaining:
+1. **Confirm with the user before `git push` / `git push origin v0.81.0` / creating the GitHub release.**
+2. Open user decisions:
+   - switch `docs_root` to `~/.gauss-ai/docs` (recommended, not done);
+   - enable `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1` in user-scope MCP config, if live real-GAUSS runs through MCP are wanted. It was off during 71.x, so 71.1's real-run request was refused.
+3. The planned 71.x negative probes (hallucinated symbol, SPD violation through a variable, system statement) were not run live. They could be added as 71.6-71.8 if wanted.
+4. Next-milestone candidate from 71.3: bounded syntax coverage for simple `for i(a,b,c); ... endfor;` blocks with plain-assignment bodies.
+
+`v0.80.0` is released: https://github.com/ec78/gauss-ai/releases/tag/v0.80.0.
 
 ## Where Things Stand (v0.79.0 → v0.80.0)
 
@@ -28,27 +47,23 @@ None active. `v0.80.0 — Hybrid MCP Validation, Docs Fetch, and Validation Hard
 
 ## Next Milestone Handoff
 
-The user has **not** picked one yet. Present these, recommend one, and wait for an explicit decision. Per `CLAUDE.md`, plan it first (plan mode), give it its own `planning/v0.81-*.md`, and do not tag/push/release without confirmation.
+The user chose the validation milestone as v0.81.0 (2026-10-07). After it ships, present the remaining options and wait for an explicit decision.
 
-### Recommended: v0.81.0 — Make idiomatic client-written code reach HANDOFF_CANDIDATE
+### In progress: v0.81.0 — see "Current Objective"
 
-**Why.** The hybrid path exists so a client model (Claude/ChatGPT) can write GAUSS code. But code written the way models naturally write it rarely reaches `handoff_candidate`. In live evaluations, candidacy only happened when the prompt coaxed a minimal, direct-literal form. Real evidence:
-- **`70.6`:** `x = rndu(1e5, 4); y = meanc(x);` → `review_required`, because `rndu`'s signature can't be extracted from its docs and coverage was "partial".
-- **`66.1` / `66.2` / `66.10` (v0.76.0):** assign-a-literal-then-call (`x = {...}; y = f(x);`) leaves the parameter-role check `UNKNOWN`. That check never traces a variable back to its literal, unlike the precondition checker, which does.
-- **`69.1`/`70.x` setup:** `invpd` is only grounded at confidence 0.6, via the combined `invinvpd.rst` page.
+Planning corrected the old diagnosis. On the MCP path, `rndu` and the other builtins' signatures always extracted fine. The real causes were:
+- the untraced variables in the role check;
+- `1e5` literals;
+- false vector/scalar-vs-matrix MISMATCHes;
+- the precondition tracer reading assignments made after the call.
 
-**Likely scope** (verify in planning; all deterministic, no model calls):
-1. Trace simple same-snippet literal assignments into `check_parameter_roles`, the same way `check_preconditions` already does.
-2. Fill signature/parameter gaps for common builtins (`rndu`, `rndn`, `rows`, `cols`, `zeros`, `ones`, ...), every entry verified against the real published docs.
-3. Re-baseline: run `gauss-ai docs fetch` on this machine (with the user's OK), consider switching `docs_root` (user's call), and re-run a representative set of earlier live categories against the published docs to see what changed.
-4. Optionally, a real-GAUSS hybrid round trip through MCP: `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1`, which needs the user to start the server that way. Only the fake runner has been exercised through MCP so far.
+The "rndu signature unknown" message was real only on the `ask()` path. The planning doc has the details.
 
-**Acceptance.**
-- A new live category (`71.x`) where ordinary model-written snippets reach `handoff_candidate` without coaxing.
-- Every existing NOT_READY protection still holds: hallucinated symbols, violated preconditions, system statements.
-- Zero diff in core execution, repair and approval modules.
+**71.x should cover:**
+- ordinary uncoaxed tasks: column means of random data, OLS by hand (expect `review_required` for `invpd(x'x)`), zeros-then-fill, summary stats of a literal vector;
+- negative probes: a hallucinated symbol, an SPD violation through a variable, a system statement.
 
-### Alternative: v0.81.0 — Public release readiness
+### Next after v0.81.0: Public release readiness
 
 The user's stated longer-term goal is a publicly available MCP. It is mostly decision-heavy:
 - drop "Private Alpha"?
