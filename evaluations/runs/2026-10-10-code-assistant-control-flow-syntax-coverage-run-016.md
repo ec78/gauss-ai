@@ -28,7 +28,7 @@ Observed behavior: The Syntax line is clean (71.5 fix confirmed live). The clien
 
 Pass/fail: Pass with limitation (answer correct; search fails on the plain question)
 Defect severity: Minor (search-side grounding; validation unaffected; disclosed as out of scope)
-Remediation: Disclosed in KNOWN_LIMITATIONS. Candidate for a later milestone: concept-to-function resolution in `gauss_search_docs` (the `resolve_concepts` index the `ask()` path already has).
+Remediation: Disclosed in KNOWN_LIMITATIONS. Candidate for a later milestone: return labeled candidate pages when concept resolution is weak or ambiguous. (Corrected 2026-10-10: search already uses `resolve_concepts`. "covariance" is unresolved, and "variance-covariance matrix" is ambiguous across `robustse`, `vcx` and others, but an ambiguous resolution yields no sources.)
 
 Overall Score: 3.0
 Decision: Pass with limitation disclosed
