@@ -4,9 +4,7 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 
 ## Current Objective
 
-**`v0.82.0 — Bounded Control-Flow Syntax Coverage` is committed and tagged `v0.82.0` locally (2026-10-10). It is NOT pushed, and no GitHub release exists yet: waiting for the user's confirmation.** Design, implementation, deviations and live results are in `planning/v0.82-bounded-control-flow-syntax-coverage.md` (§9-§11).
-
-To finish, once the user confirms: `git push origin main`, `git push origin v0.82.0`, then `gh release create v0.82.0` with notes drawn from the CHANGELOG `[Unreleased]` v0.82.0 entries. Then record the release here.
+**`v0.82.0 — Bounded Control-Flow Syntax Coverage` was released on 2026-10-10** (https://github.com/ec78/gauss-ai/releases/tag/v0.82.0; commit `faa4d63`, tag pushed). No next milestone is chosen; do not start one until the user does. Design, implementation, deviations and live results are in `planning/v0.82-bounded-control-flow-syntax-coverage.md` (§9-§11).
 
 v0.82.0 done:
 - code and tests: `for … endfor` validation (nested included), four INVALID `for` rules, the `let_statement_shape` rule, option B category tracing, the vcx Syntax-line fix, nested-optional and variadic `...` signature fixes, and the system-statement registry audit (50 → 213, new `network`/`database`). 23 new tests; full suite (48 files) and `check_release_readiness.py` pass; zero diff in core execution/repair/verification modules.
