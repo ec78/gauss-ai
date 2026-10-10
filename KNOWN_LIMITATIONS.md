@@ -2,6 +2,17 @@
 
 See also [docs/known-alpha-limitations.md](docs/known-alpha-limitations.md) for a shorter, tester-facing summary of current-phase limitations.
 
+`v0.82.0` validates simple `for … endfor` loops (nested included), so preallocate-and-fill code can reach `HANDOFF_CANDIDATE`. It also expands the system-statement registry from 50 to 213 entries. This supersedes the v0.81.0 item below about every block capping syntax coverage. Limitations:
+- **Loop failures that only happen at run time are not caught:** an out-of-range indexed write (`G0058`), a write to a never-assigned variable (`G0458`) and a zero step (`G0538`) all fail at run time. The handoff reports such a failure honestly.
+- **A variable holding a matrix as a `for` bound is not checked** (GAUSS silently accepts one). Only a literal `{…}` header argument is caught (as unknown). A non-integer *literal* start or step is unknown.
+- **`if`/`elseif`/`else`, `do while`/`do until`, `break`/`continue`, `proc`/`keyword`/`fn` and thread blocks remain unknown,** so code that contains one is at best `review_required`.
+- **Code with no documented call is reported with misleading wording** (found live in 72.6/72.8). The `not_ready` verdict is the v0.80.0 policy and correct, but `gauss_validate_code` gives the reason as "generation policy does not permit code generation (block)". Only the attached note explains the real cause.
+- **Expressions are still never evaluated, and live this steers client code** (72.3). `v = 1 ./ seqa(1, 1, 10); mu = meanc(v);` stays `review_required` because `v` is untraceable. The same values filled in a loop reach `HANDOFF_CANDIDATE`.
+- **Variadic arguments never get a documented category** (72.15). A three-argument `sprintf` is `review_required` (no longer a false `not_ready`). One reason is that `sprintf.rst` names the parameter `....` (four dots), so its `:type` never attaches to `...`.
+- **A partial verdict does not say which check was partial.** Coverage gaps from parameter-role checks are reported only as "validation coverage is partial". A client may guess the cause wrongly; this happened twice in 72.x.
+- **The system-statement registry matches by name,** so a variable named after a registered function in statement position (`edit[1] = 2;`) is a false `not_ready` (the safe direction). Functions that only *accept* a dataset filename argument (`ols("mydata", ...)`) are not gated.
+- **`gauss_search_docs` can return nothing for a plain question** (72.16). "compute a covariance matrix" is `ungrounded` with no sources, and the page is found only when the query names `vcx`. `gauss_validate_code` grounds on the code's own calls and is unaffected.
+
 `v0.81.0` lets assign-then-call code reach `HANDOFF_CANDIDATE` by tracing variables to their assignments. Limitations:
 - **Expressions are never evaluated.** `invpd(x'x)`, `x*2` and `x + 1` stay unknown, so the documented OLS idiom `b = invpd(x'x)*x'y` remains `review_required` by design.
 - **Tracing is one level and straight-line only.** `y = x; f(y)` is not followed through `x`. Any write to a variable inside a control-flow or `proc` block makes it untraceable for the whole snippet, even where that write cannot reach the call.

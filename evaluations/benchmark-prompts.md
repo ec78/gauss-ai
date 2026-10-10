@@ -7262,3 +7262,124 @@ Expected behavior:
 
 Expected behavior:
 - handoff_candidate: `vcx` resolves to vcmvcx.rst via the §3.5 page-definition tie-break (it was a false NOT_READY before the re-baseline fix).
+
+## Bounded Control-Flow Syntax Coverage (Live Client)
+
+Validates v0.82.0 through a REAL connected MCP client (Claude Code over stdio, `gauss-ai-mcp` v0.82.0) on this
+machine's real configuration, in the `71.x` style: the human asks an ordinary task in plain words and the calling
+Claude session writes whatever GAUSS it naturally would. The questions are whether simple `for` loops now reach
+`handoff_candidate` on real evidence (the 71.3 gap), whether out-of-scope blocks stay honestly short of it, and
+whether the negative probes deferred from 71.x (hallucinated function, precondition violation through a variable,
+system statements) hold live.
+
+### Prompt 72.1: Uncoaxed: zeros, then fill with squares in a loop (71.3 re-run)
+
+"Is the GAUSS-AI MCP connected? If so using it Create a 5x1 vector of zeros, then fill it with the squares of 1 through 5. If not let me know."
+
+Expected behavior:
+- handoff_candidate with syntax validated (the 71.3 shape). A real-GAUSS run is refused unless the operator opted in.
+
+### Prompt 72.2: Uncoaxed: 4x3 matrix of row number times column number
+
+"Build a 4x3 matrix where each element is its row number times its column number."
+
+Expected behavior:
+- handoff_candidate, whether the client writes a nested `for` fill or a vectorized outer product.
+
+### Prompt 72.3: Uncoaxed: vector of 1/i, then its mean (fill-then-statistic)
+
+"Make a 10x1 vector where element i is 1/i, then compute its mean."
+
+Expected behavior:
+- A loop fill then `meanc` reaches handoff_candidate (option B). A vectorized expression stays review_required (expressions are never evaluated), never not_ready.
+
+### Prompt 72.4: Uncoaxed: first 10 Fibonacci numbers in a vector
+
+"Compute the first 10 Fibonacci numbers and store them in a vector."
+
+Expected behavior:
+- handoff_candidate: top-level seed writes and a loop body reading earlier elements are both modelled.
+
+### Prompt 72.5: Uncoaxed: count down from 6 to 1
+
+"Fill a 6x1 vector counting down from 6 to 1."
+
+Expected behavior:
+- handoff_candidate (either `seqa` with a negative increment or a counting-down loop).
+
+### Prompt 72.6: Uncoaxed: running sum of 1 to 20 with a plain accumulator
+
+"Compute the running sum of the numbers 1 to 20 and print the final total." This uses a plain accumulator."
+
+Expected behavior:
+- not_ready with the no-documented-calls note (v0.80.0 policy); the loop itself syntax-validated.
+
+### Prompt 72.7: Uncoaxed: 1 to 10 with every even entry set to zero
+
+"Fill a 10x1 vector with the numbers 1 to 10, but set every even entry to zero."
+
+Expected behavior:
+- handoff_candidate for a stepped loop; review_required if the client writes an `if` inside the loop.
+
+### Prompt 72.8: Uncoaxed: loop with if/break to the first square above 500
+
+"Loop through 1 to 100 and stop at the first number whose square exceeds 500."
+
+Expected behavior:
+- Syntax partial (`if`/`break` bodies are out of scope); review_required if a documented call is present, otherwise not_ready by the no-documented-calls policy. Never a false INVALID.
+
+### Prompt 72.9: Negative probe: hallucinated function (colmedian)
+
+"Compute the column medians of a random 50x3 matrix using GAUSS's colmedian function."
+
+Expected behavior:
+- not_ready for the unknown symbol `colmedian`; the documented `median` reaches handoff_candidate.
+
+### Prompt 72.10: Negative probe: SPD violation through a variable (invpd)
+
+"Invert the matrix [[1, 2], [2, 1]] using invpd, storing the matrix in a variable first."
+
+Expected behavior:
+- not_ready: the invpd precondition is VIOLATED through the traced variable (symmetric, determinant -3). `inv` is SATISFIED.
+
+### Prompt 72.11: Negative probe: system statement (CSV file write)
+
+"Generate a random 100x2 matrix and save it to a CSV file."
+
+Expected behavior:
+- not_ready (file_write), whatever else is valid.
+
+### Prompt 72.12: Negative probe: web API (FRED download)
+
+"Download US GDP from FRED and print the last few observations."
+
+Expected behavior:
+- not_ready (network). `fred_load` was a handoff_candidate in v0.81.0 (planning §9.2(3)).
+
+### Prompt 72.13: Negative probe: list files in the current directory
+
+"List the files in the current directory from GAUSS."
+
+Expected behavior:
+- not_ready (file_read for `filesa`, or os_command/process_launch for `shell`/`dos`).
+
+### Prompt 72.14: Uncoaxed: mean of a row vector (meanc orientation trap)
+
+"Create a row vector containing 1, 2, 3 and compute its mean."
+
+Expected behavior:
+- handoff_candidate for both `meanc(v)` and `meanc(v')`: the semantic difference is outside the validator's documented evidence. Scored on the client presenting the correct one.
+
+### Prompt 72.15: Uncoaxed: format two numbers into a string
+
+"Format the numbers 3 and 4 into a string like '3 and 4' and print it."
+
+Expected behavior:
+- A three-argument `sprintf` is review_required (planning §9.3), never not_ready.
+
+### Prompt 72.16: Docs lookup: how to compute a covariance matrix
+
+"Look up how to compute a covariance matrix in GAUSS."
+
+Expected behavior:
+- A correct answer from the docs, with a clean `vcmvcx.rst` Syntax line (71.5 fix). Search-side grounding of the plain question is out of scope and is observed, not required.

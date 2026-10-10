@@ -1618,7 +1618,12 @@ def test_130_variable_traced_to_documented_return_type() -> None:
 def test_131_untraceable_writes_make_the_variable_unresolved() -> None:
     cases = {
         "reassigned inside a block": "x = {1 2};\nif 1;\n  x = {3 4};\nendif;\ny = f(x);",
-        "indexed write": "x = {1 2};\nx[1] = 5;\ny = f(x);",
+        # v0.82.0 (option B, user-approved): a NUMERIC variable's indexed
+        # write no longer makes its CATEGORY untraceable -- real GAUSS shows
+        # an indexed write cannot change its shape (see test_146). The v0.81.0
+        # "indexed write" case here (`x = {1 2}; x[1] = 5;`) is superseded;
+        # a string target, which GAUSS rejects (G0071), still refuses.
+        "indexed write to a string": 'x = "ab";\nx[1] = 5;\ny = f(x);',
         "multi-target": "x = {1 2};\n{x, z} = g(1);\ny = f(x);",
         "loop variable": "x = 1;\nfor x(1, 3, 1);\nendfor;\ny = f(x);",
         "cleared": "x = {1 2};\nclear x;\ny = f(x);",
@@ -1671,6 +1676,274 @@ def test_136_documented_return_categories_use_the_first_rtype_only() -> None:
     check("first rtype only", signature.return_categories == (validation_mod.TypeClass.MATRIX.value,))
     no_outputs = validation_mod.extract_documented_signature("rndu", {**best_match, "outputs_section": None})
     check("absent -> ()", no_outputs.return_categories == ())
+
+
+# ---------------------------------------------------------------------------
+# v0.82.0: bounded control-flow syntax coverage (`for` blocks) and the `let`
+# statement rule. Every expectation below is backed by the docs or a real
+# `tgauss.exe -b` result recorded in `_SYNTAX_RULE_REGISTRY` and in
+# planning/v0.82-bounded-control-flow-syntax-coverage.md §2.4.
+# ---------------------------------------------------------------------------
+
+
+def _syntax(code: str):
+    return validation_mod.validate_syntax(code)
+
+
+def _rules(code: str) -> set[str]:
+    return {i.rule for i in _syntax(code).issues}
+
+
+def test_137_simple_for_blocks_are_validated() -> None:
+    snippets = {
+        "71.3 live form": "v = zeros(5, 1);\nfor i(1, 5, 1);\n    v[i] = i^2;\nendfor;\nprint v;",
+        "one line": "v = zeros(5, 1); for i(1, 5, 1); v[i] = i^2; endfor; print v;",
+        "documented spacing": "for i (1, 4, 1);\n   print i;\nendfor;",
+        "upper case": "v = zeros(3, 1);\nFOR i (1, 3, 1);\n    v[i] = i;\nENDFOR;",
+        "empty body": "for i (1, 5, 1);\nendfor;\nprint 1;",
+        "counting down": "v = zeros(5, 1);\nfor i (5, 1, -1);\n    v[i] = i;\nendfor;",
+        "print with ;;": "for i (1, 10, 2);\n    print i;;\nendfor;",
+        "bounds from calls and variables": "n = 4;\nx = zeros(n, 2);\nfor i (1, rows(x), 1);\n    x[i, 1] = i;\nendfor;",
+        "doubly nested": "x = zeros(3, 4);\nfor i (1, rows(x), 1);\n    for j (1, cols(x), 1);\n        x[i,j] = i * j;\n    endfor;\nendfor;",
+        "triply nested": "v = zeros(2, 2);\nfor i (1, 2, 1);\n for j (1, 2, 1);\n  for k (1, 2, 1);\n   v[i, j] = v[i, j] + k;\n  endfor;\n endfor;\nendfor;",
+        "body plain assignment": "s = 0;\nfor i (1, 3, 1);\n    t = i * 2;\nendfor;",
+        "multi-line literal body": "for i (1, 2, 1);\n    a = { 1 2,\n          3 4 };\nendfor;",
+    }
+    for name, code in snippets.items():
+        result = _syntax(code)
+        check(f"{name}: validated", result.status == validation_mod.SyntaxStatus.VALIDATED.value)
+        check(f"{name}: for_block recorded", "for_block" in result.validated_constructs)
+        check(f"{name}: nothing unknown", result.unknown_constructs == ())
+
+
+def test_138_formula_like_identifiers_are_not_for_blocks() -> None:
+    result = _syntax("formula = 1;\nforecast = 2;")
+    check("no for_block", "for_block" not in result.validated_constructs)
+    check("validated", result.status == validation_mod.SyntaxStatus.VALIDATED.value)
+
+
+def test_139_for_header_shape_is_invalid_for_every_tgauss_rejected_variant() -> None:
+    cases = {
+        "two args (G0105)": "v = zeros(5, 1);\nfor i (1, 5);\n    v[i] = i;\nendfor;",
+        "four args (G0105)": "v = zeros(5, 1);\nfor i (1, 5, 1, 1);\n    v[i] = i;\nendfor;",
+        "matlab form (G0008)": "v = zeros(3, 1);\nfor i = 1:3;\n    v[i] = i;\nendfor;",
+        "c-style (G0113)": "v = zeros(5, 1);\nfor (i = 1; i <= 5; i++);\n    v[i] = i;\nendfor;",
+        "header missing ; (G0063)": "v = zeros(3, 1);\nfor i (1, 3, 1)\n    v[i] = i;\nendfor;",
+    }
+    for name, code in cases.items():
+        result = _syntax(code)
+        check(f"{name}: invalid", result.status == validation_mod.SyntaxStatus.INVALID.value)
+        check(f"{name}: names for_header_shape", "for_header_shape" in _rules(code))
+
+
+def test_140_for_block_balance_is_invalid_for_every_tgauss_rejected_variant() -> None:
+    cases = {
+        "missing endfor": "v = zeros(5, 1);\nfor i (1, 5, 1);\n    v[i] = i;\nprint v;",
+        "stray endfor": "v = zeros(3, 1);\nv[1] = 1;\nendfor;\nprint v;",
+        "closed by endo": "v = zeros(5, 1);\nfor i (1, 5, 1);\n    v[i] = i;\nendo;",
+        "crossed with if": "v = zeros(2, 2);\nfor i (1, 2, 1);\n  if i > 1;\n    v[i, 1] = 1;\nendfor;\n  endif;",
+        "endfor missing ;": "v = zeros(3, 1);\nfor i (1, 3, 1);\n    v[i] = i;\nendfor\nprint v;",
+    }
+    for name, code in cases.items():
+        result = _syntax(code)
+        check(f"{name}: invalid", result.status == validation_mod.SyntaxStatus.INVALID.value)
+        check(f"{name}: names for_block_balance", "for_block_balance" in _rules(code))
+
+
+def test_141_counter_reuse_and_counter_assignment_are_invalid() -> None:
+    reuse = "v = zeros(3, 3);\nfor i (1, 3, 1);\n  for i (1, 3, 1);\n    v[i, i] = i;\n  endfor;\nendfor;"
+    check("reuse (G0736)", "for_counter_reuse" in _rules(reuse))
+    for name, code in {
+        "plain (G0541)": "v = zeros(5, 1);\nfor i (1, 5, 1);\n    i = 2;\n    v[i] = i;\nendfor;",
+        "indexed (G0541)": "v = zeros(3, 1);\nfor i (1, 3, 1);\n    i[1] = 2;\nendfor;",
+        "from an inner loop (G0541)": "v = zeros(2, 2);\nfor i (1, 2, 1);\n for j (1, 2, 1);\n  i = 1;\n endfor;\nendfor;",
+    }.items():
+        check(name, "for_counter_assignment" in _rules(code))
+    sibling = "for i (1, 2, 1);\nendfor;\nfor i (1, 2, 1);\nendfor;"
+    check("sequential loops may reuse a counter", _syntax(sibling).status == validation_mod.SyntaxStatus.VALIDATED.value)
+
+
+def test_142_unmodelled_body_statements_leave_the_block_unknown() -> None:
+    bodies = {
+        "if": "if i > 2;\n        v[i] = i;\n    endif;",
+        "break": "v[i] = i;\n    break;",
+        "continue": "continue;",
+        "do while": "do while 0;\n    endo;",
+        "member write": "s.x = i;",
+        "multi-target write": "{a, b} = f(i);",
+        "bare expression statement": "f(i);",
+        "format command": "format /rd 8,2;",
+        "threadstat": "threadstat v[i] = i;",
+    }
+    for name, body in bodies.items():
+        code = f"v = zeros(5, 1);\nfor i (1, 5, 1);\n    {body}\nendfor;\nprint v;"
+        result = _syntax(code)
+        check(f"{name}: partial", result.status == validation_mod.SyntaxStatus.PARTIAL.value)
+        check(f"{name}: control_flow_block", "control_flow_block" in result.unknown_constructs)
+
+
+def test_143_unmodelled_header_arguments_leave_the_block_unknown() -> None:
+    headers = {
+        "matrix-literal start (silently accepted by GAUSS)": "for i ({1, 2}, 3, 1);",
+        "fractional step (silently truncates indices)": "for i (1, 3, 0.5);",
+        "fractional start": "for i (1.5, 3, 1);",
+        "string argument": 'for i ("a", 3, 1);',
+        "empty slot": "for i (1, , 3, 1);",
+    }
+    for name, header in headers.items():
+        code = f"v = zeros(5, 1);\n{header}\n    v[i] = 1;\nendfor;"
+        result = _syntax(code)
+        check(f"{name}: not validated", result.status == validation_mod.SyntaxStatus.PARTIAL.value)
+    integral = "v = zeros(5, 1);\nfor i (1.0, 5, 1e0);\n    v[i] = 1;\nendfor;"
+    check("integer-valued literals are fine", _syntax(integral).status == validation_mod.SyntaxStatus.VALIDATED.value)
+
+
+def test_144_other_blocks_stay_unknown_including_previously_invisible_ones() -> None:
+    cases = {
+        "if": "x = 1;\nif x > 0;\n  print x;\nendif;",
+        "do while": "i = 1;\ndo while i <= 3;\n  i = i + 1;\nendo;",
+        "proc": "proc (1) = f(x);\n  retp(x);\nendp;",
+        "threadfor (was VALIDATED pre-v0.82.0)": "v = zeros(5, 1);\nthreadfor i(1, 5, 1);\n v[i] = i;\nthreadendfor;",
+        "threadbegin (was VALIDATED pre-v0.82.0)": "threadbegin;\n x = 1;\nthreadend;\nthreadjoin;",
+        "for inside if": "x = 1;\nif x;\n  for i (1, 2, 1);\n    print i;\n  endfor;\nendif;",
+    }
+    for name, code in cases.items():
+        result = _syntax(code)
+        check(f"{name}: partial", result.status == validation_mod.SyntaxStatus.PARTIAL.value)
+        check(f"{name}: control_flow_block", "control_flow_block" in result.unknown_constructs)
+
+
+def test_145_let_statement_shape_flags_every_tgauss_rejected_case() -> None:
+    rejected = (
+        "x = {1, 2, 3}';", "let x = {1, 2}';", "x = {1, 2} + 1;", "x = {2 1, 1 2} * -1;", "x = {1, 2} .* 3;",
+        "x = {1 2} ~ {3 4};", "x = {1 2} | {3 4};", "v = zeros(3, 1);\nv[1:2] = {7, 8};",
+        "v = zeros(3, 2);\nv[., 1] = {1, 2, 3};", "v = zeros(3, 1);\nv[2] = {5};",
+        "v = zeros(5, 1);\nfor i (1, 5, 1);\n    v[i] = {1};\nendfor;",
+    )
+    for code in rejected:
+        result = _syntax(code)
+        check(f"invalid: {code!r}", result.status == validation_mod.SyntaxStatus.INVALID.value)
+        check(f"names let_statement_shape: {code!r}", "let_statement_shape" in _rules(code))
+    accepted = (
+        "x = ({1, 2}) + 1;", "x = 2 * {1, 2};", "x = -{1, 2};", "y = meanc({1, 2, 3}) + 1;",
+        "y = sumc({1, 2, 3}');", "v = zeros(3, 2);\nv[., 1] = ones(3, 1);", "x = { 1 2,\n      3 4 };",
+        "let x = {1 2, 3 4};", 'x = {"a" "b"};', "x = 5; y = {1, 2};",
+    )
+    for code in accepted:
+        check(f"not flagged: {code!r}", "let_statement_shape" not in _rules(code))
+
+
+def test_146_indexed_writes_keep_a_numeric_category_traceable_but_never_a_value() -> None:
+    """Option B (user-approved): real GAUSS shows an indexed write cannot
+    change a numeric variable's shape (G0058, no growth), so the role check
+    looks through it; the precondition tracer never does."""
+    code = "v = zeros(5, 1);\nfor i (1, 5, 1);\n    v[i] = i^2;\nendfor;\ny = f(v);"
+    signatures = {"zeros": validation_mod.extract_documented_signature("zeros", {
+        "syntax_blocks": [".. function:: y = zeros(r, c)"], "file_path": "zeros.rst",
+        "inputs_section": ":param r: rows\n:type r: scalar\n:param c: cols\n:type c: scalar",
+        "outputs_section": ":return y: zeros\n:rtype y: RxC matrix",
+    })}
+    check("documented return traced through indexed writes", _role_status(
+        _matrix_param_signature(), "v", code=code, line=5, signatures=signatures,
+    ) == validation_mod.ParameterRoleStatus.MATCH.value)
+    check("literal traced through an indexed write", _role_status(
+        _matrix_param_signature(), "x", code="x = {1 2, 3 4};\nx[1, 1] = 9;\ny = f(x);", line=3,
+    ) == validation_mod.ParameterRoleStatus.MATCH.value)
+    check("plain write inside the loop still refuses", _role_status(
+        _matrix_param_signature(), "x", code="x = {1 2};\nfor i (1, 2, 1);\n  x = x + 1;\nendfor;\ny = f(x);", line=5,
+    ) == validation_mod.ParameterRoleStatus.UNKNOWN.value)
+    precondition_code = "x = {2 1, 1 2};\nx[1, 1] = -5;\ny = invpd(x);"
+    call = validation_mod.extract_generated_calls(precondition_code)[0]
+    checks = validation_mod.check_preconditions(call, code=precondition_code)
+    check("precondition: unverified, never satisfied", checks[0].status == validation_mod.PreconditionStatus.UNVERIFIED.value)
+    check("default resolver still refuses indexed writes",
+          validation_mod._governing_assignment("x", code=precondition_code, line_number=3) is None)
+
+
+def test_147_call_scan_blanks_mid_line_and_threadfor_counters() -> None:
+    def _symbols(code: str) -> list[str]:
+        return [c.symbol for c in validation_mod.extract_generated_calls(code)]
+    check("one-line loop counter is not a call", _symbols("v = zeros(5, 1); for i(1, 5, 1); v[i] = i; endfor;") == ["zeros"])
+    check("threadfor counter and keyword are not calls", _symbols("threadfor i(1, 5, 1);\n v[i] = i;\nthreadendfor;") == [])
+    check("header calls are still extracted", _symbols("x = 1; for i (1, rows(x), 1); endfor;") == ["rows"])
+
+
+def test_148_threaded_block_writes_make_a_variable_untraceable() -> None:
+    code = "x = {2 1, 1 2};\nthreadfor i(1, 2, 1);\n  x = {-1 0, 0 -1};\nthreadendfor;\ny = invpd(x);"
+    call = validation_mod.extract_generated_calls(code)[-1]
+    checks = validation_mod.check_preconditions(call, code=code)
+    check("unverified, not satisfied", checks[0].status == validation_mod.PreconditionStatus.UNVERIFIED.value)
+
+
+def test_149_every_v082_rule_has_recorded_provenance() -> None:
+    for name in ("for_block", "for_header_shape", "for_block_balance", "for_counter_reuse",
+                 "for_counter_assignment", "let_statement_shape"):
+        rule = validation_mod._SYNTAX_RULE_REGISTRY.get(name)
+        check(f"{name} registered", rule is not None and rule.name == name)
+        check(f"{name} has a source", rule is not None and len(rule.source) > 40)
+    emitted: set[str] = set()
+    for code in ("for i (1, 5);\nendfor;", "endfor;", "for i (1,2,1);\n for i (1,2,1);\n endfor;\nendfor;",
+                 "for i (1,2,1);\n i = 1;\nendfor;", "x = {1}';"):
+        emitted |= _rules(code)
+    check("every emitted rule is registered", emitted <= set(validation_mod._SYNTAX_RULE_REGISTRY))
+
+
+def test_150_nested_optional_groups_are_flattened() -> None:
+    """v0.82.0: the real plotsave.rst form. `size[, units[, dpi]]` used to be
+    one name, so a documented 4-argument call was a count mismatch."""
+    check("plotSave", validation_mod._parse_signature_occurrence("filename[, size[, units[, dpi]]]")
+          == (1, 4, ("filename", "size", "units", "dpi")))
+    check("leading optional", validation_mod._parse_signature_occurrence("[myPlot, ]x, y")[1:] == (3, ("myPlot", "x", "y")))
+    check("single optional unchanged", validation_mod._parse_signature_occurrence("y, x, grp[, tsc]") == (3, 4, ("y", "x", "grp", "tsc")))
+
+
+def test_151_documented_variadic_has_no_upper_bound() -> None:
+    lo, hi, _names = validation_mod._parse_signature_occurrence("fmt, ...")
+    check("sprintf(fmt, ...): min 1", lo == 1)
+    check("sprintf(fmt, ...): unbounded", hi == validation_mod.VARIADIC_MAX_ARGS)
+    lo, hi, _names = validation_mod._parse_signature_occurrence("&fct, y, ...[, gCtl]")
+    check("gmmFit: min 2, unbounded", (lo, hi) == (2, validation_mod.VARIADIC_MAX_ARGS))
+    signature = validation_mod.extract_documented_signature(
+        "sprintf", {"syntax_blocks": [".. function:: s = sprintf(fmt, ...)"], "file_path": "sprintf.rst"},
+    )
+    kwargs = {"documented_signatures": {"sprintf": signature}, "documented_symbols": frozenset({"sprintf"})}
+    many = validation_mod.GeneratedCall(symbol="sprintf", argument_count=5, raw_arguments=('"%d"', "1", "2", "3", "4"), line_number=1)
+    none = validation_mod.GeneratedCall(symbol="sprintf", argument_count=0, raw_arguments=(), line_number=1)
+    check("5 args compatible", validation_mod.validate_call(many, **kwargs).argument_count_status
+          == validation_mod.SignatureCompatibility.COMPATIBLE.value)
+    too_few = validation_mod.validate_call(none, **kwargs)
+    check("0 args still incompatible", too_few.argument_count_status == validation_mod.SignatureCompatibility.INCOMPATIBLE.value)
+    check("message says 'or more'", any("1 or more" in i for i in too_few.issues))
+
+
+def test_152_v082_registry_audit_covers_io_network_and_database_functions() -> None:
+    cases = {
+        'plotSave("f.png", {800, 600});': ("plotsave", "file_write"),
+        'putf("a.txt", "hi", 1, 2, 0, 0);': ("putf", "file_write"),
+        'call datasave("x.fmt", x);': ("datasave", "file_write"),
+        'ret = h5write("f.h5", "/d", x);': ("h5write", "file_write"),
+        'x = h5read("f.h5", "/d");': ("h5read", "file_read"),
+        'x = spreadSheetReadM("a.xlsx", "A1", 1);': ("spreadsheetreadm", "file_read"),
+        'x = gdaRead("a.gda", "x");': ("gdaread", "file_read"),
+        'x = fred_load("GNPCA");': ("fred_load", "network"),
+        'x = dbnomics_series("AMECO/ZUTN/EA19");': ("dbnomics_series", "network"),
+        'id = dbAddDatabase("SQLITE");': ("dbadddatabase", "database"),
+        'q = dbExecQuery(id, "select 1");': ("dbexecquery", "database"),
+        "use mylib;": ("use", "source_inclusion"),
+    }
+    for code, (name, category) in cases.items():
+        findings = validation_mod.check_system_statements(code)
+        check(f"{name} found", any(f.name == name for f in findings))
+        check(f"{name} is {category}", any(f.name == name and f.category == category for f in findings))
+    for safe in ("close = 5;\nprint close;", "x = rows(y);", 'p = fred_set("limit", 10);', "s = xlsMakeRange(1, 1);"):
+        check(f"not flagged: {safe!r}", validation_mod.check_system_statements(safe) == ())
+    names = [rule.name for rule in validation_mod._SYSTEM_STATEMENT_REGISTRY]
+    check("no duplicate names", len(names) == len(set(names)))
+
+
+def test_153_registry_entry_inside_a_validated_loop_is_still_found() -> None:
+    code = 'v = zeros(3, 1);\nfor i (1, 3, 1);\n    v[i] = i;\n    plotSave("f.png", {800, 600});\nendfor;'
+    check("plotsave found on line 4", any(f.name == "plotsave" and f.line_number == 4 for f in validation_mod.check_system_statements(code)))
 
 
 def run_tests() -> int:

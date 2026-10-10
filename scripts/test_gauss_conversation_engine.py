@@ -1925,7 +1925,12 @@ def test_125_v081_untraceable_variables_stay_review_required() -> None:
         root = _typed_v081_docs_root(tmp)
         cases = (
             "x = rndu(100, 3);\nb = invpd(x'x);",           # an expression is never evaluated
-            "x = {1,2,3};\nx[1] = 9;\ny = meanc(x);",       # indexed write
+            # v0.82.0 (option B, user-approved): the v0.81.0 case
+            # `x = {1,2,3}; x[1] = 9; y = meanc(x);` is superseded -- an indexed
+            # write cannot change a numeric variable's shape (real G0058
+            # evidence), so meanc's role check now traces `x` and the snippet
+            # is a candidate (test_128). Its precondition tracing still refuses.
+            "x = {1,2,3};\nx.a = 9;\ny = meanc(x);",        # member write
             "x = {1,2,3};\nfor i(1, 3, 1);\n  x = x + 1;\nendfor;\ny = meanc(x);",  # write inside a block
         )
         for code in cases:
@@ -2020,6 +2025,137 @@ def test_122_validation_functions_contain_no_execution_or_write_primitives() -> 
         check(f"{fn.__name__} takes no model/provider argument", not any(
             "model" in p or "provider" in p for p in params
         ))
+
+
+# ---------------------------------------------------------------------------
+# v0.82.0: simple `for` loops reach HANDOFF_CANDIDATE through the bounded
+# `for_block` syntax rule; every NOT_READY protection still holds inside a
+# validated loop body. Readiness policy unchanged.
+# ---------------------------------------------------------------------------
+
+_TYPED_V082_RST = dict(_TYPED_V081_RST, **{
+    "rows.rst": "rows\n====\n\n.. function:: y = rows(x)\n\n    :param x: any valid matrix\n    :type x: NxK matrix\n\n"
+                "    :return y: number of rows\n    :rtype y: scalar\n",
+    "cols.rst": "cols\n====\n\n.. function:: y = cols(x)\n\n    :param x: any valid matrix\n    :type x: NxK matrix\n\n"
+                "    :return y: number of columns\n    :rtype y: scalar\n",
+})
+
+
+def _typed_v082_docs_root(tmp: str) -> str:
+    root = Path(tmp) / "docs"
+    root.mkdir()
+    for name, text in _TYPED_V082_RST.items():
+        (root / name).write_text(text, encoding="utf-8")
+    return str(root)
+
+
+def test_128_v082_simple_for_loops_reach_candidate() -> None:
+    """Live finding 71.3: the first snippet was `review_required` in v0.81.0
+    only because any `for` block capped syntax coverage at partial."""
+    snippets = (
+        "v = zeros(5, 1);\nfor i(1, 5, 1);\n    v[i] = i^2;\nendfor;\nprint v;",
+        "v = zeros(5, 1); for i(1, 5, 1); v[i] = i^2; endfor; print v;",
+        "x = zeros(3, 4);\nfor i (1, rows(x), 1);\n    for j (1, cols(x), 1);\n        x[i,j] = i * j;\n    endfor;\nendfor;\nprint x;",
+        # option B: fill, then a statistic -- the role check looks through the indexed writes
+        "v = zeros(5, 1);\nfor i (1, 5, 1);\n    v[i] = i^2;\nendfor;\nm = meanc(v);\nprint m;",
+        # pre-v0.82.0 this read the indexed write as untraceable (test_125's superseded case)
+        "x = {1,2,3};\nx[1] = 9;\ny = meanc(x);",
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _typed_v082_docs_root(tmp)
+        for code in snippets:
+            result = engine_mod.validate_code(code, docs_root=root)
+            check(f"candidate: {code!r}", result.handoff_readiness.state == "handoff_candidate")
+            check(f"syntax validated: {code!r}", result.pre_execution.syntax.status == "validated")
+
+
+def test_129_v082_protections_inside_a_validated_loop_stay_not_ready() -> None:
+    loop = "v = zeros(5, 1);\nfor i (1, 5, 1);\n    {body}\nendfor;\nprint v;"
+    cases = {
+        "hallucinated symbol": loop.format(body="v[i] = colmean(i);"),
+        "system statement": loop.format(body='dos "dir";\n    v[i] = i;'),
+        "SPD violation through a variable": "x = {1 2, 2 1};\nfor i (1, 2, 1);\n    y = invpd(x);\nendfor;",
+        "SPD violation on a literal": loop.format(body="y = invpd({-1 0, 0 -1});"),
+        "argument count": loop.format(body="v[i] = meanc(i, 2);"),
+        "string where a matrix is documented": loop.format(body='y = meanc("abc");'),
+        "let misuse in the body": loop.format(body="v[i] = {1};"),
+        "assignment to the loop counter": loop.format(body="i = 2;"),
+        "unclosed loop": "v = zeros(5, 1);\nfor i (1, 5, 1);\n    v[i] = i;\nprint v;",
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _typed_v082_docs_root(tmp)
+        for name, code in cases.items():
+            result = engine_mod.validate_code(code, docs_root=root)
+            check(f"not_ready: {name}", result.handoff_readiness.state == "not_ready")
+            check(f"no validation_id-bearing verdict: {name}", result.handoff_readiness.state != "handoff_candidate")
+
+
+def test_130_v082_unmodelled_loops_and_value_tracing_stay_review_required() -> None:
+    cases = {
+        "if inside the loop": "v = zeros(5, 1);\nfor i (1, 5, 1);\n    if i > 2;\n        v[i] = i;\n    endif;\nendfor;\nprint v;",
+        "break inside the loop": "v = zeros(5, 1);\nfor i (1, 5, 1);\n    v[i] = i;\n    break;\nendfor;\nprint v;",
+        "fractional step": "v = zeros(5, 1);\nfor i (1, 3, 0.5);\n    v[i] = i;\nendfor;\nprint v;",
+        "threadfor": "v = zeros(5, 1);\nthreadfor i(1, 5, 1);\n    v[i] = i;\nthreadendfor;\nprint v;",
+        "indexed write before invpd (value no longer traceable)": "x = {2 1, 1 2};\nx[1, 1] = -5;\ny = invpd(x);",
+        "plain write inside the loop": "x = {1,2,3};\nfor i(1, 3, 1);\n  x = x + 1;\nendfor;\ny = meanc(x);",
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _typed_v082_docs_root(tmp)
+        for name, code in cases.items():
+            result = engine_mod.validate_code(code, docs_root=root)
+            check(f"review_required: {name}", result.handoff_readiness.state == "review_required")
+
+
+def test_131_v082_one_line_loop_counter_is_never_a_hallucinated_symbol() -> None:
+    """Pre-v0.82.0, `call_scan_text` blanked a `for` counter only at the start
+    of a line, so the one-line form read `i(` as a call to `i`."""
+    code = "v = zeros(5, 1); for i(1, 5, 1); v[i] = i; endfor; print v;"
+    symbol_check = engine_mod.check_generated_symbols(code, supported_symbols=("zeros",))
+    check("no unknown symbols", symbol_check.unknown_call_symbols == ())
+    check("no ambiguous symbols", symbol_check.user_defined_or_ambiguous_symbols == ())
+
+
+def test_132_v082_io_network_and_database_calls_are_not_ready_through_validate_code() -> None:
+    """Pre-v0.82.0, `x = fred_load("GNPCA");` (a web API call) reached
+    HANDOFF_CANDIDATE against the real docs; v0.82.0's own signature fix
+    briefly made `plotSave(...)` (a file write) one too. Synthetic, fully
+    typed fixtures here, so only the registry can stop them."""
+    pages = {
+        "fred_load.rst": "fred_load\n=========\n\n.. function:: data = fred_load(series_id)\n\n"
+                         "    :param series_id: FRED series id\n    :type series_id: string\n\n"
+                         "    :return data: observations\n    :rtype data: dataframe\n",
+        "plotsave.rst": "plotSave\n========\n\n.. function:: plotSave(filename[, size[, units[, dpi]]])\n\n"
+                        "    :param filename: name of the file\n    :type filename: string\n\n"
+                        "    :param size: dimensions\n    :type size: 2x1 vector\n",
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(_typed_v082_docs_root(tmp))
+        for name, text in pages.items():
+            (root / name).write_text(text, encoding="utf-8")
+        for code, name in (('x = fred_load("GNPCA");', "fred_load"), ('plotSave("f.png", {800, 600});', "plotsave")):
+            result = engine_mod.validate_code(code, docs_root=str(root))
+            check(f"{name}: not_ready", result.handoff_readiness.state == "not_ready")
+            check(f"{name}: named as a system statement",
+                  any(f.name == name for f in result.pre_execution.system_statements))
+
+
+def test_133_v082_param_continuation_lines_are_never_syntax() -> None:
+    """Live finding 71.5: `vcmvcx.rst`'s ddof description was spliced into the
+    extracted Syntax line, because an indented `(...)` line inside a
+    `:param` block was also collected as an alternate call form."""
+    import command_doc_lookup as doc_lookup_mod
+
+    lines = [
+        ".. function:: vc = vcm(m [, ddof])",
+        "              vc = vcx(x [, ddof])",
+        "",
+        "    :param ddof: Optional input,  delta degrees of freedom. The divisor",
+        "          will be :math:`(N - ddof)`. Default = 1 (sample covariance matrix).",
+        "    :type ddof: Scalar",
+    ]
+    syntax = doc_lookup_mod.extract_function_directive_details(lines)["syntax"]
+    check("both call forms kept", syntax == [".. function:: vc = vcm(m [, ddof])", "vc = vcx(x [, ddof])"])
+    check("description not spliced in", not any("N - ddof" in s for s in syntax))
 
 
 def run_tests() -> int:

@@ -4,9 +4,31 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 
 ## Current Objective
 
-None active. **`v0.81.0 — Idiomatic Handoff Candidacy` was released on 2026-10-08:** https://github.com/ec78/gauss-ai/releases/tag/v0.81.0. The design and live results are in `planning/v0.81-idiomatic-handoff-candidacy.md` (§5.1). The next milestone has not been chosen; do not auto-start one.
+**`v0.82.0 — Bounded Control-Flow Syntax Coverage` is committed and tagged `v0.82.0` locally (2026-10-10). It is NOT pushed, and no GitHub release exists yet: waiting for the user's confirmation.** Design, implementation, deviations and live results are in `planning/v0.82-bounded-control-flow-syntax-coverage.md` (§9-§11).
 
-Done:
+To finish, once the user confirms: `git push origin main`, `git push origin v0.82.0`, then `gh release create v0.82.0` with notes drawn from the CHANGELOG `[Unreleased]` v0.82.0 entries. Then record the release here.
+
+v0.82.0 done:
+- code and tests: `for … endfor` validation (nested included), four INVALID `for` rules, the `let_statement_shape` rule, option B category tracing, the vcx Syntax-line fix, nested-optional and variadic `...` signature fixes, and the system-statement registry audit (50 → 213, new `network`/`database`). 23 new tests; full suite (48 files) and `check_release_readiness.py` pass; zero diff in core execution/repair/verification modules.
+- live category `72.1`-`72.16` (2026-10-10, real Claude Code client, uncoaxed, fresh conversation): all 16 pass, no wrong verdict.
+  - The 71.3 shape now reaches handoff_candidate. So do a recurrence, a step-2 loop and loop-fill-then-`meanc` (option B).
+  - All negative probes held: a hallucinated `colmedian`, an `invpd` VIOLATED through a variable, `csvWriteM`, `fred_load` (now `network`) and `filesa`.
+  - Not exercised live (the client chose other shapes): a nested loop, a counting-down loop, an OS command, and review_required for an `if` body with a documented call.
+  - Five minor findings, disclosed in KNOWN_LIMITATIONS (planning §11.3):
+    1. `v = 1 ./ seqa(...)` is untraceable, which steered the client into a loop;
+    2. the no-documented-calls reason reads "generation policy does not permit code generation (block)" on `validate_code`;
+    3. `sprintf.rst`'s `:param ....:` gives variadic args no category;
+    4. partial verdicts don't name the check that was partial (the client guessed wrong twice);
+    5. `gauss_search_docs("compute a covariance matrix")` → ungrounded, no sources (reproduced).
+- README, CHANGELOG, KNOWN_LIMITATIONS and evaluation tracking (benchmark-prompts, benchmark-coverage, `runs/INDEX.md` with its pattern paragraph) are all updated.
+
+Next-milestone candidates (planning §11.4; do not start until the user chooses):
+- a small "verdict explanation" patch: findings 2, 3 and 5;
+- a larger milestone: expression category inference (finding 1) and/or search concept resolution (finding 4), or the public release readiness track below.
+
+Earlier: `v0.81.0 — Idiomatic Handoff Candidacy` was released on 2026-10-08 (https://github.com/ec78/gauss-ai/releases/tag/v0.81.0).
+
+v0.81.0 done:
 - code and tests (48 files pass), version 0.81.0, README/CHANGELOG/KNOWN_LIMITATIONS;
 - re-baseline against the published docs (identical verdicts; found the `vcx` fix, §3.5);
 - live category `71.1`-`71.5` (real Claude Code client, uncoaxed code):
@@ -20,7 +42,7 @@ Follow-ups:
 2. `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1` stays **off**. The user deferred it, and the 71.3 follow-up doesn't need it (it is validator-only). Revisit only for a milestone that wants live real-GAUSS runs through MCP.
 3. The planned 71.x negative probes (hallucinated symbol, SPD violation through a variable, system statement) were not run live. The v0.82.0 handoff folds them into `72.x`.
 
-## Where Things Stand (v0.81.0)
+## Where Things Stand (v0.81.0; v0.82.0 changes are summarized above and in CHANGELOG)
 
 - **MCP server** (`scripts/gauss_mcp_server.py`, stdio, optional `mcp` extra) has 9 base tools:
   - `gauss_session_start`/`close`, `gauss_search_docs`, `gauss_validate_code`, `gauss_execution_prepare(validation_id?)`, `gauss_execution_decide`, and `gauss_repair_start`/`command`/`close`;
@@ -32,31 +54,18 @@ Follow-ups:
   - `_CATEGORY_ACCEPTS` lets a vector or scalar stand in for a documented matrix;
   - `_resolve_ambiguous_by_definition(...)` in `gauss_conversation_engine.py` resolves combined doc pages.
 - **Syntax layer:** `validate_syntax(...)` is a bounded rule set, not a parser. `_detect_unknown_syntax_constructs(...)` reports every `if`/`for`/`do`/`while`/`proc` block as unknown, which caps syntax coverage at PARTIAL. That cap is the 71.3 gap.
-- **Evaluations:** live client evaluations `69.1`, `70.1`–`70.6` and `71.1`–`71.5` passed. The last category number used is **71**.
+- **Evaluations:** live client evaluations `69.1`, `70.1`–`70.6` and `71.1`–`71.5` passed. The last category number used is **72** (`72.1`-`72.16`, v0.82.0).
 - **Tests:** 48 files, all passing, and `check_release_readiness.py` passes. The `mcp` extra is installed in this machine's real Python, so the MCP tests actually run.
 
 ## Known Issues
 
-- See the top paragraph of `KNOWN_LIMITATIONS.md` (v0.81.0). It includes the 71.3 control-flow gap and the two minor 71.5 `gauss_search_docs` findings.
+- See the top paragraph of `KNOWN_LIMITATIONS.md` (v0.82.0), which includes the five 72.x findings. The 71.3 control-flow gap is closed for simple `for` loops.
 - **Claude Code keeps stale tool descriptions** for MCP tools whose names didn't change across a server upgrade. This is cosmetic: the server still accepts new parameters.
 - **Pip debris:** `~auss_ai-0.79.0.dist-info` in `C:\Users\Owner\AppData\Local\Programs\Python\Python312\Lib\site-packages` causes a harmless "Ignoring invalid distribution" warning. It is still present; the user can delete it at any time.
 
 ## Next Milestone Handoff
 
-After v0.81.0, the recommended next milestone is **v0.82.0 — Bounded Control-Flow Syntax Coverage**. On 2026-10-08 the user asked for a handoff prompt for it. Treat it as chosen once a new session receives that prompt.
-
-### Recommended: v0.82.0 — Bounded Control-Flow Syntax Coverage
-
-- **Problem (live finding 71.3):** `v = zeros(5, 1); for i(1, 5, 1); v[i] = i^2; endfor;` is review_required only because the `for` block is an unknown construct.
-- **Goal:** add a provenance-recorded rule (official docs and/or real `tgauss.exe -b`) that validates simple `for i(start, stop, step); ... endfor;` blocks whose bodies hold only constructs the syntax layer already checks. Then that shape can reach HANDOFF_CANDIDATE.
-- **Non-negotiables:**
-  - anything the rule does not fully model stays unknown;
-  - no change to `compute_handoff_readiness` or the evidence-profile thresholds;
-  - nested, `do`/`while`/`if`/`proc` blocks may stay out of scope.
-- **Open design question:** whether indexed writes inside a validated loop should affect tracing (currently any block write makes a variable untraceable).
-- **Possibly folded in:**
-  - the unrun 71.x negative probes, run live as part of `72.x`;
-  - the two minor 71.5 search findings.
+v0.82.0 (the milestone recommended here after v0.81.0) is done; see Current Objective. No next milestone is chosen yet. The candidates are in Current Objective (from planning §11.4) and below.
 
 ### Later: Public release readiness
 

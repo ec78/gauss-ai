@@ -300,8 +300,15 @@ def extract_function_directive_details(lines: list[str]) -> dict[str, list[str]]
                 continue
             if line.startswith((" ", "\t")) and stripped and not stripped.startswith(":"):
                 if current_kind:
+                    # v0.82.0 (live finding 71.5): an indented line inside an
+                    # open `:param`/`:return` block is a continuation of that
+                    # description, never an alternate call form -- it is no
+                    # longer also collected as syntax. `vcmvcx.rst`'s ddof
+                    # description ("will be :math:`(N - ddof)`. Default = 1
+                    # ...") was spliced into the Syntax shown by
+                    # `gauss_search_docs` this way.
                     current_block.append(stripped)
-                if "(" in stripped and ")" in stripped and not stripped.startswith(("E.g", "If ", "=", "-")):
+                elif "(" in stripped and ")" in stripped and not stripped.startswith(("E.g", "If ", "=", "-")):
                     syntax.append(stripped)
     flush_block()
 

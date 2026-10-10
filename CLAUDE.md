@@ -46,13 +46,14 @@ Durable, project-wide guidance for Claude Code sessions in this repository. For 
 
 - Every `test_*.py` file is standalone, deterministic, and network-free by default — no test may require a running Ollama service or a real GAUSS install.
 - Tests use small, synthetic, disposable fixtures (inline `.rst` strings, temp dirs) — **never** point a test at a real machine's own documentation checkout or GAUSS executable.
-- Live/manual validation (real Ollama, real `tgauss.exe -b` spot checks) is a separate, explicitly-labeled evaluation procedure recorded under `evaluations/runs/`, not part of the automated suite.
+- Live/manual validation (real Ollama, real `tgauss.exe -b` spot checks) is a separate, explicitly-labeled evaluation procedure recorded under `evaluations/runs/`, not part of the automated suite. During development, `tgauss.exe -b` spot checks run from a scratch directory are the expected way to gather provenance for a new syntax rule; record the results in the rule's `_SYNTAX_RULE_REGISTRY` entry and the milestone's planning doc.
+- Any change to documentation extraction or signature parsing (`command_doc_lookup.py`, `_parse_signature_occurrence`, `extract_documented_signature`) needs a before/after diff across all published doc pages, plus a verdict diff against HEAD on real docs. Small extraction changes have wide, sometimes masked effects (v0.82.0: one fix changed 131 signatures and exposed a registry gap).
 - Before considering a milestone done: the full existing test suite must pass with zero unexplained diffs in core execution/repair/verification/approval modules. A genuinely obsolete test expectation may be updated, but only with an inline comment explaining why the old behavior was superseded.
 
 ## Project-Wide Constraints (do not relax without explicit user sign-off)
 
 - Generated code — whether written by gauss-ai's own provider or, on the MCP hybrid path, by the calling client's model — never executes except through the controlled execution handoff (deterministic `HANDOFF_CANDIDATE` verdict + explicit, digest-bound, single-use human approval), never writes a file, never applies a repair, and never bypasses any existing approval layer. Code may come from a caller; a readiness verdict never does.
-- Code that reaches outside GAUSS's own memory (OS commands, processes, `#include`/`run`, directory changes, file reads/writes/deletes — see `_SYSTEM_STATEMENT_REGISTRY`) is always `NOT_READY` for the handoff.
+- Code that reaches outside GAUSS's own memory (OS commands, processes, `#include`/`run`, directory changes, file reads/writes/deletes, web APIs such as FRED/DBnomics, databases — see `_SYSTEM_STATEMENT_REGISTRY`) is always `NOT_READY` for the handoff. When a change makes previously-blocked code reach `HANDOFF_CANDIDATE`, check that it isn't I/O that the registry simply doesn't list yet.
 - The model can never override a deterministic safety decision (an execution/repair boundary, a generation gate, a validation/eligibility verdict) — these are computed and enforced entirely outside any provider call.
 - No telemetry. Network calls are allowed only to (a) a model provider the user explicitly enabled, and (b) the explicit, user-invoked `gauss-ai docs fetch` download from docs.aptech.com — never automatic, never per-query.
 

@@ -1208,6 +1208,10 @@ def _render_clarify_message(bundle: GroundingBundle) -> str:
 _LANGUAGE_CONSTRUCT_KEYWORDS = frozenset({
     "if", "elseif", "else", "endif", "do", "while", "until", "endo", "for", "endfor",
     "proc", "endp", "retp", "local", "print", "struct",
+    # v0.82.0: with the counter blanked by `call_scan_text(...)`, a
+    # `threadfor i (1, 5, 1);` header reads as `threadfor (...)` -- a header,
+    # never a call to a function named `threadfor`.
+    "threadfor",
 })
 
 #: v0.73.0: a small, explicitly-verified set of extremely common GAUSS

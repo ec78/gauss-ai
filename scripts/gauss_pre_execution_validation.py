@@ -186,6 +186,10 @@ from typing import Callable
 _LANGUAGE_CONSTRUCT_KEYWORDS = frozenset({
     "if", "elseif", "else", "endif", "do", "while", "until", "endo", "for", "endfor",
     "proc", "endp", "retp", "local", "print", "struct",
+    # v0.82.0: with the counter blanked by `call_scan_text(...)`, a
+    # `threadfor i (1, 5, 1);` header reads as `threadfor (...)` -- a header,
+    # never a call to a function named `threadfor`.
+    "threadfor",
 })
 
 _CALL_SHAPED_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(")
@@ -250,7 +254,15 @@ def _find_matching_paren(line: str, open_idx: int) -> int | None:
 #: filtered out symbol-by-symbol wherever this is used.
 _DECLARATION_LINE_KEYWORDS = frozenset({"proc", "endp", "local"})
 
-_FOR_HEADER_LOOP_VAR_RE = re.compile(r"^(\s*for\s+)([A-Za-z_][A-Za-z0-9_]*)", re.IGNORECASE)
+#: v0.82.0: anchored at ANY statement start (line start or right after a
+#: `;`), not only at the start of a line, and covers `threadfor` too. Found
+#: during v0.82.0 planning: the one-line form real GAUSS accepts
+#: (`v = zeros(5, 1); for i(1, 5, 1); v[i] = i^2; endfor;`, confirmed by
+#: real `tgauss.exe -b`) left `i(` unblanked, so the loop counter was read
+#: as a call to an undocumented function `i`.
+_FOR_HEADER_LOOP_VAR_RE = re.compile(
+    r"((?:^|;)\s*(?:thread)?for\s+)([A-Za-z_][A-Za-z0-9_]*)", re.IGNORECASE,
+)
 
 
 def call_scan_text(line: str) -> str:
@@ -277,7 +289,7 @@ def call_scan_text(line: str) -> str:
     if any(_starts_with_keyword(stripped, keyword) for keyword in _DECLARATION_LINE_KEYWORDS):
         return ""
     scan = _QUOTED_STRING_RE.sub(lambda m: "#" * len(m.group(0)), line)
-    return _FOR_HEADER_LOOP_VAR_RE.sub(lambda m: m.group(1) + " " * len(m.group(2)), scan, count=1)
+    return _FOR_HEADER_LOOP_VAR_RE.sub(lambda m: m.group(1) + " " * len(m.group(2)), scan)
 
 
 # ---------------------------------------------------------------------------
@@ -466,6 +478,18 @@ class DocumentedSignature:
     return_categories: tuple[str, ...] = ()
 
 
+#: v0.82.0: a documented `...` (`fred_load(formula[, ...])`, `gmmFit(&fct, y,
+#: ...[, gCtl])`) means "any number of further arguments" -- it was counted
+#: as exactly one, so `fred_load`'s own documented key/value example (7
+#: arguments) was a count mismatch, masked only by that example being
+#: spliced in from parameter prose (live finding 71.5's extraction defect).
+VARIADIC_MAX_ARGS = 10**6
+
+
+def _bounded_max(names: tuple[str, ...]) -> int:
+    return VARIADIC_MAX_ARGS if "..." in names else len(names)
+
+
 def _parse_signature_occurrence(raw_args: str) -> tuple[int, int, tuple[str, ...]]:
     """`raw_args` is the text between one documented call's own parentheses,
     e.g. `"y, x, grp[, tsc]"` (the real, verified `tscsFit` documented
@@ -475,16 +499,23 @@ def _parse_signature_occurrence(raw_args: str) -> tuple[int, int, tuple[str, ...
     bracket_idx = raw_args.find("[")
     if bracket_idx == -1:
         names = tuple(_split_top_level_args(raw_args))
-        return len(names), len(names), names
+        return len(names) - (1 if "..." in names else 0), _bounded_max(names), names
     required_part = raw_args[:bracket_idx]
     optional_part = raw_args[bracket_idx:].strip()
     if optional_part.startswith("[") and optional_part.endswith("]"):
         optional_part = optional_part[1:-1]
     optional_part = optional_part.lstrip(",").strip()
     required_names = tuple(_split_top_level_args(required_part))
-    optional_names = tuple(_split_top_level_args(optional_part))
+    # v0.82.0: NESTED optional groups (`plotSave(filename[, size[, units[,
+    # dpi]]])`, the real plotsave.rst form) are flattened before splitting.
+    # `_split_top_level_args` treats `[` as nesting, so `size[, units[,
+    # dpi]]` used to come back as ONE name (max 2 args). That was masked
+    # until v0.82.0 by a 4-arg example spliced in from the `dpi` parameter's
+    # prose (the same extraction defect as live finding 71.5); fixing that
+    # alone would have made a valid 4-arg call a false count mismatch.
+    optional_names = tuple(_split_top_level_args(optional_part.replace("[", "").replace("]", "")))
     all_names = required_names + optional_names
-    return len(required_names), len(all_names), all_names
+    return len(required_names) - (1 if "..." in required_names else 0), _bounded_max(all_names), all_names
 
 
 def extract_documented_signature(symbol: str, best_match: dict) -> DocumentedSignature:
@@ -643,7 +674,10 @@ def validate_call(
             argument_count_status=SignatureCompatibility.COMPATIBLE.value, issues=(), source=signature.source,
         )
 
-    allowed = sorted({f"{lo}" if lo == hi else f"{lo}-{hi}" for lo, hi in signature.arg_ranges})
+    allowed = sorted({
+        f"{lo}" if lo == hi else (f"{lo} or more" if hi >= VARIADIC_MAX_ARGS else f"{lo}-{hi}")
+        for lo, hi in signature.arg_ranges
+    })
     return CallValidationResult(
         symbol=call.symbol, documented=True, signature_known=True,
         argument_count_status=SignatureCompatibility.INCOMPATIBLE.value,
@@ -762,6 +796,10 @@ class ArgumentOrigin(str, enum.Enum):
     UNRESOLVED = "unresolved"
 
 
+#: v0.82.0: the categories an indexed write provably leaves unchanged -- see
+#: `resolve_argument_category(...)`.
+_NUMERIC_CATEGORIES = frozenset({TypeClass.SCALAR.value, TypeClass.VECTOR.value, TypeClass.MATRIX.value})
+
 #: A whole right-hand side that is exactly one call, `f(...)`, and nothing
 #: else (no trailing transpose, operator, or index).
 _SINGLE_CALL_RHS_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*\(")
@@ -791,19 +829,44 @@ def resolve_argument_category(
     argument = argument.strip()
     if code is None or not _SIMPLE_IDENTIFIER_RE.fullmatch(argument):
         return unresolved
-    rhs = _governing_assignment(argument.rstrip("'"), code=code, line_number=line_number, column=column)
+    name = argument.rstrip("'")
+    rhs = _governing_assignment(name, code=code, line_number=line_number, column=column)
+    numeric_only = False
+    if rhs is None:
+        # v0.82.0 (option B, user-approved): a second, category-only pass
+        # that looks through indexed writes (`v[i] = i^2;`, typically inside
+        # a preallocate-and-fill loop). Real `tgauss.exe -b` (GAUSS 26.1.4,
+        # 2026-10-08) shows an indexed write cannot change a numeric
+        # variable's shape: a write past the end is `G0058 Index out of
+        # range` in 1-D and 2-D (GAUSS never grows the matrix), `v = {};
+        # v[1] = 1;` is also `G0058`, and storing a string into an element
+        # of a 3x1 numeric matrix leaves it a 3x1 matrix (`type` 6). It is
+        # accepted only for a NUMERIC governing category: `s = "hello";
+        # s[1] = 5;` is `G0071 Type mismatch`, so string targets keep
+        # refusing. The precondition tracer never takes this path.
+        rhs = _governing_assignment(
+            name, code=code, line_number=line_number, column=column, allow_indexed_writes=True,
+        )
+        numeric_only = True
     if rhs is None:
         return unresolved
+    categories: tuple[str, ...] | None = None
+    origin = ArgumentOrigin.UNRESOLVED.value
     category, _shape = infer_literal_category(rhs)
     if category != TypeClass.UNKNOWN.value:
-        return (category,), ArgumentOrigin.TRACED_LITERAL.value
-    call_match = _SINGLE_CALL_RHS_RE.match(rhs)
-    if call_match and signatures:
-        if _find_matching_paren(rhs, call_match.end() - 1) == len(rhs) - 1:
-            signature = signatures.get(call_match.group(1).lower())
-            if signature is not None and signature.return_categories:
-                return signature.return_categories, ArgumentOrigin.DOCUMENTED_RETURN.value
-    return unresolved
+        categories, origin = (category,), ArgumentOrigin.TRACED_LITERAL.value
+    else:
+        call_match = _SINGLE_CALL_RHS_RE.match(rhs)
+        if call_match and signatures:
+            if _find_matching_paren(rhs, call_match.end() - 1) == len(rhs) - 1:
+                signature = signatures.get(call_match.group(1).lower())
+                if signature is not None and signature.return_categories:
+                    categories, origin = signature.return_categories, ArgumentOrigin.DOCUMENTED_RETURN.value
+    if categories is None:
+        return unresolved
+    if numeric_only and not all(c in _NUMERIC_CATEGORIES for c in categories):
+        return unresolved
+    return categories, origin
 
 
 def check_parameter_roles(
@@ -1045,8 +1108,12 @@ def _parse_literal_matrix(text: str) -> list[list[float]] | None:
     return rows
 
 
-_BLOCK_OPEN_KEYWORDS = ("if", "for", "do", "proc", "keyword")
-_BLOCK_CLOSE_KEYWORDS = ("endif", "endfor", "endo", "endp")
+#: v0.82.0: `threadfor`/`threadbegin` (and their closers) added -- found
+#: during v0.82.0 planning to be invisible to every block-aware check, so a
+#: write inside a parallel block was treated as a straight-line top-level
+#: write. Fail-closed: a write inside one now makes the variable untraceable.
+_BLOCK_OPEN_KEYWORDS = ("if", "for", "do", "proc", "keyword", "threadfor", "threadbegin")
+_BLOCK_CLOSE_KEYWORDS = ("endif", "endfor", "endo", "endp", "threadendfor", "threadend")
 
 
 def _masked_statements(code: str):
@@ -1067,6 +1134,7 @@ def _masked_statements(code: str):
 
 def _governing_assignment(
     name: str, *, code: str, line_number: int | None = None, column: int | None = None,
+    allow_indexed_writes: bool = False,
 ) -> str | None:
     """v0.81.0: the ONE shared answer to "which assignment gives `name` its
     value at this call?", used by both the role check and the precondition
@@ -1083,7 +1151,15 @@ def _governing_assignment(
     written in any way this function does not model: inside a control-flow
     or `proc` block, as an indexed or member target (`x[1,1] = 5;`), as one
     of several targets (`{x, y} = f();`), as a `for` loop variable, or by
-    `clear`. A refusal is always an honest gap, never a fabricated value."""
+    `clear`. A refusal is always an honest gap, never a fabricated value.
+
+    v0.82.0: `allow_indexed_writes=True` skips indexed writes (`x[i] = ...`,
+    anywhere, including inside a block) instead of refusing on them. Only
+    the role check's CATEGORY question may ask for this -- see
+    `resolve_argument_category(...)` for the real `tgauss.exe -b` evidence
+    that an indexed write cannot change a numeric variable's shape. The
+    precondition tracer never does: an indexed write changes VALUES, so the
+    governing literal is no longer evidence of what the call receives."""
     target = (
         line_number if line_number is not None else float("inf"),
         column if column is not None else float("inf"),
@@ -1091,11 +1167,12 @@ def _governing_assignment(
     escaped = re.escape(name)
     plain_re = re.compile(rf"^\s*(?:let\s+)?{escaped}\s*=(?!=)", re.IGNORECASE)
     other_write_res = (
-        re.compile(rf"^\s*{escaped}\s*(?:\[|\.[A-Za-z_])", re.IGNORECASE),
+        re.compile(rf"^\s*{escaped}\s*\.[A-Za-z_]", re.IGNORECASE),
         re.compile(rf"^\s*\{{[^}}]*\b{escaped}\b[^}}]*\}}\s*=(?!=)", re.IGNORECASE),
-        re.compile(rf"^\s*for\s+{escaped}\b", re.IGNORECASE),
+        re.compile(rf"^\s*(?:thread)?for\s+{escaped}\b", re.IGNORECASE),
         re.compile(rf"^\s*clear(?:all)?\b.*\b{escaped}\b", re.IGNORECASE),
     )
+    indexed_write_re = re.compile(rf"^\s*{escaped}\s*\[", re.IGNORECASE)
     depth = 0
     governing: str | None = None
     for line_no, _start, end, masked, original in _masked_statements(code):
@@ -1104,6 +1181,10 @@ def _governing_assignment(
             depth = max(0, depth - 1)
             continue
         if any(r.search(masked) for r in other_write_res):
+            return None
+        if indexed_write_re.search(masked):
+            if allow_indexed_writes:
+                continue
             return None
         plain = plain_re.search(masked)
         if plain is not None:
@@ -1535,6 +1616,102 @@ _SYNTAX_RULE_REGISTRY: dict[str, SyntaxRule] = {
         ),
         applies_to="assignment",
     ),
+    "for_block": SyntaxRule(
+        name="for_block",
+        description=(
+            "VALIDATION rule (not a violation): a `for` block is reported as a validated construct only when "
+            "its header is exactly `for NAME (start, stop, step);`, no header argument contains a `{...}` "
+            "literal, a string, or a non-integer numeric literal start/step, it is closed by its own "
+            "`endfor;`, and every statement in its body is a nested `for`/`endfor`, a plain or indexed "
+            "assignment, a `print` statement, or empty. Any other body statement leaves the block an "
+            "unknown construct (`control_flow_block`)."
+        ),
+        source=(
+            "for.rst (official docs), Format: `for i (start, stop, step); ... endfor;`, with `start`, "
+            "`stop` and `step` documented as scalars; user-guide/fundamentals/control-flow.rst \"Counted "
+            "Loops: for\" (\"strictly local\" counter; nested-loop preallocate-and-fill example). Real "
+            "`tgauss.exe -b` (GAUSS 26.1.4, v0.82.0 planning, 2026-10-08) ran the shapes this rule "
+            "validates: no space before `(` (the live 71.3 form), the whole loop on one line, upper-case "
+            "`FOR`/`ENDFOR`, an empty body, a negative step, zero iterations, doubly and triply nested loops "
+            "with distinct counters, and bounds from `rows(x)` or a variable -- all ran. Two shapes run "
+            "SILENTLY in a way the docs do not describe and are deliberately left unknown, not validated: a "
+            "matrix-literal start (`for i ({1, 2}, 3, 1)`), and a fractional step with indexed writes "
+            "(`for i (1, 3, 0.5)` truncates indices and overwrites elements)."
+        ),
+        applies_to="for_block",
+    ),
+    "for_header_shape": SyntaxRule(
+        name="for_header_shape",
+        description=(
+            "A `for` header must be `for NAME (start, stop, step);` -- one counter name, then exactly three "
+            "arguments in parentheses, then the end of the statement."
+        ),
+        source=(
+            "for.rst (official docs), Format. Real `tgauss.exe -b` (GAUSS 26.1.4, 2026-10-08) rejects every "
+            "deviation tried: `for i (1, 5);` and `for i (1, 5, 1, 1);` -> \"G0105 Bad expression or "
+            "missing arguments\"; `for i = 1:3;` -> \"G0008 Syntax error '= 1:3'\"; C-style "
+            "`for (i = 1; i <= 5; i++);` -> \"G0113 Unclosed (\"; a header with no `;` before the body -> "
+            "\"G0063 Operator expected\"."
+        ),
+        applies_to="for_block",
+    ),
+    "for_block_balance": SyntaxRule(
+        name="for_block_balance",
+        description=(
+            "Every `for` must be closed by its own `endfor;`: no `endfor` without an open `for`, no `for` "
+            "left open at the end of the code, no `for` closed by another block's closer, no `endfor` "
+            "closing another open block, and `endfor` must be a statement of its own."
+        ),
+        source=(
+            "Real `tgauss.exe -b` (GAUSS 26.1.4, 2026-10-08): missing `endfor` -> \"G1001 found 'End of "
+            "File' : Expected keyword 'ENDFOR'\"; a stray `endfor` -> \"G1001 found keyword 'ENDFOR' : "
+            "Expected nothing\"; `for ... endo;` -> \"G1001 found keyword 'ENDO' : Expected keyword "
+            "'ENDFOR'\"; `for ...; if ...; endfor; endif;` -> \"G1001 found keyword 'ENDFOR' : Expected "
+            "keyword 'ENDIF'\"; `endfor` with no `;` before the next statement -> \"G0008 Syntax error\"."
+        ),
+        applies_to="for_block",
+    ),
+    "for_counter_reuse": SyntaxRule(
+        name="for_counter_reuse",
+        description="A nested `for` must not reuse the counter name of a `for` that encloses it.",
+        source=(
+            "Real `tgauss.exe -b` (GAUSS 26.1.4, 2026-10-08): `for i (1, 3, 1); for i (1, 3, 1); ... "
+            "endfor; endfor;` -> \"G0736 Duplicate FOR loop counter name\"."
+        ),
+        applies_to="for_block",
+    ),
+    "for_counter_assignment": SyntaxRule(
+        name="for_counter_assignment",
+        description=(
+            "A `for` body must not assign to the counter of any enclosing `for`, as a plain (`i = 2;`) or "
+            "an indexed (`i[1] = 2;`) target."
+        ),
+        source=(
+            "Real `tgauss.exe -b` (GAUSS 26.1.4, 2026-10-08): `i = 2;`, `i[1] = 2;`, and `i = 1;` inside an "
+            "inner loop over `j` all -> \"G0541 Illegal assignment to FOR loop counter\"."
+        ),
+        applies_to="for_block",
+    ),
+    "let_statement_shape": SyntaxRule(
+        name="let_statement_shape",
+        description=(
+            "An assignment whose right-hand side BEGINS with `{` is a `let` statement: its target must be "
+            "a plain name (not indexed or a member), and nothing may follow the closing `}` "
+            "(no transpose, operator, or concatenation)."
+        ),
+        source=(
+            'let.rst (official docs): "If curly braces are used, the let is optional" -- `x = {...}` IS a '
+            "`let`, whose right-hand side is a constant list. Real `tgauss.exe -b` (GAUSS 26.1.4, v0.82.0, "
+            "2026-10-08) rejects every case this rule flags: `x = {1, 2, 3}';`, `let x = {1, 2}';`, "
+            "`x = {1, 2} + 1;`, `x = {2 1, 1 2} * -1;`, `x = {1, 2} .* 3;`, `x = {1 2} ~ {3 4};`, "
+            "`x = {1 2} | {3 4};`, `v[1:2] = {7, 8};`, `v[., 1] = {1, 2, 3};` -> \"G0008 Syntax error\"; "
+            "`v[2] = {5};` -> \"G0047 Rows don't match\" + G0008. A literal that does not begin the "
+            "right-hand side is unaffected and runs: `x = ({1, 2}) + 1;`, `x = 2 * {1, 2};`, "
+            "`x = -{1, 2};`, `y = meanc({1, 2, 3}) + 1;`, `y = sumc({1, 2, 3}');`, and "
+            "`v[., 1] = ones(3, 1);`. Before v0.82.0 every flagged case was reported VALIDATED."
+        ),
+        applies_to="assignment",
+    ),
 }
 
 
@@ -1849,6 +2026,11 @@ def _check_call_argument_missing_separator(masked_code: str) -> list[SyntaxIssue
 #: only a genuine block-opening keyword belongs here.
 _BLOCK_CONSTRUCT_KEYWORDS = frozenset({
     "if", "elseif", "else", "endif", "do", "while", "until", "endo", "for", "endfor", "proc", "endp",
+    # v0.82.0: GAUSS's parallel constructs (threadfor.rst, threadbegin.rst,
+    # threadstat.rst), found during v0.82.0 planning to be completely
+    # invisible here -- `threadfor i(1, 5, 1); ... threadendfor;` was
+    # reported VALIDATED with no unknown construct at all.
+    "threadfor", "threadendfor", "threadbegin", "threadend", "threadstat",
 })
 
 
@@ -1895,15 +2077,303 @@ def _check_bare_multi_token_literals(masked_code: str) -> list[SyntaxIssue]:
     return issues
 
 
-def _detect_unknown_syntax_constructs(code: str) -> tuple[str, ...]:
-    """Deliberately narrow: flags the PRESENCE of a construct this module
-    does not attempt to deterministically validate (a control-flow block
-    body), never a guess at whether that construct is itself well-formed."""
-    for line in code.splitlines():
-        stripped = line.strip().lower()
-        if any(_starts_with_keyword(stripped, keyword) for keyword in _BLOCK_CONSTRUCT_KEYWORDS):
-            return ("control_flow_block",)
-    return ()
+@dataclass(frozen=True)
+class _Statement:
+    """v0.82.0: one `;`-terminated statement of string-masked code. `text`
+    is stripped; `line_number` is the 1-based line its first character is
+    on. `terminated` is False only for trailing text after the last `;`."""
+
+    text: str
+    line_number: int
+    terminated: bool
+
+
+def _split_statements(masked_code: str) -> list[_Statement]:
+    """v0.82.0: splits WHOLE (already string-masked) code on `;`, across
+    lines -- unlike `_masked_statements(...)`, which splits per line -- so a
+    multi-line matrix literal or a statement continued onto the next line is
+    one statement, and a block keyword that follows a `;` mid-line (the
+    one-line loop form) starts its own statement. Empty statements (e.g. the
+    second `;` of `print i;;`, documented in control-flow.rst) are dropped."""
+    statements: list[_Statement] = []
+    start = 0
+    while start < len(masked_code):
+        semi = masked_code.find(";", start)
+        end = len(masked_code) if semi == -1 else semi
+        raw = masked_code[start:end]
+        text = raw.strip()
+        if text:
+            first = start + (len(raw) - len(raw.lstrip()))
+            statements.append(_Statement(
+                text=text, line_number=masked_code.count("\n", 0, first) + 1, terminated=semi != -1,
+            ))
+        start = end + 1
+    return statements
+
+
+def _first_keyword(statement_text: str) -> str | None:
+    """The statement's leading word, lower-cased, when it is a block
+    keyword at a real word boundary (`_starts_with_keyword(...)` -- so
+    `formula = 1;` is never read as `for`); otherwise `None`."""
+    word = _leading_word(statement_text)
+    return word if word in _BLOCK_CONSTRUCT_KEYWORDS else None
+
+
+def _leading_word(statement_text: str) -> str | None:
+    """The statement's leading identifier, lower-cased. Unlike
+    `_starts_with_keyword(...)`, any whitespace -- including a newline --
+    ends the word, which matters for whole statements: `endfor` followed by
+    a newline and no `;` (real G0008) must still be read as `endfor`."""
+    match = _IDENTIFIER_AT_START_RE.match(statement_text)
+    return match.group(0).lower() if match else None
+
+
+#: v0.82.0: which non-`for` opener each closer ends. These blocks are never
+#: modelled (they stay `control_flow_block`); pairing is tracked only so a
+#: `for` closed by one of them, or an `endfor` that closes one of them, is
+#: caught (`for_block_balance`, real G1001 evidence).
+_CLOSER_FOR_OPENER = {
+    "endif": ("if",), "endo": ("do",), "endp": ("proc", "keyword"),
+    "threadendfor": ("threadfor",), "threadend": ("threadbegin",),
+}
+_UNMODELLED_OPENERS = frozenset({"if", "do", "proc", "keyword", "threadfor", "threadbegin"})
+_IDENTIFIER_AT_START_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_FOR_HEADER_START_RE = re.compile(r"for\s+([A-Za-z_][A-Za-z0-9_]*)\s*", re.IGNORECASE)
+
+
+@dataclass
+class _ForFrame:
+    kind: str
+    counter: str | None
+    line_number: int
+    modelled: bool = True
+
+
+def _non_integer_numeric_literal(text: str) -> bool:
+    text = text.strip()
+    if not _NUMERIC_LITERAL_RE.match(text):
+        return False
+    try:
+        return not float(text).is_integer()
+    except ValueError:
+        return True
+
+
+def _assignment_target(statement_text: str) -> tuple[str, bool] | None:
+    """`(target_name, indexed)` for a plain `name = ...` / `let name = ...`
+    or an indexed `name[...] = ...` assignment, else `None`. A member
+    (`s.x = ...`) or multi-target (`{a, b} = ...`) write is `None` -- the
+    `for` body allowlist does not model those."""
+    text = statement_text
+    if _leading_word(text) == "let":
+        text = text[3:].lstrip()
+    match = _IDENTIFIER_AT_START_RE.match(text)
+    if match is None:
+        return None
+    rest = text[match.end():].lstrip()
+    indexed = False
+    if rest.startswith("["):
+        close_idx = _find_matching_bracket(rest, 0)
+        if close_idx is None:
+            return None
+        rest = rest[close_idx + 1:].lstrip()
+        indexed = True
+    if rest.startswith("=") and not rest.startswith("=="):
+        return match.group(0), indexed
+    return None
+
+
+def _check_control_flow_blocks(masked_code: str) -> tuple[list[SyntaxIssue], bool, bool]:
+    """v0.82.0: replaces the pre-v0.82.0 `_detect_unknown_syntax_constructs`,
+    which flagged ANY line STARTING with a block keyword as
+    `control_flow_block` -- so the 71.3 preallocate-and-fill loop capped
+    syntax coverage at PARTIAL, while the same loop written on one line
+    (`...; for i(1, 5, 1); ...`) was not seen at all and got VALIDATED.
+
+    Walks `_split_statements(...)` with a stack of open blocks and returns
+    `(issues, any_for_validated, any_unknown)`:
+
+    - a `for` block is validated only under `for_block`'s registry
+      conditions; its body allowlist is checked against the INNERMOST open
+      block, so a statement inside an `if` inside a `for` is never treated
+      as modelled (the `if` already makes the snippet unknown);
+    - `for_header_shape`, `for_block_balance`, `for_counter_reuse` and
+      `for_counter_assignment` are INVALID, each with real `tgauss.exe -b`
+      provenance;
+    - every non-`for` block keyword (`if`/`do`/`proc`/`thread*`/...) is
+      unknown, exactly as before; pairing is tracked only to catch a
+      `for`/`endfor` mismatch against one of them.
+
+    Never a guess at well-formedness of anything it does not model: those
+    only ever add to `any_unknown`."""
+    issues: list[SyntaxIssue] = []
+    stack: list[_ForFrame] = []
+    any_for_validated = False
+    any_unknown = False
+
+    def issue(rule: str, message: str, line_number: int) -> None:
+        issues.append(SyntaxIssue(rule=rule, message=message, line_number=line_number, construct="for_block"))
+
+    def enclosing_counters() -> set[str]:
+        return {f.counter.lower() for f in stack if f.kind == "for" and f.counter}
+
+    def close_for(frame: _ForFrame) -> None:
+        nonlocal any_for_validated, any_unknown
+        if frame.modelled:
+            any_for_validated = True
+        else:
+            any_unknown = True
+
+    for statement in _split_statements(masked_code):
+        text = statement.text
+        line = statement.line_number
+        keyword = _first_keyword(text)
+
+        if keyword == "for":
+            frame = _ForFrame(kind="for", counter=None, line_number=line)
+            if stack and stack[-1].kind != "for":
+                frame.modelled = False  # inside an unmodelled block
+            header = _FOR_HEADER_START_RE.match(text)
+            if header is None or not text[header.end():].startswith("("):
+                issue("for_header_shape", "`for` header is not `for NAME (start, stop, step);`", line)
+            else:
+                frame.counter = header.group(1)
+                open_idx = header.end()
+                close_idx = _find_matching_paren(text, open_idx)
+                if close_idx is None or text[close_idx + 1:].strip():
+                    issue(
+                        "for_header_shape",
+                        "`for` header must end right after its `(start, stop, step)` list with `;`", line,
+                    )
+                else:
+                    slots = _split_top_level_args_keep_empty(text[open_idx + 1:close_idx])
+                    if any(not s for s in slots):
+                        frame.modelled = False  # an empty slot: undocumented, not modelled
+                    elif len(slots) != 3:
+                        issue(
+                            "for_header_shape",
+                            f"`for` header has {len(slots)} argument(s); the documented form takes exactly "
+                            "three (start, stop, step)", line,
+                        )
+                    elif any("{" in s or "#" in s for s in slots) or any(
+                        _non_integer_numeric_literal(slots[i]) for i in (0, 2)
+                    ):
+                        frame.modelled = False
+                if frame.counter and frame.counter.lower() in enclosing_counters():
+                    issue(
+                        "for_counter_reuse",
+                        f"nested `for` reuses the enclosing loop's counter `{frame.counter}`", line,
+                    )
+            stack.append(frame)
+            continue
+
+        if keyword == "endfor":
+            if text.lower() != "endfor":
+                issue("for_block_balance", "`endfor` must be followed by `;` before the next statement", line)
+            if not stack:
+                issue("for_block_balance", "`endfor` with no open `for`", line)
+                continue
+            if stack[-1].kind != "for":
+                issue("for_block_balance", f"`endfor` closes an open `{stack[-1].kind}` block", line)
+                any_unknown = True
+                for depth in range(len(stack) - 1, -1, -1):
+                    if stack[depth].kind == "for":
+                        del stack[depth:]
+                        break
+                continue
+            close_for(stack.pop())
+            continue
+
+        if keyword in _CLOSER_FOR_OPENER:
+            any_unknown = True
+            if stack and stack[-1].kind == "for":
+                issue("for_block_balance", f"`for` closed by `{keyword}` instead of `endfor`", line)
+                stack.pop()
+                continue
+            if stack and stack[-1].kind in _CLOSER_FOR_OPENER[keyword]:
+                stack.pop()
+            continue
+
+        if keyword in _UNMODELLED_OPENERS:
+            any_unknown = True
+            if stack and stack[-1].kind == "for":
+                stack[-1].modelled = False
+            stack.append(_ForFrame(kind=keyword, counter=None, line_number=line))
+            continue
+
+        if keyword is not None:
+            # `else`/`elseif`/`while`/`until`/`threadstat`: never modelled.
+            any_unknown = True
+            if stack and stack[-1].kind == "for":
+                stack[-1].modelled = False
+            continue
+
+        if not stack or stack[-1].kind != "for":
+            continue  # top-level or inside an unmodelled block: unchanged behaviour
+
+        # A statement directly inside a `for` body: the allowlist.
+        frame = stack[-1]
+        target = _assignment_target(text)
+        if target is not None:
+            if target[0].lower() in enclosing_counters():
+                issue(
+                    "for_counter_assignment",
+                    f"assignment to the `for` loop counter `{target[0]}` inside its loop", line,
+                )
+            continue
+        if _leading_word(text) == "print":
+            continue
+        frame.modelled = False
+
+    for frame in stack:
+        if frame.kind == "for":
+            issue("for_block_balance", "`for` is never closed by `endfor`", frame.line_number)
+    return issues, any_for_validated, any_unknown
+
+
+#: v0.82.0: `[let] target = {` -- the start of a `let` statement (see
+#: `let_statement_shape`'s registry entry). `target` may be indexed or a
+#: member so the rule can flag it; a multi-target `{a, b} = ...` never
+#: matches (it does not start with an identifier).
+_LET_STATEMENT_RE = re.compile(
+    r"^(?:let\s+)?(?P<target>[A-Za-z_][A-Za-z0-9_]*(?:\s*\[[^\]]*\]|\s*\.\s*[A-Za-z_][A-Za-z0-9_]*)*)"
+    r"\s*=(?!=)\s*(?=\{)",
+    re.IGNORECASE,
+)
+
+
+def _check_let_statements(masked_code: str) -> list[SyntaxIssue]:
+    """v0.82.0: see `let_statement_shape`'s registry entry. Operates on
+    whole statements, so a multi-line literal is handled; an unterminated
+    `{` is left to `_check_balanced_delimiters(...)`."""
+    issues: list[SyntaxIssue] = []
+    for statement in _split_statements(masked_code):
+        match = _LET_STATEMENT_RE.match(statement.text)
+        if match is None:
+            continue
+        open_idx = match.end()
+        close_idx = _find_matching_brace(statement.text, open_idx)
+        if close_idx is None:
+            continue
+        target = match.group("target")
+        trailing = statement.text[close_idx + 1:].strip()
+        if "[" in target or "." in target:
+            message = (
+                f"`{target.strip()} = {{...}}` is a `let` statement, whose target must be a plain name -- "
+                "assign the literal to a variable first, or use a call such as `ones(...)`"
+            )
+        elif trailing:
+            message = (
+                f"nothing may follow the `{{...}}` literal that begins a `let` right-hand side (found "
+                f"`{trailing}`) -- assign the literal first, or wrap it in parentheses"
+            )
+        else:
+            continue
+        issues.append(SyntaxIssue(
+            rule="let_statement_shape", message=message, line_number=statement.line_number,
+            construct="assignment",
+        ))
+    return issues
 
 
 def validate_syntax(code: str) -> SyntaxValidationResult:
@@ -1923,6 +2393,7 @@ def validate_syntax(code: str) -> SyntaxValidationResult:
 
     issues.extend(_check_unterminated_strings(code))
     issues.extend(_check_bare_multi_token_literals(masked))
+    issues.extend(_check_let_statements(masked))
 
     dangling_found = False
     for match in _DANGLING_ASSIGNMENT_RE.finditer(masked):
@@ -1950,7 +2421,11 @@ def validate_syntax(code: str) -> SyntaxValidationResult:
     if string_found:
         validated.append("string_literal")
 
-    unknown = _detect_unknown_syntax_constructs(code)
+    block_issues, for_validated, block_unknown = _check_control_flow_blocks(masked)
+    issues.extend(block_issues)
+    if for_validated:
+        validated.append("for_block")
+    unknown = ("control_flow_block",) if block_unknown else ()
 
     if issues:
         status = SyntaxStatus.INVALID.value
@@ -2501,6 +2976,14 @@ class SystemStatementCategory(str, enum.Enum):
     FILE_DELETE = "file_delete"
     FILE_WRITE = "file_write"
     FILE_READ = "file_read"
+    #: v0.82.0: functions that call a remote web API (FRED, DBnomics).
+    #: `fred_load("GNPCA")` reached HANDOFF_CANDIDATE in v0.81.0 -- a
+    #: network call from the controlled execution handoff, contrary to the
+    #: project's "reaches outside GAUSS's own memory -> NOT_READY" rule.
+    NETWORK = "network"
+    #: v0.82.0: GAUSS's database interface (`dbAddDatabase`/`dbOpen`/
+    #: `dbExecQuery`/...), which connects to a local or remote database.
+    DATABASE = "database"
 
 
 @dataclass(frozen=True)
@@ -2548,6 +3031,105 @@ _SYSTEM_STATEMENT_REGISTRY: tuple[SystemStatementRule, ...] = (
         ("xlsreadsa", "xlsreadsa.rst"), ("xlsgetsheetcount", "xlsgetsheetcount.rst"),
         ("fgets", "fgets.rst"), ("fgetsa", "fgetsa.rst"), ("fgetsat", "fgetsat.rst"), ("fgetst", "fgetst.rst"),
         ("filesa", "filesa.rst"), ("fileinfo", "fileinfo.rst"),
+    ),
+    # v0.82.0: a systematic audit of the published docs (2026-10-08, every
+    # page's Purpose/Format text plus the db*/gda*/h5*/fred_*/dbnomics_*
+    # families), prompted by v0.82.0's own signature-extraction fixes making
+    # `plotSave("f.png", {800, 600});` -- a file write -- reach
+    # HANDOFF_CANDIDATE, and by `fred_load(...)` (a web API call) already
+    # reaching it in v0.81.0. Every name below was checked to appear on its
+    # cited page. Deliberately NOT added (no effect outside GAUSS's memory):
+    # `cdir`/`getGAUSSHome` (return a path string), `getnr`/`getnrmt`
+    # (arithmetic), `xlsMakeRange` (builds a range string), `copyMetadata`
+    # (in-memory dataframes), `fred_set`/`dbnomics_set` (build a parameter
+    # map; only the load/search calls reach the network), `new`/`stop`.
+    # A function that merely ACCEPTS a dataset filename as one of its
+    # arguments (`ols("mydata", ...)`, `dstatmt`) is not covered here --
+    # see KNOWN_LIMITATIONS.md.
+    *_rules(
+        SystemStatementCategory.FILE_WRITE,
+        ("plotsave", "plotsave.rst"), ("putf", "putf.rst"), ("datasave", "datasave.rst"), ("datacreatecomplex",
+        "datacreatecomplex.rst"), ("combinated", "combinated.rst"), ("null1", "null1.rst"), ("exctsmpl",
+        "exctsmpl.rst"), ("mergeby", "mergeby.rst"), ("intrleav", "intrleav.rst"), ("sortd", "sortd.rst"),
+        ("dataloop", "dataloopdataloop.rst"), ("renamefile", "renamefile.rst"), ("tempname", "tempname.rst"),
+        ("comlog", "comlog.rst"), ("savewind", "savewind.rst"), ("graphprt", "graphprt.rst"), ("tkf2eps",
+        "tkf2eps.rst"), ("tkf2ps", "tkf2ps.rst"), ("compile", "compile.rst"), ("lib", "lib.rst"), ("errorlog",
+        "errorlog.rst"), ("errorlogat", "errorlogat.rst"), ("warninglog", "warninglog.rst"), ("warninglogat",
+        "warninglogat.rst"), ("fflush", "fflush.rst"), ("gdacreate", "gdacreate.rst"), ("gdaappend",
+        "gdaappend.rst"), ("gdapack", "gdapack.rst"), ("gdasave", "gdasave.rst"), ("gdaupdate",
+        "gdaupdate.rst"), ("gdaupdateandpack", "gdaupdateandpack.rst"), ("gdawrite", "gdawrite.rst"),
+        ("gdawrite32", "gdawrite32.rst"), ("gdawritesome", "gdawritesome.rst"), ("h5create", "h5create.rst"),
+        ("h5write", "h5write.rst"), ("h5writeattribute", "h5writeattribute.rst"), ("spreadsheetwrite",
+        "spreadsheetwrite.rst"),
+    ),
+    *_rules(
+        SystemStatementCategory.FILE_READ,
+        ("asciiload", "asciiload.rst"), ("dataload", "dataload.rst"), ("datalist", "datalist.rst"), ("momentd",
+        "momentd.rst"), ("quantiled", "quantiled.rst"), ("setvars", "setvars.rst"), ("getname", "getname.rst"),
+        ("getnamef", "getnamef.rst"), ("getheaders", "getheaders.rst"), ("iscplxf", "iscplxf.rst"), ("typef",
+        "typef.rst"), ("vartypef", "vartypef.rst"), ("rowsf", "rowsf.rst"), ("colsf", "colsf.rst"), ("indices2",
+        "indices2.rst"), ("rerun", "rerun.rst"), ("searchsourcepath", "searchsourcepath.rst"), ("seekr",
+        "seekr.rst"), ("eof", "eof.rst"), ("fseek", "fseek.rst"), ("ftell", "ftell.rst"), ("fcheckerr",
+        "fcheckerr.rst"), ("fclearerr", "fclearerr.rst"), ("fstrerror", "fstrerror.rst"), ("close",
+        "close.rst"), ("closeall", "closeall.rst"), ("gdadstat", "gdadstat.rst"), ("gdadstatmat",
+        "gdadstatmat.rst"), ("gdagetindex", "gdagetindex.rst"), ("gdagetname", "gdagetname.rst"),
+        ("gdagetnames", "gdagetnames.rst"), ("gdagetorders", "gdagetorders.rst"), ("gdagettype",
+        "gdagettype.rst"), ("gdagettypes", "gdagettypes.rst"), ("gdagetvarinfo", "gdagetvarinfo.rst"),
+        ("gdaiscplx", "gdaiscplx.rst"), ("gdaload", "gdaload.rst"), ("gdaread", "gdaread.rst"),
+        ("gdareadbyindex", "gdareadbyindex.rst"), ("gdareadsome", "gdareadsome.rst"), ("gdareadsparse",
+        "gdareadsparse.rst"), ("gdareadstruct", "gdareadstruct.rst"), ("gdareportvarinfo",
+        "gdareportvarinfo.rst"), ("gdavars", "gdavars.rst"), ("h5open", "h5open.rst"), ("h5read", "h5read.rst"),
+        ("h5readattribute", "h5readattribute.rst"), ("spreadsheetreadm", "spreadsheetreadm.rst"),
+        ("spreadsheetreadsa", "spreadsheetreadsa.rst"), ("xlsgetsheetsize", "xlsgetsheetsize.rst"),
+        ("xlsgetsheettypes", "xlsgetsheettypes.rst"),
+    ),
+    *_rules(
+        SystemStatementCategory.SOURCE_INCLUSION,
+        ("use", "use.rst"), ("includedir", "includedir.rst"),
+    ),
+    *_rules(
+        SystemStatementCategory.PROCESS_LAUNCH,
+        ("edit", "edit.rst"),
+    ),
+    *_rules(
+        SystemStatementCategory.NETWORK,
+        ("fred_load", "fred_load.rst"), ("fred_search", "fred_search.rst"), ("dbnomics_search",
+        "dbnomics_search.rst"), ("dbnomics_series", "dbnomics_series.rst"),
+    ),
+    *_rules(
+        SystemStatementCategory.DATABASE,
+        ("dbadddatabase", "dbadddatabase.rst"), ("dbclose", "dbclose.rst"), ("dbcommit", "dbcommit.rst"),
+        ("dbcreatequery", "dbcreatequery.rst"), ("dbexecqueries", "dbexecqueries.rst"), ("dbexecquery",
+        "dbexecquery.rst"), ("dbgetconnectoptions", "dbgetconnectoptions.rst"), ("dbgetdatabasename",
+        "dbgetdatabasename.rst"), ("dbgetdrivername", "dbgetdrivername.rst"), ("dbgetdrivers",
+        "dbgetdrivers.rst"), ("dbgethostname", "dbgethostname.rst"), ("dbgetlasterrornum",
+        "dbgetlasterrornum.rst"), ("dbgetlasterrortext", "dbgetlasterrortext.rst"), ("dbgetnumericalprecpolicy",
+        "dbgetnumericalprecpolicy.rst"), ("dbgetpassword", "dbgetpassword.rst"), ("dbgetport", "dbgetport.rst"),
+        ("dbgetprimaryindex", "dbgetprimaryindex.rst"), ("dbgettableheaders", "dbgettableheaders.rst"),
+        ("dbgettables", "dbgettables.rst"), ("dbgetusername", "dbgetusername.rst"), ("dbhasfeature",
+        "dbhasfeature.rst"), ("dbisdriveravailable", "dbisdriveravailable.rst"), ("dbisopen", "dbisopen.rst"),
+        ("dbisopenerror", "dbisopenerror.rst"), ("dbisvalid", "dbisvalid.rst"), ("dbopen", "dbopen.rst"),
+        ("dbquerybindvalue", "dbquerybindvalue.rst"), ("dbqueryclear", "dbqueryclear.rst"), ("dbquerycols",
+        "dbquerycols.rst"), ("dbqueryexecprepared", "dbqueryexecprepared.rst"), ("dbqueryfetchallm",
+        "dbqueryfetchallm.rst"), ("dbqueryfetchallsa", "dbqueryfetchallsa.rst"), ("dbqueryfetchonem",
+        "dbqueryfetchonem.rst"), ("dbqueryfetchonesa", "dbqueryfetchonesa.rst"), ("dbqueryfinish",
+        "dbqueryfinish.rst"), ("dbquerygetboundvalue", "dbquerygetboundvalue.rst"), ("dbquerygetboundvalues",
+        "dbquerygetboundvalues.rst"), ("dbquerygetfield", "dbquerygetfield.rst"), ("dbquerygetlasterrornum",
+        "dbquerygetlasterrornum.rst"), ("dbquerygetlasterrortext", "dbquerygetlasterrortext.rst"),
+        ("dbquerygetlastinsertid", "dbquerygetlastinsertid.rst"), ("dbquerygetlastquery",
+        "dbquerygetlastquery.rst"), ("dbquerygetnumrowsaffected", "dbquerygetnumrowsaffected.rst"),
+        ("dbquerygetposition", "dbquerygetposition.rst"), ("dbqueryisactive", "dbqueryisactive.rst"),
+        ("dbqueryisforwardonly", "dbqueryisforwardonly.rst"), ("dbqueryisnull", "dbqueryisnull.rst"),
+        ("dbqueryisselect", "dbqueryisselect.rst"), ("dbqueryisvalid", "dbqueryisvalid.rst"), ("dbqueryprepare",
+        "dbqueryprepare.rst"), ("dbqueryrows", "dbqueryrows.rst"), ("dbqueryseek", "dbqueryseek.rst"),
+        ("dbqueryseekfirst", "dbqueryseekfirst.rst"), ("dbqueryseeklast", "dbqueryseeklast.rst"),
+        ("dbqueryseeknext", "dbqueryseeknext.rst"), ("dbqueryseekprevious", "dbqueryseekprevious.rst"),
+        ("dbquerysetforwardonly", "dbquerysetforwardonly.rst"), ("dbremovedatabase", "dbremovedatabase.rst"),
+        ("dbrollback", "dbrollback.rst"), ("dbsetconnectoptions", "dbsetconnectoptions.rst"),
+        ("dbsetdatabasename", "dbsetdatabasename.rst"), ("dbsethostname", "dbsethostname.rst"),
+        ("dbsetnumericalprecpolicy", "dbsetnumericalprecpolicy.rst"), ("dbsetpassword", "dbsetpassword.rst"),
+        ("dbsetport", "dbsetport.rst"), ("dbsetusername", "dbsetusername.rst"), ("dbtransaction",
+        "dbtransaction.rst"),
     ),
 )
 
