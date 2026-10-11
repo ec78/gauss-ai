@@ -395,3 +395,30 @@ def resolve_derived_concepts(phrase: str, index: DocumentationConceptIndex) -> t
         DerivedConceptMatch(symbol=entry.symbol, source=entry.source, overlap_keywords=overlap, evidence=entry.evidence)
         for _, _, entry, overlap in top
     )
+
+
+def keyword_overlap_entries(
+    phrase: str, index: DocumentationConceptIndex, *, min_overlap: int,
+) -> tuple[tuple[DerivedConceptEntry, tuple[str, ...]], ...]:
+    """v0.83.0: every index entry sharing at least `min_overlap` keywords with
+    `phrase`, with the shared keywords, in index order. Used only by
+    `gauss_conversation_engine.search_candidates(...)` to list labeled
+    CANDIDATE pages for `gauss_search_docs` -- never to resolve or ground
+    anything. `resolve_derived_concepts(...)` above, which does feed grounding
+    (and so the `ask()` generation gate), keeps its own `MIN_KEYWORD_OVERLAP`
+    and is not affected."""
+    phrase_words = {_normalize_word(w) for w in _WORD_RE.findall(phrase)}
+    if not phrase_words:
+        return ()
+    matches = []
+    for entry in index.entries:
+        overlap = tuple(sorted(phrase_words & set(entry.keywords)))
+        if len(overlap) >= min_overlap:
+            matches.append((entry, overlap))
+    return tuple(matches)
+
+
+def normalize_keyword(word: str) -> str:
+    """v0.83.0: the public form of the keyword normalization the index uses,
+    so a caller can compare other documentation text against `keywords`."""
+    return _normalize_word(word)

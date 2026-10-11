@@ -1620,6 +1620,7 @@ class ConversationEngine:
 def validate_generated_code(
     generated_code: tuple[str, ...], *, bundle: "GroundingBundle", gate: "GenerationGateResult",
     docs_root_str: str | None, recent_topics: tuple[str, ...], answer_text: str,
+    no_evidence_issue: str | None = None,
 ) -> "validation_mod.PreExecutionValidationResult":
     """The ONE implementation of the post-generation validation chain
     (v0.80.0: formerly `ConversationEngine._validate_pre_execution`, plus
@@ -1635,7 +1636,10 @@ def validate_generated_code(
     documented signature and collect real companion-symbol names, then
     validates every call-shaped expression actually found in the generated
     code against that evidence. Contains no execution capability: no
-    subprocess, no shell, no file write."""
+    subprocess, no shell, no file write.
+
+    v0.83.0: `no_evidence_issue` is forwarded to `compute_eligibility(...)`
+    (only `validate_code(...)` passes it -- see there)."""
     # v0.73.0 Phase 8: a conservative, best-effort POST-generation check --
     # catches a `colmean(...)`-shaped hallucination even if the model
     # ignored its own prompt instructions. `supported` includes not just
@@ -1795,7 +1799,7 @@ def validate_generated_code(
     eligibility, issues = validation_mod.compute_eligibility(
         generation_policy=gate.policy, unknown_symbols=unknown_symbols, ambiguous_topics=bundle.ambiguous_topics,
         call_validations=call_validations, preconditions=tuple(precondition_checks), code_extraction_ok=True,
-        parameter_role_checks=tuple(parameter_role_checks),
+        parameter_role_checks=tuple(parameter_role_checks), no_evidence_issue=no_evidence_issue,
     )
     coverage = validation_mod.compute_validation_coverage(
         has_code=True, call_validations=call_validations, parameter_role_checks=tuple(parameter_role_checks),
@@ -1805,7 +1809,8 @@ def validate_generated_code(
     readiness = validation_mod.compute_handoff_readiness(
         eligibility=eligibility, unresolved_issues=issues, syntax=syntax, call_validations=call_validations,
         preconditions=tuple(precondition_checks), evidence_profile=evidence_profile,
-        system_statements=system_statements,
+        system_statements=system_statements, coverage=coverage,
+        parameter_role_checks=tuple(parameter_role_checks),
     )
     return validation_mod.PreExecutionValidationResult(
         generation_policy=gate.policy, unknown_symbols=unknown_symbols,
@@ -1813,6 +1818,10 @@ def validate_generated_code(
         preconditions=tuple(precondition_checks), unresolved_issues=issues, eligibility=eligibility,
         parameter_role_checks=tuple(parameter_role_checks), predicted_output=predicted_output,
         coverage=coverage, syntax=syntax, readiness=readiness, system_statements=system_statements,
+        coverage_gaps=validation_mod.compute_coverage_gaps(
+            call_validations=call_validations, parameter_role_checks=tuple(parameter_role_checks),
+            preconditions=tuple(precondition_checks), syntax=syntax,
+        ),
     )
 
 
@@ -1836,6 +1845,16 @@ MAX_VALIDATE_CODE_SYMBOLS = 24
 NO_DOCUMENTED_CALLS_NOTE = (
     "No documented GAUSS function call was found to ground this code against. Code with no documented calls "
     "is never eligible for controlled execution -- there is no documentation evidence to validate it with."
+)
+
+#: v0.83.0: the readiness reason for the same condition (live findings 72.6,
+#: 72.8). On this path the generation gate's `block` means exactly "no called
+#: symbol is documented" -- the condition `NO_DOCUMENTED_CALLS_NOTE` is
+#: attached for -- and nothing was generated, so the gate's own wording
+#: ("generation policy does not permit code generation") misled the client.
+NO_DOCUMENTED_CALLS_ISSUE = (
+    "no documented GAUSS function call was found to ground this code against -- code with no documented calls "
+    "is never eligible for controlled execution"
 )
 
 
@@ -1928,6 +1947,7 @@ def validate_code(code: str, *, docs_root: str | None) -> CodeValidationResult:
     gate = compute_generation_gate(bundle)
     pre_execution = validate_generated_code(
         (code,), bundle=bundle, gate=gate, docs_root_str=docs_root, recent_topics=(), answer_text="",
+        no_evidence_issue=NO_DOCUMENTED_CALLS_ISSUE,
     )
     return CodeValidationResult(
         code=code, generated_code=(code,), called_symbols=tuple(called),
@@ -1937,3 +1957,200 @@ def validate_code(code: str, *, docs_root: str | None) -> CodeValidationResult:
         handoff_readiness=pre_execution.readiness,
         notes=() if matched else (NO_DOCUMENTED_CALLS_NOTE,),
     )
+
+
+# ---------------------------------------------------------------------------
+# v0.83.0: labeled candidate pages for documentation search
+# ---------------------------------------------------------------------------
+#
+# Live finding 72.16: `gauss_search_docs("compute a covariance matrix")`
+# returned `ungrounded` with no sources at all. Two causes (v0.83.0 plan §2.4):
+# an AMBIGUOUS resolution's candidates (e.g. `chol`/`bandchol` for "cholesky
+# decomposition") were computed and then dropped, and a single meaningful
+# keyword ("covariance") is, by design, too little to RESOLVE anything.
+#
+# `search_candidates(...)` lists candidate pages for those cases. It is
+# called only by `gauss_mcp_server.gauss_search_docs`, AFTER `ground_multi(...)`
+# has returned, and reads the finished bundle without changing it. A
+# candidate is never a `GroundingSource`, never part of `GroundingBundle`
+# (which `compute_generation_gate(...)` reads), and `ask()` never calls this
+# function -- so the generation gate is structurally unaffected. Candidates
+# carry only a page's Purpose sentence, never its content: to read a page, a
+# client searches its name, which resolves exactly and is grounded normally.
+
+#: How many candidate pages one search lists.
+MAX_SEARCH_CANDIDATES = 8
+#: Keyword overlap for the fallback listing. Deliberately below
+#: `gauss_doc_concept_index.MIN_KEYWORD_OVERLAP` (2), which governs RESOLUTION
+#: and is unchanged: one keyword is enough to list a labeled candidate, never
+#: to ground an answer.
+SEARCH_CANDIDATE_MIN_OVERLAP = 1
+#: Bounds the purpose sentence carried by each candidate.
+MAX_CANDIDATE_PURPOSE_CHARS = 200
+
+SEARCH_CANDIDATE_NOTE = (
+    "Candidate pages are keyword matches, not grounded answers. Search a candidate's name to read its "
+    "documentation."
+)
+
+
+class CandidateOrigin(str, enum.Enum):
+    #: Listed by an AMBIGUOUS resolution in the grounding bundle.
+    AMBIGUOUS_RESOLUTION = "ambiguous_resolution"
+    #: Listed by the one-keyword fallback (no source and no ambiguity).
+    KEYWORD_MATCH = "keyword_match"
+
+
+@dataclass(frozen=True)
+class SearchCandidate:
+    """One candidate documentation page. `status` is always "candidate" --
+    the label a client sees next to every entry."""
+
+    symbols: tuple[str, ...]
+    citation: str
+    purpose: str
+    origin: str
+    keywords: tuple[str, ...] = ()
+    status: str = "candidate"
+
+
+@dataclass(frozen=True)
+class SearchCandidates:
+    candidates: tuple[SearchCandidate, ...]
+    #: How many pages matched before verification and the cap.
+    matched_pages: int
+    #: True when matched pages beyond the listed ones were left unexamined.
+    truncated: bool
+
+
+_NO_CANDIDATES = SearchCandidates(candidates=(), matched_pages=0, truncated=False)
+_UNDERLINE_RE = re.compile(r"^[-=~^\"'`#*+]{3,}$")
+
+
+def _purpose_sentence(evidence: str) -> str:
+    """The index entry's own Purpose text (or heading), minus its RST heading
+    lines, cut at the first sentence or directive and bounded."""
+    lines = [
+        line.strip() for line in evidence.splitlines()
+        if line.strip() and line.strip().lower() != "purpose" and not _UNDERLINE_RE.match(line.strip())
+    ]
+    text = " ".join(lines)
+    text = text.split(".. ", 1)[0].strip()
+    sentence_end = re.search(r"\.(\s|$)", text)
+    if sentence_end:
+        text = text[: sentence_end.start() + 1]
+    if len(text) > MAX_CANDIDATE_PURPOSE_CHARS:
+        text = text[: MAX_CANDIDATE_PURPOSE_CHARS - 3].rstrip() + "..."
+    return text
+
+
+_RETURN_LINE_RE = re.compile(r"^\s*:(?:return|rtype)\b[^:\n]*:(.*)$", re.MULTILINE)
+
+
+def _candidate_page_rank(docs_root: Path, source: str, keywords: tuple[str, ...]) -> tuple[int, int]:
+    """Two categorical ranks, never a score (lower sorts first):
+
+    1. 0 if the page's own `:return`/`:rtype` lines mention a shared keyword
+       -- the page documents PRODUCING the concept (`vcmvcx.rst`: `:return
+       vc: KxK variance-covariance matrix`) rather than taking it as input
+       (`rndmvn.rst`, "given a covariance matrix"); else 1.
+    2. page kind: 0 = core command reference (a top-level page with a
+       `.. function::` directive), 1 = add-on package reference (a
+       `.. function::` page in a subdirectory, e.g. `tsmt/`), 2 = guides and
+       examples (no `.. function::` directive)."""
+    try:
+        text = (docs_root / source).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return 1, 2
+    return_words = {
+        concept_index_mod.normalize_keyword(w)
+        for line in _RETURN_LINE_RE.findall(text) for w in re.findall(r"[A-Za-z]+", line)
+    }
+    produces = 0 if set(keywords) & return_words else 1
+    if ".. function::" not in text:
+        return produces, 2
+    return produces, 0 if "/" not in source else 1
+
+
+def _candidate_verified(docs_root: Path, symbol: str, source: str) -> bool:
+    """The page must be one a real `command_doc_lookup.lookup(...)` for the
+    symbol returns from the caller's own docs root, with confidence at least
+    `MIN_DOC_CONFIDENCE` -- the same re-verification the alias and derived
+    indexes are held to. The page need not be the lookup's single best match:
+    combined pages (`vcmvcx.rst`) legitimately tie with siblings."""
+    result = doc_lookup_mod.lookup(symbol, docs_root, max_results=3)
+    return any(
+        m.get("file_path") == source and m.get("confidence", 0) >= MIN_DOC_CONFIDENCE
+        for m in result.get("matches") or ()
+    )
+
+
+def search_candidates(query: str, bundle: GroundingBundle, *, docs_root_str: str | None) -> SearchCandidates:
+    """Deterministic. Two modes:
+
+    A. every AMBIGUOUS resolution in `bundle` contributes its candidates, in
+       their existing order;
+    B. only if `bundle` has no source and no ambiguous candidate: index
+       entries sharing the best keyword-overlap count (at least
+       `SEARCH_CANDIDATE_MIN_OVERLAP`) with `query`, ranked by
+       `_candidate_page_rank(...)`, then page path.
+
+    Either way, entries are grouped by page, each page is re-verified with
+    `_candidate_verified(...)` in rank order, and at most
+    `MAX_SEARCH_CANDIDATES` are listed. Never modifies `bundle`."""
+    docs_root = _resolve_docs_root(docs_root_str)
+    if docs_root is None:
+        return _NO_CANDIDATES
+    index = concept_index_mod.get_documentation_concept_index(docs_root)
+
+    # page source -> (symbols, purpose evidence, shared keywords)
+    pages: dict[str, tuple[list[str], str, tuple[str, ...]]] = {}
+
+    def _add(entry, keywords: tuple[str, ...]) -> None:
+        symbols, evidence, existing = pages.setdefault(entry.source, ([], entry.evidence, keywords))
+        if entry.symbol not in symbols:
+            symbols.append(entry.symbol)
+        if len(keywords) > len(existing):
+            pages[entry.source] = (symbols, evidence, keywords)
+
+    ambiguous_names = [
+        name.lower() for r in bundle.resolutions
+        if r.status == ResolutionStatus.AMBIGUOUS.value for name in r.candidates
+    ]
+    if ambiguous_names:
+        origin = CandidateOrigin.AMBIGUOUS_RESOLUTION.value
+        for name in dict.fromkeys(ambiguous_names):
+            for entry in index.entries:
+                if entry.symbol.lower() == name or Path(entry.source).stem.lower() == name:
+                    _add(entry, ())
+        ordered = list(pages)
+    elif not bundle.sources:
+        origin = CandidateOrigin.KEYWORD_MATCH.value
+        matches = concept_index_mod.keyword_overlap_entries(query, index, min_overlap=SEARCH_CANDIDATE_MIN_OVERLAP)
+        # Only the best keyword-overlap count is listed: once some page shares
+        # three of the query's keywords, a page sharing one ("Balances a
+        # square matrix" for a least-squares question) is noise.
+        best = max((len(overlap) for _entry, overlap in matches), default=0)
+        for entry, overlap in matches:
+            if len(overlap) == best:
+                _add(entry, overlap)
+        ordered = sorted(
+            pages, key=lambda src: (*_candidate_page_rank(docs_root, src, pages[src][2]), src.lower()),
+        )
+    else:
+        return _NO_CANDIDATES
+
+    # Verified lazily, in rank order, so a broad keyword costs at most
+    # `MAX_SEARCH_CANDIDATES` successful lookups plus any rejected ones.
+    listed: list[SearchCandidate] = []
+    examined = 0
+    for src in ordered:
+        if len(listed) >= MAX_SEARCH_CANDIDATES:
+            break
+        examined += 1
+        if any(_candidate_verified(docs_root, symbol, src) for symbol in pages[src][0]):
+            listed.append(SearchCandidate(
+                symbols=tuple(pages[src][0]), citation=src, purpose=_purpose_sentence(pages[src][1]),
+                origin=origin, keywords=pages[src][2],
+            ))
+    return SearchCandidates(candidates=tuple(listed), matched_pages=len(ordered), truncated=examined < len(ordered))

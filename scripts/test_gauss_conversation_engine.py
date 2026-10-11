@@ -2158,6 +2158,221 @@ def test_133_v082_param_continuation_lines_are_never_syntax() -> None:
     check("description not spliced in", not any("N - ddof" in s for s in syntax))
 
 
+
+# ---------------------------------------------------------------------------
+# v0.83.0: verdict explanations and search recall
+# ---------------------------------------------------------------------------
+
+_SPRINTF_RST = (
+    "sprintf\n=======\n\n.. function:: s = sprintf(fmt, ...)\n\n"
+    "    :param fmt: A sprintf style format string.\n    :type fmt: string\n\n"
+    "    :param ....: One or more matrices or string arrays to add to the formatted string output.\n"
+    "    :type ....: NxK numeric or string vectors\n\n"
+    "    :return s: contains the formatted version of the input vectors.\n\n    :rtype s: Nx1 string array\n"
+)
+
+
+def test_134_v083_no_documented_call_reason_names_the_real_cause() -> None:
+    """Live findings 72.6/72.8: not_ready was explained as "generation policy
+    does not permit code generation (block)" although nothing was generated."""
+    cases = (
+        "s = 0;\nfor i(1, 20, 1);\n    s = s + i;\nendfor;\nprint s;",
+        "s = 0;\nfor i(1, 100, 1);\n    s = s + i;\n    if s > 50;\n        break;\n    endif;\nendfor;\nprint s;",
+        "x = colmedian({1, 2, 3});",
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _typed_v082_docs_root(tmp)
+        for code in cases:
+            result = engine_mod.validate_code(code, docs_root=root)
+            reasons = result.handoff_readiness.reasons
+            check(f"still not_ready: {code[:20]!r}", result.handoff_readiness.state == "not_ready")
+            check(f"real cause first: {code[:20]!r}", reasons[0] == engine_mod.NO_DOCUMENTED_CALLS_ISSUE)
+            check(f"no generation wording: {code[:20]!r}", not any("generation policy" in r for r in reasons))
+            check(f"note kept: {code[:20]!r}", result.notes == (engine_mod.NO_DOCUMENTED_CALLS_NOTE,))
+        hallucinated = engine_mod.validate_code(cases[2], docs_root=root).handoff_readiness.reasons
+        check("an unknown call is still named too", any("colmedian" in r for r in hallucinated))
+
+
+def test_135_v083_partial_verdicts_name_their_cause() -> None:
+    """Live findings 72.3/72.15: the client guessed the cause of "validation
+    coverage is partial" wrong twice."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _typed_v082_docs_root(tmp)
+        result = engine_mod.validate_code("v = 1 ./ rndu(10, 1);\nmu = meanc(v);", docs_root=root)
+        reasons = result.handoff_readiness.reasons
+        check("72.3 shape still review_required", result.handoff_readiness.state == "review_required")
+        check("names the dimension", any("(incomplete: parameter roles partial)" in r for r in reasons))
+        check("names symbol, argument, parameter and cause", any(
+            "`meanc` argument 1 (parameter `x`): `v` is assigned from an expression (`1 ./ rndu(10, 1)`)" in r
+            for r in reasons
+        ))
+        gaps = result.pre_execution.coverage_gaps
+        check("structured gap", [(g.check, g.symbol, g.argument, g.parameter, g.cause) for g in gaps]
+              == [("parameter_role", "meanc", 1, "x", "argument_assigned_from_expression")])
+
+        looped = engine_mod.validate_code(
+            "x = rndu(10, 1);\nfor i(1, 10, 1);\n    if i > 5;\n        break;\n    endif;\nendfor;\nm = meanc(x);",
+            docs_root=root,
+        )
+        check("if/break with a documented call: review_required", looped.handoff_readiness.state == "review_required")
+        check("syntax reason names the construct",
+              any("unmodelled construct(s): control_flow_block" in r for r in looped.handoff_readiness.reasons))
+        check("syntax gap listed", any(g.check == "syntax" for g in looped.pre_execution.coverage_gaps))
+
+        clean = engine_mod.validate_code("x = rndu(10, 1);\nm = meanc(x);", docs_root=root)
+        check("a candidate has no gaps", clean.handoff_readiness.state == "handoff_candidate"
+              and clean.pre_execution.coverage_gaps == ())
+
+
+def test_136_v083_sprintf_variadic_arguments_are_typed() -> None:
+    """Live finding 72.15. `sprintf.rst` spells its variadic `:param ....:`,
+    so its type never attached; real tgauss.exe -b runs every shape below."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(_typed_v082_docs_root(tmp))
+        (root / "sprintf.rst").write_text(_SPRINTF_RST, encoding="utf-8")
+        candidates = (
+            's = sprintf("%d and %d", 3, 4);\nprint s;',
+            's = sprintf("%d %d", {1, 2}, {3, 4});',
+            's = sprintf("%d", {1 2 3});',
+            's = sprintf("%d", {1 2, 3 4});',
+            's = sprintf("%s", "hello");',
+            'x = rndu(3, 1);\ns = sprintf("%f", x);',
+        )
+        for code in candidates:
+            result = engine_mod.validate_code(code, docs_root=str(root))
+            check(f"candidate: {code!r}", result.handoff_readiness.state == "handoff_candidate")
+        expression = engine_mod.validate_code('s = sprintf("%s=%d", "a" $| "b", {1, 2});', docs_root=str(root))
+        check("an expression argument stays review_required", expression.handoff_readiness.state == "review_required")
+        check("...and says why", any(g.cause == "argument_expression" and g.parameter == "..."
+                                     for g in expression.pre_execution.coverage_gaps))
+
+
+def _page(title: str, purpose: str, function: str, returns: str) -> str:
+    return (f"{title}\n{'=' * len(title)}\n\nPurpose\n-------\n\n{purpose}\n\nFormat\n------\n"
+            f".. function:: {function}\n\n    :param x: data\n    :type x: NxK matrix\n\n    {returns}\n")
+
+
+_SEARCH_PAGES = {
+    "vcmvcx.rst": _page("vcm, vcx", "Computes an estimate of a variance-covariance matrix.", "vc = vcx(x)",
+                        ":return vc: KxK variance-covariance matrix."),
+    "varcovmvarcovx.rst": _page("varCovM, varCovX", "Computes the population variance-covariance matrix.",
+                                "vc = varCovX(x)", ":return vc: KxK variance-covariance matrix."),
+    "rndmvn.rst": _page("rndMVn", "Computes multivariate normal random numbers given a covariance matrix.",
+                        "y = rndMVn(r, mu, x)", ":return y: random draws."),
+    "tsmt/nwmt.rst": _page("nwmt", "Finds the Newey-West covariance matrix.", "vc = nwmt(x)",
+                           ":return vc: Newey-West covariance matrix."),
+    "user-guide/estimation-guide.rst": (
+        "Estimation guide\n================\n\nPurpose\n-------\n\nHow covariance estimates are used in estimation.\n"
+    ),
+    "chol.rst": _page("chol", "Computes the Cholesky decomposition of a symmetric, positive definite matrix.",
+                      "y = chol(x)", ":return y: upper triangular factor."),
+    "bandchol.rst": _page("bandchol", "Computes the Cholesky decomposition of a positive definite banded matrix.",
+                          "y = bandchol(x)", ":return y: banded factor."),
+    "meanc.rst": _page("meanc", "Computes the mean of every column of a matrix.", "y = meanc(x)",
+                       ":return y: column means."),
+}
+
+
+def _search_docs_root(tmp: str) -> str:
+    root = Path(tmp) / "docs"
+    for name, text in _SEARCH_PAGES.items():
+        (root / name).parent.mkdir(parents=True, exist_ok=True)
+        (root / name).write_text(text, encoding="utf-8")
+    return str(root)
+
+
+def test_137_v083_search_candidates_are_labeled_and_ranked() -> None:
+    """Live finding 72.16: a plain question returned nothing."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _search_docs_root(tmp)
+
+        bundle = engine_mod.ground_multi("covariance", docs_root_str=root)
+        found = engine_mod.search_candidates("covariance", bundle, docs_root_str=root)
+        check("mode B: still ungrounded", bundle.status.value == "ungrounded" and bundle.sources == ())
+        check("mode B ranking: produces the concept, core before package; then input-only; then guides",
+              [c.citation for c in found.candidates] == [
+                  "varcovmvarcovx.rst", "vcmvcx.rst", "tsmt/nwmt.rst", "rndmvn.rst", "user-guide/estimation-guide.rst",
+              ])
+        check("every entry labeled a candidate", all(c.status == "candidate" for c in found.candidates))
+        check("keyword origin", all(c.origin == "keyword_match" and c.keywords == ("covariance",) for c in found.candidates))
+        check("purpose sentence, not page content",
+              found.candidates[1].purpose == "Computes an estimate of a variance-covariance matrix.")
+        check("not truncated", (found.matched_pages, found.truncated) == (5, False))
+
+        saved = engine_mod.MAX_SEARCH_CANDIDATES
+        engine_mod.MAX_SEARCH_CANDIDATES = 2
+        try:
+            capped = engine_mod.search_candidates("covariance", bundle, docs_root_str=root)
+        finally:
+            engine_mod.MAX_SEARCH_CANDIDATES = saved
+        check("cap respected and disclosed", len(capped.candidates) == 2 and capped.truncated)
+
+        ambiguous = engine_mod.ground_multi("cholesky decomposition", docs_root_str=root)
+        found = engine_mod.search_candidates("cholesky decomposition", ambiguous, docs_root_str=root)
+        check("mode A: the ambiguous resolution's pages",
+              sorted(c.citation for c in found.candidates) == ["bandchol.rst", "chol.rst"])
+        check("mode A origin", all(c.origin == "ambiguous_resolution" for c in found.candidates))
+
+        grounded = engine_mod.ground_multi("meanc", docs_root_str=root)
+        check("no candidates once grounded", engine_mod.search_candidates("meanc", grounded, docs_root_str=root).candidates == ())
+        nothing = engine_mod.ground_multi("zzz", docs_root_str=root)
+        check("no candidates for no keyword", engine_mod.search_candidates("zzz", nothing, docs_root_str=root).candidates == ())
+        check("no docs root, no candidates",
+              engine_mod.search_candidates("covariance", bundle, docs_root_str=None).candidates == ())
+        check("verification rejects a page the symbol's lookup does not return",
+              not engine_mod._candidate_verified(Path(root), "chol", "vcmvcx.rst"))
+
+
+#: Computed with HEAD's (v0.82.0) `ground_multi`/`compute_generation_gate`
+#: on `_SEARCH_PAGES` BEFORE the v0.83.0 changes, and identical after them:
+#: (status, policy, matched, unmatched, ambiguous).
+_PINNED_GATE = {
+    "covariance": ("ungrounded", "block", (), ("covariance",), ()),
+    "covariance estimates": ("ungrounded", "clarify", (), ("covariance", "estimates"), ("covariance estimates",)),
+    "how is covariance computed": ("grounded", "full", ("estimation-guide",), (), ()),
+    "cholesky decomposition": ("ungrounded", "clarify", (), ("cholesky", "decomposition"), ("cholesky decomposition",)),
+    "meanc": ("grounded", "full", ("meanc",), (), ()),
+    "column means": ("grounded", "full", ("meanc",), (), ()),
+    "write code for the column means": ("grounded", "full", ("meanc",), (), ()),
+    "zzz": ("ungrounded", "block", (), ("zzz",), ()),
+    "what does G0025 mean": ("grounded", "full", ("G0025",), (), ()),
+    "positive definite banded matrix": ("grounded", "full", ("bandchol",), (), ()),
+}
+
+
+def test_138_v083_search_candidates_never_reach_the_generation_gate() -> None:
+    """The ask() generation gate is safety-relevant: candidates must not
+    change it. Three guards: structural, pinned behavior, provider-raises."""
+    import inspect
+
+    check("ask() never calls search_candidates",
+          "search_candidates" not in inspect.getsource(engine_mod.ConversationEngine.ask))
+    for fn in (engine_mod.ground_multi, engine_mod.resolve_concepts, engine_mod.compute_generation_gate):
+        source = inspect.getsource(fn)
+        check(f"{fn.__name__} never reads search candidates",
+              "search_candidates" not in source and "SearchCandidate" not in source)
+    check("GroundingBundle carries no candidates field",
+          not any("candidate" in f for f in engine_mod.GroundingBundle.__dataclass_fields__))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _search_docs_root(tmp)
+        for question, pinned in _PINNED_GATE.items():
+            bundle = engine_mod.ground_multi(question, docs_root_str=root)
+            gate = engine_mod.compute_generation_gate(bundle)
+            actual = (bundle.status.value, gate.policy, bundle.matched_topics, bundle.unmatched_topics,
+                      bundle.ambiguous_topics)
+            check(f"gate unchanged: {question!r}", actual == pinned)
+
+        class ExplodingProvider:
+            def complete(self, messages, *, max_tokens=1024):
+                raise AssertionError("the provider must never be called when generation is blocked")
+
+        engine = engine_mod.ConversationEngine(provider=ExplodingProvider(), docs_root=root)
+        result = engine.ask("Write GAUSS code to compute the covariance of my data.")
+        check("a candidate-only question is still blocked", result.generation_policy in ("block", "clarify"))
+        check("no code generated", result.generated_code == ())
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

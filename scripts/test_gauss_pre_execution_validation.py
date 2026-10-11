@@ -1946,6 +1946,191 @@ def test_153_registry_entry_inside_a_validated_loop_is_still_found() -> None:
     check("plotsave found on line 4", any(f.name == "plotsave" and f.line_number == 4 for f in validation_mod.check_system_statements(code)))
 
 
+
+# ---------------------------------------------------------------------------
+# v0.83.0: verdict explanations (live findings 72.3, 72.6, 72.8, 72.15)
+# ---------------------------------------------------------------------------
+
+
+def _signature(symbol: str, syntax: str, inputs: str, outputs: str = ""):
+    return validation_mod.extract_documented_signature(symbol, {
+        "syntax_blocks": [syntax], "inputs_section": inputs, "outputs_section": outputs, "file_path": f"{symbol}.rst",
+    })
+
+
+_SPRINTF_INPUTS = (
+    ":param fmt: A sprintf style format string.\n:type fmt: string\n"
+    ":param ....: One or more matrices or string arrays.\n:type ....: NxK numeric or string vectors"
+)
+
+
+def test_154_bare_numeric_type_text_means_matrix() -> None:
+    """The real sprintf.rst `:type ....:` text. Without the bare-`numeric`
+    rule it classified as `string` only, so a scalar was a false MISMATCH;
+    real tgauss.exe -b runs scalar, vector, matrix and string arguments."""
+    classify = validation_mod.classify_documented_type
+    check("sprintf variadic type", classify("NxK numeric or string vectors")[0] == ("string", "matrix"))
+    check("bare numeric alone", classify("numeric")[0] == ("matrix",))
+    check("numeric vector unchanged", classify("Nx1 numeric vector")[0] == ("vector",))
+    check("numeric matrix unchanged", classify("NxM numeric matrix")[0] == ("matrix",))
+    check("plural stays unrecognized", classify("One or more matrices")[0] == ("unknown",))
+
+
+def test_155_variadic_name_spellings_are_normalized() -> None:
+    """The published docs spell a variadic `...`, `....` (sprintf.rst,
+    eqsolvemt.rst, and maxlikmtProfileLimits's own signature) and, escaped,
+    with backslashes (gmmfit.rst). Before v0.83.0 the four-dot signature had
+    max 4 arguments and no `...` type line ever attached."""
+    parse = validation_mod._parse_signature_occurrence
+    check("four-dot signature is unbounded",
+          parse("&logl, out0 [, ...., c1]") == (2, validation_mod.VARIADIC_MAX_ARGS, ("&logl", "out0", "...", "c1")))
+    check("three-dot unchanged", parse("fmt, ...")[2] == ("fmt", "..."))
+    types = validation_mod._extract_documented_parameter_types
+    check("four-dot type attaches", types(":type ....: NxK numeric or string vectors") == {"...": "NxK numeric or string vectors"})
+    check("three-dot type attaches (two spaces, as asdf.rst)", types(":type  ...: string") == {"...": "string"})
+    check("escaped type attaches", types(":type \\.\\.\\.: any") == {"...": "any"})
+    check("ordinary name unchanged", types(":type x: NxK matrix") == {"x": "NxK matrix"})
+    sig = _signature("sprintf", ".. function:: s = sprintf(fmt, ...)", _SPRINTF_INPUTS)
+    check("sprintf ... gets string/matrix", sig.parameters[1].category == ("string", "matrix"))
+
+
+def test_156_arguments_align_with_a_documented_variadic() -> None:
+    sig = _signature("sprintf", ".. function:: s = sprintf(fmt, ...)", _SPRINTF_INPUTS)
+    call = validation_mod.GeneratedCall(
+        symbol="sprintf", argument_count=5, raw_arguments=('"%d %d %s %d"', "3", "{1, 2}", '"x"', "{1 2, 3 4}"),
+        line_number=1,
+    )
+    checks = validation_mod.check_parameter_roles(call, signature=sig)
+    check("every argument checked (72.15's third argument was skipped)", len(checks) == 5)
+    check("variadic arguments map to `...`", all(c.parameter_name == "..." for c in checks[1:]))
+    check("scalar, vector, string and matrix all match", all(c.status == "match" for c in checks))
+
+    mid = _signature("eqSolvemt", ".. function:: out = eqSolvemt(&fct, par, ..., c)",
+                     ":type par: scalar\n:type c: struct")
+    call = validation_mod.GeneratedCall(
+        symbol="eqSolvemt", argument_count=5, raw_arguments=("&f", "1", "2", "3", "4"), line_number=1,
+    )
+    checks = validation_mod.check_parameter_roles(call, signature=mid)
+    check("before the `...`: positional", checks[1].parameter_name == "par" and checks[1].status == "match")
+    tail = checks[2:]
+    check("at/after a mid-list `...`: unknown, not checked against `c`",
+          all(c.status == "unknown" and c.unknown_cause == "variadic_position" and c.parameter_name is None for c in tail))
+    check("no false MISMATCH against the struct `c` (pre-v0.83.0 behavior)", not any(c.status == "mismatch" for c in checks))
+
+
+def test_157_every_unknown_role_check_names_its_cause() -> None:
+    sig = _signature(
+        "f", ".. function:: y = f(a, b, c, d)",
+        ":type a: NxK matrix\n:type b: various\n:type d: NxK matrix",
+    )
+    g = _signature("g", ".. function:: y = g(x)", ":type x: scalar")  # no :rtype
+    signatures = {"f": sig, "g": g}
+
+    def roles(code: str):
+        call = validation_mod.extract_generated_calls(code)[-1]
+        return validation_mod.check_parameter_roles(call, signature=sig, code=code, signatures=signatures)
+
+    cases = {
+        "argument_expression": ("y = f(x'x, 1, 1, 1);", 0),
+        "argument_untraced": ("y = f(q, 1, 1, 1);", 0),
+        "argument_assigned_from_expression": ("v = 1 ./ w;\ny = f(v, 1, 1, 1);", 0),
+        "return_type_undocumented": ("v = g(2);\ny = f(v, 1, 1, 1);", 0),
+        "documented_type_unclassified": ("y = f(1, 1, 1, 1);", 1),
+        "documented_type_missing": ("y = f(1, 1, 1, 1);", 2),
+    }
+    for cause, (code, position) in cases.items():
+        found = roles(code)[position]
+        check(f"{cause}: status unknown", found.status == "unknown")
+        check(f"{cause}: cause recorded", found.unknown_cause == cause)
+    detail = roles("v = 1 ./ w;\ny = f(v, 1, 1, 1);")[0].explanation
+    check("explanation quotes the governing expression", "`v` is assigned from an expression (`1 ./ w`)" in detail)
+    check("documented type text quoted", "(various)" in roles("y = f(1, 1, 1, 1);")[1].explanation)
+    check("a MATCH carries no cause", roles("y = f(1, 1, 1, 1);")[3].unknown_cause is None)
+    check("resolve_argument_category keeps its 2-tuple signature",
+          validation_mod.resolve_argument_category("5") == (("scalar",), "literal"))
+
+
+def test_158_no_evidence_issue_changes_text_never_eligibility() -> None:
+    base = dict(unknown_symbols=(), ambiguous_topics=(), call_validations=(), preconditions=(), code_extraction_ok=True)
+    plain = validation_mod.compute_eligibility(generation_policy="block", **base)
+    worded = validation_mod.compute_eligibility(generation_policy="block", no_evidence_issue="no documented call", **base)
+    check("same eligibility", plain[0] == worded[0] == "ineligible")
+    check("ask() wording by default", plain[1] == ("generation policy does not permit code generation (block)",))
+    check("validate_code wording when given", worded[1] == ("no documented call",))
+    clarify = validation_mod.compute_eligibility(generation_policy="clarify", no_evidence_issue="x", **base)
+    check("only `block` is reworded", "generation policy does not permit code generation (clarify)" in clarify[1])
+    full = validation_mod.compute_eligibility(generation_policy="full", no_evidence_issue="x", **base)
+    check("no issue when generation is permitted", full == ("eligible_for_validation", ()))
+
+
+def _role(status: str, position: int = 0, cause: str | None = None):
+    return validation_mod.ParameterRoleCheck(
+        symbol="meanc", position=position, parameter_name="x", documented_category=("matrix",),
+        inferred_category="unknown", status=status, explanation="`v` is assigned from an expression", origin="unresolved",
+        unknown_cause=cause,
+    )
+
+
+def test_159_readiness_reasons_name_the_gap_and_never_change_the_state() -> None:
+    """compute_handoff_readiness(...) reads `coverage`/`parameter_role_checks`
+    only to word its reasons: every state is identical with and without them."""
+    complete, na = "complete", "not_applicable"
+    syntax_ok = validation_mod.SyntaxValidationResult("validated", (), ("assignment",), ())
+    syntax_partial = validation_mod.SyntaxValidationResult("partial", (), ("assignment",), ("control_flow_block",))
+    partial_roles = validation_mod.ValidationCoverage(complete, complete, "partial", na, na, complete)
+    broad = validation_mod.ValidationCoverage(complete, complete, complete, na, na, complete)
+    unknown_role = (_role("unknown", cause="argument_assigned_from_expression"),)
+    table = [
+        ("eligible_for_validation", (), syntax_ok, broad, ()),
+        ("eligible_for_validation", (), syntax_ok, partial_roles, unknown_role),
+        ("eligible_for_validation", (), syntax_partial, partial_roles, unknown_role),
+        ("ineligible", ("x",), syntax_ok, partial_roles, unknown_role),
+        ("requires_clarification", (), syntax_ok, partial_roles, unknown_role),
+    ]
+    for eligibility, issues, syntax, coverage, roles in table:
+        common = dict(eligibility=eligibility, unresolved_issues=issues, syntax=syntax, call_validations=(),
+                      preconditions=(), evidence_profile=validation_mod.compute_evidence_profile(coverage))
+        before = validation_mod.compute_handoff_readiness(**common)
+        after = validation_mod.compute_handoff_readiness(**common, coverage=coverage, parameter_role_checks=roles)
+        check(f"same state: {eligibility}/{coverage.parameter_role_check}/{syntax.status}", before.state == after.state)
+
+    reasons = validation_mod.compute_handoff_readiness(
+        eligibility="eligible_for_validation", unresolved_issues=(), syntax=syntax_partial, call_validations=(),
+        preconditions=(), evidence_profile="partial", coverage=partial_roles, parameter_role_checks=unknown_role,
+    ).reasons
+    check("syntax reason names the construct", any("unmodelled construct(s): control_flow_block" in r for r in reasons))
+    check("profile reason names the dimension", any("(incomplete: parameter roles partial)" in r for r in reasons))
+    check("role gap names symbol, argument and parameter",
+          any("`meanc` argument 1 (parameter `x`): `v` is assigned from an expression" in r for r in reasons))
+
+    many = tuple(_role("unknown", position=i, cause="argument_untraced") for i in range(8))
+    capped = validation_mod._role_gap_reasons(many)
+    check("capped at MAX_ROLE_GAP_REASONS plus a summary", len(capped) == validation_mod.MAX_ROLE_GAP_REASONS + 1)
+    check("summary counts the rest", capped[-1] == "... and 3 more unknown parameter role check(s)")
+    check("matches are never listed", validation_mod._role_gap_reasons((_role("match"),)) == [])
+
+
+def test_160_coverage_gaps_list_only_gaps() -> None:
+    syntax = validation_mod.SyntaxValidationResult("partial", (), (), ("control_flow_block",))
+    calls = (
+        validation_mod.CallValidationResult("f", True, False, "unknown", (), "f.rst"),
+        validation_mod.CallValidationResult("meanc", True, True, "compatible", (), "meanc.rst"),
+    )
+    roles = (_role("unknown", cause="argument_untraced"), _role("unknown", cause="argument_untraced"), _role("match", 1))
+    gaps = validation_mod.compute_coverage_gaps(
+        call_validations=calls, parameter_role_checks=roles, preconditions=(), syntax=syntax,
+    )
+    check("one syntax, one signature, one (deduplicated) role gap",
+          [g.check for g in gaps] == ["syntax", "signature", "parameter_role"])
+    role_gap = gaps[2]
+    check("role gap is structured", (role_gap.symbol, role_gap.argument, role_gap.parameter, role_gap.cause)
+          == ("meanc", 1, "x", "argument_untraced"))
+    check("no gaps for a clean result", validation_mod.compute_coverage_gaps(
+        call_validations=calls[1:], parameter_role_checks=(_role("match"),), preconditions=(),
+        syntax=validation_mod.SyntaxValidationResult("validated", (), (), ()),
+    ) == ())
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

@@ -4,6 +4,28 @@ This file records notable changes to the GAUSS AI framework.
 
 ## [Unreleased]
 
+- Added `v0.83.0` Verdict Explanations and Search Recall: every readiness reason now states its real, deterministic cause, and `gauss_search_docs` returns labeled candidate pages for plain questions. These address four findings from live evaluation 72.x. The `ask()` generation gate is unchanged: its functions are byte-identical to v0.82.0, and tests pin its behavior.
+- **Fixed (72.6, 72.8):** code with no documented call is reported as "no documented GAUSS function call was found to ground this code against". Previously it said "generation policy does not permit code generation (block)" on `gauss_validate_code`, although nothing was generated. The verdict (`not_ready`) is unchanged, and so is `ask()`'s own wording.
+- **Added (72.3, 72.15): partial verdicts name their cause.**
+  - Each unknown parameter-role check records a categorical `RoleUnknownCause`: documented type missing or unclassified, variadic position, argument is an expression, untraced, assigned from an expression, return type undocumented or imprecise.
+  - Readiness reasons name the incomplete coverage dimensions, the unmodelled syntax constructs, and each unknown role check by symbol, argument and parameter (up to 5).
+  - The MCP `gauss_validate_code` response adds `coverage` and a structured, gaps-only `coverage_gaps`.
+  - No readiness state changes because of this.
+- **Fixed (72.15): variadic parameters.**
+  - `....` and `\.\.\.` are now read as `...`, in signatures and `:type` lines. Before this, no `...` type line in the published docs ever attached, and `maxlikmtProfileLimits(&logl, out0 [, ...., c1])` had a maximum of 4 arguments.
+  - A type text with a bare "numeric" (no matrix/vector/scalar word) now means `matrix`. This changes one published `:type` line, `sprintf`'s, and real `tgauss.exe -b` confirms `sprintf` takes scalars, vectors, matrices and strings.
+  - Arguments past a final `...` are now checked against it.
+  - Arguments at or after a `...` that other parameters follow are now `variadic_position` unknowns. Before this they were compared with the wrong parameter, which produced false `not_ready` verdicts for `integrate1d`, `chibarsq` and `maxlikmtProfileLimits` calls.
+  - Net effect: `sprintf` with scalar, vector, matrix or string arguments reaches `HANDOFF_CANDIDATE`.
+  - The all-pages diff found 25 changed signature records, all expected except `asdf`, whose `...` now gets its documented `string` type (planning §9.3).
+- **Added (72.16): search candidates.** When a search is ambiguous or matches only one keyword, `gauss_search_docs` adds `candidates` (page, symbols, Purpose sentence, `status: "candidate"`), `candidates_truncated` and a `candidate_note`. Ranking is categorical:
+  - keyword overlap first;
+  - then whether the page documents *returning* the concept;
+  - then core reference, add-on package, then guide pages.
+
+  At most 8 candidates are listed, each re-verified by a real lookup. `grounding_status` and `sources` are unchanged: a candidate is never grounded. "compute a covariance matrix" now lists `vcx`/`vcm`, `varCovM`/`varCovX` and their siblings.
+- 14 new deterministic tests. Every one, except the gate guards that pin v0.82.0 behavior, fails against v0.82.0. The full suite (48 files) and `check_release_readiness.py` pass, with zero diff on core execution/repair/verification/approval modules.
+- The live client evaluation `73.x` was not run before this release (user decision, 2026-10-11).
 - Added `v0.82.0` Bounded Control-Flow Syntax Coverage: simple `for … endfor` loops (nested included) are validated, so the preallocate-and-fill shape from live finding 71.3 can reach `HANDOFF_CANDIDATE`. `compute_handoff_readiness` and the evidence-profile thresholds are unchanged.
 - **Added the `for_block` syntax rule.** A loop is validated only when its header is exactly `for NAME(a, b, c);`, it is closed by its own `endfor;`, and every body statement is a plain or indexed assignment, a `print`, an empty statement or a nested `for`. Anything else keeps the loop unknown (`control_flow_block`).
   - New INVALID rules: `for_header_shape`, `for_block_balance`, `for_counter_reuse` and `for_counter_assignment`. Each cites its real `tgauss.exe -b` evidence (G0105, G0008, G0113, G0063, G1001, G0736, G0541) in `_SYNTAX_RULE_REGISTRY`.

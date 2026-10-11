@@ -4,36 +4,21 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 
 ## Current Objective
 
-**Next milestone chosen (2026-10-10): `v0.83.0 — Verdict Explanations and Search Recall`. Not started.** The user will start it in a fresh session with a handoff prompt. As usual, the first deliverable is a design doc, `planning/v0.83-verdict-explanations-and-search-recall.md`, for user approval before any implementation.
+**No milestone in progress.** v0.83.0 was released on 2026-10-11, at the user's request, **without** its `73.x` live client evaluation.
+- Optional: run `73.x` after release, in a fresh conversation after reloading the window (CLAUDE.md live-client rules apply). It should revisit plain-language search questions and the 72.6/72.15/72.16 kinds of task, unsteered. Findings go to a later milestone.
+- Per CLAUDE.md, the next milestone is not started until the user chooses it.
+- Still deferred from 72.x: category inference for elementwise expressions (72.3 finding 1, needs its own design). Also deferred: the public release readiness track (below).
 
-It addresses four of the five minor findings from live evaluation 72.x (`planning/v0.82-bounded-control-flow-syntax-coverage.md` §11.3; run files `evaluations/runs/2026-10-10-code-assistant-control-flow-syntax-coverage-run-0NN.md`):
+## Where Things Stand (v0.83.0, released 2026-10-11)
 
-1. **Misleading reason for code with no documented calls (72.6, 72.8).**
-   - What happens: `validate_code` reports the reason as "generation policy does not permit code generation (block)". That is the `ask()` path's gate wording, but nothing was generated; only the attached note (`NO_DOCUMENTED_CALLS_NOTE`) explains the real cause.
-   - What to keep: the `not_ready` verdict itself, which is v0.80.0 policy and correct.
-2. **A partial verdict doesn't name its cause (72.3, 72.15).**
-   - What happens: a role-check gap is reported only as "validation coverage is partial". In 72.x the client guessed the cause wrong twice.
-   - Constraint on the fix: it must be deterministic, categorical text naming the symbol and parameter whose check stayed unknown, and it must not change any verdict.
-   - Where to look: `compute_handoff_readiness` in `scripts/gauss_pre_execution_validation.py`, the MCP response in `gauss_validate_code`, and the `ValidationCoverage` and `ParameterRoleCheck` data.
-3. **`sprintf.rst` names its variadic parameter `:param ....:` (four dots),** so the `:type` never attaches to the signature's `...`, and every variadic argument's role is unknown.
-   - Constraint on the fix: normalize the `....` name (or attach the type some other way). This is a doc-extraction change, so it needs the CLAUDE.md all-pages before/after diff and a verdict diff against HEAD.
-   - Open question: decide whether a documented "NxK numeric or string vectors" type should accept a scalar.
-4. **`gauss_search_docs` returns nothing for a plain question (72.16).** "compute a covariance matrix" comes back `ungrounded` with no sources.
-   - Diagnosed on 2026-10-10: `resolve_concepts` leaves the single word "covariance" unresolved. "variance-covariance matrix" is `ambiguous` across several equally scored pages (`robustse`, `vcx`, …), and an ambiguous resolution yields no sources at all.
-   - So search already has concept resolution (through `ground_multi` → `resolve_concepts` → `gauss_doc_concept_index`). The gap is that weak or ambiguous matches produce nothing. An earlier note said "give search the resolution `ask()` has"; that was wrong.
-   - Constraint on the fix: candidate pages must be clearly labeled as candidates, never as `grounded`.
-   - Keep separate: `ground_multi` also feeds the `ask()` generation gate (`compute_generation_gate`). Any change must leave that gate's behavior unchanged, or change it only with explicit sign-off and tests, because the gate is safety-relevant.
+Released as tag `v0.83.0`. Full detail is in CHANGELOG and `planning/v0.83-verdict-explanations-and-search-recall.md` (§9 has the deviations and both real-docs diffs).
 
-Deliberately deferred:
-- **finding 1 (72.3):** category inference for elementwise expressions (`v = 1 ./ seqa(...)` is untraceable). It changes tracing semantics, so it needs its own design;
-- the public release readiness track (below).
-
-Live evaluation for v0.83.0 is category `73.x`, in the usual live-client style (CLAUDE.md). It should re-ask 72.6 / 72.15 / 72.16-style tasks unsteered, and include plain-language search questions.
-
-## Where Things Stand (v0.82.0, released 2026-10-10)
-
-Released at https://github.com/ec78/gauss-ai/releases/tag/v0.82.0 (tag `v0.82.0`, commit `faa4d63`). Full detail is in CHANGELOG and the v0.82 planning doc.
-
+- **v0.83.0 additions:**
+  - readiness reasons name their real cause;
+  - `RoleUnknownCause` is recorded on every unknown role check;
+  - `gauss_validate_code` returns `coverage` and `coverage_gaps`;
+  - variadic `....`/`\.\.\.` spellings are normalized, a bare "numeric" type means `matrix`, and arguments align with `...`, so `sprintf` reaches candidacy;
+  - `gauss_search_docs` lists labeled `candidates` via `search_candidates(...)`, which is never part of grounding. The `ask()` gate is byte-identical to v0.82.0.
 - **MCP server** (`scripts/gauss_mcp_server.py`, stdio, optional `mcp` extra) has 9 base tools:
   - `gauss_session_start`/`close`, `gauss_search_docs`, `gauss_validate_code`, `gauss_execution_prepare(validation_id?)`, `gauss_execution_decide`, and `gauss_repair_start`/`command`/`close`;
   - opt-in strict-mode `gauss_chat_ask`/`gauss_chat_reset` (only when `chat-provider` ≠ `fake`).
@@ -48,7 +33,7 @@ Released at https://github.com/ec78/gauss-ai/releases/tag/v0.82.0 (tag `v0.82.0`
   - option B: indexed writes are looked through for category only, never for preconditions;
   - expressions are never evaluated.
 - **Signatures:** nested optional groups are flattened, and `...` means no upper bound (`VARIADIC_MAX_ARGS`).
-- **Evaluations:** the last category used is **72** (`72.1`-`72.16`, all pass).
+- **Evaluations:** the last category used is **72** (`72.1`-`72.16`, all pass). `73` is reserved for v0.83.0's post-release live evaluation.
 - **Tests:** 48 files, all passing; `check_release_readiness.py` passes. The `mcp` extra is installed in this machine's real Python, so the MCP tests actually run.
 
 ## Known Issues

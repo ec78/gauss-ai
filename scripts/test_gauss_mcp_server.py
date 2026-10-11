@@ -364,6 +364,52 @@ def test_21_source_never_reimplements_safety_logic() -> None:
     check("prepare takes no code parameter", "code" not in server_mod.gauss_execution_prepare.__code__.co_varnames[:2])
 
 
+
+# ---------------------------------------------------------------------------
+# v0.83.0: verdict explanations and search candidates
+# ---------------------------------------------------------------------------
+
+
+def test_22_validate_code_reports_coverage_and_gaps() -> None:
+    """Live findings 72.3/72.15: the response named no cause for a partial
+    verdict, so the client guessed."""
+    with tempfile.TemporaryDirectory() as tmp:
+        sid = _start(tmp)
+        clean = server_mod.gauss_validate_code(sid, CANDIDATE_CODE)
+        check("coverage reported", clean.get("coverage", {}).get("syntax_check") == "complete")
+        check("no gaps for a candidate", clean.get("coverage_gaps") == [])
+        partial = server_mod.gauss_validate_code(sid, "x = q * 2;\ny = inv(x);")
+        check("review_required", partial["handoff_readiness"]["state"] == "review_required")
+        check("gap names symbol, argument, parameter and cause", any(
+            g["check"] == "parameter_role" and g["symbol"] == "inv" and g["argument"] == 1 and g["parameter"] == "x"
+            and g["cause"] == "argument_assigned_from_expression" for g in partial["coverage_gaps"]
+        ))
+        no_calls = server_mod.gauss_validate_code(sid, "x = {1 2, 3 4};\nprint x;")
+        check("no-calls reason is the real cause",
+              no_calls["handoff_readiness"]["reasons"][0] == engine_mod.NO_DOCUMENTED_CALLS_ISSUE)
+        check("existing keys unchanged", {"issues", "syntax", "preconditions", "notes", "eligibility"} <= set(no_calls))
+
+
+def test_23_search_docs_lists_labeled_candidates_without_changing_grounding() -> None:
+    """Live finding 72.16."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _fixture_docs_root(tmp)
+        (Path(root) / "vcmvcx.rst").write_text(
+            "vcm, vcx\n========\n\nPurpose\n-------\n\nComputes an estimate of a variance-covariance matrix.\n\n"
+            ".. function:: vc = vcx(x)\n\n    :param x: data\n    :type x: NxK matrix\n\n"
+            "    :return vc: KxK variance-covariance matrix.\n",
+            encoding="utf-8",
+        )
+        resp = server_mod.gauss_search_docs("covariance", docs_root=root)
+        check("grounding status untouched", resp["grounding_status"] == "ungrounded" and resp["sources"] == [])
+        check("candidate listed", [c["citation"] for c in resp.get("candidates", [])] == ["vcmvcx.rst"])
+        check("labeled", resp["candidates"][0]["status"] == "candidate")
+        check("note explains candidates", resp.get("candidate_note") == engine_mod.SEARCH_CANDIDATE_NOTE)
+        check("truncation flag present", resp.get("candidates_truncated") is False)
+        grounded = server_mod.gauss_search_docs("What does invpd do?", docs_root=root)
+        check("no candidate keys when grounded", "candidates" not in grounded and "candidate_note" not in grounded)
+
+
 def _run_all() -> int:
     test_fns = [obj for name, obj in sorted(globals().items()) if name.startswith("test_") and callable(obj)]
     for fn in test_fns:

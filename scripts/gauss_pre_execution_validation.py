@@ -357,6 +357,7 @@ _TYPE_KEYWORDS: tuple[tuple[re.Pattern, str], ...] = (
 _SQUARE_SHAPE_RE = re.compile(r"\b([A-Za-z])[xX]\1\b")
 _COLUMN_VECTOR_SHAPE_RE = re.compile(r"\b[A-Za-z0-9]+[xX]1\b")
 _ROW_VECTOR_SHAPE_RE = re.compile(r"\b1[xX][A-Za-z0-9]+\b")
+_BARE_NUMERIC_RE = re.compile(r"\bnumeric\b", re.IGNORECASE)
 
 
 def classify_documented_type(type_text: str | None) -> tuple[tuple[str, ...], str]:
@@ -372,6 +373,21 @@ def classify_documented_type(type_text: str | None) -> tuple[tuple[str, ...], st
     for pattern, category in _TYPE_KEYWORDS:
         if pattern.search(type_text) and category not in categories:
             categories.append(category)
+    # v0.83.0: a BARE "numeric" -- no matrix/array/vector/scalar/integer word
+    # in the same type text -- means a numeric matrix of any shape. Everything
+    # numeric in GAUSS is a matrix (see `_CATEGORY_ACCEPTS`'s citations), and
+    # the one published `:type` line this changes is `sprintf.rst`'s `:type
+    # ....: NxK numeric or string vectors`. Without this rule it classified as
+    # `string` only, so a scalar argument would have been a false MISMATCH;
+    # real `tgauss.exe -b` (GAUSS 26.1.4, 2026-10-10) runs `sprintf` with a
+    # scalar, a row and a column vector, a 2x2 matrix and a string array, and
+    # the page's own example passes a scalar. Measured over the published docs:
+    # exactly one `:type` line and no `:rtype` line is affected. Plural words
+    # ("vectors", "matrices") deliberately stay unrecognized.
+    if _BARE_NUMERIC_RE.search(type_text) and not any(
+        c in categories for c in (TypeClass.MATRIX.value, TypeClass.VECTOR.value, TypeClass.SCALAR.value)
+    ):
+        categories.append(TypeClass.MATRIX.value)
     if not categories:
         categories = [TypeClass.UNKNOWN.value]
     shape = ShapeConstraint.UNKNOWN.value
@@ -410,7 +426,21 @@ class DocumentedParameter:
 #: `&` (GAUSS's own struct-pointer sigil, e.g. `:type &myPlot: struct
 #: pointer`) is stripped from the captured name so it still matches the
 #: plain parameter name recorded in `parameter_names`.
-_PARAM_TYPE_LINE_RE = re.compile(r":type\s+&?([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.+)")
+#: v0.83.0: also matches a variadic name (`...`, and the variant spellings
+#: `_normalize_parameter_name(...)` folds into it) -- before v0.83.0 no `:type
+#: ...:` line in the published docs ever attached to its parameter (live
+#: finding 72.15: `sprintf`'s variadic arguments were always UNKNOWN).
+_PARAM_TYPE_LINE_RE = re.compile(r":type\s+&?([A-Za-z_][A-Za-z0-9_]*|(?:\\?\.){3,4})\s*:\s*(.+)")
+
+#: v0.83.0: the published docs spell a variadic parameter three ways: `...`
+#: (most pages), `....` (`sprintf.rst`/`eqsolvemt.rst` `:param ....:`, and
+#: `mlmt/maxlikmtprofilelimits.rst`'s own signature `(&logl, out0 [, ...., c1])`)
+#: and, RST-escaped, `\.\.\.` (`gmmfit.rst`). All mean the same thing.
+_VARIADIC_NAME_RE = re.compile(r"(?:\\?\.){3,4}")
+
+
+def _normalize_parameter_name(name: str) -> str:
+    return "..." if _VARIADIC_NAME_RE.fullmatch(name.strip()) else name
 
 
 def _extract_documented_parameter_types(inputs_section: str | None) -> dict[str, str]:
@@ -418,7 +448,7 @@ def _extract_documented_parameter_types(inputs_section: str | None) -> dict[str,
         return {}
     type_by_name: dict[str, str] = {}
     for match in _PARAM_TYPE_LINE_RE.finditer(inputs_section):
-        name, type_text = match.group(1), match.group(2).strip()
+        name, type_text = _normalize_parameter_name(match.group(1)), match.group(2).strip()
         if name not in type_by_name:
             type_by_name[name] = type_text
     return type_by_name
@@ -498,14 +528,14 @@ def _parse_signature_occurrence(raw_args: str) -> tuple[int, int, tuple[str, ...
     milestone's own development. Returns `(min_args, max_args, names)`."""
     bracket_idx = raw_args.find("[")
     if bracket_idx == -1:
-        names = tuple(_split_top_level_args(raw_args))
+        names = tuple(_normalize_parameter_name(n) for n in _split_top_level_args(raw_args))
         return len(names) - (1 if "..." in names else 0), _bounded_max(names), names
     required_part = raw_args[:bracket_idx]
     optional_part = raw_args[bracket_idx:].strip()
     if optional_part.startswith("[") and optional_part.endswith("]"):
         optional_part = optional_part[1:-1]
     optional_part = optional_part.lstrip(",").strip()
-    required_names = tuple(_split_top_level_args(required_part))
+    required_names = tuple(_normalize_parameter_name(n) for n in _split_top_level_args(required_part))
     # v0.82.0: NESTED optional groups (`plotSave(filename[, size[, units[,
     # dpi]]])`, the real plotsave.rst form) are flattened before splitting.
     # `_split_top_level_args` treats `[` as nesting, so `size[, units[,
@@ -513,7 +543,9 @@ def _parse_signature_occurrence(raw_args: str) -> tuple[int, int, tuple[str, ...
     # until v0.82.0 by a 4-arg example spliced in from the `dpi` parameter's
     # prose (the same extraction defect as live finding 71.5); fixing that
     # alone would have made a valid 4-arg call a false count mismatch.
-    optional_names = tuple(_split_top_level_args(optional_part.replace("[", "").replace("]", "")))
+    optional_names = tuple(
+        _normalize_parameter_name(n) for n in _split_top_level_args(optional_part.replace("[", "").replace("]", ""))
+    )
     all_names = required_names + optional_names
     return len(required_names) - (1 if "..." in required_names else 0), _bounded_max(all_names), all_names
 
@@ -760,6 +792,64 @@ class ParameterRoleCheck:
     #: `ArgumentOrigin` values. Defaulted so pre-v0.81.0 constructions of
     #: this type remain valid unchanged.
     origin: str = "literal"
+    #: v0.83.0: set only when `status == UNKNOWN` -- one of the
+    #: `RoleUnknownCause` values, naming which side of the comparison stayed
+    #: unknown and why. Defaulted for the same reason as `origin`.
+    unknown_cause: str | None = None
+
+
+class RoleUnknownCause(str, enum.Enum):
+    """v0.83.0: WHY a parameter role check stayed UNKNOWN. Live evaluation
+    72.x (72.3, 72.15) found that a partial verdict's only explanation was
+    "validation coverage is partial", and the client's guess at the cause was
+    wrong both times. Each value is decided by fixed logic in
+    `check_parameter_roles(...)` / `resolve_argument_category_with_cause(...)`
+    -- categorical, never a score, never model-written."""
+
+    #: No `:type` line was matched to this parameter. Usually the docs have
+    #: none; a `&`-prefixed name (`&fct`) is a known exception -- the `:type`
+    #: reader strips the `&` but the signature keeps it, so `:type &fct: ...`
+    #: is never matched (pre-existing; see KNOWN_LIMITATIONS.md).
+    DOCUMENTED_TYPE_MISSING = "documented_type_missing"
+    #: There is a `:type` line, but its text names no known category
+    #: (e.g. `various`, `any`).
+    DOCUMENTED_TYPE_UNCLASSIFIED = "documented_type_unclassified"
+    #: The argument falls at or after a documented `...` that other
+    #: parameters follow (`eqSolvemt(&fct, par, ..., c)`), so which parameter
+    #: it fills cannot be determined positionally.
+    VARIADIC_POSITION = "variadic_position"
+    #: The argument is an expression (`x'x`, `1 ./ v`); expressions are never
+    #: evaluated.
+    ARGUMENT_EXPRESSION = "argument_expression"
+    #: A variable with no single traceable governing assignment in the snippet.
+    ARGUMENT_UNTRACED = "argument_untraced"
+    #: A variable whose governing assignment is an expression.
+    ARGUMENT_ASSIGNED_FROM_EXPRESSION = "argument_assigned_from_expression"
+    #: A variable assigned from `f(...)` whose docs give no classifiable `:rtype`.
+    RETURN_TYPE_UNDOCUMENTED = "return_type_undocumented"
+    #: A documented return category disagrees with the parameter; a documented
+    #: return type is not precise enough to call that a mismatch.
+    RETURN_TYPE_IMPRECISE = "return_type_imprecise"
+
+
+_ROLE_UNKNOWN_CAUSE_TEXT: dict[str, str] = {
+    RoleUnknownCause.DOCUMENTED_TYPE_MISSING.value: "no documented `:type` line was matched to this parameter",
+    RoleUnknownCause.DOCUMENTED_TYPE_UNCLASSIFIED.value: "the documented type ({source}) names no checkable category",
+    RoleUnknownCause.VARIADIC_POSITION.value: (
+        "the argument falls at or after the documented `...`, which other parameters follow, so which "
+        "parameter it fills cannot be determined"
+    ),
+    RoleUnknownCause.ARGUMENT_EXPRESSION.value: "`{argument}` is an expression, and expressions are never evaluated",
+    RoleUnknownCause.ARGUMENT_UNTRACED.value: (
+        "`{argument}` has no single traceable assignment earlier in this code"
+    ),
+    RoleUnknownCause.ARGUMENT_ASSIGNED_FROM_EXPRESSION.value: (
+        "`{argument}` is assigned from an expression (`{rhs}`), which is never evaluated"
+    ),
+    RoleUnknownCause.RETURN_TYPE_UNDOCUMENTED.value: (
+        "`{argument}` is assigned from `{rhs}`, whose documentation gives no checkable return type"
+    ),
+}
 
 
 #: v0.81.0: which literal categories a DOCUMENTED category accepts. Before
@@ -822,13 +912,30 @@ def resolve_argument_category(
     Anything else -- an expression (`x'x`, `x*2`), an untraceable or
     ambiguously-written variable, a call with no `:rtype` -- is
     `((UNKNOWN,), UNRESOLVED)`. Nothing is ever evaluated."""
+    categories, origin, _cause, _rhs = resolve_argument_category_with_cause(
+        argument, code=code, line_number=line_number, column=column, signatures=signatures,
+    )
+    return categories, origin
+
+
+def resolve_argument_category_with_cause(
+    argument: str, *, code: str | None = None, line_number: int | None = None, column: int | None = None,
+    signatures: "dict[str, DocumentedSignature] | None" = None,
+) -> tuple[tuple[str, ...], str, str | None, str | None]:
+    """v0.83.0: `resolve_argument_category(...)` plus, for an UNRESOLVED
+    result, the `RoleUnknownCause` that decided it and the governing
+    right-hand side (when one was found), so a role check can say WHY it
+    stayed unknown. The resolution logic itself is unchanged; this only
+    records which branch refused. Returns `(categories, origin, cause, rhs)`."""
     category, _shape = infer_literal_category(argument)
     if category != TypeClass.UNKNOWN.value:
-        return (category,), ArgumentOrigin.LITERAL.value
-    unresolved = ((TypeClass.UNKNOWN.value,), ArgumentOrigin.UNRESOLVED.value)
+        return (category,), ArgumentOrigin.LITERAL.value, None, None
+    unknown, unresolved_origin = (TypeClass.UNKNOWN.value,), ArgumentOrigin.UNRESOLVED.value
     argument = argument.strip()
-    if code is None or not _SIMPLE_IDENTIFIER_RE.fullmatch(argument):
-        return unresolved
+    if not _SIMPLE_IDENTIFIER_RE.fullmatch(argument):
+        return unknown, unresolved_origin, RoleUnknownCause.ARGUMENT_EXPRESSION.value, None
+    if code is None:
+        return unknown, unresolved_origin, RoleUnknownCause.ARGUMENT_UNTRACED.value, None
     name = argument.rstrip("'")
     rhs = _governing_assignment(name, code=code, line_number=line_number, column=column)
     numeric_only = False
@@ -849,31 +956,35 @@ def resolve_argument_category(
         )
         numeric_only = True
     if rhs is None:
-        return unresolved
+        return unknown, unresolved_origin, RoleUnknownCause.ARGUMENT_UNTRACED.value, None
     categories: tuple[str, ...] | None = None
     origin = ArgumentOrigin.UNRESOLVED.value
+    cause = RoleUnknownCause.ARGUMENT_ASSIGNED_FROM_EXPRESSION.value
     category, _shape = infer_literal_category(rhs)
     if category != TypeClass.UNKNOWN.value:
         categories, origin = (category,), ArgumentOrigin.TRACED_LITERAL.value
     else:
         call_match = _SINGLE_CALL_RHS_RE.match(rhs)
-        if call_match and signatures:
-            if _find_matching_paren(rhs, call_match.end() - 1) == len(rhs) - 1:
-                signature = signatures.get(call_match.group(1).lower())
-                if signature is not None and signature.return_categories:
-                    categories, origin = signature.return_categories, ArgumentOrigin.DOCUMENTED_RETURN.value
+        if call_match and _find_matching_paren(rhs, call_match.end() - 1) == len(rhs) - 1:
+            # The right-hand side IS a single call; only its return type is
+            # missing (or the callee has no signature at all).
+            cause = RoleUnknownCause.RETURN_TYPE_UNDOCUMENTED.value
+            signature = (signatures or {}).get(call_match.group(1).lower())
+            if signature is not None and signature.return_categories:
+                categories, origin = signature.return_categories, ArgumentOrigin.DOCUMENTED_RETURN.value
     if categories is None:
-        return unresolved
+        return unknown, unresolved_origin, cause, rhs
     if numeric_only and not all(c in _NUMERIC_CATEGORIES for c in categories):
-        return unresolved
-    return categories, origin
+        return unknown, unresolved_origin, RoleUnknownCause.ARGUMENT_UNTRACED.value, None
+    return categories, origin, None, None
 
 
 def check_parameter_roles(
     call: GeneratedCall, *, signature: DocumentedSignature | None, code: str | None = None,
     signatures: "dict[str, DocumentedSignature] | None" = None,
 ) -> tuple[ParameterRoleCheck, ...]:
-    """Positional: argument `i` is compared against `signature.parameters[i]`.
+    """Positional: argument `i` is compared against `signature.parameters[i]`
+    (v0.83.0: except around a documented `...` -- see the comment below).
     An extra argument beyond the documented parameter list is skipped here
     (argument-COUNT mismatches are already `validate_call(...)`'s own job,
     per `CallValidationResult`); this function never attempts to guess a
@@ -893,12 +1004,36 @@ def check_parameter_roles(
     known violation."""
     if signature is None or not signature.parameters:
         return ()
+    # v0.83.0: alignment with a documented `...`. Purely positional matching
+    # compared, e.g., the 4th argument of `eqSolvemt(&fct, par, ..., c)` with
+    # `c` whenever two extra arguments were passed, and skipped every argument
+    # past the parameter list, so `sprintf("%d and %d", 3, 4)`'s third
+    # argument was never checked (live finding 72.15). Now: a `...` that is
+    # the LAST parameter takes every argument from its position on; a `...`
+    # that other parameters follow makes every argument from its position on
+    # UNKNOWN (`variadic_position`) -- right-aligning would be a guess, since
+    # the flattened `required` flags after a `...` do not line up.
+    names = [p.name for p in signature.parameters]
+    variadic_at = names.index("...") if "..." in names else None
+    variadic_last = variadic_at is not None and variadic_at == len(names) - 1
     checks: list[ParameterRoleCheck] = []
     for position, argument in enumerate(call.raw_arguments):
-        if position >= len(signature.parameters):
+        if variadic_at is not None and position >= variadic_at and not variadic_last:
+            checks.append(ParameterRoleCheck(
+                symbol=call.symbol, position=position, parameter_name=None,
+                documented_category=(TypeClass.UNKNOWN.value,), inferred_category=TypeClass.UNKNOWN.value,
+                status=ParameterRoleStatus.UNKNOWN.value,
+                explanation=_ROLE_UNKNOWN_CAUSE_TEXT[RoleUnknownCause.VARIADIC_POSITION.value],
+                origin=ArgumentOrigin.UNRESOLVED.value, unknown_cause=RoleUnknownCause.VARIADIC_POSITION.value,
+            ))
+            continue
+        if variadic_last and position >= variadic_at:
+            param = signature.parameters[variadic_at]
+        elif position >= len(signature.parameters):
             break
-        param = signature.parameters[position]
-        inferred, origin = resolve_argument_category(
+        else:
+            param = signature.parameters[position]
+        inferred, origin, argument_cause, rhs = resolve_argument_category_with_cause(
             argument, code=code, line_number=call.line_number, column=call.column, signatures=signatures,
         )
         inferred_label = "/".join(inferred)
@@ -909,17 +1044,27 @@ def check_parameter_roles(
                 f" (traced to `{argument.strip()} = ...`, a call whose documented return type is {inferred_label})"
             ),
         }.get(origin, "")
+        unknown_cause: str | None = None
         if TypeClass.UNKNOWN.value in documented or TypeClass.UNKNOWN.value in inferred:
             status = ParameterRoleStatus.UNKNOWN.value
-            explanation = (
-                "the documented parameter type or this argument's own literal category could not be "
-                "confidently determined"
+            # The documented side is reported first: if it is unknown, no
+            # amount of argument tracing could have completed the check.
+            if TypeClass.UNKNOWN.value in documented:
+                unknown_cause = (
+                    RoleUnknownCause.DOCUMENTED_TYPE_MISSING.value if param.source is None
+                    else RoleUnknownCause.DOCUMENTED_TYPE_UNCLASSIFIED.value
+                )
+            else:
+                unknown_cause = argument_cause or RoleUnknownCause.ARGUMENT_UNTRACED.value
+            explanation = _ROLE_UNKNOWN_CAUSE_TEXT[unknown_cause].format(
+                argument=argument.strip(), rhs=(rhs or "").strip(), source=param.source or "",
             )
         elif all(_category_accepted(c, documented) for c in inferred):
             status = ParameterRoleStatus.MATCH.value
             explanation = f"the argument's category ({inferred_label}){traced} matches the documented parameter type"
         elif origin == ArgumentOrigin.DOCUMENTED_RETURN.value:
             status = ParameterRoleStatus.UNKNOWN.value
+            unknown_cause = RoleUnknownCause.RETURN_TYPE_IMPRECISE.value
             explanation = (
                 f"the argument{traced} may not fit the documented type for parameter {param.name!r} "
                 f"({'/'.join(documented)}); a documented return type is not precise enough to call this a mismatch"
@@ -933,7 +1078,7 @@ def check_parameter_roles(
         checks.append(ParameterRoleCheck(
             symbol=call.symbol, position=position, parameter_name=param.name,
             documented_category=documented, inferred_category=inferred_label,
-            status=status, explanation=explanation, origin=origin,
+            status=status, explanation=explanation, origin=origin, unknown_cause=unknown_cause,
         ))
     return tuple(checks)
 
@@ -2520,12 +2665,16 @@ class PreExecutionValidationResult:
     readiness: "ReadinessResult | None" = None
     #: v0.80.0: any system-touching statement found (forces NOT_READY).
     system_statements: "tuple[SystemStatementFinding, ...]" = ()
+    #: v0.83.0: every evidence gap (see `compute_coverage_gaps(...)`), so a
+    #: client can see why a verdict is not a handoff candidate.
+    coverage_gaps: "tuple[CoverageGap, ...]" = ()
 
 
 def compute_eligibility(
     *, generation_policy: str | None, unknown_symbols: tuple[str, ...], ambiguous_topics: tuple[str, ...],
     call_validations: tuple[CallValidationResult, ...], preconditions: tuple[PreconditionCheck, ...],
     code_extraction_ok: bool, parameter_role_checks: tuple[ParameterRoleCheck, ...] = (),
+    no_evidence_issue: str | None = None,
 ) -> tuple[str, tuple[str, ...]]:
     """Deterministic: reads only its own arguments, calls no model, performs
     no I/O. Rule (deliberately conservative, exactly per this milestone's
@@ -2557,7 +2706,14 @@ def compute_eligibility(
     entirely separate evidence, never fed into this function, so a wrong
     prediction can never make correctly-generated code itself ineligible,
     and this function structurally cannot treat a predicted-output verdict
-    as an execution-eligibility input even by future accident."""
+    as an execution-eligibility input even by future accident.
+
+    v0.83.0: `no_evidence_issue`, when given, is the issue text used for a
+    `block` policy instead of the generation-gate wording. `validate_code(...)`
+    (client-authored code) passes it: there, `block` means "no called symbol
+    is documented" and nothing was generated, so "generation policy does not
+    permit code generation" misled the client (live findings 72.6, 72.8).
+    The eligibility value is identical either way; only the text differs."""
     if ambiguous_topics:
         return (
             ExecutionEligibility.REQUIRES_CLARIFICATION.value,
@@ -2568,7 +2724,10 @@ def compute_eligibility(
     if not code_extraction_ok:
         issues.append("generated code could not be reliably parsed for call/argument extraction")
     if generation_policy not in ("full", "supported_only"):
-        issues.append(f"generation policy does not permit code generation ({generation_policy})")
+        if generation_policy == "block" and no_evidence_issue:
+            issues.append(no_evidence_issue)
+        else:
+            issues.append(f"generation policy does not permit code generation ({generation_policy})")
     if unknown_symbols:
         issues.append(f"unresolved/unsupported call symbol(s): {', '.join(unknown_symbols)}")
     for validation in call_validations:
@@ -3204,10 +3363,105 @@ class ReadinessResult:
     reasons: tuple[str, ...]
 
 
+# v0.83.0: naming a partial verdict's cause (live findings 72.3, 72.15).
+
+_COVERAGE_DIMENSION_LABELS: tuple[tuple[str, str], ...] = (
+    ("symbol_check", "symbols"),
+    ("signature_check", "signatures"),
+    ("parameter_role_check", "parameter roles"),
+    ("precondition_check", "preconditions"),
+    ("syntax_check", "syntax"),
+)
+
+#: How many unknown role checks are spelled out in readiness reasons before
+#: the rest are summarized as "and N more".
+MAX_ROLE_GAP_REASONS = 5
+
+
+def _incomplete_coverage_dimensions(coverage: ValidationCoverage) -> tuple[str, ...]:
+    """The `compute_evidence_profile(...)` dimensions that are neither
+    COMPLETE nor NOT_APPLICABLE -- exactly what keeps the profile short of
+    BROAD (`predicted_output_check` is excluded there, so it is here too)."""
+    done = (CoverageStatus.COMPLETE.value, CoverageStatus.NOT_APPLICABLE.value)
+    return tuple(
+        f"{label} {getattr(coverage, field)}"
+        for field, label in _COVERAGE_DIMENSION_LABELS if getattr(coverage, field) not in done
+    )
+
+
+def _describe_role_gap(check: ParameterRoleCheck) -> str:
+    parameter = f" (parameter `{check.parameter_name}`)" if check.parameter_name else ""
+    return f"`{check.symbol}` argument {check.position + 1}{parameter}: {check.explanation}"
+
+
+def _role_gap_reasons(parameter_role_checks: tuple[ParameterRoleCheck, ...]) -> list[str]:
+    described: list[str] = []
+    for check in parameter_role_checks:
+        if check.status != ParameterRoleStatus.UNKNOWN.value:
+            continue
+        text = f"parameter role unknown -- {_describe_role_gap(check)}"
+        if text not in described:
+            described.append(text)
+    if len(described) > MAX_ROLE_GAP_REASONS:
+        extra = len(described) - MAX_ROLE_GAP_REASONS
+        described = described[:MAX_ROLE_GAP_REASONS] + [f"... and {extra} more unknown parameter role check(s)"]
+    return described
+
+
+@dataclass(frozen=True)
+class CoverageGap:
+    """v0.83.0: one piece of missing validation evidence, structured for a
+    client (the MCP `gauss_validate_code` response's `coverage_gaps`). Lists
+    only GAPS -- never a passing check and never a known violation (those are
+    `issues`/reasons on a NOT_READY verdict)."""
+
+    check: str
+    symbol: str | None
+    argument: int | None
+    parameter: str | None
+    cause: str
+    detail: str
+
+
+def compute_coverage_gaps(
+    *, call_validations: tuple[CallValidationResult, ...], parameter_role_checks: tuple[ParameterRoleCheck, ...],
+    preconditions: tuple[PreconditionCheck, ...], syntax: "SyntaxValidationResult | None",
+) -> tuple[CoverageGap, ...]:
+    """Deterministic, reads only its arguments. Order: syntax, signatures,
+    parameter roles, preconditions; duplicates (the same call written twice)
+    are listed once."""
+    gaps: list[CoverageGap] = []
+    if syntax is not None:
+        for construct in syntax.unknown_constructs:
+            gaps.append(CoverageGap(
+                check="syntax", symbol=None, argument=None, parameter=None, cause="unmodelled_construct",
+                detail=f"`{construct}` is not modelled by the syntax rules",
+            ))
+    for symbol in sorted({cv.symbol for cv in call_validations if cv.documented and not cv.signature_known}):
+        gaps.append(CoverageGap(
+            check="signature", symbol=symbol, argument=None, parameter=None, cause="signature_not_extracted",
+            detail="the documented call signature could not be reliably extracted",
+        ))
+    for check in parameter_role_checks:
+        if check.status == ParameterRoleStatus.UNKNOWN.value:
+            gaps.append(CoverageGap(
+                check="parameter_role", symbol=check.symbol, argument=check.position + 1,
+                parameter=check.parameter_name, cause=check.unknown_cause or "unknown", detail=check.explanation,
+            ))
+    for pre in preconditions:
+        if pre.status == PreconditionStatus.UNVERIFIED.value:
+            gaps.append(CoverageGap(
+                check="precondition", symbol=pre.precondition.symbol, argument=None, parameter=None,
+                cause="runtime_dependent", detail=pre.explanation,
+            ))
+    return tuple(dict.fromkeys(gaps))
+
+
 def compute_handoff_readiness(
     *, eligibility: str, unresolved_issues: tuple[str, ...], syntax: SyntaxValidationResult | None,
     call_validations: tuple[CallValidationResult, ...], preconditions: tuple[PreconditionCheck, ...],
     evidence_profile: str, system_statements: tuple[SystemStatementFinding, ...] = (),
+    coverage: ValidationCoverage | None = None, parameter_role_checks: tuple[ParameterRoleCheck, ...] = (),
 ) -> ReadinessResult:
     """Deterministic, provider-independent: reads only its own arguments,
     calls no model, performs no I/O -- the model can never influence this
@@ -3233,6 +3487,14 @@ def compute_handoff_readiness(
        `UNVERIFIED` (a real, runtime-dependent gap); or the overall
        evidence profile is not `BROAD`.
     4. No violation and no gap -> `HANDOFF_CANDIDATE`.
+
+    v0.83.0: `coverage` and `parameter_role_checks` (both optional) are read
+    ONLY to word the step-3 reasons -- which coverage dimensions fell short,
+    and each role check that stayed unknown with its `RoleUnknownCause` -- so
+    a client can see why a verdict is `REVIEW_REQUIRED` (live findings 72.3,
+    72.15, where "validation coverage is partial" was guessed wrong twice).
+    No branch above or below reads them; the state is decided exactly as
+    before.
     """
     if system_statements:
         reasons = tuple(
@@ -3257,9 +3519,13 @@ def compute_handoff_readiness(
     review_reasons: list[str] = []
     if syntax is None or syntax.status in (SyntaxStatus.PARTIAL.value, SyntaxStatus.UNKNOWN.value):
         status_label = syntax.status if syntax is not None else SyntaxStatus.UNKNOWN.value
+        unmodelled = (
+            f" (unmodelled construct(s): {', '.join(syntax.unknown_constructs)})"
+            if syntax is not None and syntax.unknown_constructs else ""
+        )
         review_reasons.append(
             f"syntax validation coverage is {status_label} -- not all generated constructs could be "
-            "deterministically checked"
+            f"deterministically checked{unmodelled}"
         )
     unknown_signature_symbols = sorted({
         cv.symbol for cv in call_validations if cv.documented and not cv.signature_known
@@ -3273,9 +3539,13 @@ def compute_handoff_readiness(
         symbols = ", ".join(sorted({c.precondition.symbol for c in unverified_preconditions}))
         review_reasons.append(f"runtime-dependent precondition(s) remain unverified for: {symbols}")
     if evidence_profile != EvidenceProfile.BROAD.value:
+        short = _incomplete_coverage_dimensions(coverage) if coverage is not None else ()
+        named = f" (incomplete: {', '.join(short)})" if short else ""
         review_reasons.append(
-            f"validation coverage is {evidence_profile}, short of the broad evidence required for handoff candidacy"
+            f"validation coverage is {evidence_profile}{named}, short of the broad evidence required for "
+            "handoff candidacy"
         )
+        review_reasons.extend(_role_gap_reasons(parameter_role_checks))
 
     if review_reasons:
         return ReadinessResult(HandoffReadiness.REVIEW_REQUIRED.value, tuple(review_reasons))

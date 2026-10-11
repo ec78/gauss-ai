@@ -80,7 +80,7 @@ import gauss_code_assistant_cli as cli_mod
 import gauss_conversation_engine as engine_mod
 import gauss_execution_handoff as handoff_mod
 
-__version__ = "0.82.0"
+__version__ = "0.83.0"
 
 #: Set by the server OPERATOR in the process's own environment before
 #: launch -- never read from a tool-call argument. See module docstring.
@@ -234,6 +234,11 @@ def _validation_to_dict(result: "engine_mod.CodeValidationResult") -> dict[str, 
         "system_statements": [dataclasses.asdict(f) for f in (pre.system_statements if pre else ())],
         "companion_hints": [list(pair) for pair in (pre.companion_hints if pre else ())],
         "notes": list(result.notes),
+        # v0.83.0: what evidence was obtained, and every gap that kept it
+        # short -- before this a client saw only "validation coverage is
+        # partial" and guessed the cause (live findings 72.3, 72.15).
+        "coverage": dataclasses.asdict(pre.coverage) if pre and pre.coverage else None,
+        "coverage_gaps": [dataclasses.asdict(gap) for gap in (pre.coverage_gaps if pre else ())],
     }
 
 
@@ -304,7 +309,10 @@ def gauss_search_docs(query: str, docs_root: str | None = None) -> dict[str, Any
     """Search the official GAUSS documentation (and the verified GAUSS error
     catalog, for codes like G0025) for a natural-language question or
     function names. Returns the matching documentation excerpts to read
-    before writing code. Purely local and read-only."""
+    before writing code. When nothing is grounded but pages look relevant,
+    `candidates` lists them (name, citation, purpose) -- candidates are not
+    grounded answers; search a candidate's name to read its page. Purely
+    local and read-only."""
     resolved = config_mod.resolve_docs_root(cli_value=docs_root, config=_get_config(), env=os.environ).value
     bundle = engine_mod.ground_multi(query, docs_root_str=resolved)
     response: dict[str, Any] = {
@@ -317,6 +325,14 @@ def gauss_search_docs(query: str, docs_root: str | None = None) -> dict[str, Any
         "ambiguous_topics": list(bundle.ambiguous_topics),
         "docs_root_configured": resolved is not None,
     }
+    # v0.83.0 (live finding 72.16): labeled candidate pages when the query
+    # was ambiguous or matched only weakly. Computed from the finished
+    # bundle; the grounding fields above are exactly what they were.
+    found = engine_mod.search_candidates(query, bundle, docs_root_str=resolved)
+    if found.candidates:
+        response["candidates"] = [dataclasses.asdict(c) for c in found.candidates]
+        response["candidates_truncated"] = found.truncated
+        response["candidate_note"] = engine_mod.SEARCH_CANDIDATE_NOTE
     if resolved is None:
         response["hint"] = DOCS_FETCH_HINT + " Until then only error-code lookups can be grounded."
     return response
