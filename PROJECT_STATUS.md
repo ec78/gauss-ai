@@ -11,7 +11,7 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 
 ## Where Things Stand (v0.83.0, released 2026-10-11)
 
-Released as tag `v0.83.0`. Full detail is in CHANGELOG and `planning/v0.83-verdict-explanations-and-search-recall.md` (§9 has the deviations and both real-docs diffs).
+Released at https://github.com/ec78/gauss-ai/releases/tag/v0.83.0 (tag `v0.83.0`, commit `2740519`). Full detail is in CHANGELOG and `planning/v0.83-verdict-explanations-and-search-recall.md` (§9 has the deviations and both real-docs diffs).
 
 - **v0.83.0 additions:**
   - readiness reasons name their real cause;
