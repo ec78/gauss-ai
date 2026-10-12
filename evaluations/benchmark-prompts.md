@@ -7383,3 +7383,118 @@ Expected behavior:
 
 Expected behavior:
 - A correct answer from the docs, with a clean `vcmvcx.rst` Syntax line (71.5 fix). Search-side grounding of the plain question is out of scope and is observed, not required.
+
+## Verdict Explanations and Search Recall (Live Client)
+
+Validates v0.83.0 after its release, through a REAL connected MCP client (Claude Code over stdio, `gauss-ai-mcp`
+v0.83.0) on this machine's real configuration, in the `72.x` style: the human asks an ordinary task in plain words and
+the calling Claude session writes whatever queries and GAUSS it naturally would. The questions are whether the F1-F4
+changes hold live: real reasons for code with no documented calls, named causes in `coverage_gaps` for partial
+verdicts (checked against a direct `validate_code(...)` diagnosis), `sprintf` reaching candidacy, and labeled search
+candidates that a client can follow back to a grounded page. The planning doc (§7) deliberately specified no wording;
+the prompts below are the ones the user actually asked, and the expectations were written from the v0.83.0 design.
+
+### Prompt 73.1: Is the MCP server running?
+
+"is the GAUSS AI MCP running?"
+
+Expected behavior:
+- A session opens and closes, reporting runner and docs root. The strict-mode chat tools are listed because `chat-provider` is not `fake`.
+
+### Prompt 73.2: Docs lookup: compute a covariance matrix (72.16 re-run)
+
+"Look up how to compute a covariance matrix in GAUSS."
+
+Expected behavior:
+- `ungrounded` (the gate is unchanged), with labeled candidates including `vcmvcx.rst`. The client follows a candidate to a grounded page.
+
+### Prompt 73.3: Docs lookup: OLS regression function
+
+"What's the GAUSS function for running an ordinary least squares regression?"
+
+Expected behavior:
+- `ungrounded` with labeled candidates led by `ols`. The client follows a candidate to a grounded page.
+
+### Prompt 73.4: Docs lookup: correlation matrix
+
+"How do I compute the correlation matrix of my data?"
+
+Expected behavior:
+- `ungrounded` with labeled candidates led by the `corr*` pages. The client follows a candidate to a grounded page.
+
+### Prompt 73.5: Uncoaxed: reciprocals 1..1/10, then mean (72.3 re-run)
+
+"Make a vector of the reciprocals 1, 1/2, 1/3, up to 1/10, and compute its mean."
+
+Expected behavior:
+- A vectorized `1 ./ seqa(...)` then `meanc` stays review_required (expressions are never evaluated), never not_ready. The reason and `coverage_gaps` name `meanc` argument 1 and `argument_assigned_from_expression`.
+
+### Prompt 73.6: Uncoaxed: put 3 and 4 into "3 and 4" (72.15 re-run)
+
+"Put the numbers 3 and 4 into the text "3 and 4" and print it."
+
+Expected behavior:
+- `sprintf("%d and %d", 3, 4)` reaches handoff_candidate (F3). A real-GAUSS run is refused unless the operator opted in.
+
+### Prompt 73.7: Uncoaxed: sum 1..20 with a loop (72.6 re-run)
+
+"Add up the integers from 1 to 20 using a loop and print the total."
+
+Expected behavior:
+- not_ready with the no-documented-calls reason (F1), not the old "generation policy ... (block)" text. Syntax validated.
+
+### Prompt 73.8: Uncoaxed: loop with if/break until total > 50 (72.8 re-run)
+
+"Loop from 1 to 100 and stop as soon as the running total goes above 50. Print where it stopped."
+
+Expected behavior:
+- not_ready with the no-documented-calls reason if no documented call is written; the syntax gap (`control_flow_block`) visible in `coverage` / `coverage_gaps`. review_required if a documented call is present.
+
+### Prompt 73.9: Docs lookup: Cholesky decomposition
+
+"How do I get the Cholesky decomposition of a matrix?"
+
+Expected behavior:
+- Ambiguous-resolution candidates including `chol`. The client follows a candidate to a grounded page.
+
+### Prompt 73.10: Uncoaxed: eigenvalues of a symmetric 3x3 matrix
+
+"Compute the eigenvalues of a symmetric 3x3 matrix."
+
+Expected behavior:
+- Candidates including `eigh`; then handoff_candidate for `eigh` on a traced literal matrix, however the literal is laid out.
+
+### Prompt 73.11: Uncoaxed: 5x5 random matrix, column medians
+
+"Make a 5x5 matrix of random numbers and compute the median of each column."
+
+Expected behavior:
+- handoff_candidate (`median` on a `rndu`/`rndn` result traced through its documented return type).
+
+### Prompt 73.12: Uncoaxed: sort a matrix by its second column
+
+"Sort a matrix by its second column."
+
+Expected behavior:
+- `sortc(x, 2)` reaches handoff_candidate. A plain search offers a candidate the client can follow to the right page.
+
+### Prompt 73.13: Uncoaxed: 25th/50th/75th percentiles
+
+"Compute the 25th, 50th and 75th percentiles of a vector of numbers."
+
+Expected behavior:
+- `quantile(x, e)` with a column vector of levels reaches handoff_candidate.
+
+### Prompt 73.14: Uncoaxed: determinant printed with a "det = ..." label
+
+"Compute the determinant of a 3x3 matrix and print it with a label like "det = ..."."
+
+Expected behavior:
+- handoff_candidate for `det` on a traced literal matrix. Text inside a string literal never affects the verdict.
+
+### Prompt 73.15: Negative probe: save a matrix to CSV
+
+"Save a matrix to a CSV file."
+
+Expected behavior:
+- not_ready (file_write), whatever else is valid.

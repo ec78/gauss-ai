@@ -4,8 +4,11 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 
 ## Current Objective
 
-**No milestone in progress.** v0.83.0 was released on 2026-10-11, at the user's request, **without** its `73.x` live client evaluation.
-- Optional: run `73.x` after release, in a fresh conversation after reloading the window (CLAUDE.md live-client rules apply). It should revisit plain-language search questions and the 72.6/72.15/72.16 kinds of task, unsteered. Findings go to a later milestone.
+**No milestone in progress.** v0.83.0 was released on 2026-10-11; its `73.x` live client evaluation was run after release on 2026-10-12 (planning §11, 15 run files).
+- 73.x confirmed F1-F4 live, and found **two real validator defects**, the recommended first scope of the next milestone (planning §11.5-§11.6):
+  1. string contents are scanned for assignments, so `print "fakeinverse = " f;` hides a hallucinated call from the unknown-symbol check (73.14);
+  2. statements are split at newlines, so multi-line matrix literals are never traced (73.10).
+- Neither reached handoff_candidate in any probe.
 - Per CLAUDE.md, the next milestone is not started until the user chooses it.
 - Still deferred from 72.x: category inference for elementwise expressions (72.3 finding 1, needs its own design). Also deferred: the public release readiness track (below).
 
@@ -33,12 +36,13 @@ Released at https://github.com/ec78/gauss-ai/releases/tag/v0.83.0 (tag `v0.83.0`
   - option B: indexed writes are looked through for category only, never for preconditions;
   - expressions are never evaluated.
 - **Signatures:** nested optional groups are flattened, and `...` means no upper bound (`VARIADIC_MAX_ARGS`).
-- **Evaluations:** the last category used is **72** (`72.1`-`72.16`, all pass). `73` is reserved for v0.83.0's post-release live evaluation.
+- **Evaluations:** the last category used is **73** (`73.1`-`73.15`, run 2026-10-12 after release: 13 pass, 2 fail on real defects, 73.10 and 73.14).
 - **Tests:** 48 files, all passing; `check_release_readiness.py` passes. The `mcp` extra is installed in this machine's real Python, so the MCP tests actually run.
 
 ## Known Issues
 
 - See the top paragraph of `KNOWN_LIMITATIONS.md` (v0.82.0), which includes the five 72.x findings.
+- The 73.x findings (planning v0.83 §11.5) are **not yet in `KNOWN_LIMITATIONS.md`**; add them with the next milestone's release.
 - **Claude Code keeps stale tool descriptions** for MCP tools whose names didn't change across a server upgrade. This is cosmetic.
 - **Pip debris:** `~auss_ai-0.79.0.dist-info` in `C:\Users\Owner\AppData\Local\Programs\Python\Python312\Lib\site-packages` causes a harmless "Ignoring invalid distribution" warning. The user can delete it at any time.
 
