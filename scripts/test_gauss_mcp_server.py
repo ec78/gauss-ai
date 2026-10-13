@@ -410,6 +410,28 @@ def test_23_search_docs_lists_labeled_candidates_without_changing_grounding() ->
         check("no candidate keys when grounded", "candidates" not in grounded and "candidate_note" not in grounded)
 
 
+def test_24_v084_undocumented_calls_are_named_gaps_and_labels_hide_nothing() -> None:
+    """Live finding 73.14: a `"fakeinverse = "` label hid a hallucinated call,
+    and the partial signature check left `coverage_gaps` empty."""
+    with tempfile.TemporaryDirectory() as tmp:
+        sid = _start(tmp)
+        labelled = server_mod.gauss_validate_code(
+            sid, 'x = {2 1, 1 2};\ny = inv(x);\nf = fakeinverse(x);\nprint "fakeinverse = " f;',
+        )
+        check("label hides nothing: not_ready", labelled["handoff_readiness"]["state"] == "not_ready")
+        check("call_undocumented gap", any(
+            g["check"] == "signature" and g["symbol"] == "fakeinverse" and g["cause"] == "call_undocumented"
+            for g in labelled["coverage_gaps"]
+        ))
+        own_proc = server_mod.gauss_validate_code(
+            sid, "proc (1) = g(x);\n    retp(x);\nendp;\ny = inv(g({2 1, 1 2}));",
+        )
+        check("a snippet's own proc: review_required", own_proc["handoff_readiness"]["state"] == "review_required")
+        check("its call is a named gap, so the partial verdict has a cause", any(
+            g["symbol"] == "g" and g["cause"] == "call_undocumented" for g in own_proc["coverage_gaps"]
+        ))
+
+
 def _run_all() -> int:
     test_fns = [obj for name, obj in sorted(globals().items()) if name.startswith("test_") and callable(obj)]
     for fn in test_fns:

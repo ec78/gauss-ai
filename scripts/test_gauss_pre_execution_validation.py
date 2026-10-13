@@ -2131,6 +2131,231 @@ def test_160_coverage_gaps_list_only_gaps() -> None:
     ) == ())
 
 
+# ---------------------------------------------------------------------------
+# v0.84.0: one lexer and statement stream (planning/v0.84-lexical-statement-
+# stream.md). Each lexer case cites its real `tgauss.exe -b` spot check
+# (GAUSS 26.1.4, 2026-10-12; IDs from the planning doc's §2.2).
+# ---------------------------------------------------------------------------
+
+
+def _strings(code: str) -> list[str]:
+    lexed = validation_mod.lex_gauss_source(code)
+    return [code[a:b] for a, b in lexed.string_spans]
+
+
+def _comments(code: str) -> list[tuple[str, str]]:
+    lexed = validation_mod.lex_gauss_source(code)
+    return [(code[c.start:c.end], c.kind) for c in lexed.comment_spans]
+
+
+def test_161_v084_lexer_follows_every_spot_checked_transition() -> None:
+    # t1, t3, a2: comment openers inside a string are text
+    check("t1 /* in a string", _strings('print "/*"; print "x"; print "*/";') == ['"/*"', '"x"', '"*/"'])
+    check("t1 no comment", _comments('print "/*"; print "x"; print "*/";') == [])
+    check("t3 // in a string", _comments('print "see https://docs.aptech.com";') == [])
+    check("a2 @ in a string", _comments('print "x@y";') == [])
+    # t2, a10, u4: a backslash consumes the next character
+    check("t2 escaped quote", _strings('print "a\\"b"; dos dir; print "c\\"d";') == ['"a\\"b"', '"c\\"d"'])
+    check("a10 escaped backslash ends the string",
+          _strings('print "p\\\\"; print "q";') == ['"p\\\\"', '"q"'])
+    check("u4 any escaped character", _strings('print "a\\qb";') == ['"a\\qb"'])
+    # a5: a string may span lines
+    check("a5 multi-line string", _strings('print "a\nb"; x = 1;') == ['"a\nb"'])
+    # t6: block comments nest
+    nested = '/* outer /* inner */ dos dir; */\nprint "END";'
+    check("t6 nested", _comments(nested) == [("/* outer /* inner */ dos dir; */", "nested_block")])
+    check("plain block", _comments("/* a */ x = 1;") == [("/* a */", "block")])
+    # t7, a1, a9: @ comments, across lines and mid-statement
+    check("t7 at comment", _comments('@ print "x"; @ y = 1;') == [('@ print "x"; @', "at")])
+    check("a1 multi-line at", _comments('@ one\nprint "x";\n@\nz = 1;') == [('@ one\nprint "x";\n@', "at")])
+    check("a9 mid-statement at", _comments("y = x @ 3 @ ;") == [("@ 3 @", "at")])
+    # a3, a4, a6, a7, a8, u3: each comment form ignores the others and quotes
+    check("a3 quote in a line comment", _strings('// say "hi\nprint "x";') == ['"x"'])
+    check("a4 quote in a block comment", _strings('/* say "hi */ print "x";') == ['"x"'])
+    check("a6 /* in a line comment", _comments("// /* \nx = 1;\n// */") == [("// /* ", "line"), ("// */", "line")])
+    check("a7 // in an at comment", _comments('@ // @ print "x";') == [("@ // @", "at")])
+    check("a8 @ in a block comment", _comments("/* @ */ x = 1;") == [("/* @ */", "block")])
+    check("u3 // in a block comment", _comments('/* // */ print "x";') == [("/* // */", "block")])
+    # u1, u2 and an open string: what stays open at end of input
+    lex = validation_mod.lex_gauss_source
+    check("u2 open block", lex('print "a";\n/* never closed\nx = 1;').unterminated == "block_comment")
+    check("u1 open at", lex("y = x @ 3;").unterminated == "at_comment")
+    check("open string", lex('print "abc;').unterminated == "string")
+    check("closed", lex('print "abc";').unterminated is None)
+
+
+def test_162_v084_lexer_views_keep_length_lines_and_are_idempotent() -> None:
+    code = '/* one\ntwo */ x = "a;b"; // tail\n@ c @ y = meanc(x);'
+    lexed = validation_mod.lex_gauss_source(code)
+    check("code_view same length", len(lexed.code_view) == len(code))
+    check("masked_view same length", len(lexed.masked_view) == len(code))
+    check("newlines kept", lexed.code_view.count("\n") == code.count("\n") == lexed.masked_view.count("\n"))
+    check("comments blanked", "one" not in lexed.code_view and "tail" not in lexed.code_view
+          and "@" not in lexed.code_view)
+    check("strings intact in code_view", '"a;b"' in lexed.code_view)
+    check("strings masked in masked_view", '"' not in lexed.masked_view and ";b" not in lexed.masked_view)
+    again = validation_mod.lex_gauss_source(lexed.code_view)
+    check("idempotent on code_view", again.code_view == lexed.code_view and again.masked_view == lexed.masked_view)
+    check("strip_comments is code_view", validation_mod.strip_comments(code) == lexed.code_view)
+    offset = code.index("meanc")
+    check("position after a multi-line comment", lexed.position(offset) == (3, offset - code.rindex("\n", 0, offset) - 1))
+
+
+def test_163_v084_statement_stream_ends_at_semicolons_not_newlines() -> None:
+    code = 'x = { 2 1 0,\n      1 2 1,\n      0 1 2 };\nprint "a;b"; /* c; d */ va = eigh(x);'
+    statements = validation_mod.source_statements(code)
+    check("three statements", [s.text.split()[0] for s in statements] == ["x", "print", "va"])
+    first = statements[0]
+    check("multi-line literal is one statement", first.text.endswith("0 1 2 }") and first.line == 1)
+    check("its end is on line 3", (first.end_line, first.terminated) == (3, True))
+    check("string text intact in text", statements[1].text == 'print "a;b"')
+    check("masked hides the string", ";" not in statements[1].masked)
+    check("comment never splits", statements[2].masked.strip().startswith("va"))
+    check("trailing unterminated statement",
+          validation_mod.source_statements("x = 1; y = 2")[-1].terminated is False)
+    check("empty statements dropped", len(validation_mod.source_statements("print i;;")) == 1)
+    check("_split_statements is a view of it", [s.line_number for s in validation_mod._split_statements(
+        validation_mod._mask_quoted_strings(code))] == [s.line for s in statements])
+
+
+def test_164_v084_calls_are_extracted_across_lines_and_strings() -> None:
+    spanning = validation_mod.extract_generated_calls("x = {1 2, 2 1};\ny = invpd(\n  x);")
+    check("a call spanning lines is extracted",
+          [(c.symbol, c.argument_count, c.raw_arguments, c.line_number) for c in spanning]
+          == [("invpd", 1, ("x",), 2)])
+    escaped = validation_mod.extract_generated_calls('s = sprintf("a\\",%d", 3);')
+    check("escaped quote and comma never split an argument",
+          [c.raw_arguments for c in escaped] == [('"a\\",%d"', "3")])
+    local_line = validation_mod.extract_generated_calls("local a; a = fakefn(x);")
+    check("a declaration is skipped per statement, not per line", [c.symbol for c in local_line] == ["fakefn"])
+    check("a proc header is still never a call",
+          validation_mod.extract_generated_calls("proc (1) = f(x);\nretp(meanc(x));\nendp;")[0].symbol == "meanc")
+    loop = validation_mod.extract_generated_calls("v = zeros(5, 1); for i(1, 5, 1); v[i] = i^2; endfor;")
+    check("a one-line for header counter is never a call", [c.symbol for c in loop] == ["zeros"])
+    labelled = validation_mod.extract_generated_calls('print "Inverse (2x2):";\n/* f(x) */ y = g(1);')
+    check("strings and comments are never calls", [c.symbol for c in labelled] == ["g"])
+    check("column within the line", labelled[0].column == len("/* f(x) */ y = "))
+
+
+def test_165_v084_tracers_read_whole_multi_line_statements() -> None:
+    code = "x = {1 2,\n2 1};\ny = invpd(x);"
+    call = validation_mod.extract_generated_calls(code)[0]
+    rhs = validation_mod._governing_assignment("x", code=code, line_number=call.line_number, column=call.column)
+    check("the whole multi-line literal (73.10)", rhs == "{1 2,\n2 1}")
+    pre = validation_mod.check_preconditions(call, code=code)
+    check("two-line SPD violation is VIOLATED, as on one line", [p.status for p in pre] == ["violated"])
+    categories, origin = validation_mod.resolve_argument_category(
+        "x", code=code, line_number=call.line_number, column=call.column,
+    )
+    check("role tracer gets the literal", (categories, origin) == (("matrix",), "traced_literal"))
+    later = "x = {2 1,\n1 2};\ny = invpd(x);\nx = {1 2,\n2 1};"
+    call = validation_mod.extract_generated_calls(later)[0]
+    check("an assignment ending after the call never governs it", validation_mod._governing_assignment(
+        "x", code=later, line_number=call.line_number, column=call.column) == "{2 1,\n1 2}")
+    blocked = "x = {2 1, 1 2};\nif rows(x) > 1;\n    x = {1 2,\n         2 1};\nendif;\ny = invpd(x);"
+    call = [c for c in validation_mod.extract_generated_calls(blocked) if c.symbol == "invpd"][0]
+    check("a multi-line write inside a block still refuses", validation_mod._governing_assignment(
+        "x", code=blocked, line_number=call.line_number, column=call.column) is None)
+
+
+def test_166_v084_syntax_reads_the_lexer() -> None:
+    def status(code: str) -> tuple[str, tuple[str, ...], tuple[str, ...]]:
+        result = validation_mod.validate_syntax(code)
+        return result.status, tuple(i.rule for i in result.issues), result.unknown_constructs
+
+    check("`;` inside a string-array literal is not a row separator",
+          status('s = { "a;b" };')[0] == "validated")
+    check("a call-shaped string is not a call construct",
+          "call" not in validation_mod.validate_syntax('print "f(x)";').validated_constructs)
+    check("escaped quote is not unterminated", status('s = sprintf("a\\",%d", 3);')[0] == "validated")
+    check("a URL string is fine", status('print "see https://docs.aptech.com";')[0] == "validated")
+    check("an open string is still INVALID", status('print "hello;\n')[1] == ("unterminated_string",))
+    check("a5 multi-line string is unknown, not invalid",
+          status('print "a\nb";') == ("partial", (), ("multiline_string",)))
+    check("u2 open block comment is INVALID",
+          status("x = 1;\n/* never closed\ny = 2;")[1] == ("unterminated_block_comment",))
+    check("u1 open at comment is INVALID", status("y = x @ 3;")[1] == ("unterminated_at_comment",))
+    check("t7 at comment is an undocumented form",
+          status("@ note @ x = {1 2};") == ("partial", (), ("undocumented_comment_form",)))
+    check("t6 nested comment is an undocumented form",
+          status("/* a /* b */ c */ x = {1 2};")[2] == ("undocumented_comment_form",))
+    check("a plain comment is not", status("/* a */ x = {1 2}; // b")[0] == "validated")
+    for rule in ("unterminated_block_comment", "unterminated_at_comment", "unterminated_string"):
+        entry = validation_mod._SYNTAX_RULE_REGISTRY.get(rule)
+        check(f"{rule} registered with provenance", entry is not None and "tgauss.exe -b" in entry.source)
+
+
+def test_167_v084_system_scan_sees_through_strings_and_comments_correctly() -> None:
+    def names(code: str) -> list[tuple[str, int]]:
+        return [(f.name, f.line_number) for f in validation_mod.check_system_statements(code)]
+
+    check("dos between /* and */ strings", names('print "/*"; dos dir; print "*/";') == [("dos", 1)])
+    check("dos between escaped quotes", names('print "a\\"b"; dos dir; print "c\\"d";') == [("dos", 1)])
+    check("dos in a string is text", names('print "dos dir";') == [])
+    check("dos in a real comment is not run", names("/* dos dir; */ x = 1;") == [])
+    check("dos in a multi-line string is text", names('print "a\ndos dir;\nb";') == [])
+    check("line number after a multi-line comment", names("/* one\ntwo */\nx = 1;\ndos dir;") == [("dos", 4)])
+    check("#include still found", names('#include foo.src\nx = 1;') == [("#include", 1)])
+
+
+def test_168_v084_user_defined_names_are_statement_leading_targets() -> None:
+    collect = validation_mod.collect_user_defined_symbols
+    check("73.14: a string label is not an assignment", collect('d = det(x);\nprint "det = " d;') == {"d"})
+    check("proc text in a string is not a definition", collect('print "proc fakefn(x)";') == frozenset())
+    check("member write", collect("s.fakefn = 1;") == frozenset())
+    check("indexed write", collect("x[1] = 2;") == frozenset())
+    check("multi-target write", collect("{a, b} = f(x);") == frozenset())
+    check("comparison in a condition", collect("if x == 1; endif;") == frozenset())
+    check("assignment inside an at comment", collect("@ fakefn = 1; @ y = 2;") == {"y"})
+    check("plain, let, typed and struct targets",
+          collect('x = 1; let y = 1 2; string s = "a"; struct DS d = dsCreate();') == {"x", "y", "s", "d"})
+    check("multi-line target", collect("x = {1 2,\n3 4};") == {"x"})
+    check("proc definitions", collect("proc (1) = f(x);\nendp;\nproc g(y);\nendp;") == {"f", "g"})
+    check("dot comparison is not assignment", collect("z = x .== y;") == {"z"})
+
+
+def test_169_v084_undocumented_calls_are_named_gaps() -> None:
+    calls = (
+        validation_mod.CallValidationResult("fakeinverse", False, False, "unknown", (), None),
+        validation_mod.CallValidationResult("det", True, True, "compatible", (), "det.rst"),
+    )
+    gaps = validation_mod.compute_coverage_gaps(call_validations=calls, parameter_role_checks=(), preconditions=(),
+                                                syntax=validation_mod.SyntaxValidationResult("validated", (), (), ()))
+    check("one call_undocumented gap", [(g.check, g.symbol, g.cause) for g in gaps]
+          == [("signature", "fakeinverse", "call_undocumented")])
+    complete, na = "complete", "not_applicable"
+    syntax_ok = validation_mod.SyntaxValidationResult("validated", (), ("assignment",), ())
+    coverage = validation_mod.ValidationCoverage(complete, "partial", na, na, na, complete)
+    common = dict(eligibility="eligible_for_validation", unresolved_issues=(), syntax=syntax_ok, preconditions=(),
+                  evidence_profile=validation_mod.compute_evidence_profile(coverage), coverage=coverage)
+    with_call = validation_mod.compute_handoff_readiness(**common, call_validations=calls)
+    without = validation_mod.compute_handoff_readiness(**common, call_validations=calls[1:])
+    check("state unchanged by the wording", with_call.state == without.state == "review_required")
+    check("reason names the undocumented call", any("`fakeinverse`" in r for r in with_call.reasons))
+
+
+def test_170_v084_lexical_discipline_guard() -> None:
+    """No scan of GAUSS source may bypass the shared lexer again. The only
+    `splitlines()` calls left read documentation evidence or answer prose
+    (planning v0.84 §2.3), and the retired regexes are gone."""
+    import ast
+
+    allowed_splitlines = {"_purpose_sentence", "_parse_output_value"}
+    retired = {"_QUOTED_STRING_RE", "_ASSIGNMENT_TARGET_RE", "_PROC_DEFINITION_RE", "_LINE_COMMENT_RE",
+               "_BLOCK_COMMENT_RE", "_masked_statements", "call_scan_text"}
+    for module in ("gauss_conversation_engine.py", "gauss_pre_execution_validation.py"):
+        tree = ast.parse((_SCRIPT_DIR / module).read_text(encoding="utf-8"))
+        for fn in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)):
+            for node in ast.walk(fn):
+                if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "splitlines"):
+                    check(f"{module}:{fn.name} splitlines allowed", fn.name in allowed_splitlines)
+        used = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)} | {
+            n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)
+        } | {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+        check(f"{module}: retired scanners gone", not (used & retired))
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

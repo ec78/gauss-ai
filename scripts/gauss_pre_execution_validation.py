@@ -175,8 +175,10 @@ a denormal/garbage element. This revealed a missing layer between
 
 from __future__ import annotations
 
+import bisect
 import dataclasses
 import enum
+import functools
 import re
 from dataclasses import dataclass
 from typing import Callable
@@ -186,7 +188,7 @@ from typing import Callable
 _LANGUAGE_CONSTRUCT_KEYWORDS = frozenset({
     "if", "elseif", "else", "endif", "do", "while", "until", "endo", "for", "endfor",
     "proc", "endp", "retp", "local", "print", "struct",
-    # v0.82.0: with the counter blanked by `call_scan_text(...)`, a
+    # v0.82.0: with the counter blanked by `call_scan_view(...)`, a
     # `threadfor i (1, 5, 1);` header reads as `threadfor (...)` -- a header,
     # never a call to a function named `threadfor`.
     "threadfor",
@@ -245,51 +247,332 @@ def _find_matching_paren(line: str, open_idx: int) -> int | None:
     return None
 
 
-#: v0.80.0: the only lines skipped WHOLESALE when scanning for calls --
-#: genuine declaration lines, whose `name(...)` text is a definition or a
-#: declaration, never a call. Every other keyword-led line (`print`,
+# ---------------------------------------------------------------------------
+# v0.84.0: the ONE lexer and statement stream for GAUSS source text
+# ---------------------------------------------------------------------------
+#
+# Live evaluation 73.x found two defects from scans that ignored GAUSS's
+# lexical structure (planning/v0.84-lexical-statement-stream.md §2): string
+# contents were read as assignment targets (73.14), and statements were cut
+# at newlines before `;` (73.10). Reproducing them found the same class in
+# the unsafe direction: comments were stripped before strings were known, so
+# `print "/*"; dos dir; print "*/";` lost its `dos`, and the old quote regex
+# (`"[^"\n]*"`) knew no escapes, so `print "a\"b"; dos dir; print "c\"d";`
+# masked `dos` as string text -- both reached handoff_candidate (§2.2).
+#
+# Every scan of GAUSS source in this module and in
+# `gauss_conversation_engine.py` now reads `lex_gauss_source(...)` and
+# `source_statements(...)`. Each lexer transition below is backed by a real
+# `tgauss.exe -b` spot check (GAUSS 26.1.4, 2026-10-12, print-only
+# programs; the IDs are planning v0.84 §2.2's):
+#
+# - strings are lexed before comments: `//`, `/*` and `@` inside a string are
+#   text (t1, t3, a2);
+# - a backslash consumes the next character, whatever it is: `\"` and `\\`
+#   do not end a string (t2, a10, u4; `user-guide/fundamentals/strings.rst`
+#   documents `\n \t \r \" \\`);
+# - a string may span lines (a5);
+# - `/* */` comments NEST (t6), and an unterminated one is `G0562` (u2);
+# - `@ ... @` is a comment, also across lines and mid-statement (t7, a1, a9),
+#   and an unterminated one is `G0008` (u1). The published docs never
+#   mention it;
+# - each comment form ignores the others' openers and quotes (a3, a4, a6,
+#   a7, a8, u3).
+#
+# Both views are the SAME LENGTH as the input with every newline kept, so
+# any offset maps to the exact (line, column) of the original text.
+
+#: `CommentSpan.kind` values.
+COMMENT_LINE = "line"
+COMMENT_BLOCK = "block"
+COMMENT_NESTED_BLOCK = "nested_block"
+COMMENT_AT = "at"
+
+#: `LexedSource.unterminated` values.
+UNTERMINATED_STRING = "string"
+UNTERMINATED_BLOCK_COMMENT = "block_comment"
+UNTERMINATED_AT_COMMENT = "at_comment"
+
+_NEWLINE_CHARS = frozenset("\r\n")
+
+
+@dataclass(frozen=True)
+class CommentSpan:
+    start: int
+    end: int
+    kind: str
+
+
+@dataclass(frozen=True)
+class LexedSource:
+    """v0.84.0: one lexed GAUSS snippet. `code_view` is `code` with every
+    comment replaced by spaces (string text intact) -- argument text is
+    sliced from it. `masked_view` is `code_view` with every string token,
+    quotes included, replaced by `#` -- every structural scan reads it.
+    `unterminated` names what was still open at end of input, if anything
+    (`unterminated_offset` is where it opened)."""
+
+    code: str
+    code_view: str
+    masked_view: str
+    string_spans: tuple[tuple[int, int], ...]
+    comment_spans: tuple[CommentSpan, ...]
+    unterminated: str | None
+    unterminated_offset: int | None
+    line_starts: tuple[int, ...]
+
+    def position(self, offset: int) -> tuple[int, int]:
+        """`(line, column)` of `offset`: 1-based line, 0-based column within
+        that line (the column convention `GeneratedCall.column` has always
+        used)."""
+        index = bisect.bisect_right(self.line_starts, offset) - 1
+        return index + 1, offset - self.line_starts[index]
+
+
+def _blank(chars: list[str], start: int, end: int, fill: str) -> None:
+    for k in range(start, end):
+        if chars[k] not in _NEWLINE_CHARS:
+            chars[k] = fill
+
+
+@functools.lru_cache(maxsize=128)
+def lex_gauss_source(code: str) -> LexedSource:
+    """v0.84.0: a single left-to-right pass over `code` (see the section
+    comment above for the real-GAUSS evidence behind every transition). Never
+    raises; never evaluates anything. Idempotent on its own `code_view`
+    (comments are already spaces there), so a function handed
+    comment-stripped code may lex it again and get the same strings.
+    Cached: the role and precondition tracers ask about the same snippet once
+    per argument, and the result is immutable."""
+    n = len(code)
+    view = list(code)
+    masked = list(code)
+    strings: list[tuple[int, int]] = []
+    comments: list[CommentSpan] = []
+    unterminated: str | None = None
+    unterminated_offset: int | None = None
+    i = 0
+    while i < n:
+        ch = code[i]
+        if ch == '"':
+            j = i + 1
+            while j < n and code[j] != '"':
+                j += 2 if code[j] == "\\" else 1
+            if j >= n:
+                end = n
+                unterminated, unterminated_offset = UNTERMINATED_STRING, i
+            else:
+                end = j + 1
+            strings.append((i, end))
+            _blank(masked, i, end, "#")
+            i = end
+        elif code.startswith("//", i):
+            j = code.find("\n", i)
+            end = n if j == -1 else j
+            comments.append(CommentSpan(i, end, COMMENT_LINE))
+            _blank(view, i, end, " ")
+            _blank(masked, i, end, " ")
+            i = end
+        elif code.startswith("/*", i):
+            depth, j, nested = 1, i + 2, False
+            while j < n and depth:
+                if code.startswith("/*", j):
+                    depth, nested, j = depth + 1, True, j + 2
+                elif code.startswith("*/", j):
+                    depth, j = depth - 1, j + 2
+                else:
+                    j += 1
+            end = min(j, n)
+            if depth:
+                unterminated, unterminated_offset = UNTERMINATED_BLOCK_COMMENT, i
+            comments.append(CommentSpan(i, end, COMMENT_NESTED_BLOCK if nested else COMMENT_BLOCK))
+            _blank(view, i, end, " ")
+            _blank(masked, i, end, " ")
+            i = end
+        elif ch == "@":
+            j = code.find("@", i + 1)
+            if j == -1:
+                end = n
+                unterminated, unterminated_offset = UNTERMINATED_AT_COMMENT, i
+            else:
+                end = j + 1
+            comments.append(CommentSpan(i, end, COMMENT_AT))
+            _blank(view, i, end, " ")
+            _blank(masked, i, end, " ")
+            i = end
+        else:
+            i += 1
+    line_starts = [0] + [k + 1 for k, c in enumerate(code) if c == "\n"]
+    return LexedSource(
+        code=code, code_view="".join(view), masked_view="".join(masked), string_spans=tuple(strings),
+        comment_spans=tuple(comments), unterminated=unterminated, unterminated_offset=unterminated_offset,
+        line_starts=tuple(line_starts),
+    )
+
+
+def strip_comments(code: str) -> str:
+    """v0.84.0: the ONE comment stripper -- `lex_gauss_source(code).code_view`.
+    Length- and newline-preserving, so line numbers computed on the result
+    are the original's (the pre-v0.84.0 regex stripper collapsed a
+    multi-line block comment to one space, shifting every later line).
+    `gauss_conversation_engine._strip_comments_for_analysis` and
+    `gauss_differential_harness` both call this."""
+    return lex_gauss_source(code).code_view
+
+
+@dataclass(frozen=True)
+class SourceStatement:
+    """v0.84.0: one `;`-terminated statement of lexed code. `start` is its
+    first non-space character, `stop` the offset of its terminating `;` (or
+    end of input). `masked` and `text` are the same span of `masked_view` and
+    `code_view`, right-stripped. `line`/`column` locate `start`;
+    `end_line`/`end_column` locate `stop`."""
+
+    start: int
+    stop: int
+    line: int
+    column: int
+    end_line: int
+    end_column: int
+    masked: str
+    text: str
+    terminated: bool
+
+
+@functools.lru_cache(maxsize=128)
+def source_statements(code: str) -> tuple[SourceStatement, ...]:
+    """v0.84.0: splits `lex_gauss_source(code).masked_view` on `;` across
+    lines -- the statement boundary GAUSS itself uses, never a newline -- so
+    a multi-line matrix literal or a call continued onto the next line is one
+    statement, and a `;` inside a string or comment never ends one. Empty
+    statements (`print i;;`) are dropped. Accepts raw or comment-stripped
+    code alike."""
+    lexed = lex_gauss_source(code)
+    masked = lexed.masked_view
+    statements: list[SourceStatement] = []
+    pos = 0
+    n = len(masked)
+    while pos < n:
+        semi = masked.find(";", pos)
+        stop = n if semi == -1 else semi
+        raw = masked[pos:stop]
+        if raw.strip():
+            start = pos + (len(raw) - len(raw.lstrip()))
+            line, column = lexed.position(start)
+            end_line, end_column = lexed.position(stop)
+            statements.append(SourceStatement(
+                start=start, stop=stop, line=line, column=column, end_line=end_line, end_column=end_column,
+                masked=masked[start:stop].rstrip(), text=lexed.code_view[start:stop].rstrip(),
+                terminated=semi != -1,
+            ))
+        pos = stop + 1
+    return tuple(statements)
+
+
+#: v0.80.0: the only statements skipped WHOLESALE when scanning for calls --
+#: genuine declarations, whose `name(...)` text is a definition or a
+#: declaration, never a call. Every other keyword-led statement (`print`,
 #: `retp`, `if`, `elseif`, `while`, `until`, `do while`, `for`) is scanned,
 #: because it can legitimately contain real calls (`print invpd(x);`,
 #: `retp(meanc(x));`, `if rows(x) > 1;`); the keyword itself is still
 #: filtered out symbol-by-symbol wherever this is used.
+#: v0.84.0: skipped per STATEMENT, not per line -- the per-line skip hid
+#: `fakefn` in `local a; a = fakefn(x);` (planning v0.84 §2.2).
 _DECLARATION_LINE_KEYWORDS = frozenset({"proc", "endp", "local"})
 
-#: v0.82.0: anchored at ANY statement start (line start or right after a
-#: `;`), not only at the start of a line, and covers `threadfor` too. Found
-#: during v0.82.0 planning: the one-line form real GAUSS accepts
-#: (`v = zeros(5, 1); for i(1, 5, 1); v[i] = i^2; endfor;`, confirmed by
-#: real `tgauss.exe -b`) left `i(` unblanked, so the loop counter was read
-#: as a call to an undocumented function `i`.
-_FOR_HEADER_LOOP_VAR_RE = re.compile(
-    r"((?:^|;)\s*(?:thread)?for\s+)([A-Za-z_][A-Za-z0-9_]*)", re.IGNORECASE,
-)
+#: v0.82.0: a `for`/`threadfor` header's counter, blanked so `for i(1, 5, 1);`
+#: is never a call to `i` (the one-line loop form real GAUSS accepts was the
+#: v0.82.0 finding). v0.84.0: matched at the start of each statement.
+_FOR_HEADER_LOOP_VAR_RE = re.compile(r"((?:thread)?for\s+)([A-Za-z_][A-Za-z0-9_]*)", re.IGNORECASE)
 
 
-def call_scan_text(line: str) -> str:
-    """v0.80.0: the ONE shared definition of "which part of this line may
-    contain a function call", used by both `extract_generated_calls(...)`
-    here and `gauss_conversation_engine.check_generated_symbols(...)`, so the
-    call extractor and the unknown-symbol checker can never disagree.
+@functools.lru_cache(maxsize=128)
+def call_scan_view(code: str) -> str:
+    """v0.80.0's "which text may contain a function call", now over the
+    whole snippet (v0.84.0; formerly `call_scan_text(line)`, per line), still
+    the ONE definition shared by `extract_generated_calls(...)` here and
+    `gauss_conversation_engine.check_generated_symbols(...)`, so the call
+    extractor and the unknown-symbol checker can never disagree.
 
-    Replaces a whole-line `startswith(keyword)` skip that had two real
-    defects: it dropped every call on any keyword-led line (so a
-    hallucinated `print colmean(x);` was neither extracted nor flagged
-    unknown, and `print invpd({2 1, 3 2});` escaped its precondition check
-    -- reproduced live in evaluation 69.1), and it had no word boundary (so
-    `printfm(...)`, `format = ...`, `forecast = arima(...)` lines were
-    dropped too -- the same class of defect v0.76.0 fixed for `formula`).
+    `lex_gauss_source(code).masked_view` (comments blanked, string tokens
+    `#`, so `print "Inverse (2x2):";` is never a call to `Inverse`), with
+    each declaration statement (`_DECLARATION_LINE_KEYWORDS`) blanked and
+    each `for`/`threadfor` header's counter blanked. Same length as `code`,
+    so offsets map back to the original text, from which argument text is
+    sliced."""
+    chars = list(lex_gauss_source(code).masked_view)
+    for statement in source_statements(code):
+        word = _leading_word(statement.masked)
+        if word in _DECLARATION_LINE_KEYWORDS:
+            _blank(chars, statement.start, statement.stop, " ")
+        elif word in ("for", "threadfor"):
+            match = _FOR_HEADER_LOOP_VAR_RE.match(statement.masked)
+            if match:
+                _blank(chars, statement.start + match.start(2), statement.start + match.end(2), " ")
+    return "".join(chars)
 
-    Returns a string of the SAME LENGTH as `line` (so match offsets stay
-    valid against the original text, from which argument text is still
-    sliced), or `""` for a declaration line. Double-quoted string contents
-    are masked, so `print "Inverse (2x2):";` is never read as a call to
-    `Inverse`, and a `for` header's loop variable is blanked, so
-    `for i (1, 3, 1);` is never read as a call to `i`."""
-    stripped = line.strip().lower()
-    if any(_starts_with_keyword(stripped, keyword) for keyword in _DECLARATION_LINE_KEYWORDS):
-        return ""
-    scan = _QUOTED_STRING_RE.sub(lambda m: "#" * len(m.group(0)), line)
-    return _FOR_HEADER_LOOP_VAR_RE.sub(lambda m: m.group(1) + " " * len(m.group(2)), scan)
+
+#: Everything before a statement-leading assignment target is bare words:
+#: `x`, `let x`, `string s`, `struct DS s`, `declare matrix x`.
+_LEADING_TARGET_RE = re.compile(r"(?:[A-Za-z_][A-Za-z0-9_]*\s+)*([A-Za-z_][A-Za-z0-9_]*)")
+#: The name a `proc` statement defines: `proc name(` or `proc (1) = name(`.
+_PROC_NAME_RE = re.compile(r"proc\b[^;]*?\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", re.IGNORECASE)
+#: Statements whose `=` is never an assignment.
+_NON_ASSIGNMENT_LEADERS = frozenset({"if", "elseif", "while", "until", "for", "threadfor", "do"})
+
+
+def _top_level_assignment_index(masked: str) -> int | None:
+    """Offset of the statement's first top-level assignment `=` -- never
+    part of `==`, `!=`, `<=`, `>=` or a dot operator (`.==`, `.>=`)."""
+    depth = 0
+    for k, ch in enumerate(masked):
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        elif (
+            ch == "=" and depth == 0
+            and (k == 0 or masked[k - 1] not in "=!<>.")
+            and (k + 1 == len(masked) or masked[k + 1] != "=")
+        ):
+            return k
+    return None
+
+
+@functools.lru_cache(maxsize=128)
+def collect_user_defined_symbols(code: str) -> frozenset[str]:
+    """v0.84.0: the ONE answer to "which names does this snippet itself
+    define?", shared by `gauss_conversation_engine.validate_code(...)` and
+    `check_generated_symbols(...)` (the `ask()` path). Each had its own
+    whole-text `_ASSIGNMENT_TARGET_RE`/`_PROC_DEFINITION_RE` scan over
+    unmasked text, so `print "det = " d;` made `det` user-defined (a false
+    not_ready) and `print "fakeinverse = " f;` hid a hallucinated call from
+    the unknown-symbol check (live finding 73.14).
+
+    Lower-cased names of (a) each statement-leading assignment target: the
+    identifier immediately before the statement's first top-level `=`, when
+    everything before it is bare words (`x =`, `let x =`, `string s =`,
+    `struct DS s =`) -- never a member (`s.x =`), indexed (`x[1] =`) or
+    multi-target (`{a, b} =`) write, and never inside an `if`/`while`/...
+    condition; and (b) the name a statement-leading `proc` defines. Reads
+    only masked statements, so string and comment text is never seen."""
+    names: set[str] = set()
+    for statement in source_statements(code):
+        word = _leading_word(statement.masked)
+        if word == "proc":
+            match = _PROC_NAME_RE.match(statement.masked)
+            if match:
+                names.add(match.group(1).lower())
+            continue
+        if word in _NON_ASSIGNMENT_LEADERS:
+            continue
+        index = _top_level_assignment_index(statement.masked)
+        if index is None:
+            continue
+        target = _LEADING_TARGET_RE.fullmatch(statement.masked[:index].rstrip())
+        if target:
+            names.add(target.group(1).lower())
+    return frozenset(names)
 
 
 # ---------------------------------------------------------------------------
@@ -623,34 +906,59 @@ class GeneratedCall:
     column: int | None = None
 
 
+def _split_masked_args(masked: str, text: str) -> tuple[str, ...]:
+    """v0.84.0: `_split_top_level_args(...)` for CODE: commas and brackets
+    are read from `masked` (string tokens are `#`, so a comma or an escaped
+    quote inside a string can never split or unbalance anything), and each
+    argument's text is sliced from `text` (the same span with strings
+    intact). `_split_top_level_args(...)` itself is unchanged: it also parses
+    documented signatures, which this milestone does not touch."""
+    pieces: list[str] = []
+    depth = 0
+    begin = 0
+    for k, ch in enumerate(masked + ","):
+        if ch in "{[(":
+            depth += 1
+        elif ch in "}])":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            piece = text[begin:k].strip()
+            if piece:
+                pieces.append(piece)
+            begin = k + 1
+    return tuple(pieces)
+
+
 def extract_generated_calls(code: str) -> tuple[GeneratedCall, ...]:
-    """Conservative: shares `call_scan_text(...)` with
+    """Conservative: shares `call_scan_view(...)` with
     `gauss_conversation_engine.check_generated_symbols(...)` -- not a GAUSS
     parser, no type inference, never interprets prose as code. Argument
     text is split at the top level only, so `f(g(x), y)` is extracted as a
     call to `f` with two top-level arguments (`g(x)` and `y`); `g` is
-    separately extracted as its own nested call on the same line. Matches
-    and paren-matching run against the masked scan text; argument text is
-    sliced from the original line (same offsets), so a string-literal
-    argument keeps its real content and quotes."""
+    separately extracted as its own nested call. Matches and paren-matching
+    run against the masked scan view; argument text is sliced from the
+    comment-stripped code (same offsets), so a string-literal argument keeps
+    its real content and quotes.
+
+    v0.84.0: scans the whole snippet, not line by line, so a call whose
+    parentheses span lines (`y = invpd(`⏎`x);`) is extracted -- the per-line
+    scan dropped it, so it got no signature, role or precondition check
+    (planning v0.84 §2.2). `line_number`/`column` locate the call's name."""
+    lexed = lex_gauss_source(code)
+    scan = call_scan_view(code)
     calls: list[GeneratedCall] = []
-    for line_no, line in enumerate(code.splitlines(), start=1):
-        scan = call_scan_text(line)
-        if not scan:
+    for match in _CALL_SHAPED_RE.finditer(scan):
+        symbol = match.group(1)
+        if symbol.lower() in _LANGUAGE_CONSTRUCT_KEYWORDS:
             continue
-        for match in _CALL_SHAPED_RE.finditer(scan):
-            symbol = match.group(1)
-            if symbol.lower() in _LANGUAGE_CONSTRUCT_KEYWORDS:
-                continue
-            close_idx = _find_matching_paren(scan, match.end() - 1)
-            if close_idx is None:
-                continue  # unterminated on this line -- skip rather than guess
-            raw = line[match.end():close_idx]
-            args = tuple(_split_top_level_args(raw))
-            calls.append(GeneratedCall(
-                symbol=symbol, argument_count=len(args), raw_arguments=args, line_number=line_no,
-                column=match.start(),
-            ))
+        close_idx = _find_matching_paren(scan, match.end() - 1)
+        if close_idx is None:
+            continue  # never closed -- skip rather than guess (a delimiter issue)
+        args = _split_masked_args(scan[match.end():close_idx], lexed.code_view[match.end():close_idx])
+        line_no, column = lexed.position(match.start())
+        calls.append(GeneratedCall(
+            symbol=symbol, argument_count=len(args), raw_arguments=args, line_number=line_no, column=column,
+        ))
     return tuple(calls)
 
 
@@ -1057,7 +1365,9 @@ def check_parameter_roles(
             else:
                 unknown_cause = argument_cause or RoleUnknownCause.ARGUMENT_UNTRACED.value
             explanation = _ROLE_UNKNOWN_CAUSE_TEXT[unknown_cause].format(
-                argument=argument.strip(), rhs=(rhs or "").strip(), source=param.source or "",
+                # v0.84.0: a traced right-hand side may now span lines; quote
+                # it on one line.
+                argument=argument.strip(), rhs=" ".join((rhs or "").split()), source=param.source or "",
             )
         elif all(_category_accepted(c, documented) for c in inferred):
             status = ParameterRoleStatus.MATCH.value
@@ -1261,22 +1571,6 @@ _BLOCK_OPEN_KEYWORDS = ("if", "for", "do", "proc", "keyword", "threadfor", "thre
 _BLOCK_CLOSE_KEYWORDS = ("endif", "endfor", "endo", "endp", "threadendfor", "threadend")
 
 
-def _masked_statements(code: str):
-    """Yields `(line_number, start, end, masked, original)` for each
-    `;`-separated statement, string contents masked (same `_QUOTED_STRING_RE`
-    masking `call_scan_text(...)` uses) so a `;` or `=` inside a string is
-    never read as code. `start`/`end` are column offsets within the line."""
-    for line_no, line in enumerate(code.splitlines(), start=1):
-        masked = _QUOTED_STRING_RE.sub(lambda m: "#" * len(m.group(0)), line)
-        start = 0
-        while start < len(masked):
-            semi = masked.find(";", start)
-            end = len(masked) if semi == -1 else semi
-            if masked[start:end].strip():
-                yield line_no, start, end, masked[start:end], line[start:end]
-            start = end + 1
-
-
 def _governing_assignment(
     name: str, *, code: str, line_number: int | None = None, column: int | None = None,
     allow_indexed_writes: bool = False,
@@ -1304,7 +1598,15 @@ def _governing_assignment(
     `resolve_argument_category(...)` for the real `tgauss.exe -b` evidence
     that an indexed write cannot change a numeric variable's shape. The
     precondition tracer never does: an indexed write changes VALUES, so the
-    governing literal is no longer evidence of what the call receives."""
+    governing literal is no longer evidence of what the call receives.
+
+    v0.84.0: reads `source_statements(...)`, so a statement is everything up
+    to its `;`, across lines. The per-line split this replaced cut
+    `x = {1 2,`⏎`2 1};` at its first line, so a multi-line literal (the
+    docs' own layout) was never traced, and a known two-line `invpd` SPD
+    violation softened to review_required (live finding 73.10). "Ends
+    before the call" compares the statement's `;` position with the call's
+    `(line_number, column)`."""
     target = (
         line_number if line_number is not None else float("inf"),
         column if column is not None else float("inf"),
@@ -1315,14 +1617,15 @@ def _governing_assignment(
         re.compile(rf"^\s*{escaped}\s*\.[A-Za-z_]", re.IGNORECASE),
         re.compile(rf"^\s*\{{[^}}]*\b{escaped}\b[^}}]*\}}\s*=(?!=)", re.IGNORECASE),
         re.compile(rf"^\s*(?:thread)?for\s+{escaped}\b", re.IGNORECASE),
-        re.compile(rf"^\s*clear(?:all)?\b.*\b{escaped}\b", re.IGNORECASE),
+        re.compile(rf"^\s*clear(?:all)?\b.*\b{escaped}\b", re.IGNORECASE | re.DOTALL),
     )
     indexed_write_re = re.compile(rf"^\s*{escaped}\s*\[", re.IGNORECASE)
     depth = 0
     governing: str | None = None
-    for line_no, _start, end, masked, original in _masked_statements(code):
-        lowered = masked.strip().lower()
-        if any(_starts_with_keyword(lowered, kw) for kw in _BLOCK_CLOSE_KEYWORDS):
+    for statement in source_statements(code):
+        masked = statement.masked
+        word = _leading_word(masked)
+        if word in _BLOCK_CLOSE_KEYWORDS:
             depth = max(0, depth - 1)
             continue
         if any(r.search(masked) for r in other_write_res):
@@ -1335,9 +1638,9 @@ def _governing_assignment(
         if plain is not None:
             if depth > 0:
                 return None
-            if (line_no, end) < target:
-                governing = original[plain.end():].strip()
-        if any(_starts_with_keyword(lowered, kw) for kw in _BLOCK_OPEN_KEYWORDS):
+            if (statement.end_line, statement.end_column) < target:
+                governing = statement.text[plain.end():].strip()
+        if word in _BLOCK_OPEN_KEYWORDS:
             depth += 1
     return governing
 
@@ -1733,14 +2036,41 @@ _SYNTAX_RULE_REGISTRY: dict[str, SyntaxRule] = {
     ),
     "unterminated_string": SyntaxRule(
         name="unterminated_string",
-        description="A double-quoted string literal opened on a line must be closed on that same line.",
+        description="A double-quoted string literal must be closed before the end of the code.",
         source=(
             'let.rst (official docs): `let x = "dog""cat";` -- double quotes are GAUSS\'s unambiguous '
             "string delimiter. A single quote is deliberately NOT checked here: it is overwhelmingly used "
             "as the transpose operator (`x'`) in generated code, and treating it as a string delimiter "
-            "would be a real false-positive risk this module's own fail-closed discipline requires avoiding."
+            "would be a real false-positive risk this module's own fail-closed discipline requires avoiding. "
+            "v0.84.0: read from `lex_gauss_source(...)`, so a backslash escape (`\\\"`, `\\\\`; documented in "
+            "user-guide/fundamentals/strings.rst, and real `tgauss.exe -b` prints `a\"b` for "
+            "`print \"a\\\"b\";`) never ends or opens a string. A string closed on a later line is legal "
+            "(real `tgauss.exe -b`, GAUSS 26.1.4, 2026-10-12: `print \"a` / `b\";` prints two lines) and is "
+            "reported as the unknown construct `multiline_string`, not as this violation."
         ),
         applies_to="string_literal",
+    ),
+    "unterminated_block_comment": SyntaxRule(
+        name="unterminated_block_comment",
+        description="A `/*` comment must be closed by a matching `*/` (block comments nest).",
+        source=(
+            "v0.84.0, real `tgauss.exe -b` (GAUSS 26.1.4, 2026-10-12): `/* never closed` is "
+            "`error G0562 : Open /* */ comment`; `/* outer /* inner */ print \"x\"; */` prints nothing, so "
+            "`/* */` comments nest. Without this rule, an unterminated `/*` would silently mask the rest of "
+            "the snippet from every check."
+        ),
+        applies_to="comment",
+    ),
+    "unterminated_at_comment": SyntaxRule(
+        name="unterminated_at_comment",
+        description="An `@` comment must be closed by a second `@`.",
+        source=(
+            "v0.84.0, real `tgauss.exe -b` (GAUSS 26.1.4, 2026-10-12): `@ print \"x\"; @` prints nothing "
+            "(also across lines, and mid-statement: `y = x @ 3 @ ;` assigns `x`), and `y = x @ 3;` with no "
+            "second `@` is `error G0008 : Syntax error`. The published docs never mention `@` comments; "
+            "a model writing Python's `@` matrix multiply produces exactly this error."
+        ),
+        applies_to="comment",
     ),
     "bare_multi_token_literal_requires_let_or_braces": SyntaxRule(
         name="bare_multi_token_literal_requires_let_or_braces",
@@ -1882,12 +2212,11 @@ class SyntaxValidationResult:
     unknown_constructs: tuple[str, ...]
 
 
-_QUOTED_STRING_RE = re.compile(r'"[^"\n]*"')
-#: Deliberately excludes newlines and backslash-escaping -- `let.rst`'s own
-#: documented convention for embedding a literal quote is adjacent quoted
-#: tokens (`"dog""cat"`), not backslash escaping, and a real GAUSS string
-#: literal is not documented anywhere in this repository's own docs
-#: checkout as spanning multiple lines.
+#: v0.84.0: `_QUOTED_STRING_RE` (`"[^"\n]*"`) is retired from every
+#: validator path. Its comment said GAUSS strings have no backslash escapes
+#: and never span lines; `user-guide/fundamentals/strings.rst` documents
+#: `\"`, and real `tgauss.exe -b` runs both (planning v0.84 §2.2, t2/a5).
+#: Strings are now found by `lex_gauss_source(...)`.
 _DANGLING_ASSIGNMENT_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*=\s*;")
 #: A looser match than `_DANGLING_ASSIGNMENT_RE` -- used only to record that
 #: SOME assignment construct is present (for `validated_constructs`
@@ -1908,13 +2237,14 @@ _BARE_ASSIGNMENT_RE = re.compile(
 
 
 def _mask_quoted_strings(code: str) -> str:
-    """Replaces each complete double-quoted string's content with `#` of the
-    same length, so delimiter-balance/argument-separator/dangling-assignment
-    scanning below never misreads a bracket or `=`/`;` character that
-    happens to appear inside a string literal. Length-preserving, so byte
-    offsets computed against the masked text remain valid against the
-    original `code` for line-number reporting."""
-    return _QUOTED_STRING_RE.sub(lambda m: "#" * len(m.group(0)), code)
+    """Comments blanked and each string token replaced by `#` of the same
+    length (`lex_gauss_source(code).masked_view`), so delimiter-balance,
+    argument-separator and assignment scanning never misreads a bracket,
+    `=` or `;` inside a string or comment. Length- and newline-preserving,
+    so offsets computed on the masked text give the original's line numbers.
+    v0.84.0: formerly a `_QUOTED_STRING_RE` substitution with no escapes,
+    no multi-line strings and no knowledge of comments."""
+    return lex_gauss_source(code).masked_view
 
 
 def _find_matching_brace(text: str, open_idx: int) -> int | None:
@@ -2016,18 +2346,27 @@ def _check_matrix_literals(code: str) -> tuple[list[SyntaxIssue], bool]:
     return issues, found
 
 
-def _check_unterminated_strings(code: str) -> list[SyntaxIssue]:
-    issues: list[SyntaxIssue] = []
-    offset = 0
-    for line_no, line in enumerate(code.splitlines(keepends=True), start=1):
-        remaining = _QUOTED_STRING_RE.sub("", line)
-        if '"' in remaining:
-            issues.append(SyntaxIssue(
-                rule="unterminated_string", message="a double-quoted string on this line is not closed",
-                line_number=line_no, construct="string_literal",
-            ))
-        offset += len(line)
-    return issues
+def _check_lexical_closure(lexed: LexedSource) -> list[SyntaxIssue]:
+    """v0.84.0: a string, block comment or `@` comment still open at end of
+    input (`lex_gauss_source(...)`'s `unterminated`). Replaces the per-line
+    `_QUOTED_STRING_RE` check, which knew no escapes (`sprintf("a\\",%d", 3)`
+    was a false INVALID). A string closed on a LATER line is legal GAUSS (a5)
+    and is an unknown construct instead (`validate_syntax`)."""
+    if lexed.unterminated is None or lexed.unterminated_offset is None:
+        return []
+    line_no, _column = lexed.position(lexed.unterminated_offset)
+    rule, message, construct = {
+        UNTERMINATED_STRING: (
+            "unterminated_string", "a double-quoted string is not closed before the end of the code", "string_literal",
+        ),
+        UNTERMINATED_BLOCK_COMMENT: (
+            "unterminated_block_comment", "a `/*` comment is never closed by `*/`", "comment",
+        ),
+        UNTERMINATED_AT_COMMENT: (
+            "unterminated_at_comment", "an `@` comment is never closed by a second `@`", "comment",
+        ),
+    }[lexed.unterminated]
+    return [SyntaxIssue(rule=rule, message=message, line_number=line_no, construct=construct)]
 
 
 def _split_top_level_args_keep_empty(raw: str) -> list[str]:
@@ -2235,25 +2574,20 @@ class _Statement:
 
 def _split_statements(masked_code: str) -> list[_Statement]:
     """v0.82.0: splits WHOLE (already string-masked) code on `;`, across
-    lines -- unlike `_masked_statements(...)`, which splits per line -- so a
-    multi-line matrix literal or a statement continued onto the next line is
-    one statement, and a block keyword that follows a `;` mid-line (the
-    one-line loop form) starts its own statement. Empty statements (e.g. the
-    second `;` of `print i;;`, documented in control-flow.rst) are dropped."""
-    statements: list[_Statement] = []
-    start = 0
-    while start < len(masked_code):
-        semi = masked_code.find(";", start)
-        end = len(masked_code) if semi == -1 else semi
-        raw = masked_code[start:end]
-        text = raw.strip()
-        if text:
-            first = start + (len(raw) - len(raw.lstrip()))
-            statements.append(_Statement(
-                text=text, line_number=masked_code.count("\n", 0, first) + 1, terminated=semi != -1,
-            ))
-        start = end + 1
-    return statements
+    lines, so a multi-line matrix literal or a statement continued onto the
+    next line is one statement, and a block keyword that follows a `;`
+    mid-line (the one-line loop form) starts its own statement. Empty
+    statements (e.g. the second `;` of `print i;;`, documented in
+    control-flow.rst) are dropped.
+
+    v0.84.0: a view of `source_statements(...)`, the one statement stream.
+    Lexing already-masked text is the identity (its strings are `#` and its
+    comments spaces), so the statements are the same ones every other scan
+    reads."""
+    return [
+        _Statement(text=statement.masked, line_number=statement.line, terminated=statement.terminated)
+        for statement in source_statements(masked_code)
+    ]
 
 
 def _first_keyword(statement_text: str) -> str | None:
@@ -2522,21 +2856,26 @@ def _check_let_statements(masked_code: str) -> list[SyntaxIssue]:
 
 
 def validate_syntax(code: str) -> SyntaxValidationResult:
-    """The one entry point callers should use. `code` is expected to already
-    have comments stripped by the caller, exactly like `check_preconditions(
-    ...)`/`extract_generated_calls(...)` already expect -- this function
-    never re-implements `gauss_conversation_engine._strip_comments_for_
-    analysis(...)`, to avoid a third divergent copy of that regex."""
-    masked = _mask_quoted_strings(code)
+    """The one entry point callers should use. v0.84.0: pass the RAW code.
+    Every rule reads `lex_gauss_source(code)` (comments blanked, strings
+    masked), so stripping first changes nothing -- except that the comment
+    rules (`unterminated_block_comment`, `unterminated_at_comment`, the
+    `undocumented_comment_form` construct) can only see comments that are
+    still there. `gauss_conversation_engine.validate_generated_code(...)`
+    passes each raw block."""
+    lexed = lex_gauss_source(code)
+    masked = lexed.masked_view
     issues: list[SyntaxIssue] = []
 
     delimiter_issues, delimiters_found = _check_balanced_delimiters(masked)
     issues.extend(delimiter_issues)
 
-    matrix_issues, matrix_found = _check_matrix_literals(code)
+    # v0.84.0: masked, so a `{`/`}`/`;` inside a string is never part of a
+    # literal (`s = { "a;b" };` was a false row-separator INVALID).
+    matrix_issues, matrix_found = _check_matrix_literals(masked)
     issues.extend(matrix_issues)
 
-    issues.extend(_check_unterminated_strings(code))
+    issues.extend(_check_lexical_closure(lexed))
     issues.extend(_check_bare_multi_token_literals(masked))
     issues.extend(_check_let_statements(masked))
 
@@ -2550,9 +2889,9 @@ def validate_syntax(code: str) -> SyntaxValidationResult:
     assignment_found = dangling_found or bool(_ASSIGNMENT_RE.search(masked))
 
     issues.extend(_check_call_argument_missing_separator(masked))
-    call_found = bool(_CALL_SHAPED_RE.search(code))
+    call_found = bool(_CALL_SHAPED_RE.search(masked))
 
-    string_found = bool(_QUOTED_STRING_RE.search(code))
+    string_found = bool(lexed.string_spans)
 
     validated: list[str] = []
     if delimiters_found:
@@ -2570,7 +2909,16 @@ def validate_syntax(code: str) -> SyntaxValidationResult:
     issues.extend(block_issues)
     if for_validated:
         validated.append("for_block")
-    unknown = ("control_flow_block",) if block_unknown else ()
+    unknown_list: list[str] = ["control_flow_block"] if block_unknown else []
+    # v0.84.0 (planning v0.84 §8 decisions 3 and 5): legal GAUSS that the
+    # rules mask exactly as GAUSS does, but never vouch for -- a string closed
+    # on a later line (a5), and the comment forms the published docs never
+    # document (`@ ... @`, nested `/* */`; t6, t7). At best review_required.
+    if any("\n" in code[start:end] for start, end in lexed.string_spans):
+        unknown_list.append("multiline_string")
+    if any(span.kind in (COMMENT_AT, COMMENT_NESTED_BLOCK) for span in lexed.comment_spans):
+        unknown_list.append("undocumented_comment_form")
+    unknown = tuple(unknown_list)
 
     if issues:
         status = SyntaxStatus.INVALID.value
@@ -3313,16 +3661,24 @@ class SystemStatementFinding:
 
 
 def check_system_statements(code: str) -> tuple[SystemStatementFinding, ...]:
-    """Deterministic, no I/O, no model input. Expects comment-stripped code
-    (the engine strips comments before calling); masks double-quoted string
-    contents first, so `print "dos is fine";` never matches. Fails closed: a
-    match is never second-guessed as "probably harmless"."""
+    """Deterministic, no I/O, no model input. Reads each line of
+    `lex_gauss_source(code).masked_view`, so string contents and comments
+    never match (`print "dos is fine";`). Fails closed: a match is never
+    second-guessed as "probably harmless", and every line start counts as a
+    statement start (a superset of the real ones).
+
+    v0.84.0: the anchors and `_SYSTEM_STATEMENT_REGISTRY` are unchanged;
+    only the masking moved to the shared lexer. The per-line
+    `_QUOTED_STRING_RE` masking knew no escapes, so
+    `print "a\\"b"; dos dir; print "c\\"d";` hid `dos` inside a mis-paired
+    "string", and the engine's regex comment stripper deleted
+    `print "/*"; dos dir; print "*/";` as a comment -- both reached
+    handoff_candidate (planning v0.84 §2.2)."""
     findings: list[SystemStatementFinding] = []
     seen: set[tuple[str, int]] = set()
-    for line_no, line in enumerate(code.splitlines(), start=1):
-        masked = _QUOTED_STRING_RE.sub(lambda m: "#" * len(m.group(0)), line)
+    for line_no, masked in enumerate(lex_gauss_source(code).masked_view.split("\n"), start=1):
         names: list[str] = []
-        if _INCLUDE_DIRECTIVE_RE.match(line):
+        if _INCLUDE_DIRECTIVE_RE.match(masked):
             names.append("#include")
         names.extend(m.group(1).lower() for m in _SYSTEM_STATEMENT_RE.finditer(masked))
         names.extend(m.group(1).lower() for m in _SYSTEM_CALL_RE.finditer(masked))
@@ -3423,6 +3779,17 @@ class CoverageGap:
     detail: str
 
 
+#: v0.84.0: `CoverageGap.cause` for a call with no documentation.
+GAP_CALL_UNDOCUMENTED = "call_undocumented"
+
+
+def _undocumented_call_detail(symbol: str) -> str:
+    return (
+        f"no documentation was found for `{symbol}`, so its call signature cannot be checked (a procedure "
+        "defined in this snippet is never checked against documentation)"
+    )
+
+
 def compute_coverage_gaps(
     *, call_validations: tuple[CallValidationResult, ...], parameter_role_checks: tuple[ParameterRoleCheck, ...],
     preconditions: tuple[PreconditionCheck, ...], syntax: "SyntaxValidationResult | None",
@@ -3441,6 +3808,14 @@ def compute_coverage_gaps(
         gaps.append(CoverageGap(
             check="signature", symbol=symbol, argument=None, parameter=None, cause="signature_not_extracted",
             detail="the documented call signature could not be reliably extracted",
+        ))
+    # v0.84.0 (live finding 73.14): an undocumented call makes the signature
+    # dimension partial too, but used to produce no gap at all, so a partial
+    # verdict could name no cause.
+    for symbol in sorted({cv.symbol for cv in call_validations if not cv.documented}):
+        gaps.append(CoverageGap(
+            check="signature", symbol=symbol, argument=None, parameter=None, cause=GAP_CALL_UNDOCUMENTED,
+            detail=_undocumented_call_detail(symbol),
         ))
     for check in parameter_role_checks:
         if check.status == ParameterRoleStatus.UNKNOWN.value:
@@ -3534,6 +3909,10 @@ def compute_handoff_readiness(
         review_reasons.append(
             f"documented call signature could not be reliably extracted for: {', '.join(unknown_signature_symbols)}"
         )
+    # v0.84.0: wording only -- an undocumented call already keeps the
+    # signature dimension short of complete, so the state is unchanged.
+    for symbol in sorted({cv.symbol for cv in call_validations if not cv.documented}):
+        review_reasons.append(_undocumented_call_detail(symbol))
     unverified_preconditions = [c for c in preconditions if c.status == PreconditionStatus.UNVERIFIED.value]
     if unverified_preconditions:
         symbols = ", ".join(sorted({c.precondition.symbol for c in unverified_preconditions}))

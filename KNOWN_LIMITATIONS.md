@@ -2,6 +2,16 @@
 
 See also [docs/known-alpha-limitations.md](docs/known-alpha-limitations.md) for a shorter, tester-facing summary of current-phase limitations.
 
+`v0.84.0` reads all GAUSS source through one lexer and one `;`-terminated statement stream. This fixes live findings 73.10 (multi-line statements), 73.14 (string labels defining names, and undocumented calls missing from `coverage_gaps`) and the cosmetic 73.x finding 5. It also fixes a pre-existing defect where string-embedded `/*`…`*/` or `\"` escapes hid code, including system commands, from every check. Limitations:
+- **Undocumented lexical forms cap the verdict at `review_required`.** `@ … @` comments and nested `/* */` comments are masked exactly as real GAUSS treats them (spot-checked, not documented in the published docs), but such code is never a handoff candidate. A string literal spanning a newline is legal GAUSS (`print "a⏎b";`) and is likewise `review_required` at best.
+- **Inside an unterminated `/*` or `@` comment, nothing is checked.** The snippet is `not_ready` (`unterminated_block_comment` / `unterminated_at_comment`, matching GAUSS's own `G0562`/`G0008`), but a system command inside it is no longer listed separately.
+- **Only statement-leading targets define names.** `fn area(r) = …;` one-line functions and `keyword` procedures are not treated as user-defined, so a call to one is reported unknown (a false `not_ready`, pre-existing). Targets of a multi-target assignment (`{a, b} = f(x);`) are not collected either, which is the safe direction.
+- **The lexer is not a parser.** Statement boundaries are exact; statement meaning is still read through the bounded rules, and expressions are never evaluated.
+- **Search recall gaps from 73.x remain** (out of this milestone's scope):
+  - `sortc` is never offered for "sort a matrix by a column";
+  - "percentile" maps to nothing;
+  - "how do I compute the 95th percentile of a column" grounds fully on the unrelated `setColDateFormats` page, whose derived keywords include the stop word `how`. On `ask()`, that can generate code grounded on the wrong page.
+
 `v0.83.0` makes every readiness reason name its real cause (with a structured `coverage_gaps` list on the MCP path), types `sprintf`'s variadic arguments, and lists labeled candidate pages in `gauss_search_docs`. This supersedes the v0.82.0 items below about the no-documented-call wording, untyped variadic arguments, partial verdicts not naming their check, and plain searches returning nothing. Limitations:
 - **`sprintf` format strings are not parsed.** `sprintf("%d and %d", 3)` (fewer arguments than the format consumes) reaches `HANDOFF_CANDIDATE` and fails at run time with `G0159`. `sprintf("hello")` (real GAUSS requires at least 2 arguments) was already a candidate in v0.82.0 and fails at run time too. The handoff reports both honestly.
 - **Arguments at or after a `...` that other parameters follow are never checked** (`eqSolvemt(&fct, par, ..., c)`). Which parameter such an argument fills is not inferred, so those calls stay `review_required` at best.

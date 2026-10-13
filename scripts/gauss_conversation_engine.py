@@ -1208,7 +1208,7 @@ def _render_clarify_message(bundle: GroundingBundle) -> str:
 _LANGUAGE_CONSTRUCT_KEYWORDS = frozenset({
     "if", "elseif", "else", "endif", "do", "while", "until", "endo", "for", "endfor",
     "proc", "endp", "retp", "local", "print", "struct",
-    # v0.82.0: with the counter blanked by `call_scan_text(...)`, a
+    # v0.82.0: with the counter blanked by `call_scan_view(...)`, a
     # `threadfor i (1, 5, 1);` header reads as `threadfor (...)` -- a header,
     # never a call to a function named `threadfor`.
     "threadfor",
@@ -1227,8 +1227,10 @@ _LANGUAGE_CONSTRUCT_KEYWORDS = frozenset({
 _COMMON_BUILTIN_SYMBOLS = frozenset({"rows", "cols", "zeros", "ones", "rndu", "rndn"})
 
 _CALL_SHAPED_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(")
-_ASSIGNMENT_TARGET_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)")
-_PROC_DEFINITION_RE = re.compile(r"\bproc\b[^;]*?\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", re.IGNORECASE)
+#: v0.84.0: the whole-text `_ASSIGNMENT_TARGET_RE`/`_PROC_DEFINITION_RE`
+#: scans that lived here read string contents as code (live finding 73.14:
+#: `print "det = " d;` made `det` user-defined). Both callers now use
+#: `gauss_pre_execution_validation.collect_user_defined_symbols(...)`.
 
 #: v0.74.0 live evaluation (category 64.x, scenario 64.7) found a real,
 #: genuine false positive: GAUSS `//` line comments are real, legitimate
@@ -1238,16 +1240,20 @@ _PROC_DEFINITION_RE = re.compile(r"\bproc\b[^;]*?\b([A-Za-z_][A-Za-z0-9_]*)\s*\(
 #: `gauss_pre_execution_validation.extract_generated_calls(...)`, since
 #: neither excluded comment text before scanning. `/* ... */` block
 #: comments are handled too, for the same reason.
-_LINE_COMMENT_RE = re.compile(r"//.*$", re.MULTILINE)
-_BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+#: v0.84.0: the two regexes that did this ran before strings were known, so
+#: `print "/*"; dos dir; print "*/";` lost its `dos` and reached
+#: handoff_candidate, and `"https://..."` became an unterminated string
+#: (planning v0.84 §2.2). Comments are now removed by the shared lexer.
 
 
 def _strip_comments_for_analysis(code: str) -> str:
     """Analysis-only: the code actually shown to the user (`AnswerResult.
     text`/`.generated_code`) is never altered by this -- only a throwaway
     copy, used exclusively for symbol/call/precondition scanning, has its
-    comments removed."""
-    return _LINE_COMMENT_RE.sub("", _BLOCK_COMMENT_RE.sub(" ", code))
+    comments removed. v0.84.0: `gauss_pre_execution_validation.
+    strip_comments(...)` -- string-aware, nesting-aware, `@`-aware, and
+    length- and newline-preserving, so line numbers stay the original's."""
+    return validation_mod.strip_comments(code)
 
 
 @dataclass(frozen=True)
@@ -1274,7 +1280,8 @@ class GeneratedSymbolCheck:
 
 def check_generated_symbols(code: str, *, supported_symbols: tuple[str, ...]) -> GeneratedSymbolCheck:
     """Extracts call-shaped identifiers (`name(`) from `code`, scanning only
-    the text `gauss_pre_execution_validation.call_scan_text(...)` exposes --
+    the text `gauss_pre_execution_validation.call_scan_view(...)` exposes
+    (v0.84.0: the whole snippet, formerly `call_scan_text(...)` per line) --
     the SAME definition the call extractor uses (v0.80.0; previously a
     separate whole-line keyword skip here let a hallucinated
     `print colmean(x);` go unflagged). That helper skips declaration lines,
@@ -1287,30 +1294,31 @@ def check_generated_symbols(code: str, *, supported_symbols: tuple[str, ...]) ->
     `proc`-defined elsewhere in the SAME code -- when the distinction
     cannot be made safely, this function classifies the symbol as
     ambiguous, never as hallucinated, per this module's own conservative-
-    false-positive discipline."""
+    false-positive discipline. v0.84.0: "assigned to or `proc`-defined" is
+    `gauss_pre_execution_validation.collect_user_defined_symbols(...)`, the
+    same set `validate_code(...)` uses; the whole-text regexes it replaced
+    read string labels, so `print "fakeinverse = " f;` hid a hallucinated
+    `fakeinverse(x)` here (live finding 73.14)."""
     supported = {s.lower() for s in supported_symbols} | _COMMON_BUILTIN_SYMBOLS
-    assigned = {m.lower() for m in _ASSIGNMENT_TARGET_RE.findall(code)}
-    proc_defined = {m.lower() for m in _PROC_DEFINITION_RE.findall(code)}
+    user_defined = validation_mod.collect_user_defined_symbols(code)
 
     known_supported: list[str] = []
     unknown: list[str] = []
     ambiguous: list[str] = []
     seen: set[str] = set()
 
-    for line in code.splitlines():
-        scan = validation_mod.call_scan_text(line)
-        for match in _CALL_SHAPED_RE.finditer(scan):
-            symbol = match.group(1)
-            lowered = symbol.lower()
-            if lowered in seen or lowered in _LANGUAGE_CONSTRUCT_KEYWORDS:
-                continue
-            seen.add(lowered)
-            if lowered in supported:
-                known_supported.append(symbol)
-            elif lowered in proc_defined or lowered in assigned:
-                ambiguous.append(symbol)
-            else:
-                unknown.append(symbol)
+    for match in _CALL_SHAPED_RE.finditer(validation_mod.call_scan_view(code)):
+        symbol = match.group(1)
+        lowered = symbol.lower()
+        if lowered in seen or lowered in _LANGUAGE_CONSTRUCT_KEYWORDS:
+            continue
+        seen.add(lowered)
+        if lowered in supported:
+            known_supported.append(symbol)
+        elif lowered in user_defined:
+            ambiguous.append(symbol)
+        else:
+            unknown.append(symbol)
 
     return GeneratedSymbolCheck(
         supported_symbols=tuple(known_supported), unknown_call_symbols=tuple(unknown),
@@ -1765,8 +1773,11 @@ def validate_generated_code(
     # per-answer result via `merge_syntax_results(...)` (re-derives
     # status from the combined evidence rather than a separate ranking
     # scheme; see that function's own docstring).
+    # v0.84.0: the RAW block -- `validate_syntax(...)` lexes it itself, and
+    # its comment rules (an unterminated `/*` or `@`, the undocumented comment
+    # forms) need the comments still present.
     syntax = validation_mod.merge_syntax_results(
-        tuple(validation_mod.validate_syntax(block) for block in cleaned_generated_code)
+        tuple(validation_mod.validate_syntax(block) for block in generated_code)
     )
     system_statements = tuple(
         finding for block in cleaned_generated_code for finding in validation_mod.check_system_statements(block)
@@ -1906,9 +1917,9 @@ def validate_code(code: str, *, docs_root: str | None) -> CodeValidationResult:
         return _rejected(code, "docs_root_not_configured", "no GAUSS documentation is configured to validate against")
 
     cleaned = _strip_comments_for_analysis(code)
-    user_defined = {m.lower() for m in _PROC_DEFINITION_RE.findall(cleaned)} | {
-        m.lower() for m in _ASSIGNMENT_TARGET_RE.findall(cleaned)
-    }
+    # v0.84.0: statement-leading targets read from masked statements (live
+    # finding 73.14); shared with `check_generated_symbols(...)`.
+    user_defined = set(validation_mod.collect_user_defined_symbols(cleaned))
     called: list[str] = []
     for call in validation_mod.extract_generated_calls(cleaned):
         symbol = call.symbol.lower()

@@ -4,6 +4,28 @@ This file records notable changes to the GAUSS AI framework.
 
 ## [Unreleased]
 
+- Added `v0.84.0` One Lexical Statement Stream: every scan of GAUSS source in the validator now reads one shared lexer (`lex_gauss_source`) and one `;`-terminated statement stream (`source_statements`), which keep exact line and column numbers. This fixes the two validator defects live evaluation 73.x found, and a worse instance of the same class found while reproducing them. The system-statement registry, the readiness state machine, documentation extraction and every grounding/generation-gate function are byte-identical to v0.83.0 (AST-checked).
+- **Fixed (pre-existing, unsafe direction): string contents could hide code from every check.** Two shapes reached `HANDOFF_CANDIDATE` with a system command hidden. The same shapes also hid a hallucinated call.
+  - `print "/*"; dos dir; print "*/";`: the comment stripper ran before strings were known.
+  - `print "a\"b"; dos dir; print "c\"d";`: the quote regex knew no `\"` escape, which `strings.rst` documents.
+
+  Both are now `not_ready`.
+- **Fixed (73.14): string labels defined names.** `print "det = " d;` made `det(x)` a variable, a false `not_ready`. `print "fakeinverse = " f;` hid a hallucinated `fakeinverse(x)` from the unknown-symbol check, softening `not_ready` to `review_required`. `validate_code` and the `ask()` path's `check_generated_symbols` now share `collect_user_defined_symbols`. It reads only statement-leading assignment targets and `proc` names from masked statements, so string text, member writes (`s.f = 1`), indexed and multi-target writes never define a name. This also explains and fixes 73.x finding 5: `i` was listed as user-defined because of the label `"Stopped at i ="`.
+- **Fixed (73.10): statements were cut at newlines.** The role tracer and the precondition tracer now read a multi-line matrix literal (the docs' own layout) as one statement. A two-line `invpd`/`inv`/`chol`/`solpd` violation is `not_ready`, and two-line `eigh`/`meanc`/`sumc` code reaches `HANDOFF_CANDIDATE`, each exactly like its one-line form. A call whose parentheses span lines is now extracted; it was dropped and then reported "unsupported".
+- **Fixed: false `not_ready` verdicts from unmasked scans,** for a URL inside a string, `s = { "a;b" };`, and an escaped quote in a `sprintf` format.
+- **Added: real GAUSS lexing.** Each transition is backed by a real `tgauss.exe -b` spot check:
+  - backslash escapes;
+  - strings spanning lines;
+  - nested `/* */` comments;
+  - `@ … @` comments, which the published docs never mention.
+
+  New INVALID rules `unterminated_block_comment` (`G0562`) and `unterminated_at_comment` (`G0008`; a Python-style `x @ b` is exactly this). New unknown constructs `multiline_string` and `undocumented_comment_form` cap such code at `review_required`. Line numbers after a multi-line block comment are now correct.
+- **Added (73.14): undocumented calls are named gaps.** `coverage_gaps` lists each call with no documentation (cause `call_undocumented`), and the readiness reasons name it. A partial signature check therefore always has a stated cause. No state changes because of this.
+- The differential harness now strips comments through the shared lexer instead of its own copy of the old regexes.
+- The verdict diff against v0.83.0 (92 snippets on the published docs, all listed verbatim in planning Appendix A) leaves the 40-snippet v0.83.0 set unchanged and explains every other change.
+- 15 new deterministic tests, each confirmed to fail against v0.83.0. They include a guard that fails if a source scan bypasses the lexer again. No existing expectation changed. The full suite (48 files) and `check_release_readiness.py` pass, with zero diff on core execution/repair/verification/approval modules.
+- The live client evaluation `74.x` was not run before this release (user decision, 2026-10-13).
+- Recorded, not changed (search; needs a gate change): "how do I compute the 95th percentile of a column" grounds fully on `setColDateFormats`, whose derived keywords include `how`. See planning §2.5.
 - Added `v0.83.0` Verdict Explanations and Search Recall: every readiness reason now states its real, deterministic cause, and `gauss_search_docs` returns labeled candidate pages for plain questions. These address four findings from live evaluation 72.x. The `ask()` generation gate is unchanged: its functions are byte-identical to v0.82.0, and tests pin its behavior.
 - **Fixed (72.6, 72.8):** code with no documented call is reported as "no documented GAUSS function call was found to ground this code against". Previously it said "generation policy does not permit code generation (block)" on `gauss_validate_code`, although nothing was generated. The verdict (`not_ready`) is unchanged, and so is `ask()`'s own wording.
 - **Added (72.3, 72.15): partial verdicts name their cause.**

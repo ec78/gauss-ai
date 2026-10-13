@@ -2373,6 +2373,152 @@ def test_138_v083_search_candidates_never_reach_the_generation_gate() -> None:
         check("no code generated", result.generated_code == ())
 
 
+# ---------------------------------------------------------------------------
+# v0.84.0: one lexer and statement stream -- every 73.10/73.14 probe and the
+# planning doc's §2.2 rows, through validate_code on synthetic typed pages
+# ---------------------------------------------------------------------------
+
+_TYPED_V084_RST = dict(_TYPED_V082_RST, **{
+    "det.rst": "det\n===\n\n.. function:: y = det(x)\n\n    :param x: square matrix\n    :type x: NxN matrix\n\n"
+               "    :return y: the determinant\n    :rtype y: scalar\n",
+    "eigh.rst": "eigh\n====\n\n.. function:: va = eigh(x)\n\n    :param x: symmetric matrix\n"
+                "    :type x: NxN matrix\n\n    :return va: eigenvalues\n    :rtype va: Nx1 vector\n",
+    "sprintf.rst": _SPRINTF_RST,
+})
+
+
+def _typed_v084_docs_root(tmp: str) -> str:
+    root = Path(tmp) / "docs"
+    root.mkdir()
+    for name, text in _TYPED_V084_RST.items():
+        (root / name).write_text(text, encoding="utf-8")
+    return str(root)
+
+
+def _state(code: str, root: str) -> str:
+    return engine_mod.validate_code(code, docs_root=root).handoff_readiness.state
+
+
+def test_139_v084_string_labels_never_define_names() -> None:
+    """Live finding 73.14 (run-014): `_ASSIGNMENT_TARGET_RE` read `det =`
+    inside a `print` label as an assignment."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _typed_v084_docs_root(tmp)
+        det = engine_mod.validate_code('x = { 3 2 1, 0 1 -2, 1 3 4 };\nd = det(x);\nprint "det = " d;', docs_root=root)
+        check("det label: handoff_candidate (was a false not_ready)", det.handoff_readiness.state == "handoff_candidate")
+        check("det is called, not user-defined", det.called_symbols == ("det",) and "det" not in det.user_defined_symbols)
+
+        fake = engine_mod.validate_code(
+            'x = { 3 2 1, 0 1 -2, 1 3 4 };\nd = det(x);\nf = fakeinverse(x);\nprint "fakeinverse = " f;',
+            docs_root=root,
+        )
+        check("fakeinverse label: not_ready (was review_required)", fake.handoff_readiness.state == "not_ready")
+        check("fakeinverse is unknown", fake.pre_execution.unknown_symbols == ("fakeinverse",))
+        check("and named as a gap", ("signature", "fakeinverse", "call_undocumented") in [
+            (g.check, g.symbol, g.cause) for g in fake.pre_execution.coverage_gaps])
+
+        sole = engine_mod.validate_code('f = fakeinverse(x); print "fakeinverse = " f;', docs_root=root)
+        check("sole fakeinverse: not_ready naming it", sole.handoff_readiness.state == "not_ready"
+              and any("fakeinverse" in r for r in sole.handoff_readiness.reasons))
+
+        violated = engine_mod.validate_code('x = {1 2, 2 1}; y = invpd(x); print "invpd = " y;', docs_root=root)
+        check("invpd label: the violation is the first reason",
+              violated.handoff_readiness.state == "not_ready" and violated.handoff_readiness.reasons[0].startswith("invpd:"))
+
+        system = engine_mod.validate_code('dos dir;\nprint "dos = " d;', docs_root=root)
+        check("dos label: not_ready, dos not user-defined",
+              system.handoff_readiness.state == "not_ready" and "dos" not in system.user_defined_symbols)
+
+        for code in (
+            'x = {1 2, 3 4};\nprint "proc fakefn(x)";\ny = fakefn(x);\nm = meanc(x);',
+            "x = {4 1, 1 3};\nm = meanc(x);\ns.fakefn = 1;\ny = fakefn(x);",
+            "proc (1) = f(x);\n  local a; a = fakefn(x);\n  retp(a);\nendp;\nm = meanc({1 2, 3 4});",
+            "@ fakefn = 1; @\nx = {1 2, 3 4};\nm = meanc(x);\ny = fakefn(x);",
+        ):
+            result = engine_mod.validate_code(code, docs_root=root)
+            check(f"hidden hallucination found: {code[:24]!r}", result.handoff_readiness.state == "not_ready"
+                  and "fakefn" in result.pre_execution.unknown_symbols)
+
+
+def test_140_v084_multi_line_statements_are_traced() -> None:
+    """Live finding 73.10 (run-010): `_masked_statements` split per line, so a
+    multi-line literal was never traced. Every two-line form must reach its
+    one-line twin's verdict."""
+    pairs = (
+        ("x = { 2 1 0,\n      1 2 1,\n      0 1 2 };\nva = eigh(x);", "handoff_candidate"),
+        ("x = {1 2,\n3 4}; m = meanc(x);", "handoff_candidate"),
+        ("x = {1 2,\n2 1}; y = invpd(x);", "not_ready"),
+        ("x = {2 1,\n1 2};\ny = invpd(x);", "handoff_candidate"),
+        ("x = {1 2,\n2 4};\ny = inv(x);", "not_ready"),
+        ("x = {1 2, 3 4};\nm = meanc(\n  x);", "handoff_candidate"),
+        ("x = {2 1, 1 2};\ny = invpd(\n  x);", "handoff_candidate"),
+        ("v = zeros(5,\n          1);\nfor i(1, 5, 1);\n    v[i] = i^2;\nendfor;\nprint v;", "handoff_candidate"),
+        ('s = sprintf("%d", {1 2,\n3 4});', "handoff_candidate"),
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _typed_v084_docs_root(tmp)
+        for code, expected in pairs:
+            one_line = code.replace(",\n", ", ").replace("(\n  ", "(").replace("\n          ", " ")
+            check(f"{expected}: {code[:22]!r}", _state(code, root) == expected)
+            check(f"same as its one-line twin: {code[:22]!r}", _state(one_line, root) == expected)
+        result = engine_mod.validate_code("x = {1 2,\n2 1}; y = invpd(x);", docs_root=root)
+        check("the violation is the reason", result.handoff_readiness.reasons[0].startswith("invpd:"))
+
+
+def test_141_v084_strings_and_comments_never_hide_code() -> None:
+    """Planning v0.84 §2.2: string-embedded `/*`...`*/` and `\\"` escapes hid
+    `dos dir;` and a hallucinated call, and both reached handoff_candidate."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _typed_v084_docs_root(tmp)
+        unsafe = (
+            'print "/*"; dos dir; print "*/";\nm = meanc({1 2, 3 4});',
+            'print "a\\"b"; dos dir; print "c\\"d";\nm = meanc({1 2, 3 4});',
+        )
+        for code in unsafe:
+            result = engine_mod.validate_code(code, docs_root=root)
+            check(f"dos found: {code[:20]!r}", result.handoff_readiness.state == "not_ready"
+                  and [f.name for f in result.pre_execution.system_statements] == ["dos"])
+            hidden = engine_mod.validate_code(code.replace("dos dir;", "y = fakefn(1);"), docs_root=root)
+            check(f"fakefn found: {code[:20]!r}", hidden.handoff_readiness.state == "not_ready"
+                  and "fakefn" in hidden.pre_execution.unknown_symbols)
+        candidates = (
+            'x = {1 2, 3 4};\nm = meanc(x);\nprint "see https://docs.aptech.com";',
+            's = { "a;b" };\nm = meanc({1 2, 3 4});',
+            's = sprintf("a\\",%d", 3);',
+            'print "say \\"hi\\"";\nm = meanc({1 2, 3 4});',
+            "/* dos dir; */\nm = meanc({1 2, 3 4});",
+        )
+        for code in candidates:
+            check(f"handoff_candidate: {code[:24]!r}", _state(code, root) == "handoff_candidate")
+        for code in ("@ note @ m = meanc({1 2, 3 4});", "/* a /* b */ dos dir; */\nm = meanc({1 2, 3 4});",
+                     'm = meanc({1 2, 3 4});\nprint "a\nb";'):
+            check(f"undocumented lexical form: review_required: {code[:20]!r}", _state(code, root) == "review_required")
+        for code in ("x = {1 2, 3 4};\nb = {1, 1};\ny = x @ b;\nm = meanc(y);",
+                     "m = meanc({1 2, 3 4});\n/* never closed\ndos dir;"):
+            check(f"unterminated comment: not_ready: {code[:20]!r}", _state(code, root) == "not_ready")
+        shifted = engine_mod.validate_code("/* one\ntwo\nthree */\nm = meanc({1 2, 3 4});\ndos dir;", docs_root=root)
+        check("line numbers survive a multi-line comment", shifted.pre_execution.system_statements[0].line_number == 5)
+
+
+def test_142_v084_ask_path_shares_the_fix() -> None:
+    """The `ask()` path's `check_generated_symbols(...)` had the same 73.14
+    defect: a label made `fakeinverse` "user-defined or ambiguous"."""
+    labelled = 'x = { 3 2 1, 0 1 -2, 1 3 4 };\nd = det(x);\nf = fakeinverse(x);\nprint "fakeinverse = " f;'
+    check_result = engine_mod.check_generated_symbols(labelled, supported_symbols=("det",))
+    check("unknown behind a label", check_result.unknown_call_symbols == ("fakeinverse",))
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _typed_v084_docs_root(tmp)
+        outcomes = []
+        for code in (labelled, labelled.replace('print "fakeinverse = " f;', "print f;")):
+            engine = engine_mod.ConversationEngine(
+                provider=provider_mod.FakeModelProvider(canned_answer=f"```gauss\n{code}\n```"), docs_root=root,
+            )
+            result = engine.ask("Write GAUSS code that uses det on a 3x3 matrix.")
+            outcomes.append((result.unknown_symbols, result.pre_execution_eligibility))
+        check("ask(): the label changes nothing", outcomes[0] == outcomes[1])
+        check("ask(): fakeinverse unknown", "fakeinverse" in outcomes[0][0])
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

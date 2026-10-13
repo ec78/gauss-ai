@@ -75,19 +75,14 @@ _REPO_ROOT = _SCRIPT_DIR.parent
 _CORPUS_DIR = _REPO_ROOT / "evaluations" / "differential_corpus"
 _RESULTS_DIR = _REPO_ROOT / "evaluations" / "differential_runs"
 
-#: Same duplication rationale as `gauss_pre_execution_validation.py`'s own
-#: `_LANGUAGE_CONSTRUCT_KEYWORDS` docstring: this module must strip comments
-#: exactly like `gauss_conversation_engine.py` does before calling
-#: `validate_syntax(...)`, but reaching into that module's own private
-#: (underscore-prefixed) `_strip_comments_for_analysis` across modules would
-#: violate this repository's own established duplication convention for
-#: exactly this situation. Byte-for-byte the same two regexes.
-_LINE_COMMENT_RE = re.compile(r"//.*$", re.MULTILINE)
-_BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
-
-
+#: v0.84.0: formerly a byte-for-byte copy of the engine's two comment
+#: regexes, kept as a copy so this module never reached into the engine's
+#: private `_strip_comments_for_analysis`. Those regexes ran before strings
+#: were known (planning v0.84 §2.2), and the stripper is now the PUBLIC
+#: `gauss_pre_execution_validation.strip_comments(...)`, so the reason for a
+#: copy is gone: this delegates, and can never drift from the engine.
 def strip_comments_for_analysis(code: str) -> str:
-    return _LINE_COMMENT_RE.sub("", _BLOCK_COMMENT_RE.sub(" ", code))
+    return validation_mod.strip_comments(code)
 
 
 # ---------------------------------------------------------------------------
@@ -289,8 +284,10 @@ production implementation; every test uses a fake."""
 
 
 def run_corpus_item(item: dict, *, gauss_runner: GaussRunner) -> DifferentialResult:
-    cleaned = strip_comments_for_analysis(item["snippet"])
-    syntax_result = validation_mod.validate_syntax(cleaned)
+    # v0.84.0: the RAW snippet, exactly as the engine now passes each block
+    # -- `validate_syntax(...)` lexes it itself, and its comment rules need
+    # the comments still present.
+    syntax_result = validation_mod.validate_syntax(item["snippet"])
     raw_result = gauss_runner(item["id"], item["snippet"])
     gauss_classification = classify_gauss_outcome(raw_result)
     agreement = classify_agreement(syntax_result.status, gauss_classification)

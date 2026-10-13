@@ -42,6 +42,11 @@ Durable, project-wide guidance for Claude Code sessions in this repository. For 
 - Deterministic-by-design discipline: anything safety- or correctness-relevant (intent classification, grounding status, generation gates, symbol/signature checking) must be fixed logic or real-evidence lookups — never a model call, never a numeric confidence score presented as fact. Prefer categorical states over invented scores.
 - Extend existing modules/abstractions rather than building parallel ones (e.g. code generation reused the existing `ConversationEngine`/`ModelProvider`, it did not create a second conversational system).
 - Provider independence: no conversational logic may depend on which `ModelProvider` is active; prove this with a test provider that raises if called when it shouldn't be.
+- Any scan of GAUSS source text must respect GAUSS's lexical structure:
+  - a statement ends at `;`, not at a newline;
+  - text inside a string literal is never code.
+
+  Read source through `gauss_pre_execution_validation.lex_gauss_source(...)` (`masked_view`: comments blanked, strings masked, length- and line-preserving) and `source_statements(...)` (the `;`-terminated stream); never regex raw or per-line text, and never write a second string or comment regex. The lexer's rules (backslash escapes, multi-line strings, nested `/* */`, `@ … @` comments) come from real `tgauss.exe -b` spot checks. 73.10, 73.14 and the v0.84.0 `dos`-behind-a-string defect all came from scans that broke these rules; `test_170_v084_lexical_discipline_guard` enforces it.
 
 ## Testing Expectations
 
@@ -62,5 +67,12 @@ Durable, project-wide guidance for Claude Code sessions in this repository. For 
 
 - Work proceeds in versioned milestones (`vX.Y.0`), each typically specified as one large upfront brief. Each milestone gets its own `planning/v{X}-*.md` doc and typically ends with a mandatory multi-section final report — including an explicit recommendation on whether to proceed to the next milestone. **Do not auto-start the next milestone** unless the user asks.
 - Release sequence: full test suite → update `README.md` ("Current Status" + prepend to the "Previous milestone" chain), `CHANGELOG.md` (`[Unreleased]`), `KNOWN_LIMITATIONS.md` → commit → tag `vX.Y.0` → **confirm with the user before pushing/creating a GitHub release**.
-- New evaluation categories are numbered sequentially (e.g. `62.x`, `63.x`) in `evaluations/benchmark-prompts.md`, with matching dated files under `evaluations/runs/` and an `evaluations/runs/INDEX.md` entry. Score honestly — a correctly-blocked unsafe request is not a failure; a real defect found live is reported as a real defect, not smoothed over.
-- Live MCP-client evaluations (`70.x` onward): the user asks plain-language tasks one at a time in a fresh conversation, and that session writes the code itself. The testing session does not read the milestone's planning doc or `PROJECT_STATUS.md` expectations until the tasks are done. Before recording why a verdict was `review_required`/partial, diagnose it by calling `validate_code(...)` directly and inspecting `pre_execution.coverage` and `parameter_role_checks`, because a client's in-conversation explanation can be a wrong guess (72.3, 72.15). Run files carry the date the tasks were actually run.
+- New evaluation categories are numbered sequentially (e.g. `62.x`, `63.x`) in `evaluations/benchmark-prompts.md`, with matching dated files under `evaluations/runs/`, an `evaluations/runs/INDEX.md` entry and an `evaluations/benchmark-coverage.md` row. CI's `check_evaluation_tracking.py` fails without the coverage row. Score honestly — a correctly-blocked unsafe request is not a failure; a real defect found live is reported as a real defect, not smoothed over.
+- Live MCP-client evaluations (`70.x` onward): the user asks plain-language tasks one at a time in a fresh conversation, and that session writes the code itself. The testing session does not read the milestone's planning doc or `PROJECT_STATUS.md` expectations until the tasks are done. Before recording why a verdict was `review_required`/partial, diagnose it by calling `validate_code(...)` directly and inspecting `pre_execution.coverage` and `parameter_role_checks`, because a client's in-conversation explanation can be a wrong guess (72.3, 72.15).
+
+  When recording:
+  - say whether the `coverage_gaps` the client saw agreed with that diagnosis;
+  - for search tasks, say whether the client followed a candidate back to a grounded page, or whether its query was steered by prior knowledge;
+  - disclose whether the client read source during the tasks, or deliberately shaped code around a known defect.
+
+  Run files carry the date the tasks were actually run.
