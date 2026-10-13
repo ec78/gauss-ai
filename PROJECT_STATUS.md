@@ -4,15 +4,14 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 
 ## Current Objective
 
-**No milestone in progress.** v0.84.0 "One Lexical Statement Stream" was committed and tagged `v0.84.0` locally on 2026-10-13. **It is not pushed and has no GitHub release yet; confirm with the user first.** Its live evaluation `74.x` was not run before release (user decision). Plan and record: `planning/v0.84-lexical-statement-stream.md`:
+**No milestone in progress.** v0.84.0 "One Lexical Statement Stream" was released on 2026-10-13: https://github.com/ec78/gauss-ai/releases/tag/v0.84.0 (tag `v0.84.0`, commit `d19c61c`). Its live evaluation `74.x` was not run before release (user decision). Plan and record: `planning/v0.84-lexical-statement-stream.md`:
 - §1–§8: the plan, approved with every §8 recommendation;
 - §9: deviations and the verdict diff;
 - §10: testing;
 - Appendix A: the 92 diff snippets verbatim.
 
 **Next steps, waiting on the user:**
-1. Push `main` and the `v0.84.0` tag, and create the GitHub release.
-2. Optionally, live evaluation `74.x` (plan §7), in a fresh conversation after reinstall (see Handoff Notes).
+1. Optionally, live evaluation `74.x` (plan §7), in a fresh conversation after reinstall (see Handoff Notes).
 
 **Recorded for a later search/grounding milestone** (item 4 was excluded, plan §2.5; also in `KNOWN_LIMITATIONS.md`):
 - the 73.12 `sortc` and 73.13 "percentile" recall gaps;
@@ -22,7 +21,7 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 - category inference for elementwise expressions (72.3 finding 1; 73.5 is the same shape; needs its own design);
 - the public release readiness track (below).
 
-## Where Things Stand (v0.84.0, tagged 2026-10-13, not pushed)
+## Where Things Stand (v0.84.0, released 2026-10-13)
 
 Full detail is in CHANGELOG and `planning/v0.84-lexical-statement-stream.md`. v0.83.0 is released at https://github.com/ec78/gauss-ai/releases/tag/v0.83.0.
 
