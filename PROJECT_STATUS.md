@@ -14,14 +14,14 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 **74.x outcome:**
 - v0.84.0's fixes held live: five uncoaxed snippets that v0.83.0 got wrong now reach handoff_candidate, with no regression.
 - Result: 17 pass, 2 fail.
-- **Three real defects were found live.** All pre-date v0.84.0, all are in the safe direction, and each has a located cause (plan §11.5):
+- **Two real defects were found live.** Both pre-date v0.84.0, both are in the safe direction, and each has a located cause (plan §11.5):
   1. `call_argument_missing_separator` reads a `proc` header as a call, so `proc (1) = myFunc(struct PV p);` is a false INVALID (74.18; `tgauss.exe -b` confirms it is valid);
-  2. `command_doc_lookup.lookup("miss")` ranks `ismiss.rst` first, losing `miss`'s signature and return type (74.19);
-  3. `&`-prefixed parameters lose their documented `:type` (74.16; 114 pages).
+  2. the validator re-looks up `miss` with `max_results=1`, where a tie is always "found" and broken alphabetically (`ismiss.rst`), while grounding resolves the defining page (`missmissrv.rst`) (74.19).
+- 74.16's `&`-parameter finding is the known limitation v0.83.0 deliberately left unfixed (record corrected 2026-10-15).
 
-**Next steps, waiting on the user:**
-1. Choose the next milestone. §11.6 recommends findings 1–3 first; 2 and 3 need CLAUDE.md's all-pages extraction diff.
-2. Decide whether `library` belongs in `_SYSTEM_STATEMENT_REGISTRY` (§11.5 finding 7).
+**Next milestone, approved 2026-10-15 (every §8 recommendation), not yet started:** v0.85.0, `planning/v0.85-proc-headers-and-defining-pages.md`.
+- Scope: findings 1 and 2, plus `library` (`source_inclusion`) and `dlibrary`/`dllcall` (new category `native_code`) in the system-statement registry.
+- Unchanged: `&` parameters (v0.83.0's decision kept); trailing commas in headers are accepted.
 
 **Recorded for a later search/grounding milestone** (item 4 was excluded, plan §2.5; also in `KNOWN_LIMITATIONS.md`):
 - the 73.12 `sortc` and 73.13 "percentile" recall gaps (both reproduced in 74.14/74.15);
