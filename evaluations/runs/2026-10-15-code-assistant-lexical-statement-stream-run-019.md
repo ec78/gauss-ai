@@ -53,7 +53,7 @@ Observed behavior: Answer correct (`ismiss`, `miss`, `missrv`, `packr`, `selif`,
 
 Pass/fail: Fail
 Defect severity: Moderate (wrong page used as evidence for a documented symbol; conservative here; search recall)
-Remediation: Next extraction/lookup milestone: an exact symbol match (a page whose `.. function::` block documents `symbol(`) must outrank substring matches in `command_doc_lookup.lookup`; all-pages extraction diff plus a verdict diff, per CLAUDE.md.
+Remediation: Next milestone (planning v0.85 §3.2): every per-symbol lookup in the validation path uses the page grounding already resolved (`max_results=3` + `_resolve_ambiguous_by_definition`), falling back to today's page when that stays ambiguous. Refined 2026-10-15: the root cause is that `lookup(..., max_results=1)` truncates before its tie check, so a tie is always "found"; over all 1,418 documented symbols only `miss` is affected.
 
 Overall Score: 2.8
 Decision: Fail — real defect

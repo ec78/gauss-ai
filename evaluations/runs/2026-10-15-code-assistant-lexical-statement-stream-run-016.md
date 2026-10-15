@@ -45,11 +45,11 @@ not change; the 63 `struct pointer` and 23 `scalar` parameters do lose a real ca
 
 Expected behavior: A correct answer from grounded pages; review_required for a snippet-defined `proc`, with causes named.
 
-Observed behavior: Answer correct (`minimize`, `QNewton`, `sqpSolveMT`, `QProg`, `optmt`/`maxlikmt`). Verdict state correct. **Real extraction defect found live (minor):** every `&`-prefixed documented parameter loses its `:type` line, so the reported cause (`documented_type_missing`) is false and `struct pointer`/`scalar` `&` parameters lose real role evidence. Conservative direction only. Fixing it is an extraction change, so it needs the all-pages diff CLAUDE.md requires.
+Observed behavior: Answer correct (`minimize`, `QNewton`, `sqpSolveMT`, `QProg`, `optmt`/`maxlikmt`). Verdict state correct. **Known limitation rediscovered live (not a new defect):** every `&`-prefixed documented parameter loses its `:type` line, so the reported cause (`documented_type_missing`) is false about the page. v0.83.0 found this in its own verdict diff (planning v0.83 §9.2 item 5) and deliberately left it unfixed, disclosed in `KNOWN_LIMITATIONS.md`: matching the names would let a literal `5` "match" a function pointer documented as `scalar`, widening candidacy in the unsafe direction. (Corrected 2026-10-15: the first version of this record called it a new defect; see planning v0.85 §1 and §2.3.)
 
-Pass/fail: Pass with defect recorded
-Defect severity: Minor (wrong gap cause; lost role evidence on 114 pages; conservative direction)
-Remediation: Next extraction/validator milestone: normalize `&` consistently between `:param`/`:type` names and signature names; all-pages extraction diff plus a verdict diff.
+Pass/fail: Pass with limitation disclosed
+Defect severity: Minor (known, disclosed limitation: the gap cause is false about the docs; conservative direction)
+Remediation: None new. v0.85 §2.3 re-measured it (119 symbols) and recommends keeping v0.83.0's decision.
 
-Overall Score: 3.3
-Decision: Pass with defect recorded
+Overall Score: 3.5
+Decision: Pass with limitation disclosed
