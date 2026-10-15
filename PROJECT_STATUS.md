@@ -22,6 +22,8 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 **Next milestone, approved 2026-10-15 (every §8 recommendation), not yet started:** v0.85.0, `planning/v0.85-proc-headers-and-defining-pages.md`.
 - Scope: findings 1 and 2, plus `library` (`source_inclusion`) and `dlibrary`/`dllcall` (new category `native_code`) in the system-statement registry.
 - Unchanged: `&` parameters (v0.83.0's decision kept); trailing commas in headers are accepted.
+- Start with plan §6.1: write the regression tests first and confirm they fail on HEAD, then implement §3.1-§3.3, then the §6.2-§6.4 diffs. The investigation scripts (the 1,418-symbol page comparison, the 74.x snippets, spot checks h1-h12) were scratchpad-only; the plan records their inputs and results, so re-create them from §2.
+- **Unpushed local commits** on `main`, on top of `48664c8` (which is pushed): the 74.x record correction (`df2109d`), the v0.85 plan (`bfdbe7c`), and the CLAUDE.md/PROJECT_STATUS.md handoff update. Check with `git log origin/main..main`.
 
 **Recorded for a later search/grounding milestone** (item 4 was excluded, plan §2.5; also in `KNOWN_LIMITATIONS.md`):
 - the 73.12 `sortc` and 73.13 "percentile" recall gaps (both reproduced in 74.14/74.15);
@@ -29,7 +31,8 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 - new in 74.x (§11.5 finding 5):
   - `for` is a question stopword, so the `for` page is unreachable;
   - a hyphenated candidate (`tspdlib-landing`) cannot be opened by searching its name;
-  - long-page excerpts stop before Outputs (finding 6).
+  - long-page excerpts stop before Outputs (finding 6);
+  - `command_doc_lookup.lookup` truncates to `max_results` before its tie check, so `max_results=1` callers never see a tie. v0.85 fixes only the validation path (plan v0.85 §4).
 
 **Still deferred:**
 - category inference for elementwise expressions (72.3 finding 1; 73.5 is the same shape; needs its own design);

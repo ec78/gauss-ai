@@ -73,6 +73,8 @@ Durable, project-wide guidance for Claude Code sessions in this repository. For 
   When recording:
   - say whether the `coverage_gaps` the client saw agreed with that diagnosis;
   - for search tasks, say whether the client followed a candidate back to a grounded page, or whether its query was steered by prior knowledge;
-  - disclose whether the client read source during the tasks, or deliberately shaped code around a known defect.
+  - disclose whether the client read source during the tasks, or deliberately shaped code around a known defect;
+  - re-run every snippet on a `git archive` of the previous release, so the record separates what the milestone changed from pre-existing behavior (74.x);
+  - before calling a finding a new defect, check `KNOWN_LIMITATIONS.md` and earlier planning docs. Some gaps are disclosed on purpose (74.16 rediscovered v0.83.0's deliberately unfixed `&`-parameter gap).
 
   Run files carry the date the tasks were actually run.
