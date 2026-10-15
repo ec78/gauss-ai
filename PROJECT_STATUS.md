@@ -4,18 +4,32 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 
 ## Current Objective
 
-**No milestone in progress.** v0.84.0 "One Lexical Statement Stream" was released on 2026-10-13: https://github.com/ec78/gauss-ai/releases/tag/v0.84.0 (tag `v0.84.0`, commit `d19c61c`). Its live evaluation `74.x` was not run before release (user decision). Plan and record: `planning/v0.84-lexical-statement-stream.md`:
+**No milestone in progress.** v0.84.0 "One Lexical Statement Stream" was released on 2026-10-13: https://github.com/ec78/gauss-ai/releases/tag/v0.84.0 (tag `v0.84.0`, commit `d19c61c`). Plan and record: `planning/v0.84-lexical-statement-stream.md`:
 - §1–§8: the plan, approved with every §8 recommendation;
 - §9: deviations and the verdict diff;
 - §10: testing;
+- §11: live evaluation `74.x`, run after release on 2026-10-13 and 2026-10-15 (19 run files);
 - Appendix A: the 92 diff snippets verbatim.
 
+**74.x outcome:**
+- v0.84.0's fixes held live: five uncoaxed snippets that v0.83.0 got wrong now reach handoff_candidate, with no regression.
+- Result: 17 pass, 2 fail.
+- **Three real defects were found live.** All pre-date v0.84.0, all are in the safe direction, and each has a located cause (plan §11.5):
+  1. `call_argument_missing_separator` reads a `proc` header as a call, so `proc (1) = myFunc(struct PV p);` is a false INVALID (74.18; `tgauss.exe -b` confirms it is valid);
+  2. `command_doc_lookup.lookup("miss")` ranks `ismiss.rst` first, losing `miss`'s signature and return type (74.19);
+  3. `&`-prefixed parameters lose their documented `:type` (74.16; 114 pages).
+
 **Next steps, waiting on the user:**
-1. Optionally, live evaluation `74.x` (plan §7), in a fresh conversation after reinstall (see Handoff Notes).
+1. Choose the next milestone. §11.6 recommends findings 1–3 first; 2 and 3 need CLAUDE.md's all-pages extraction diff.
+2. Decide whether `library` belongs in `_SYSTEM_STATEMENT_REGISTRY` (§11.5 finding 7).
 
 **Recorded for a later search/grounding milestone** (item 4 was excluded, plan §2.5; also in `KNOWN_LIMITATIONS.md`):
-- the 73.12 `sortc` and 73.13 "percentile" recall gaps;
-- a false full grounding: "how do I compute the 95th percentile of a column" grounds `full` on `setColDateFormats`, whose derived keywords include `how` and `column`. Fixing it changes `_keywords_from_text`, and therefore the `ask()` gate.
+- the 73.12 `sortc` and 73.13 "percentile" recall gaps (both reproduced in 74.14/74.15);
+- a false full grounding: "how do I compute the 95th percentile of a column" grounds `full` on `setColDateFormats`, whose derived keywords include `how` and `column`. Fixing it changes `_keywords_from_text`, and therefore the `ask()` gate. Still live on 2026-10-15;
+- new in 74.x (§11.5 finding 5):
+  - `for` is a question stopword, so the `for` page is unreachable;
+  - a hyphenated candidate (`tspdlib-landing`) cannot be opened by searching its name;
+  - long-page excerpts stop before Outputs (finding 6).
 
 **Still deferred:**
 - category inference for elementwise expressions (72.3 finding 1; 73.5 is the same shape; needs its own design);
@@ -61,12 +75,13 @@ Full detail is in CHANGELOG and `planning/v0.84-lexical-statement-stream.md`. v0
   - option B: indexed writes are looked through for category only, never for preconditions;
   - expressions are never evaluated.
 - **Signatures:** nested optional groups are flattened, and `...` means no upper bound (`VARIADIC_MAX_ARGS`).
-- **Evaluations:** the last category used is **73** (`73.1`-`73.15`, run 2026-10-12: 13 pass, 2 fail on real defects, both fixed in v0.84.0). The next category is `74`.
+- **Evaluations:** the last category used is **74** (`74.1`-`74.19`, run 2026-10-13/15 after release: 17 pass, 2 fail on real pre-existing defects, plan §11). The next category is `75`.
 - **Tests:** 48 files, all passing; `check_release_readiness.py` passes. The `mcp` extra is installed in this machine's real Python, so the MCP tests actually run.
 
 ## Known Issues
 
 - See the top paragraphs of `KNOWN_LIMITATIONS.md` (v0.84.0, v0.83.0, v0.82.0). The 73.x findings are fixed in v0.84.0, except the search recall gaps, which are listed there.
+- The 74.x findings (plan v0.84 §11.5) are **not yet in `KNOWN_LIMITATIONS.md`**; add them with the next milestone's release.
 - **Claude Code keeps stale tool descriptions** for MCP tools whose names didn't change across a server upgrade. This is cosmetic.
 - **Pip debris:** `~auss_ai-0.79.0.dist-info` in `C:\Users\Owner\AppData\Local\Programs\Python\Python312\Lib\site-packages` causes a harmless "Ignoring invalid distribution" warning. The user can delete it at any time.
 
@@ -87,6 +102,6 @@ Full detail is in CHANGELOG and `planning/v0.84-lexical-statement-stream.md`. v0
 
 ## Handoff Notes
 
-- **Windows reinstall** (see `CLAUDE.md`): stop any running `gauss-ai-mcp.exe` before `pip install -e ".[mcp]"`. Then reload the VS Code window (`Ctrl+Shift+P` → "Developer: Reload Window"). New MCP tools and changed behavior appear only in a fresh conversation, so a milestone's live evaluation (`74.x` next) must happen in a new conversation after the reinstall.
+- **Windows reinstall** (see `CLAUDE.md`): stop any running `gauss-ai-mcp.exe` before `pip install -e ".[mcp]"`. Then reload the VS Code window (`Ctrl+Shift+P` → "Developer: Reload Window"). New MCP tools and changed behavior appear only in a fresh conversation, so a milestone's live evaluation (`75.x` next) must happen in a new conversation after the reinstall.
 - **Machine config** (`C:\Users\Owner\.gauss-ai\config.json`): `chat_provider: ollama` (`qwen2.5-coder:7b`), `default_runner: gauss`, `gauss_executable: C:\gauss26\tgauss.exe`, `workspace_parent: C:\Users\eclow\OneDrive\Documents\GAUSS-AI-Workspaces`, `docs_root: C:/Users/Owner/.gauss-ai/docs` (the published copy). `GAUSS_AI_MCP_ALLOW_REAL_GAUSS` is **off**, so every MCP prepare on the `gauss` runner returns `real_gauss_not_allowed`, as designed.
 - The `evaluations/differential_runs/2026-09-18-*` untracked directories are leftovers from v0.77.0, deliberately untouched; don't commit them.

@@ -7498,3 +7498,146 @@ Expected behavior:
 
 Expected behavior:
 - not_ready (file_write), whatever else is valid.
+
+## Lexical Statement Stream (Live Client)
+
+Validates v0.84.0 after its release, through a REAL connected MCP client (Claude Code over stdio, `gauss-ai-mcp`
+v0.84.0) on this machine's real configuration, in the `72.x`/`73.x` style: the human asks an ordinary task in plain
+words and the calling Claude session writes whatever queries and GAUSS it naturally would. The question is whether
+the one-lexer change holds live: string contents (labels, paths, URLs, escaped quotes) never affect a verdict,
+multi-line statements in the docs' own layout are traced, and undocumented calls are named in `coverage_gaps`. The
+planning doc (§7) deliberately specified no wording; the prompts below are the ones the user actually asked (several
+re-run 73.x tasks), and the expectations were written at recording time from the v0.84.0 design.
+
+### Prompt 74.1: Is the MCP server working? List its tools
+
+"Is the GAUSS MCP server working? Start a session and tell me what tools you have."
+
+Expected behavior:
+- A session opens and reports runner and docs root; the strict-mode chat tools are listed because `chat-provider` is not `fake`.
+
+### Prompt 74.2: Uncoaxed: determinant printed with a "det = ..." label (73.14 re-run)
+
+"Compute the determinant of a 3x3 matrix and print it with a label like "det = ..."."
+
+Expected behavior:
+- handoff_candidate for `det` on a traced literal matrix, whatever the label text and however the literal is laid out.
+
+### Prompt 74.3: Uncoaxed: eigenvalues of a symmetric 3x3 matrix (73.10 re-run)
+
+"Compute the eigenvalues of a symmetric 3x3 matrix."
+
+Expected behavior:
+- handoff_candidate for `eigh` on a traced literal matrix, however the literal is laid out.
+
+### Prompt 74.4: Uncoaxed: inverse of a 3x3 matrix with an "inverse = " label
+
+"Compute the inverse of a 3x3 matrix and print the result with a label like "inverse = "."
+
+Expected behavior:
+- handoff_candidate, with `inv`'s square-and-invertible precondition SATISFIED on the traced (multi-line) literal.
+
+### Prompt 74.5: Uncoaxed: well-commented simulation and OLS coefficients
+
+"Write well-commented GAUSS code that simulates data and computes OLS coefficients."
+
+Expected behavior:
+- `invpd(X'X)*X'y` is review_required (an expression argument; a runtime-dependent SPD precondition), with both causes in `coverage_gaps`. Comments never change the verdict or line numbers.
+
+### Prompt 74.6: Uncoaxed: Windows path in a printed string, then column means
+
+"Print a message telling the user the results will go in C:\data\results.csv, then print the column means of a 5x3 random matrix. Don't actually write any file."
+
+Expected behavior:
+- handoff_candidate. A path inside a string literal is text, never file I/O; `\\` escapes lex correctly.
+
+### Prompt 74.7: Uncoaxed: URL in a printed string, then mean of 1..10
+
+"Print a line that says: Documentation: https://docs.aptech.com, then compute the mean of the numbers 1 to 10."
+
+Expected behavior:
+- handoff_candidate. `//` inside a string is not a comment; a URL in a string is not network access.
+
+### Prompt 74.8: Is the MCP server still connected? (after a server restart)
+
+"Is the GAUSS MCP server still connected?"
+
+Expected behavior:
+- The client distinguishes a live server from a lost session and reports the operator gate state honestly.
+
+### Prompt 74.9: Uncoaxed: escaped quotation marks in a string, then sum of 1..5
+
+"Print a sentence that contains quotation marks, like: He said "hello", and then print the sum of 1 to 5."
+
+Expected behavior:
+- handoff_candidate; `\"` is an escape, so the quoted word stays string text and is never a symbol.
+
+### Prompt 74.10: Uncoaxed: a small procedure that squares its input
+
+"Write a small procedure that squares its input, and use it on a vector."
+
+Expected behavior:
+- review_required, naming `control_flow_block` and a `call_undocumented` gap for the snippet's own procedure.
+
+### Prompt 74.11: Negative probe: list the files in the current directory
+
+"List the files in the current directory, and print a heading before the list."
+
+Expected behavior:
+- not_ready (file_read) with the right line number, whatever else is valid.
+
+### Prompt 74.12: Uncoaxed: sum 1..20 with a loop (73.7 re-run)
+
+"Sum the integers from 1 to 20 with a loop."
+
+Expected behavior:
+- not_ready with the no-documented-calls reason; syntax validated.
+
+### Prompt 74.13: Uncoaxed: print "3 and 4" using sprintf (73.6 re-run)
+
+"Show me how to print "3 and 4" using sprintf."
+
+Expected behavior:
+- `sprintf("%d and %d", 3, 4)` reaches handoff_candidate on the first try.
+
+### Prompt 74.14: Docs lookup: how to sort a matrix by a column (asked twice)
+
+"How do I sort a matrix by a column in GAUSS?"
+
+Expected behavior:
+- `sortc(x, c)` reaches handoff_candidate on a multi-line literal. Search is observed, not required: the 73.12 `sortc` recall gap is a known limitation.
+
+### Prompt 74.15: Docs lookup: the 95th percentile of a column
+
+"How do I compute the 95th percentile of a column?"
+
+Expected behavior:
+- `quantile` on a column slice is review_required with the expression cause named. Search is observed: the percentile recall gap and the `setColDateFormats` false grounding are known limitations.
+
+### Prompt 74.16: Docs lookup: GAUSS functions for optimization
+
+"What gauss function can be used for optimization?"
+
+Expected behavior:
+- A correct answer from grounded pages; any example with a snippet-defined `proc` is review_required with its causes named.
+
+### Prompt 74.17: Docs lookup: a unit root testing package that handles structural breaks
+
+"I need a comprehensive unit root testing library. I want something that can handle data with structural breaks. Is there a GAUSS package available for this?"
+
+Expected behavior:
+- A correct answer from grounded pages (TSPDLIB break tests; TSMT `zandrews`). A listed candidate can be opened by searching its name.
+
+### Prompt 74.18: Uncoaxed: minimize a user procedure myFunc with sqpSolveMT
+
+"Can you provide me sample GAUSS code to minimize a procedure I have written (use myFunc as function name) using the sgpSolveMT function?"
+
+Expected behavior:
+- The idiomatic objective `proc (1) = myFunc(struct PV p);` is valid GAUSS: review_required at worst (a snippet-defined `proc`), never syntax INVALID.
+
+### Prompt 74.19: Docs lookup: functions for basic data cleaning
+
+"What GAUSS functions are available to help with basic data cleaning?"
+
+Expected behavior:
+- A correct answer from grounded pages; partial verdicts name causes that are true about the documentation.
