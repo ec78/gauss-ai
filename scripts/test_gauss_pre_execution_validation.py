@@ -2356,6 +2356,129 @@ def test_170_v084_lexical_discipline_guard() -> None:
         check(f"{module}: retired scanners gone", not (used & retired))
 
 
+# ---------------------------------------------------------------------------
+# v0.85.0: procedure headers (live finding 74.18) and code-loading statements
+# (74.17). Every header below is a real `tgauss.exe -b` spot check (GAUSS
+# 26.1.4, 2026-10-15; planning v0.85 §2.1), cited by its ID.
+# ---------------------------------------------------------------------------
+
+#: Headers real GAUSS runs. h12/h6/h10 already passed before v0.85.0 and are
+#: invariance rows; the rest were false `call_argument_missing_separator`
+#: INVALIDs.
+_V085_VALID_HEADERS = {
+    "s1": "proc (1) = myFunc(struct PV p);\n    retp(1);\nendp;",
+    "h1": "proc (1) = f(struct PV p, struct DS d);\n    retp(1);\nendp;",
+    "h2": "proc (1) = g(x, struct PV p, y);\n    retp(x + y);\nendp;",
+    "h4b": "proc (0) = setb(struct box *pp);\n    pp->v = 7;\nendp;",
+    "h7": "proc k(struct PV p);\n    retp(1);\nendp;",
+    "h12": "proc (1) = apply(&g, x);\n    local g:proc;\n    retp(g(x));\nendp;",
+    "h6": "keyword kw(str);\n    print str;\nendp;",
+    "h10": "proc (1) = f(x,);\n    retp(x);\nendp;",  # decision 2 (a): GAUSS accepts the trailing comma
+}
+
+#: Headers real GAUSS rejects with `G0008 Syntax error`.
+_V085_INVALID_HEADERS = {
+    "h3": "proc (1) = h(a b);\n    retp(1);\nendp;",
+    "h8": "proc (1) = f(struct PV);\n    retp(1);\nendp;",
+    "h9": "proc (1) = f(string s);\n    retp(1);\nendp;",
+    "h11": "proc (0) = setb(struct box * pp);\nendp;",
+    # v0.85.0 implementation spot checks: three names, and a `keyword` header.
+    "h13": "proc (1) = h(a b c);\n    retp(1);\nendp;",
+    "h14": "keyword kw(a b);\n    print a;\nendp;",
+}
+
+
+def _rules_of(code: str) -> list[str]:
+    return [issue.rule for issue in validation_mod.validate_syntax(code).issues]
+
+
+def test_171_v085_proc_headers_follow_the_spot_checks() -> None:
+    for spot, code in _V085_VALID_HEADERS.items():
+        result = validation_mod.validate_syntax(code)
+        check(f"{spot}: no issue", result.issues == ())
+        check(f"{spot}: partial (the proc block is unmodelled)", result.status == validation_mod.SyntaxStatus.PARTIAL.value)
+    for spot, code in _V085_INVALID_HEADERS.items():
+        rules = _rules_of(code)
+        check(f"{spot}: proc_header_parameter", rules == ["proc_header_parameter"])
+    h3 = validation_mod.validate_syntax(_V085_INVALID_HEADERS["h3"]).issues[0]
+    check("h3: names the header and the item", "`h`" in h3.message and "`a b`" in h3.message)
+    check("h3: on the header's line", h3.line_number == 1)
+    # h5: a CALL with a typed argument is still the call rule, never a header.
+    check("h5: a call stays call_argument_missing_separator", _rules_of("y = f(struct PV p);") == ["call_argument_missing_separator"])
+    # The header's own name is skipped, nothing else: a real call in the body is still checked.
+    body = "proc (1) = f(struct PV p);\n    y = rndn(3 2);\n    retp(y);\nendp;"
+    check("a call in the body is still checked", _rules_of(body) == ["call_argument_missing_separator"])
+    check("upper-case PROC and STRUCT", validation_mod.validate_syntax(
+        "PROC (1) = F(STRUCT PV p);\n    retp(1);\nENDP;").issues == ())
+    # Shapes outside the four legal and four violating forms add no issue
+    # (planning v0.85 §3.1); the proc block caps them at partial.
+    for unknown in ("proc (1) = f(,x);\n    retp(x);\nendp;", "proc (1) = f(struct PV p q);\n    retp(1);\nendp;"):
+        result = validation_mod.validate_syntax(unknown)
+        check(f"no claim either way: {unknown!r}", result.issues == () and result.status == "partial")
+
+
+def test_172_v085_header_skip_reads_statements_not_lines() -> None:
+    split = "proc (1) =\n    myFunc(struct PV p);\n    retp(1);\nendp;"
+    check("a header split across lines is a header", validation_mod.validate_syntax(split).issues == ())
+    split_bad = "proc (1) =\n    myFunc(a b);\n    retp(1);\nendp;"
+    bad = validation_mod.validate_syntax(split_bad).issues
+    check("...and is checked as one", [i.rule for i in bad] == ["proc_header_parameter"])
+    check("...reported on the header's first line", bool(bad) and bad[0].line_number == 1)
+    same_line = "x = 1; proc (1) = myFunc(struct PV p);\n    retp(x);\nendp;"
+    check("a header after a `;` on the same line", validation_mod.validate_syntax(same_line).issues == ())
+    one_line = "proc (1) = f(struct PV p); retp(1); endp; y = g(a b);"
+    check("a call after the one-line proc is still checked", _rules_of(one_line) == ["call_argument_missing_separator"])
+    in_string = 'print "proc (1) = "; y = f(struct PV p);'
+    check("`proc` inside a string never starts a header", _rules_of(in_string) == ["call_argument_missing_separator"])
+    in_comment = "// proc (1) = f(struct PV p);\ny = f(a b);"
+    check("`proc` inside a comment is not a header", _rules_of(in_comment) == ["call_argument_missing_separator"])
+    not_leading = "y = proc_value(struct PV p);"
+    check("a name starting with `proc` is not a header", _rules_of(not_leading) == ["call_argument_missing_separator"])
+
+
+def test_173_v085_code_loading_statements_are_registered() -> None:
+    cases = {
+        "library tspdlib;": ("library", "source_inclusion"),
+        "library pgraph, cmlmt;": ("library", "source_inclusion"),
+        "library;": ("library", "source_inclusion"),  # planning v0.85 §5: fails closed like every entry
+        "LIBRARY tspdlib;": ("library", "source_inclusion"),
+        "x = 1; library tspdlib;": ("library", "source_inclusion"),
+        "dlibrary -a mylib;": ("dlibrary", "native_code"),
+        "dlibrary -d;": ("dlibrary", "native_code"),
+        "dllcall -r myfunc(x);": ("dllcall", "native_code"),
+        "dllcall myfunc;": ("dllcall", "native_code"),
+    }
+    for code, (name, category) in cases.items():
+        findings = validation_mod.check_system_statements(code)
+        check(f"{code!r}: {name} found", any(f.name == name for f in findings))
+        check(f"{code!r}: {name} is {category}", any(f.name == name and f.category == category for f in findings))
+    pages = {rule.name: rule.doc_page for rule in validation_mod._SYSTEM_STATEMENT_REGISTRY}
+    check("library cites library.rst", pages.get("library") == "library.rst")
+    check("dlibrary cites dlibrary.rst", pages.get("dlibrary") == "dlibrary.rst")
+    check("dllcall cites dllcall.rst", pages.get("dllcall") == "dllcall.rst")
+    check("native_code is a category", "native_code" in {c.value for c in validation_mod.SystemStatementCategory})
+    for safe in ('print "library tspdlib";', "// library tspdlib;", "/* dlibrary -a mylib; */",
+                 "library = 5;", "x = dllcall_count + 1;", "mylibrary = 2;"):
+        check(f"not flagged: {safe!r}", validation_mod.check_system_statements(safe) == ())
+    names = [rule.name for rule in validation_mod._SYSTEM_STATEMENT_REGISTRY]
+    check("216 entries, no duplicates", len(names) == 216 and len(names) == len(set(names)))
+
+
+def test_174_v085_header_rule_provenance() -> None:
+    rule = validation_mod._SYNTAX_RULE_REGISTRY.get("proc_header_parameter")
+    check("proc_header_parameter registered", rule is not None)
+    if rule is not None:
+        check("names itself", rule.name == "proc_header_parameter")
+        check("cites real tgauss.exe -b", "tgauss.exe -b" in rule.source)
+        check("cites every violation spot check", all(f"h{n}" in rule.source for n in (3, 8, 9, 11, 13, 14)))
+        check("cites the legal-shape spot checks", all(s in rule.source for s in ("s1", "h4b", "h12", "h10")))
+        check("the description gives the four legal shapes", all(
+            shape in rule.description for shape in ("`name`", "`&name`", "`struct Type name`", "`struct Type *name`")
+        ))
+    separator = validation_mod._SYNTAX_RULE_REGISTRY["call_argument_missing_separator"]
+    check("the call rule points headers at the header rule", "proc_header_parameter" in separator.description)
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

@@ -2012,7 +2012,8 @@ _SYNTAX_RULE_REGISTRY: dict[str, SyntaxRule] = {
             "Two adjacent tokens (identifiers, numeric literals, or a masked string) separated only by "
             "whitespace within one call argument, with no comma and no operator between them (e.g. "
             "`rndu(1e5 4)`, `reshape(5 3)`, `sprintf(\"...\" pi)`) -- GAUSS requires an explicit comma or "
-            "operator between them."
+            "operator between them. The procedure name in a `proc`/`keyword` header is not a call: its "
+            "parameter list is checked by `proc_header_parameter` (v0.85.0)."
         ),
         source=(
             "v0.77.0 differential baseline corpus run (this milestone's own real `tgauss.exe -b` "
@@ -2033,6 +2034,34 @@ _SYNTAX_RULE_REGISTRY: dict[str, SyntaxRule] = {
             "other call."
         ),
         applies_to="call",
+    ),
+    "proc_header_parameter": SyntaxRule(
+        name="proc_header_parameter",
+        description=(
+            "Each comma-separated parameter in a `proc`/`keyword` header must be `name`, `&name`, "
+            "`struct Type name` or `struct Type *name` (no whitespace after `*`). Flagged: names separated "
+            "only by whitespace (`a b`), a non-`struct` type word (`string s`), a `struct` type with no "
+            "name (`struct PV`), and a `*` separated from its name (`struct box * pp`). An empty item (a "
+            "trailing comma) is accepted; any other shape adds no issue, and the `proc` block stays an "
+            "unknown `control_flow_block`."
+        ),
+        source=(
+            "v0.85.0, live finding 74.18: `proc (1) = myFunc(struct PV p);` was a false "
+            "`call_argument_missing_separator` INVALID. Real `tgauss.exe -b` (GAUSS 26.1.4, 2026-10-15; "
+            "planning v0.85 §2.1), print-only programs from a scratch directory. Run: s1 "
+            "`proc (1) = myFunc(struct PV p);` (prints 10.000000); s2 the full 74.18 `sqpSolveMT` program "
+            "(converges, retcode 0); h1 `proc (1) = f(struct PV p, struct DS d);`; h2 "
+            "`proc (1) = g(x, struct PV p, y);`; h4b `proc (0) = setb(struct box *pp);`; h7 "
+            "`proc k(struct PV p);`; h12 `proc (1) = apply(&g, x);`; h6 `keyword kw(str);`; and h10 "
+            "`proc (1) = f(x,);` (a trailing comma runs). Rejected with \"G0008 Syntax error\": h3 "
+            "`proc (1) = h(a b);` ('a b)'), h8 `proc (1) = f(struct PV);` ('struct PV)'), h9 "
+            "`proc (1) = f(string s);` ('string s)') and h11 `proc (0) = setb(struct box * pp);` "
+            "('struct box * pp)'). Two more, run while implementing (2026-10-15): h13 `proc (1) = h(a b c);` "
+            "(G0008 'a b c)') and h14 `keyword kw(a b);` (G0008 'b)'), so three or more names and a `keyword` "
+            "header are covered too; h10 re-run prints 42.000000. The published docs show headers by "
+            "example only, with no formal grammar."
+        ),
+        applies_to="proc_header",
     ),
     "unterminated_string": SyntaxRule(
         name="unterminated_string",
@@ -2472,13 +2501,25 @@ def _check_call_argument_missing_separator(masked_code: str) -> list[SyntaxIssue
     genuinely call-shaped) is real, confirmed-invalid GAUSS (`error G0063`)
     that this check must still be able to see. Skipping the wider set here
     silently exempted every `print(...)` call from this check entirely --
-    the exact false negative `D-007` found."""
+    the exact false negative `D-007` found.
+
+    v0.85.0 (live finding 74.18): the procedure name in a `proc`/`keyword`
+    header (`_proc_headers(...)`, read from whole statements) is skipped --
+    `proc (1) = myFunc(struct PV p);` is a declaration, not a call, and its
+    parameter list is checked by `proc_header_parameter` instead. Every
+    other call-shaped match, including a call with the same shape
+    (`y = f(struct PV p);`, spot check h5), is checked exactly as before."""
+    # Headers are found on `masked_code`, never `scan_text`: the `@` fill
+    # below would read as an `@ ... @` comment to the lexer. Same offsets.
+    header_names = {header.name_offset for header in _proc_headers(masked_code)}
     scan_text = _mask_bracketed_spans(masked_code, open_ch="{", close_ch="}")
     scan_text = _mask_bracketed_spans(scan_text, open_ch="[", close_ch="]")
     issues: list[SyntaxIssue] = []
     for match in _CALL_SHAPED_RE.finditer(scan_text):
         symbol = match.group(1)
         if symbol.lower() in _BLOCK_CONSTRUCT_KEYWORDS:
+            continue
+        if match.start(1) in header_names:
             continue
         close_idx = _find_matching_paren(scan_text, match.end() - 1)
         if close_idx is None:
@@ -2497,6 +2538,100 @@ def _check_call_argument_missing_separator(masked_code: str) -> list[SyntaxIssue
                     line_number=scan_text.count("\n", 0, match.start()) + 1, construct="call",
                 ))
                 break  # one issue per call is enough; avoid duplicate reports for the same call
+    return issues
+
+
+#: v0.85.0: the start of a `proc`/`keyword` header, matched at the start of
+#: one masked statement: the optional `(n) =` return count (`proc (1) =
+#: f(...)`; absent in the short form `proc k(...)`, spot check h7), then the
+#: procedure name and the `(` that opens its parameter list.
+_PROC_HEADER_RE = re.compile(
+    r"(?:proc|keyword)\b\s*(?:\([^()]*\)\s*=\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*\(", re.IGNORECASE,
+)
+
+
+@dataclass(frozen=True)
+class _ProcHeader:
+    """v0.85.0: one `proc`/`keyword` header. Offsets are into the masked
+    code; `close_paren` is None when the parameter list is not closed
+    within the statement (`balanced_delimiters` reports that)."""
+
+    keyword: str
+    name: str
+    name_offset: int
+    open_paren: int
+    close_paren: int | None
+    line_number: int
+
+
+def _proc_headers(masked_code: str) -> list[_ProcHeader]:
+    """v0.85.0: every statement whose LEADING word is `proc` or `keyword`
+    (`source_statements(...)`, so a header split across lines, or after a
+    `;` on the same line, is one statement, and `proc` inside a string or
+    comment is never a header) and that has a parameter list."""
+    headers: list[_ProcHeader] = []
+    for statement in source_statements(masked_code):
+        keyword = _leading_word(statement.masked)
+        if keyword not in ("proc", "keyword"):
+            continue
+        match = _PROC_HEADER_RE.match(statement.masked)
+        if match is None:
+            continue
+        open_paren = statement.start + match.end() - 1
+        close_paren = _find_matching_paren(masked_code, open_paren)
+        if close_paren is not None and close_paren > statement.stop:
+            close_paren = None
+        headers.append(_ProcHeader(
+            keyword=keyword, name=match.group(1), name_offset=statement.start + match.start(1),
+            open_paren=open_paren, close_paren=close_paren, line_number=statement.line,
+        ))
+    return headers
+
+
+#: v0.85.0: the four header-parameter shapes real GAUSS runs (planning v0.85
+#: §2.1): `name`, `&name` (h12), `struct Type name` (s1, h1, h2, h7) and
+#: `struct Type *name` with the `*` attached to the name (h4b). Matched
+#: against an item whose whitespace is collapsed to single spaces.
+_HEADER_PARAMETER_LEGAL_RE = re.compile(
+    r"&?[A-Za-z_][A-Za-z0-9_]*|struct [A-Za-z_][A-Za-z0-9_]* \*?[A-Za-z_][A-Za-z0-9_]*", re.IGNORECASE,
+)
+#: v0.85.0: the shapes real GAUSS rejects (`G0008 Syntax error`), each with
+#: the spot checks that observed it. Anything that is neither legal nor one
+#: of these adds no issue (planning v0.85 §3.1).
+_HEADER_PARAMETER_VIOLATIONS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"struct [A-Za-z_][A-Za-z0-9_]*", re.IGNORECASE),
+     "a `struct` type with no parameter name"),  # h8
+    (re.compile(r"struct [A-Za-z_][A-Za-z0-9_]* \* [A-Za-z_][A-Za-z0-9_]*", re.IGNORECASE),
+     "the `*` of a structure pointer must be attached to the parameter name"),  # h11
+    (re.compile(r"(?!struct )[A-Za-z_][A-Za-z0-9_]*(?: [A-Za-z_][A-Za-z0-9_]*)+", re.IGNORECASE),
+     "names separated only by whitespace; parameters need a comma, and only `struct` may type one"),  # h3, h9
+)
+
+
+def _check_proc_header_parameters(masked_code: str) -> list[SyntaxIssue]:
+    """See `proc_header_parameter`'s registry entry. Each parameter of each
+    `proc`/`keyword` header is split on top-level commas and compared with
+    the legal shapes, then with the observed violations. An empty item (a
+    trailing comma, h10: GAUSS runs `proc (1) = f(x,);`) is accepted
+    (planning v0.85 §8 decision 2). One issue per header, like the call rule."""
+    issues: list[SyntaxIssue] = []
+    for header in _proc_headers(masked_code):
+        if header.close_paren is None:
+            continue
+        raw = masked_code[header.open_paren + 1 : header.close_paren]
+        for item in _split_top_level_args_keep_empty(raw):
+            text = " ".join(item.split())
+            if not text or _HEADER_PARAMETER_LEGAL_RE.fullmatch(text):
+                continue
+            why = next((why for pattern, why in _HEADER_PARAMETER_VIOLATIONS if pattern.fullmatch(text)), None)
+            if why is None:
+                continue
+            issues.append(SyntaxIssue(
+                rule="proc_header_parameter",
+                message=f"`{header.keyword}` header `{header.name}` has a parameter GAUSS rejects (`{text}`): {why}",
+                line_number=header.line_number, construct="proc_header",
+            ))
+            break
     return issues
 
 
@@ -2889,6 +3024,7 @@ def validate_syntax(code: str) -> SyntaxValidationResult:
     assignment_found = dangling_found or bool(_ASSIGNMENT_RE.search(masked))
 
     issues.extend(_check_call_argument_missing_separator(masked))
+    issues.extend(_check_proc_header_parameters(masked))
     call_found = bool(_CALL_SHAPED_RE.search(masked))
 
     string_found = bool(lexed.string_spans)
@@ -3491,6 +3627,10 @@ class SystemStatementCategory(str, enum.Enum):
     #: v0.82.0: GAUSS's database interface (`dbAddDatabase`/`dbOpen`/
     #: `dbExecQuery`/...), which connects to a local or remote database.
     DATABASE = "database"
+    #: v0.85.0: statements that link and call native shared libraries in the
+    #: GAUSS process (`dlibrary`, `dllcall`) -- further outside GAUSS's own
+    #: memory than source inclusion (planning v0.85 §2.4, decision 4).
+    NATIVE_CODE = "native_code"
 
 
 @dataclass(frozen=True)
@@ -3593,6 +3733,16 @@ _SYSTEM_STATEMENT_REGISTRY: tuple[SystemStatementRule, ...] = (
     *_rules(
         SystemStatementCategory.SOURCE_INCLUSION,
         ("use", "use.rst"), ("includedir", "includedir.rst"),
+        # v0.85.0 (live finding 74.17): `library tspdlib;` makes GAUSS read
+        # the libraries' `.lcg` index files and autoload package code from
+        # disk ("Sets up the list of active libraries").
+        ("library", "library.rst"),
+    ),
+    *_rules(
+        SystemStatementCategory.NATIVE_CODE,
+        # v0.85.0: "Dynamically links and unlinks shared libraries" /
+        # "Calls functions located in dynamic libraries".
+        ("dlibrary", "dlibrary.rst"), ("dllcall", "dllcall.rst"),
     ),
     *_rules(
         SystemStatementCategory.PROCESS_LAUNCH,

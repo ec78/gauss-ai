@@ -432,6 +432,38 @@ def test_24_v084_undocumented_calls_are_named_gaps_and_labels_hide_nothing() -> 
         ))
 
 
+def test_25_v085_struct_procedure_header_is_not_a_syntax_violation() -> None:
+    """Live finding 74.18: `proc (1) = myFunc(struct PV p);` (valid GAUSS,
+    real tgauss.exe -b spot check s1) was a false syntax INVALID."""
+    code = (
+        "proc (1) = myFunc(struct PV p);\n    local b;\n    b = pvUnpack(p, \"b\");\n"
+        "    retp((b[1] - 3)^2 + (b[2] + 1)^2);\nendp;\n\nb0 = { 0, 0 };\nstruct PV par1;\n"
+        "par1 = pvCreate();\npar1 = pvPack(par1, b0, \"b\");\nstruct sqpSolveMTControl ctl;\n"
+        "ctl = sqpSolveMTControlCreate();\nstruct sqpSolveMTout out;\nout = sqpSolveMT(&myFunc, par1, ctl);\n"
+        "print \"estimated b = \" pvUnpack(out.par, \"b\")';"
+    )
+    pages = {
+        "pvcreate.rst": ("pvCreate", "p = pvCreate()"),
+        "pvpack.rst": ("pvPack", "p1 = pvPack(p1, x, nm)"),
+        "pvunpack.rst": ("pvUnpack", "x = pvUnpack(p1, nm)"),
+        "sqpsolvemtcontrolcreate.rst": ("sqpSolveMTControlCreate", "c = sqpSolveMTControlCreate()"),
+        "sqpsolvemt.rst": ("sqpSolveMT", "out = sqpSolveMT(&fct, par1, c)"),
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        sid = _start(tmp)
+        for file_name, (title, function) in pages.items():
+            (Path(tmp) / "docs" / file_name).write_text(
+                f"{title}\n{'=' * len(title)}\n\nFormat\n------\n.. function:: {function}\n", encoding="utf-8",
+            )
+        resp = server_mod.gauss_validate_code(sid, code)
+        check("syntax partial", resp["syntax"] == "partial")
+        check("review_required (was not_ready)", resp["handoff_readiness"]["state"] == "review_required")
+        check("no syntax reason", not any(r.startswith("syntax:") for r in resp["handoff_readiness"]["reasons"]))
+        check("no validation_id", resp.get("validation_id") is None)
+        bad = server_mod.gauss_validate_code(sid, code.replace("(struct PV p)", "(struct PV)"))
+        check("h8: syntax invalid", bad["syntax"] == "invalid")
+
+
 def _run_all() -> int:
     test_fns = [obj for name, obj in sorted(globals().items()) if name.startswith("test_") and callable(obj)]
     for fn in test_fns:

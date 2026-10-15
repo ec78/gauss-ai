@@ -2519,6 +2519,307 @@ def test_142_v084_ask_path_shares_the_fix() -> None:
         check("ask(): fakeinverse unknown", "fakeinverse" in outcomes[0][0])
 
 
+# ---------------------------------------------------------------------------
+# v0.85.0: one defining page per symbol (live finding 74.19), procedure
+# headers (74.18) and `library` (74.17), through validate_code / ask() on
+# synthetic typed pages
+# ---------------------------------------------------------------------------
+
+#: Shaped like the published `ismiss.rst` and `missmissrv.rst`: for `miss`
+#: both score 120 (`command_in_file_name`, `command_in_heading`,
+#: `command_call_text`, `command_reference_text`), and `ismiss` sorts first,
+#: so `lookup("miss", max_results=1)` reports it `"found"` (planning v0.85
+#: §2.2). Only `missmissrv`'s syntax block defines `miss(`.
+_V085_ISMISS_RST = """ismiss
+======
+
+Purpose
+-------
+Returns a 1 if its matrix argument contains any missing values, otherwise returns a 0.
+
+Format
+------
+.. function:: x_ismiss = ismiss(x)
+
+    :param x: data
+    :type x: NxK matrix
+
+    :return x_ismiss: 1 if *x* contains any missing values, otherwise 0.
+    :rtype x_ismiss: scalar
+
+Examples
+--------
+
+::
+
+    x = { 1, 2, 3, 4 };
+    x[2] = miss(0, 0);
+
+.. seealso:: Functions :func:`miss`, :func:`packr`
+"""
+
+_V085_MISSMISSRV_RST = """miss, missrv
+============
+
+Purpose
+-------
+:func:`miss` converts specified elements in a matrix to GAUSS's missing value code. :func:`missrv` is the reverse.
+
+Format
+------
+.. function:: y = miss(x, v)
+              y = missrv(x, v)
+
+    :param x: data
+    :type x: NxK matrix
+
+    :param v: ExE conformable with *x*.
+    :type v: LxM matrix
+
+    :return y: matrix with missing values either replaced or added.
+    :rtype y: max(N,L) by max(K,M) matrix
+"""
+
+_V085_PACKR_RST = """packr
+=====
+
+Purpose
+-------
+Deletes the rows of a matrix that contain any missing values, for example after y = miss(x, 0).
+
+Format
+------
+.. function:: y = packr(x)
+
+    :param x: data, for example the result of miss(x, 0)
+    :type x: NxK matrix
+
+    :return y: the rows of *x* with no missing values.
+    :rtype y: LxK matrix
+"""
+
+
+def _fn_page(name: str, function: str, params: str = "", returns: str = "") -> str:
+    return f"{name}\n{'=' * len(name)}\n\nFormat\n------\n.. function:: {function}\n\n{params}{returns}"
+
+
+#: The functions 74.18's `sqpSolveMT` program and 74.17's `adf_1break`
+#: program call, typed like their published pages.
+_V085_PROGRAM_RST = {
+    "pvcreate.rst": _fn_page("pvCreate", "p = pvCreate()", returns="    :return p: instance\n    :rtype p: struct PV\n"),
+    "pvpack.rst": _fn_page("pvPack", "p1 = pvPack(p1, x, nm)",
+                           "    :param p1: instance\n    :type p1: struct PV\n\n    :param x: data\n"
+                           "    :type x: NxK matrix\n\n    :param nm: name\n    :type nm: string\n\n",
+                           "    :return p1: instance\n    :rtype p1: struct PV\n"),
+    "pvunpack.rst": _fn_page("pvUnpack", "x = pvUnpack(p1, nm)",
+                             "    :param p1: instance\n    :type p1: struct PV\n\n    :param nm: name\n"
+                             "    :type nm: string\n\n",
+                             "    :return x: data\n    :rtype x: NxK matrix\n"),
+    "sqpsolvemtcontrolcreate.rst": _fn_page(
+        "sqpSolveMTControlCreate", "c = sqpSolveMTControlCreate()",
+        returns="    :return c: instance\n    :rtype c: struct sqpSolveMTControl\n"),
+    "sqpsolvemt.rst": _fn_page("sqpSolveMT", "out = sqpSolveMT(&fct, par1, c)",
+                               "    :param &fct: pointer to a procedure\n\n    :param par1: start values\n"
+                               "    :type par1: struct PV\n\n    :param c: control\n"
+                               "    :type c: struct sqpSolveMTControl\n\n",
+                               "    :return out: results\n    :rtype out: struct sqpSolveMTout\n"),
+    "cumsumc.rst": _fn_page("cumsumc", "y = cumsumc(x)", "    :param x: data\n    :type x: NxK matrix\n\n",
+                            "    :return y: cumulative sums\n    :rtype y: NxK matrix\n"),
+    "rndn.rst": _fn_page("rndn", "y = rndn(r, c)", "    :param r: rows\n    :type r: scalar\n\n"
+                         "    :param c: columns\n    :type c: scalar\n\n", "    :return y: draws\n    :rtype y: RxC matrix\n"),
+    "adf_1break.rst": _fn_page("adf_1break", "{ tstat, tb, lags, cv } = adf_1break(y, model)",
+                               "    :param y: data\n    :type y: Nx1 matrix\n\n    :param model: model\n"
+                               "    :type model: scalar\n\n"),
+}
+
+_V085_RST = dict(_TYPED_V084_RST, **{
+    "ismiss.rst": _V085_ISMISS_RST, "missmissrv.rst": _V085_MISSMISSRV_RST, "packr.rst": _V085_PACKR_RST,
+    **_V085_PROGRAM_RST,
+})
+
+
+def _v085_docs_root(tmp: str) -> str:
+    root = Path(tmp) / "docs"
+    root.mkdir()
+    for name, text in _V085_RST.items():
+        (root / name).write_text(text, encoding="utf-8")
+    return str(root)
+
+
+#: 74.18's program as run file `-018` records it. The run file abridges the
+#: opening six-line `/* ... */` comment, so its text here is a stand-in of
+#: the same length.
+_V085_SQP_PROGRAM = """/*
+   Minimize a user-written procedure with sqpSolveMT.
+   The objective takes its parameters in a PV structure
+   and returns a scalar. The minimum is at b = { 3, -1 }.
+   (74.18; the opening comment is abridged in the run file.)
+*/
+proc (1) = myFunc(struct PV p);
+    local b;
+    b = pvUnpack(p, "b");
+    retp((b[1] - 3)^2 + (b[2] + 1)^2);
+endp;
+
+b0 = { 0, 0 };
+struct PV par1;
+par1 = pvCreate();
+par1 = pvPack(par1, b0, "b");
+struct sqpSolveMTControl ctl;
+ctl = sqpSolveMTControlCreate();
+struct sqpSolveMTout out;
+out = sqpSolveMT(&myFunc, par1, ctl);
+print "estimated b = " pvUnpack(out.par, "b")';
+print "f at minimum = " out.fct;
+print "return code (0 = normal convergence) = " out.retcode;"""
+
+
+def test_143_v085_validator_signature_comes_from_the_defining_page() -> None:
+    """Live finding 74.19: grounding resolved `miss` to `missmissrv.rst`, but
+    `validate_generated_code` re-looked it up with `max_results=1`, where the
+    tie with `ismiss.rst` is reported `"found"` and broken alphabetically."""
+    import command_doc_lookup as doc_lookup_mod
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v085_docs_root(tmp)
+        raw = doc_lookup_mod.lookup("miss", Path(root), max_results=1)
+        check("fixture reproduces the hidden tie", raw["status"] == "found"
+              and raw["best_match"]["file_path"].endswith("ismiss.rst"))
+        code = "x = {1 2, 3 4};\ny = miss(x, 2);\nz = missrv(y, 0);\nprint z;"
+        result = engine_mod.validate_code(code, docs_root=root)
+        miss = [cv for cv in result.pre_execution.call_validations if cv.symbol == "miss"]
+        check("miss cited on its defining page", any(
+            s.topic == "miss" and s.citation.endswith("missmissrv.rst") for s in result.grounding_sources
+        ))
+        check("miss's signature is extracted", len(miss) == 1 and miss[0].signature_known)
+        gaps = {(g.symbol, g.cause) for g in result.pre_execution.coverage_gaps}
+        check("no signature_not_extracted gap for miss", ("miss", "signature_not_extracted") not in gaps)
+        check("missrv's argument traces to miss's documented return",
+              not any(g.cause == "return_type_undocumented" for g in result.pre_execution.coverage_gaps))
+        check("candidate", result.handoff_readiness.state == "handoff_candidate")
+
+
+def test_144_v085_grounding_excerpt_and_citation_name_one_page() -> None:
+    """74.19's mislabelled excerpt: `ground_multi` cited `missmissrv.rst` and
+    re-fetched its content with `max_results=1`, i.e. `ismiss.rst`'s text."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v085_docs_root(tmp)
+        bundle = engine_mod.ground_multi("what does miss do", docs_root_str=root)
+        miss = [s for s in bundle.sources if s.topic == "miss"]
+        check("miss grounded", len(miss) == 1)
+        if miss:
+            check("cites the defining page", miss[0].citation.endswith("missmissrv.rst"))
+            check("shows the defining page's text", "y = miss(x, v)" in miss[0].content)
+            check("not ismiss's text", "ismiss" not in miss[0].content)
+
+
+def test_145_v085_ask_path_extra_lookup_uses_the_defining_page() -> None:
+    """The third §2.2 site: a documented call that is not this turn's grounded
+    topic (here `miss`, named in `packr`'s grounded text) is looked up again."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v085_docs_root(tmp)
+        code = "x = {1 2, 3 4};\ny = miss(x, 2);\nz = packr(y);\nprint z;"
+        engine = engine_mod.ConversationEngine(
+            provider=provider_mod.FakeModelProvider(canned_answer=f"```gauss\n{code}\n```"), docs_root=root,
+        )
+        result = engine.ask("Show me how to use packr.")
+        check("packr is the grounded topic, miss is not", "miss" not in {s.topic for s in result.grounding_sources})
+        miss = [cv for cv in result.call_validations if cv.symbol == "miss"]
+        check("miss's signature is extracted", len(miss) == 1 and miss[0].signature_known)
+
+
+def test_146_v085_unresolved_ties_keep_todays_page() -> None:
+    """The 8 symbols the resolver leaves ambiguous on the published docs keep
+    their top-ranked page (planning v0.85 §2.2/§3.2): a helper that required
+    `"found"` would drop 7 signatures."""
+    import command_doc_lookup as doc_lookup_mod
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(_v085_docs_root(tmp))
+        for stem, signature in (("twinfooa", "y = twinfoo(x)"), ("twinfoob", "y = twinfoo(x, z)")):
+            (root / f"{stem}.rst").write_text(
+                f"twinfoo\n=======\n\nFormat\n------\n.. function:: {signature}\n\n"
+                "    :param x: data\n    :type x: NxK matrix\n", encoding="utf-8",
+            )
+        three = doc_lookup_mod.lookup("twinfoo", root, max_results=3)
+        check("both pages define twinfoo: still ambiguous",
+              engine_mod._resolve_ambiguous_by_definition("twinfoo", three)["status"] == "ambiguous")
+        helper = engine_mod._lookup_defining_page("twinfoo", root)
+        today = doc_lookup_mod.lookup("twinfoo", root, max_results=1)
+        check("falls back to today's lookup", helper == today)
+        check("...today's page", helper["best_match"]["file_path"].endswith("twinfooa.rst"))
+        defining = engine_mod._lookup_defining_page("miss", root)
+        check("a resolvable tie returns the defining page", defining["status"] == "found"
+              and defining["best_match"]["file_path"].endswith("missmissrv.rst"))
+        unique = engine_mod._lookup_defining_page("packr", root)
+        check("an unambiguous symbol is unchanged", unique == doc_lookup_mod.lookup("packr", root, max_results=1))
+
+
+def test_147_v085_struct_procedure_headers_are_not_invalid() -> None:
+    """Live finding 74.18: every structure-based optimizer objective was a
+    false syntax INVALID (s1/s2, real tgauss.exe -b)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v085_docs_root(tmp)
+        result = engine_mod.validate_code(_V085_SQP_PROGRAM, docs_root=root)
+        check("syntax partial, not invalid", result.pre_execution.syntax.status == "partial")
+        check("review_required (was not_ready)", result.handoff_readiness.state == "review_required")
+        check("no syntax reason", not any(r.startswith("syntax:") for r in result.handoff_readiness.reasons))
+        broken = engine_mod.validate_code(_V085_SQP_PROGRAM.replace("struct PV p)", "struct PV)"), docs_root=root)
+        check("h8 in the same program: not_ready", broken.handoff_readiness.state == "not_ready")
+        check("...for the header rule", any(i.rule == "proc_header_parameter" for i in broken.pre_execution.syntax.issues))
+
+
+def test_148_v085_library_is_not_ready() -> None:
+    """Live finding 74.17: `library tspdlib;` loads package code from disk but
+    was review_required."""
+    program = ("library tspdlib;\nrndseed 4321;\nT = 200;\ny = cumsumc(rndn(T, 1));\ny[101:T] = y[101:T] + 5;\n"
+               "{ tstat, tb, lags, cv } = adf_1break(y, 1);\nprint tstat;")
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v085_docs_root(tmp)
+        result = engine_mod.validate_code(program, docs_root=root)
+        check("not_ready", result.handoff_readiness.state == "not_ready")
+        check("library is a source_inclusion statement", any(
+            f.name == "library" and f.category == "source_inclusion" for f in result.pre_execution.system_statements
+        ))
+        check("the reason names it", any("`library`" in r for r in result.handoff_readiness.reasons))
+        without = engine_mod.validate_code(program.replace("library tspdlib;\n", ""), docs_root=root)
+        check("the same code without `library` is not not_ready", without.handoff_readiness.state != "not_ready")
+
+
+#: Computed with HEAD's (v0.84.0 + records, `ff2ce82`) `ground_multi` /
+#: `compute_generation_gate` on `_V085_RST` BEFORE the v0.85.0 changes, and
+#: identical after them: (status, policy, matched, unmatched, ambiguous).
+#: v0.85.0 changes only which page a resolved source's CONTENT is read from
+#: (planning v0.85 §6.4 item 2).
+_V085_PINNED_GATE = {
+    "what does miss do": ("grounded", "full", ("miss",), (), ()),
+    "miss": ("grounded", "full", ("miss",), (), ()),
+    "missrv": ("grounded", "full", ("missrv",), (), ()),
+    "packr": ("grounded", "full", ("packr",), (), ()),
+    "Show me how to use packr.": ("grounded", "full", ("packr",), (), ()),
+    "packr ismiss missrv miss": ("grounded", "full", ("packr", "ismiss", "missrv", "miss"), (), ()),
+    "ismiss": ("grounded", "full", ("ismiss",), (), ()),
+    "data cleaning missing values": ("ungrounded", "block", (), ("data", "cleaning", "missing", "values"), ()),
+    "column means": ("grounded", "full", ("meanc",), (), ()),
+    "zzz": ("ungrounded", "block", (), ("zzz",), ()),
+}
+
+
+def test_149_v085_defining_page_never_changes_the_generation_gate() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v085_docs_root(tmp)
+        for question, pinned in _V085_PINNED_GATE.items():
+            bundle = engine_mod.ground_multi(question, docs_root_str=root)
+            gate = engine_mod.compute_generation_gate(bundle)
+            actual = (bundle.status.value, gate.policy, bundle.matched_topics, bundle.unmatched_topics,
+                      bundle.ambiguous_topics)
+            check(f"gate unchanged: {question!r}", actual == pinned)
+            for source in bundle.sources:
+                title = Path(root, source.citation).read_text(encoding="utf-8").splitlines()[0]
+                check(f"{question!r}: `{source.topic}` excerpt is from its cited page",
+                      source.content.splitlines()[0] == title)
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

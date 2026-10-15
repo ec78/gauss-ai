@@ -805,6 +805,28 @@ def _resolve_ambiguous_by_definition(symbol: str, result: dict) -> dict:
     return {**result, "status": "found", "best_match": defining[0], "confidence": defining[0]["confidence"]}
 
 
+def _lookup_defining_page(symbol: str, docs_root: Path) -> dict:
+    """v0.85.0 (live finding 74.19): the page a symbol's documentation is
+    re-read from, after grounding has resolved it. `command_doc_lookup.
+    lookup(...)` truncates to `max_results` BEFORE its tie check, so with
+    `max_results=1` a tie is always `"found"` and broken alphabetically:
+    `miss` read `ismiss.rst` (signature unknown, no return type) while
+    grounding cited the page that defines it, `missmissrv.rst`.
+
+    This performs the same resolution `resolve_concepts(...)` and
+    `validate_code(...)` use for an exact symbol -- `max_results=3` plus
+    `_resolve_ambiguous_by_definition(...)` -- and returns it when that
+    settles on one page. When it cannot (no page, or several, define the
+    call), the `max_results=1` result is returned unchanged: on the
+    published docs that keeps today's page for the 8 symbols that stay
+    ambiguous, 7 of which have an extracted signature there (planning v0.85
+    §2.2). Callers keep their own status and confidence checks."""
+    result = _resolve_ambiguous_by_definition(symbol, doc_lookup_mod.lookup(symbol, docs_root, max_results=3))
+    if result["status"] == "found":
+        return result
+    return doc_lookup_mod.lookup(symbol, docs_root, max_results=1)
+
+
 def resolve_concepts(
     question: str, *, docs_root_str: str | None, recent_topics: tuple[str, ...] = (),
 ) -> tuple[FunctionResolution, ...]:
@@ -1051,7 +1073,11 @@ def ground_multi(
             # simplicity-over-performance tradeoff: this module never
             # caches documentation content, and a handful of extra local
             # file reads per turn is a fine price for that discipline.
-            result = doc_lookup_mod.lookup(resolution.resolved_symbol, docs_root, max_results=1)
+            # v0.85.0: re-read from the page the resolution cited
+            # (`_lookup_defining_page`), so the excerpt and the citation are
+            # one page (74.19: `miss` cited `missmissrv.rst` but showed
+            # `ismiss.rst`'s text).
+            result = _lookup_defining_page(resolution.resolved_symbol, docs_root)
             if result["status"] == "found" and result["best_match"]:
                 best_match = result["best_match"]
                 if resolution.match_type == MatchType.EXACT_SYMBOL.value:
@@ -1691,7 +1717,9 @@ def validate_generated_code(
     companions: set[str] = set()
     if docs_root is not None:
         for topic in bundle.matched_topics:
-            result = doc_lookup_mod.lookup(topic, docs_root, max_results=1)
+            # v0.85.0: the page grounding resolved, not the alphabetical
+            # winner of a hidden tie (74.19).
+            result = _lookup_defining_page(topic, docs_root)
             if result["status"] == "found" and result["best_match"]:
                 best_match = result["best_match"]
                 documented_signatures[topic.lower()] = validation_mod.extract_documented_signature(topic, best_match)
@@ -1721,7 +1749,7 @@ def validate_generated_code(
             if extra_lookups >= MAX_VALIDATE_CODE_SYMBOLS:
                 break
             extra_lookups += 1
-            result = doc_lookup_mod.lookup(symbol, docs_root, max_results=1)
+            result = _lookup_defining_page(symbol, docs_root)  # v0.85.0, as above
             if (
                 result["status"] == "found" and result["best_match"]
                 and result["confidence"] >= MIN_DOC_CONFIDENCE

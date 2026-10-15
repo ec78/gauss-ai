@@ -2,6 +2,19 @@
 
 See also [docs/known-alpha-limitations.md](docs/known-alpha-limitations.md) for a shorter, tester-facing summary of current-phase limitations.
 
+`v0.85.0` checks `proc`/`keyword` headers with their own spot-checked grammar instead of as calls, reads every per-symbol signature and grounding excerpt from the page grounding resolved, and registers `library` (`source_inclusion`) and `dlibrary`/`dllcall` (`native_code`). This fixes live findings 74.18, 74.19 and 74.17. Limitations, including the 74.x findings that remain:
+- **The header grammar comes from 16 spot checks, not a published grammar.** Shapes outside the four legal and four rejected forms add no issue, e.g. `f(,x)` or `struct PV p q`. Neither does a `keyword` with more than one parameter (`keyword kw(a, b);`, real `G0138`). All of these stay `review_required` at best, because a `proc`/`keyword` block is unmodelled. `fn` one-line headers are not checked.
+- **A snippet that defines a `keyword` is `not_ready`** (pre-existing, safe direction). The keyword's name is read as an undocumented call (`call_undocumented`), because only `proc` declarations are treated as definitions.
+- **8 symbols still resolve ambiguously on the published docs** (`arimaFit`, `dotfgtme`, `func`, `KPSS_2breaks`, `newfoo`, `plotIrf`, `plotIRF`, `svarControlCreate`): more than one page, or none, defines the call. They keep their top-ranked page; 7 of the 8 have an extracted signature there. `func`'s page (`cc/mathematical-functions.rst`) does not define it. `command_doc_lookup.lookup` still truncates to `max_results` before its tie check, so other `max_results=1` callers (legacy `ground()`, the recent-topic fallback, alias resolution) never see a tie. Only the validation path is fixed.
+- **A matrix literal containing `.` (missing value) elements is treated as an expression** in role checks (pre-existing). `x = {1 2, . 4}; y = meanc(x);` is `review_required` (`argument_assigned_from_expression`). Since `miss` now has a signature, 74.19's cleaning code shows this gap for `miss(x, -999)`.
+- **`library;` with no arguments** (which only prints the active libraries) is also `not_ready`, like every registry entry.
+- **`&` parameters are unchanged:** the v0.83.0 item below still applies (74.16 rediscovered it live).
+- **Search gaps found in 74.x** (for a later search/grounding milestone):
+  - `for` is a question stopword, so the `for` page is unreachable by search;
+  - a hyphenated candidate (`tspdlib-landing`) cannot be opened by searching its name;
+  - long-page excerpts stop before the Outputs section (e.g. `sqpSolveMT`, `minimize`);
+  - the 73.x recall gaps and the `setColDateFormats` false full grounding (below) were reproduced live.
+
 `v0.84.0` reads all GAUSS source through one lexer and one `;`-terminated statement stream. This fixes live findings 73.10 (multi-line statements), 73.14 (string labels defining names, and undocumented calls missing from `coverage_gaps`) and the cosmetic 73.x finding 5. It also fixes a pre-existing defect where string-embedded `/*`…`*/` or `\"` escapes hid code, including system commands, from every check. Limitations:
 - **Undocumented lexical forms cap the verdict at `review_required`.** `@ … @` comments and nested `/* */` comments are masked exactly as real GAUSS treats them (spot-checked, not documented in the published docs), but such code is never a handoff candidate. A string literal spanning a newline is legal GAUSS (`print "a⏎b";`) and is likewise `review_required` at best.
 - **Inside an unterminated `/*` or `@` comment, nothing is checked.** The snippet is `not_ready` (`unterminated_block_comment` / `unterminated_at_comment`, matching GAUSS's own `G0562`/`G0008`), but a system command inside it is no longer listed separately.

@@ -19,10 +19,15 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
   2. the validator re-looks up `miss` with `max_results=1`, where a tie is always "found" and broken alphabetically (`ismiss.rst`), while grounding resolves the defining page (`missmissrv.rst`) (74.19).
 - 74.16's `&`-parameter finding is the known limitation v0.83.0 deliberately left unfixed (record corrected 2026-10-15).
 
-**Next milestone, approved 2026-10-15 (every §8 recommendation), not yet started:** v0.85.0, `planning/v0.85-proc-headers-and-defining-pages.md`.
-- Scope: findings 1 and 2, plus `library` (`source_inclusion`) and `dlibrary`/`dllcall` (new category `native_code`) in the system-statement registry.
+**Milestone in progress: v0.85.0, implemented and committed 2026-10-15 (not tagged, not pushed)**, `planning/v0.85-proc-headers-and-defining-pages.md`.
+- Done:
+  - §3.1-§3.3: the new INVALID rule `proc_header_parameter`, header names skipped by `call_argument_missing_separator`, `_lookup_defining_page` at the three §2.2 sites, `library` (`source_inclusion`), and `dlibrary`/`dllcall` (`native_code`), so the registry has 216 entries;
+  - the §6.1 tests (pre-exec 171-174, engine 143-149, MCP 25), each confirmed failing on HEAD;
+  - the §6.2-§6.4 diffs, all as predicted except one extra 74.19 gap, which is pre-existing (§9.2 item 5).
+  - 48 files pass, and so does `check_release_readiness.py`. The record is plan §9-§10.
+- Done too: README, CHANGELOG, KNOWN_LIMITATIONS, version 0.85.0, commit. Not done: tag `v0.85.0`, push/GitHub release (ask the user first), reinstall, then live evaluation 75.x (plan §7).
 - Unchanged: `&` parameters (v0.83.0's decision kept); trailing commas in headers are accepted.
-- Start with plan §6.1: write the regression tests first and confirm they fail on HEAD, then implement §3.1-§3.3, then the §6.2-§6.4 diffs. The investigation scripts (the 1,418-symbol page comparison, the 74.x snippets, spot checks h1-h12) were scratchpad-only; the plan records their inputs and results, so re-create them from §2.
+- New pre-existing findings (§9.2 items 5-6): a matrix literal with `.` elements is "an expression" for role checks; a `keyword` definition's name is read as an undocumented call, so its snippet is not_ready.
 - **Unpushed local commits** on `main`, on top of `48664c8` (which is pushed): the 74.x record correction (`df2109d`), the v0.85 plan (`bfdbe7c`), and the CLAUDE.md/PROJECT_STATUS.md handoff update. Check with `git log origin/main..main`.
 
 **Recorded for a later search/grounding milestone** (item 4 was excluded, plan §2.5; also in `KNOWN_LIMITATIONS.md`):
