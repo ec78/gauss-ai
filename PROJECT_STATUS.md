@@ -4,31 +4,18 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 
 ## Current Objective
 
-**No milestone in progress.** v0.84.0 "One Lexical Statement Stream" was released on 2026-10-13: https://github.com/ec78/gauss-ai/releases/tag/v0.84.0 (tag `v0.84.0`, commit `d19c61c`). Plan and record: `planning/v0.84-lexical-statement-stream.md`:
-- §1–§8: the plan, approved with every §8 recommendation;
-- §9: deviations and the verdict diff;
-- §10: testing;
-- §11: live evaluation `74.x`, run after release on 2026-10-13 and 2026-10-15 (19 run files);
-- Appendix A: the 92 diff snippets verbatim.
+**No milestone in progress.** v0.85.0 "Procedure Headers, Defining Pages and Code-Loading Statements" was released on 2026-10-15: https://github.com/ec78/gauss-ai/releases/tag/v0.85.0 (tag `v0.85.0`, commit `f11505e`; `main` pushed). Plan and record: `planning/v0.85-proc-headers-and-defining-pages.md` (§1-§8 plan, §9 deviations and diffs, §10 testing). v0.84.0's record, including live evaluation 74.x (17 pass, 2 fail on the two defects v0.85.0 fixes), is `planning/v0.84-lexical-statement-stream.md` §11.
 
-**74.x outcome:**
-- v0.84.0's fixes held live: five uncoaxed snippets that v0.83.0 got wrong now reach handoff_candidate, with no regression.
-- Result: 17 pass, 2 fail.
-- **Two real defects were found live.** Both pre-date v0.84.0, both are in the safe direction, and each has a located cause (plan §11.5):
-  1. `call_argument_missing_separator` reads a `proc` header as a call, so `proc (1) = myFunc(struct PV p);` is a false INVALID (74.18; `tgauss.exe -b` confirms it is valid);
-  2. the validator re-looks up `miss` with `max_results=1`, where a tie is always "found" and broken alphabetically (`ismiss.rst`), while grounding resolves the defining page (`missmissrv.rst`) (74.19).
-- 74.16's `&`-parameter finding is the known limitation v0.83.0 deliberately left unfixed (record corrected 2026-10-15).
-
-**Milestone in progress: v0.85.0, implemented and committed 2026-10-15 (not tagged, not pushed)**, `planning/v0.85-proc-headers-and-defining-pages.md`.
+**v0.85.0 summary:**
 - Done:
   - §3.1-§3.3: the new INVALID rule `proc_header_parameter`, header names skipped by `call_argument_missing_separator`, `_lookup_defining_page` at the three §2.2 sites, `library` (`source_inclusion`), and `dlibrary`/`dllcall` (`native_code`), so the registry has 216 entries;
   - the §6.1 tests (pre-exec 171-174, engine 143-149, MCP 25), each confirmed failing on HEAD;
   - the §6.2-§6.4 diffs, all as predicted except one extra 74.19 gap, which is pre-existing (§9.2 item 5).
   - 48 files pass, and so does `check_release_readiness.py`. The record is plan §9-§10.
-- Done too: README, CHANGELOG, KNOWN_LIMITATIONS, version 0.85.0, commit. Not done: tag `v0.85.0`, push/GitHub release (ask the user first), reinstall, then live evaluation 75.x (plan §7).
+- Next (not started; only if the user asks): stop any `gauss-ai-mcp.exe`, reinstall (`pip install -e ".[mcp]"`), reload the window, then live evaluation 75.x in a fresh conversation (plan §7).
 - Unchanged: `&` parameters (v0.83.0's decision kept); trailing commas in headers are accepted.
 - New pre-existing findings (§9.2 items 5-6): a matrix literal with `.` elements is "an expression" for role checks; a `keyword` definition's name is read as an undocumented call, so its snippet is not_ready.
-- **Unpushed local commits** on `main`, on top of `48664c8` (which is pushed): the 74.x record correction (`df2109d`), the v0.85 plan (`bfdbe7c`), and the CLAUDE.md/PROJECT_STATUS.md handoff update. Check with `git log origin/main..main`.
+- Nothing is unpushed except this status update (check with `git log origin/main..main`).
 
 **Recorded for a later search/grounding milestone** (item 4 was excluded, plan §2.5; also in `KNOWN_LIMITATIONS.md`):
 - the 73.12 `sortc` and 73.13 "percentile" recall gaps (both reproduced in 74.14/74.15);
@@ -43,10 +30,11 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 - category inference for elementwise expressions (72.3 finding 1; 73.5 is the same shape; needs its own design);
 - the public release readiness track (below).
 
-## Where Things Stand (v0.84.0, released 2026-10-13)
+## Where Things Stand (v0.85.0, released 2026-10-15)
 
-Full detail is in CHANGELOG and `planning/v0.84-lexical-statement-stream.md`. v0.83.0 is released at https://github.com/ec78/gauss-ai/releases/tag/v0.83.0.
+Full detail is in CHANGELOG and the planning docs (`planning/v0.85-*.md`, `planning/v0.84-*.md`). v0.84.0 is released at https://github.com/ec78/gauss-ai/releases/tag/v0.84.0.
 
+- **v0.85.0 additions:** the INVALID rule `proc_header_parameter` (`proc`/`keyword` header grammar from spot checks s1, s2, h1-h14; header names are no longer checked as calls); `_lookup_defining_page` (grounding excerpt and validator signatures come from the page grounding resolved); `library` → `source_inclusion`, `dlibrary`/`dllcall` → new category `native_code` (216 registry entries).
 - **v0.84.0 additions:**
   - **One lexer** (`gauss_pre_execution_validation.py`), with each transition backed by a `tgauss.exe -b` spot check (strings before comments, `\` escapes, multi-line strings, nested `/* */`, `@ … @` comments):
     - `lex_gauss_source` → `code_view`/`masked_view`, length- and line-preserving;
@@ -73,7 +61,7 @@ Full detail is in CHANGELOG and `planning/v0.84-lexical-statement-stream.md`. v0
   - `gauss_session_start`/`close`, `gauss_search_docs`, `gauss_validate_code`, `gauss_execution_prepare(validation_id?)`, `gauss_execution_decide`, and `gauss_repair_start`/`command`/`close`;
   - opt-in strict-mode `gauss_chat_ask`/`gauss_chat_reset` (only when `chat-provider` ≠ `fake`).
 - **Hybrid path:** the client writes the code, and `gauss_conversation_engine.validate_code(...)` computes the verdict. Execution happens only via a server-issued, single-use `validation_id`.
-- **Validation chain:** one shared `validate_generated_code(...)`; a 213-entry `_SYSTEM_STATEMENT_REGISTRY` with categories file read/write, OS/process, source inclusion, directory, `network` and `database`. Code with no documented calls is `not_ready`.
+- **Validation chain:** one shared `validate_generated_code(...)`; a 216-entry `_SYSTEM_STATEMENT_REGISTRY` with categories file read/write, OS/process, source inclusion, directory, `network`, `database` and `native_code` (v0.85.0). Code with no documented calls is `not_ready`.
 - **Syntax layer** (`validate_syntax`, a bounded rule set, not a parser):
   - `_split_statements` (now a view of `source_statements`) + `_check_control_flow_blocks` validate `for … endfor` (nested included) with a body allowlist;
   - `if`/`do`/`proc`/thread blocks are unknown (`control_flow_block`) → at best `review_required`;
@@ -89,7 +77,7 @@ Full detail is in CHANGELOG and `planning/v0.84-lexical-statement-stream.md`. v0
 ## Known Issues
 
 - See the top paragraphs of `KNOWN_LIMITATIONS.md` (v0.84.0, v0.83.0, v0.82.0). The 73.x findings are fixed in v0.84.0, except the search recall gaps, which are listed there.
-- The 74.x findings (plan v0.84 §11.5) are **not yet in `KNOWN_LIMITATIONS.md`**; add them with the next milestone's release.
+- The 74.x findings that remain open (search items, the header grammar's unchecked shapes, the 8 still-ambiguous symbols, `.` literals, `keyword` names) are in `KNOWN_LIMITATIONS.md` (v0.85.0 paragraph).
 - **Claude Code keeps stale tool descriptions** for MCP tools whose names didn't change across a server upgrade. This is cosmetic.
 - **Pip debris:** `~auss_ai-0.79.0.dist-info` in `C:\Users\Owner\AppData\Local\Programs\Python\Python312\Lib\site-packages` causes a harmless "Ignoring invalid distribution" warning. The user can delete it at any time.
 
