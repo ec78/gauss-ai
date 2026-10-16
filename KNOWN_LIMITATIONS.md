@@ -2,6 +2,22 @@
 
 See also [docs/known-alpha-limitations.md](docs/known-alpha-limitations.md) for a shorter, tester-facing summary of current-phase limitations.
 
+`v0.86.0` accepts brace literals assigned to structure members, reads GAUSS's word operators as operators, and checks structure definitions with their own spot-checked member grammar, instead of as matrix literals. This fixes live findings 75.8/75.18, 75.19 and 75.20, and flags `pp->x = {…}`, which real GAUSS rejects. Limitations, including the 75.x findings deliberately left for later:
+- **Structure types are not modelled.** These fail when run, and the handoff reports them honestly:
+  - a brace literal assigned to a `scalar` member (`G0071 Type mismatch`);
+  - a member of an undefined structure type, or a declaration before its definition (`G0507`);
+  - a second, different definition of the same type (`G0467`).
+
+  Such code can reach `review_required` or `HANDOFF_CANDIDATE`. A definition inside a `proc` (`G0468`) is already capped at `review_required` by the `proc` block.
+- **The member grammar and the operator list come from GAUSS 26.1.4 spot checks.** The docs list the member types and operator tables, but give no formal grammar. After a definition's `}`, anything other than `;` or one declared name is an unknown construct, not INVALID, because only one failing case was observed.
+- **A whitespace member target without a literal is not checked.** `s . x = 3;` is a compile error in GAUSS (`G0174`) but can reach `HANDOFF_CANDIDATE`. With a literal (`s . x = {1 2};`) it is INVALID.
+- **A binary word operator with a missing operand inside an argument is not flagged.** `sumc(.or a)` (`G0064`) was INVALID before v0.86.0 only by accident. `sumc(a .or)` (`G0105`) never was.
+- **Code whose only "call" was a word operator now has no documented call.** For example, `e = (x .< 2) .and (x .> 8); print e;` was `review_required` through an accidental match on `logical-and.rst`. It is `not_ready` under the no-documented-call policy, which is now its true reason.
+- **Reserved words are not checked** (75.x finding 5). GAUSS 26 reserves every built-in function name (`lower = …;`, `eig = 5;` → `G0276`), as well as the eleven word operators. The docs do not mark which documented symbols are built-ins, so a rule needs its own spot-check sweep.
+- **A string literal where the docs say "vector" is a hard mismatch** (75.x finding 4). `dftype(x, "category")` is `not_ready`, although `dftype.rst`'s own examples pass type names as strings. Which "vector" parameters accept strings cannot be read from the type text, so this needs its own design.
+- **Multi-form signatures can label role gaps with the wrong parameter** (75.x finding 6). With four arguments, `gmmFitIV`'s gaps name `gCtl` and `z` from a three-parameter form. Only unknown gaps are affected, never a verdict's state.
+- **Search and upstream items from 75.x** (English words such as `run`/`break`/`call` grounding on command pages, `index.rst` grounding, `.. include::` not expanded, and the tspdlib, `gmmFitIV` and docs-page defects) are out of this release's scope. The search items are planned for v0.87.0.
+
 `v0.85.0` checks `proc`/`keyword` headers with their own spot-checked grammar instead of as calls, reads every per-symbol signature and grounding excerpt from the page grounding resolved, and registers `library` (`source_inclusion`) and `dlibrary`/`dllcall` (`native_code`). This fixes live findings 74.18, 74.19 and 74.17. Limitations, including the 74.x findings that remain:
 - **The header grammar comes from 16 spot checks, not a published grammar.** Shapes outside the four legal and four rejected forms add no issue, e.g. `f(,x)` or `struct PV p q`. Neither does a `keyword` with more than one parameter (`keyword kw(a, b);`, real `G0138`). All of these stay `review_required` at best, because a `proc`/`keyword` block is unmodelled. `fn` one-line headers are not checked.
 - **A snippet that defines a `keyword` is `not_ready`** (pre-existing, safe direction). The keyword's name is read as an undocumented call (`call_undocumented`), because only `proc` declarations are treated as definitions.

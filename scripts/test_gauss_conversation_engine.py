@@ -2820,6 +2820,188 @@ def test_149_v085_defining_page_never_changes_the_generation_gate() -> None:
                       source.content.splitlines()[0] == title)
 
 
+# ---------------------------------------------------------------------------
+# v0.86.0: structure-member targets (live findings 75.8/75.18), word
+# operators (75.19) and structure definitions (75.20), through
+# `validate_code` (planning v0.86 §6.1).
+# ---------------------------------------------------------------------------
+
+#: Like the published `logical-and.rst`: an operator page with a Format
+#: block but no `.. function::` line, so before v0.86.0 `.and (` grounded
+#: on it by accident (`signature_not_extracted`).
+_V086_LOGICAL_AND_RST = """logical-and
+==============================================
+
+Purpose
+----------------
+
+Performs logical AND operation.
+
+Format
+----------------
+
+::
+
+    y = a and b
+"""
+
+_V086_RST = dict(_V085_RST, **{
+    "logical-and.rst": _V086_LOGICAL_AND_RST,
+    "sumc.rst": _fn_page("sumc", "y = sumc(x)", "    :param x: data\n    :type x: NxK matrix\n\n",
+                         "    :return y: column sums\n    :rtype y: Kx1 matrix\n"),
+    "selif.rst": _fn_page("selif", "y = selif(x, e)", "    :param x: data\n    :type x: NxK matrix\n\n"
+                          "    :param e: selection vector\n    :type e: Nx1 vector\n\n",
+                          "    :return y: the selected rows\n    :rtype y: MxK matrix\n"),
+    "dscreate.rst": _fn_page("dsCreate", "d = dsCreate()", returns="    :return d: instance\n    :rtype d: struct DS\n"),
+    "gmmcontrolcreate.rst": _fn_page("gmmControlCreate", "c = gmmControlCreate()",
+                                     returns="    :return c: instance\n    :rtype c: struct gmmControl\n"),
+})
+
+
+def _v086_docs_root(tmp: str) -> str:
+    root = Path(tmp) / "docs"
+    root.mkdir()
+    for name, text in _V086_RST.items():
+        (root / name).write_text(text, encoding="utf-8")
+    return str(root)
+
+
+#: 75.8 attempt 1, verbatim from run file `-008`.
+_V086_DS_PROGRAM = """proc (1) = dsMean(struct DS d);
+    retp(meanc(d.dataMatrix));
+endp;
+struct DS myData;
+myData = dsCreate();
+myData.dataMatrix = { 1  2,
+                      3  4,
+                      5 12 };
+m = dsMean(myData);"""
+
+#: 75.20's program, verbatim from the recording session's snippet (sc04).
+_V086_STRUCT_PROGRAM = """struct regResults {
+    matrix b;
+    matrix se;
+    string label;
+};
+struct regResults r;
+r.b = zeros(2, 1);
+r.se = zeros(2, 1);
+r.label = "OLS";
+print r.label;
+print r.b;"""
+
+
+def _syntax_rules(result) -> list[str]:
+    return [issue.rule for issue in result.pre_execution.syntax.issues]
+
+
+def test_150_v086_member_literals_are_not_invalid() -> None:
+    """75.8 and 75.18: a brace literal assigned to a structure member was a
+    false `let_statement_shape` INVALID (sc01-sc03, real tgauss.exe -b)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v086_docs_root(tmp)
+        ds = engine_mod.validate_code(_V086_DS_PROGRAM, docs_root=root)
+        check("75.8: no syntax issue", _syntax_rules(ds) == [])
+        check("75.8: partial (the proc block)", ds.pre_execution.syntax.status == "partial")
+        check("75.8: review_required (was not_ready)", ds.handoff_readiness.state == "review_required")
+        check("75.8: no syntax reason", not any(r.startswith("syntax:") for r in ds.handoff_readiness.reasons))
+        gmm = engine_mod.validate_code(
+            "struct gmmControl gctl;\ngctl = gmmControlCreate();\ngctl.bStart = { 0, 0 };\n"
+            "x = {1, 2};\nm = meanc(x);\nprint m;", docs_root=root,
+        )
+        check("75.18's line: no syntax issue", _syntax_rules(gmm) == [])
+        check("75.18's line: handoff_candidate", gmm.handoff_readiness.state == "handoff_candidate")
+        indexed = engine_mod.validate_code(
+            "struct DS d;\nd = dsCreate();\nd.dataMatrix = {1 2 3};\nd.dataMatrix[1] = {5};\nprint d.dataMatrix;",
+            docs_root=root,
+        )
+        check("an indexed member literal stays not_ready (m04)", indexed.handoff_readiness.state == "not_ready"
+              and _syntax_rules(indexed) == ["let_statement_shape"])
+
+
+def test_151_v086_pointer_member_literal_is_not_ready() -> None:
+    """Found while planning v0.86.0 (m24/m25): real GAUSS rejects
+    `pp->x = {3 4};`, but before v0.86.0 nothing matched it, so the snippet
+    was a handoff_candidate."""
+    program = ("struct pt { matrix x; };\nstruct pt s;\nstruct pt *pp;\npp = &s;\npp->x = {3 4};\n"
+               "x = {1, 2};\nm = meanc(x);\nprint m;")
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v086_docs_root(tmp)
+        result = engine_mod.validate_code(program, docs_root=root)
+        check("not_ready", result.handoff_readiness.state == "not_ready")
+        check("let_statement_shape", _syntax_rules(result) == ["let_statement_shape"])
+        wrapped = engine_mod.validate_code(program.replace("{3 4}", "({3 4})"), docs_root=root)
+        check("m26's parenthesized form: handoff_candidate", wrapped.handoff_readiness.state == "handoff_candidate")
+
+
+def test_152_v086_word_operators_are_not_calls() -> None:
+    """75.19: `(x .< 2) .or (x .> 8)` made `or` an unknown call (not_ready);
+    `.and (` grounded by accident on the logical-and page."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v086_docs_root(tmp)
+        code = "x = {1, 5, 9};\ne = (x .< 2) .or (x .> 8);\nm = meanc(e);\nprint m;"
+        result = engine_mod.validate_code(code, docs_root=root)
+        check("or is not called", "or" not in result.called_symbols)
+        check("or is not unknown", "or" not in result.pre_execution.unknown_symbols)
+        check("review_required (meanc's argument is an expression)", result.handoff_readiness.state == "review_required")
+        anded = engine_mod.validate_code(code.replace(".or", ".and"), docs_root=root)
+        check("and is not called", "and" not in anded.called_symbols)
+        check("logical-and is not cited", not any(
+            s.citation.endswith("logical-and.rst") for s in anded.grounding_sources
+        ))
+        in_call = engine_mod.validate_code("x = {1, 5, 9};\nm = meanc((x .< 2) .or (x .> 8));\nprint m;", docs_root=root)
+        check("inside a call: no syntax issue", _syntax_rules(in_call) == [])
+        doc_example = engine_mod.validate_code("x = {1, 5, 9};\ny = selif(x, (x .> 1) .and (x .< 9));\nprint y;",
+                                               docs_root=root)
+        check("selif.rst's idiom: no syntax issue", _syntax_rules(doc_example) == [])
+        # The 75.19 `.and (` probe: with the fake call gone, nothing documented
+        # is called, which is not_ready under the v0.80.0 policy -- the true reason.
+        probe = engine_mod.validate_code("x = { 1, 5, 9 };\ne = (x .< 2) .and (x .> 8);\nprint e;", docs_root=root)
+        check("operator-only snippet: no documented call", probe.called_symbols == ())
+        check("...not_ready", probe.handoff_readiness.state == "not_ready")
+
+
+def test_153_v086_structure_definitions_can_be_candidates() -> None:
+    """75.20: every snippet that defined its own structure type was a false
+    `matrix_literal_row_separator` INVALID (sc04). Decision 6: a valid
+    definition is a validated construct."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v086_docs_root(tmp)
+        result = engine_mod.validate_code(_V086_STRUCT_PROGRAM, docs_root=root)
+        check("syntax validated", result.pre_execution.syntax.status == "validated")
+        check("struct_definition validated", "struct_definition" in result.pre_execution.syntax.validated_constructs)
+        check("handoff_candidate (was not_ready)", result.handoff_readiness.state == "handoff_candidate")
+        # The I/O rule: a system statement after the definition still decides.
+        with_io = engine_mod.validate_code(_V086_STRUCT_PROGRAM + "\ndos dir;", docs_root=root)
+        check("with an OS command: not_ready", with_io.handoff_readiness.state == "not_ready")
+        check("...for the OS command", any(f.name == "dos" for f in with_io.pre_execution.system_statements))
+        hidden = engine_mod.validate_code(_V086_STRUCT_PROGRAM.replace("string label;", "dos dir;"), docs_root=root)
+        check("a statement inside the body: not_ready", hidden.handoff_readiness.state == "not_ready")
+        check("...struct_definition_shape", _syntax_rules(hidden) == ["struct_definition_shape"])
+
+
+def test_154_v086_ask_path_symbol_check_and_gate() -> None:
+    """The `ask()` path's post-generation check reads the same
+    `call_scan_view`, so it no longer reports a word operator as an unknown
+    call; the generation gate is untouched (v0.85.0's pinned test 149 and
+    v0.83.0's test 138 pass unchanged)."""
+    check_result = engine_mod.check_generated_symbols(
+        "x = {1, 5, 9};\ne = (x .< 2) .or (x .> 8);\ny = .not (e);\nm = meanc(e);", supported_symbols=("meanc",),
+    )
+    check("or/not not unknown", not ({"or", "not"} & {s.lower() for s in check_result.unknown_call_symbols}))
+    check("meanc supported", "meanc" in check_result.supported_symbols)
+    still = engine_mod.check_generated_symbols("y = colmean(x) or (z);", supported_symbols=())
+    check("a real unknown call is still reported", still.unknown_call_symbols == ("colmean",))
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v086_docs_root(tmp)
+        for question in ("column means", "zzz", "packr"):
+            bundle = engine_mod.ground_multi(question, docs_root_str=root)
+            gate = engine_mod.compute_generation_gate(bundle)
+            actual = (bundle.status.value, gate.policy, bundle.matched_topics, bundle.unmatched_topics,
+                      bundle.ambiguous_topics)
+            check(f"gate unchanged: {question!r}", actual == _V085_PINNED_GATE[question])
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

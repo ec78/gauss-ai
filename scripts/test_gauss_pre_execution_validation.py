@@ -2479,6 +2479,260 @@ def test_174_v085_header_rule_provenance() -> None:
     check("the call rule points headers at the header rule", "proc_header_parameter" in separator.description)
 
 
+# ---------------------------------------------------------------------------
+# v0.86.0: structure-member targets (live findings 75.8/75.18), word
+# operators (75.19) and structure definitions (75.20). Every program below is
+# a real `tgauss.exe -b` spot check (GAUSS 26.1.4, 2026-10-16; planning v0.86
+# §2), cited by its ID.
+# ---------------------------------------------------------------------------
+
+_PT = "struct pt { matrix x; };\nstruct pt s;\n"
+
+#: Brace literals assigned to member targets that real GAUSS runs.
+_V086_VALID_MEMBER_TARGETS = {
+    "m01": _PT + "s.x = {1 2};",
+    "m02": _PT + "s.x = { 1 2,\n        3 4 };",
+    "m03": "struct inner { matrix b; };\nstruct outer { struct inner a; };\nstruct outer s;\ns.a.b = {1};",
+    "m08": _PT + "let s.x = {1 2};",
+    "m10": _PT + "s.x = ({1, 2})';",
+    "m11": "struct ps { string array sa; };\nstruct ps s;\ns.sa = {\"a\" \"b\"};",
+    "m15": "struct DS d;\nd = dsCreate();\nd.dataMatrix = {1 ., 3 4};",
+    "sc01": "struct DS d;\nd = dsCreate();\nd.dataMatrix = { 1 2, 3 4 };",
+    "sc02": "struct gmmControl g;\ng = gmmControlCreate();\ng.bStart = { 0, 0 };",
+    "m26": _PT + "struct pt *pp;\npp = &s;\npp->x = ({3 4});",
+    "same line": _PT + "y = 1; s.x = {1 2};",
+    "split": _PT + "s.x\n  = {1 2,\n 3 4};",
+    # Found by the §6.3 all-docs diff (planning v0.86 §9.2): a member of a
+    # structure-array element, as in cmlmtprofile.rst.
+    "m33": _PT + "s = reshape(s, 2, 1);\ns[1].x = {1 2};",
+    "m37": "struct DS d0;\nd0 = reshape(dsCreate, 2, 1);\nd0[1].dataMatrix = {8.3, 10.3, 19.0};",
+}
+
+#: Member (and plain indexed) targets real GAUSS rejects, or silently
+#: misparses (m04, m18: the whole variable becomes the 1x1 literal).
+_V086_INVALID_MEMBER_TARGETS = {
+    "m04": _PT + "s.x = {1 2 3};\ns.x[1] = {5};",
+    "m05": _PT + "s.x = {1 2 3};\ns.x[1:2] = {7 8};",
+    "m17": _PT + "s.x = {1 2 3};\ns.x[2] = {5};",
+    "m18": "v = {1 2 3};\nv[1] = {5};",
+    "m20": _PT + "s.x = {1 2, 3 4};\ns.x[1, 2] = {9};",
+    "m06": _PT + "s.x = {1, 2}';",
+    "m07": _PT + "s.x = {1, 2} + 1;",
+    "m13": _PT + "s.x = {1 2} ~ {3 4};",
+    "m31": _PT + "let s.x = {1 2} + 1;",
+    "m09": _PT + "s . x = {1 2};",
+    "m28": _PT + "s .x = {1 2};",
+    "m29": _PT + "s. x = {1 2};",
+    "m24": _PT + "struct pt *pp;\npp = &s;\npp->x = {3 4};",
+    "m25": _PT + "struct pt *pp;\npp = &s;\npp->x = {3};",
+    "m34": _PT + "s = reshape(s, 2, 1);\ns[1].x = {1, 2}';",
+    "m35": _PT + "s = reshape(s, 2, 1);\ns[1].x = {1 2 3};\ns[1].x[1] = {5};",
+    "m38": _PT + "s = reshape(s, 2, 1);\ns[1] .x = {1 2};",
+}
+
+
+def test_175_v086_member_targets_follow_the_spot_checks() -> None:
+    for spot, code in _V086_VALID_MEMBER_TARGETS.items():
+        check(f"{spot}: no syntax issue", _rules_of(code) == [])
+    for spot, code in _V086_INVALID_MEMBER_TARGETS.items():
+        check(f"{spot}: let_statement_shape", _rules_of(code) == ["let_statement_shape"])
+    messages = {
+        spot: validation_mod.validate_syntax(_V086_INVALID_MEMBER_TARGETS[spot]).issues[0].message
+        for spot in ("m04", "m06", "m09", "m24")
+    }
+    check("indexed message names the silent replacement", "indexed target" in messages["m04"]
+          and "silently replaces" in messages["m04"])
+    check("trailing message unchanged", "nothing may follow" in messages["m06"])
+    check("whitespace message", "whitespace around the member" in messages["m09"])
+    check("pointer message", "structure pointer" in messages["m24"])
+    # Invariance: v0.82.0's plain-name evidence is unchanged.
+    check("x = {1, 2, 3}'; still flagged", _rules_of("x = {1, 2, 3}';") == ["let_statement_shape"])
+    check("v[., 1] = {1, 2, 3}; still flagged", _rules_of("v[., 1] = {1, 2, 3};") == ["let_statement_shape"])
+    check("x = {1 2}; still clean", _rules_of("x = {1 2};") == [])
+    # A non-literal pointer write was never matched and is not now (m23, m27).
+    check("pp->x = 3; clean", _rules_of(_PT + "struct pt *pp;\npp = &s;\npp->x = 3;") == [])
+    # Masked: a member-literal shape inside a string is never a statement.
+    check("in a string", _rules_of('print "pp->x = {3 4};";') == [])
+
+
+_A = "a = {1, 0, 1};\nb = {1, 1, 0};\n"
+_S = "s = 1;\nt = 0;\n"
+
+
+def _v086_word_operator_programs() -> dict[str, str]:
+    """The §2.2 shapes that real GAUSS runs, one per spot-check program."""
+    programs: dict[str, str] = {}
+    for op in ("and", "or", "xor", "eqv"):
+        programs[f"w_dot_{op}_paren"] = _A + f"y = (a) .{op} (b);"
+        programs[f"w_dot_{op}_nospace"] = _A + f"y = (a).{op}(b);"
+        programs[f"w_dot_{op}_incall"] = _A + f"y = sumc((a) .{op} (b));"
+        programs[f"w_dot_{op}_incall_bare"] = _A + f"y = sumc(a .{op} b);"
+        programs[f"w_{op}_paren"] = _S + f"y = (s) {op} (t);"
+        programs[f"w_{op}_nospace"] = _S + f"y = (s){op}(t);"
+        programs[f"w_{op}_incall"] = _S + f"y = maxc((s) {op} (t));"
+        programs[f"w_{op}_incall_bare"] = _S + f"y = maxc(s {op} t);"
+    for op in ("eq", "ne", "lt", "le", "gt", "ge"):
+        programs[f"w_dot_{op}_paren"] = _A + f"y = (a) .{op} (1);"
+        programs[f"w_dot_{op}_incall"] = _A + f"y = sumc((a) .{op} (1));"
+        programs[f"w_{op}_paren"] = _S + f"y = (s) {op} (1);"
+        programs[f"w_{op}_incall"] = _S + f"y = maxc((s) {op} (1));"
+    programs.update({
+        "w_dot_not_paren": _A + "y = .not (a);",
+        "w_dot_not_nospace": _A + "y = .not(a);",
+        "w_dot_not_incall": _A + "y = sumc(.not (a));",
+        "w_dot_not_incall_bare": _A + "y = sumc(.not a);",
+        "w_not_nospace": _S + "e = not(s);",
+        "w_not_incall": _S + "y = maxc(not (s));",
+        "w_dot_and_dot_not_incall": _A + "y = sumc(a .and .not b);",
+        "w_upper_dot_or": _A + "y = (a) .OR (b);",
+        "w_upper_or": _S + "y = maxc((s) OR (t));",
+        "w_mixed_Or": _S + "y = (s) Or (t);",
+        "w_selif_doc_example": "x = {1, 5, 9};\ny = selif(x, (x .> 1) .and (x .< 9));",
+        "sc05": "x = {1, 5, 9};\ne = (x .< 2) .or (x .> 8);",
+    })
+    return programs
+
+
+def test_176_v086_word_operators_are_never_adjacent_tokens() -> None:
+    for spot, code in _v086_word_operator_programs().items():
+        check(f"{spot}: no syntax issue", _rules_of(code) == [])
+    # Real adjacency is still caught (G0063), and so is `not` used as a
+    # binary operator (G0136).
+    for spot, code in {
+        "w_bad_adjacent_names": _A + "y = sumc(a .or b a);",
+        "w_bad_not_binary": _S + "y = maxc(s not t);",
+        "w_bad_dot_not_binary": _A + "y = sumc((a) .not (b));",
+        "w_bad_adjacent_parens": _A + "y = sumc((a) (b));",
+    }.items():
+        check(f"{spot}: still call_argument_missing_separator", _rules_of(code) == ["call_argument_missing_separator"])
+    # Identifiers that merely contain an operator's letters are still tokens.
+    check("notes x adjacent", _rules_of("y = f(notes x);") == ["call_argument_missing_separator"])
+    check("x order adjacent", _rules_of("y = f(x order);") == ["call_argument_missing_separator"])
+
+
+def test_177_v086_word_operators_are_never_calls() -> None:
+    for spot, code in _v086_word_operator_programs().items():
+        symbols = {call.symbol.lower() for call in validation_mod.extract_generated_calls(code)}
+        check(f"{spot}: no word operator extracted", not (symbols & validation_mod._WORD_OPERATORS))
+    calls = validation_mod.extract_generated_calls("x = {1, 5, 9};\nm = meanc((x .< 2) .or (x .> 8));")
+    check("meanc still extracted", [c.symbol for c in calls] == ["meanc"])
+    if calls:
+        check("argument text keeps the operator", calls[0].raw_arguments == ("(x .< 2) .or (x .> 8)",))
+    # Whole identifiers only: these are still calls.
+    names = [c.symbol for c in validation_mod.extract_generated_calls(
+        "y = order(x); z = notes(x); w = ltrim(s); v = ne2(x); u = geta(x);"
+    )]
+    check("look-alike names are calls", names == ["order", "notes", "ltrim", "ne2", "geta"])
+    # Lexical discipline: a string or comment is never touched (the view
+    # is masked either way), and the view keeps its length and lines.
+    code = 'print "a or (b)"; // or (c)\ny = (a) .or (b);'
+    view = validation_mod.call_scan_view(code)
+    check("same length", len(view) == len(code) and view.count("\n") == code.count("\n"))
+    check("no call in string, comment or operator", validation_mod.extract_generated_calls(code) == ())
+    check("the word set", validation_mod._WORD_OPERATORS == frozenset(
+        {"and", "or", "not", "xor", "eqv", "eq", "ne", "lt", "le", "gt", "ge"}
+    ))
+
+
+#: Structure definitions real GAUSS runs (each program also declares an
+#: instance and prints; only the definition matters here).
+_V086_VALID_DEFINITIONS = {
+    "sc04": "struct regResults {\n    matrix b;\n    matrix se;\n    string label;\n};\nstruct regResults r;",
+    "d01": "struct my_struct {\n    scalar count;\n    matrix data;\n    string label;\n    string array names;\n};",
+    "d02": "struct pt { matrix x; };",
+    "d03": "struct pt { matrix x; };\nstruct box { array a; struct pt inner; matrix m; };",
+    "d04": "struct sp { sparse matrix sm; };",
+    "d10": "struct e { };",
+    "d12": "struct pt { matrix x };",
+    "d13": "struct pt { matrix x; } s;",
+    "d14": "STRUCT PT { MATRIX X; };",
+    "d23": "x = 1; struct pt { matrix x; }; struct pt s;",
+    "d31": "struct w { struct DS d; struct PV p; };",
+    "d32": "struct d { String Array n; };",
+    "d33": "struct d { string\n   array n; };",
+    "d36": "struct pt {\n  matrix x;  // the data\n  /* a */ string s;\n};",
+    "d37": "struct d { matrix string; };",
+    "d29": "struct pt { matrix x; };\nstruct pt { matrix x; };",
+}
+
+#: Member items real GAUSS rejects with G0008 (d34 also G0507), and d39's
+#: nameless definition.
+_V086_INVALID_DEFINITIONS = {
+    "d05": "struct hp { struct pt *p; };",
+    "d40": "struct hp { struct pt * p; };",
+    "d06": "struct two { matrix a, b; };",
+    "d07": "struct two { matrix a b; };",
+    "d08": "struct nt { x; };",
+    "d09": "struct ini { matrix x = 1; };",
+    "d15": "struct ut { vector v; };",
+    "d16": "struct lt { local v; };",
+    "d17": "struct ml { matrix x; {1 2}; };",
+    "d20": "struct sa { stringarray n; };",
+    "d25": "struct d { matrix; };",
+    "d26": "struct d { struct pt; };",
+    "d27": "struct d { sparse x; };",
+    "d28": "struct d { matrix x[2]; };",
+    "d30": "struct d { matrix x; print 5; };",
+    "d34": "struct o { struct i { matrix x; } ii; };",
+    "d39": "struct { matrix x; };",
+}
+
+
+def test_178_v086_structure_definitions_follow_the_spot_checks() -> None:
+    for spot, code in _V086_VALID_DEFINITIONS.items():
+        result = validation_mod.validate_syntax(code)
+        check(f"{spot}: no issue", result.issues == ())
+        check(f"{spot}: struct_definition validated", "struct_definition" in result.validated_constructs)
+        check(f"{spot}: no unknown", result.unknown_constructs == ())
+    for spot, code in _V086_INVALID_DEFINITIONS.items():
+        check(f"{spot}: struct_definition_shape", _rules_of(code) == ["struct_definition_shape"])
+    issue = validation_mod.validate_syntax("struct pt {\n  matrix x;\n  vector v;\n};").issues
+    check("reported on the item's line", len(issue) == 1 and issue[0].line_number == 3)
+    check("message names the item", len(issue) == 1 and "`vector v`" in issue[0].message)
+    # d11: no `;` after `}` -- the one failing observation, so unknown, not INVALID.
+    d11 = validation_mod.validate_syntax("struct pt { matrix x; }\nstruct pt s;")
+    check("d11: no issue", d11.issues == ())
+    check("d11: unknown struct_definition", "struct_definition" in d11.unknown_constructs)
+    check("d11: partial", d11.status == validation_mod.SyntaxStatus.PARTIAL.value)
+    # Real matrix literals are still checked, right after a definition too (d24).
+    check("d24 shape: a `;` literal after a definition", _rules_of(
+        "struct pt { matrix x; };\nstruct pt s;\ns.x = {1 2; 3 4};"
+    ) == ["matrix_literal_row_separator"])
+    check("d24: a good literal after a definition", _rules_of("struct pt { matrix x; };\nstruct pt s;\ns.x = {1 2, 3 4};") == [])
+    check("a declaration is not a definition", "struct_definition" not in
+          validation_mod.validate_syntax("struct pt s;\nx = 1;").validated_constructs)
+    # Masked: `struct` and braces in strings or comments are never a definition.
+    check("in a string", _rules_of('s = "struct pt { matrix x; vector v; };";') == [])
+    check("in a comment", _rules_of("// struct pt { vector v; };\nx = 1;") == [])
+    check("a string member type name is masked", _rules_of('struct pt { matrix x; };\nprint "{;}";') == [])
+    # The I/O rule: no statement can hide in a passing definition.
+    check("dos inside a definition is INVALID", _rules_of("struct d { dos dir; };") == ["struct_definition_shape"])
+
+
+def test_179_v086_rule_provenance() -> None:
+    registry = validation_mod._SYNTAX_RULE_REGISTRY
+    let_rule = registry["let_statement_shape"]
+    check("let cites the member spot checks", all(
+        f"m{n:02d}" in let_rule.source for n in (1, 3, 4, 5, 6, 8, 9, 18, 24, 25, 26, 33, 34, 35, 37, 38)
+    ) and "sc01" in let_rule.source)
+    check("let describes member paths", "member path" in let_rule.description)
+    struct_rule = registry.get("struct_definition_shape")
+    check("struct_definition_shape registered", struct_rule is not None)
+    if struct_rule is not None:
+        check("names itself", struct_rule.name == "struct_definition_shape")
+        check("cites real tgauss.exe -b", "tgauss.exe -b" in struct_rule.source)
+        check("cites every failing item", all(
+            f"d{n:02d}" in struct_rule.source for n in (5, 6, 7, 8, 9, 15, 16, 17, 20, 25, 26, 27, 28, 30, 34, 39, 40)
+        ))
+        check("cites the docs", "structures.rst" in struct_rule.source and "declare.rst" in struct_rule.source)
+        check("discloses the type-level gaps", all(code in struct_rule.description for code in ("G0071", "G0507", "G0467")))
+    separator = registry["call_argument_missing_separator"]
+    check("separator rule names word operators", "word operator" in separator.description
+          and "G0276" in separator.source)
+    literal = registry["matrix_literal_row_separator"]
+    check("literal rule points at the definition rule", "struct_definition_shape" in literal.description)
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

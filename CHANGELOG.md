@@ -4,6 +4,29 @@ This file records notable changes to the GAUSS AI framework.
 
 ## [Unreleased]
 
+- Added `v0.86.0` Structure Members, Word Operators and Structure Definitions. It fixes the three validator defects behind live evaluation 75.x's four fails. All three were in the safe direction, and each rejected ordinary, valid GAUSS with a reason that was false about GAUSS. Every changed rule shape comes from print-only `tgauss.exe -b` spot checks (GAUSS 26.1.4, 201 programs; series m, w, r, d). Documentation extraction, `command_doc_lookup.py`, `gauss_conversation_engine.py`, the readiness state machine and the `ask()` generation gate are unchanged (AST-checked).
+- **Fixed (75.8, 75.18): a brace literal assigned to a structure member was INVALID.** `ctl.bStart = {0, 0};` gave `let_statement_shape` ("target must be a plain name"), a rule with no evidence behind its member branch. A member path written without whitespace is now a valid target, like a plain name: `s.x`, `s.a.b`, `let s.x`, or `d0[1].x` for an element of a structure array. Still INVALID, each with its own message:
+  - a literal followed by anything (`s.x = {1, 2}';`, `G0008`);
+  - a target ending in an index (`v[1] = {5};`, `s.x[1:2] = {7 8};`). GAUSS rejects these (`G0046`/`G0047`/`G0008`), or, for a 1x1 index on a row, silently replaces the whole variable with the literal;
+  - whitespace around the member `.` (`s . x`).
+- **Fixed (pre-existing, unsafe direction): `pp->x = {3 4};` reached `HANDOFF_CANDIDATE`.** Real GAUSS rejects a brace literal assigned through a structure pointer. It is now `let_statement_shape`, and `pp->x = ({3 4});` stays valid.
+- **Fixed (75.19): word operators were read as calls.** `(x .< 2) .or (x .> 8)` made `or` an unknown call (`not_ready`), and `.and (` grounded by accident on `logical-and.rst`. Inside a call argument, the same code was a false `call_argument_missing_separator` INVALID, as was `selif.rst`'s own `(...) .and (...)` example.
+  - The eleven word operators (`and`, `or`, `not`, `xor`, `eqv`, `eq`, `ne`, `lt`, `le`, `gt`, `ge`, with or without `.`) run in every position and are reserved words (`G0276`). They are now blanked from the shared call-scan view and treated as operators by the adjacency check.
+  - `not` used as a binary operator (`s not t`, `G0136`) is still INVALID.
+  - A snippet whose only "documented call" was the accidental `.and (` now has none, so it is `not_ready` with that reason.
+- **Fixed (75.20): every structure definition was a matrix literal.** `struct Name { matrix b; ... };` gave `matrix_literal_row_separator`. Definitions are now recognized from whole statements, and the new INVALID rule **`struct_definition_shape`** checks each member: one of `scalar`, `matrix`, `array`, `string`, `string array`, `sparse matrix` or `struct Type`, then exactly one name.
+  - The malformed shapes GAUSS rejects with `G0008` are flagged: pointer members, `a, b`, two names, no type, an initializer, an unknown type word, a statement or literal in the body, a missing name, an indexed name, a nested definition, and a nameless definition.
+  - A valid definition is a validated construct (`struct_definition`), so such code can reach `HANDOFF_CANDIDATE`. A `}` followed by anything but `;` or one declared name is an unknown construct.
+- Not modelled (disclosed): structure types. A literal assigned to a `scalar` member (`G0071`), an undefined member type or a declaration before the definition (`G0507`), and a different redefinition (`G0467`) are not caught; they fail when run and are reported honestly.
+- **All-docs syntax diff:** on all 5,891 published code blocks, exactly the 79 predicted blocks lose a false issue (60 member literals, 11 word-operator arguments, 8 definitions), and no block gains an issue.
+- **Verdict diff against v0.85.0:** 365 programs (the 125 earlier snippets, the 39 75.x programs and 201 spot programs). All 125 earlier snippets are unchanged.
+  - 75.8, 75.18 and 75.19: `not_ready` → `review_required`.
+  - 75.20 and the sc01 member-literal program: `not_ready` → `HANDOFF_CANDIDATE`.
+  - The 75.19 `.and (` probe: `review_required` → `not_ready` (no documented call).
+  - No program that newly leaves `not_ready` contains a system statement.
+- 11 new deterministic tests, each confirmed to fail against v0.85.0. No existing expectation changed. The full suite (48 files) and `check_release_readiness.py` pass, with zero diff on core execution/repair/verification/approval modules.
+- Not in this release, by decision: the `dftype` string-vs-"vector" mismatch (75.x finding 4), reserved-word checking (finding 5) and multi-form role labels (finding 6).
+- The live client evaluation `76.x` was not run before this release.
 - Added `v0.85.0` Procedure Headers, Defining Pages and Code-Loading Statements: fixes the two validator defects live evaluation 74.x found, and registers the code-loading statements it raised. Both defects were in the safe direction. Documentation extraction, `command_doc_lookup.py`, the readiness state machine and the `ask()` generation gate are unchanged (AST-checked).
 - **Fixed (74.18): a `proc` header was checked as a call.** `proc (1) = myFunc(struct PV p);` was a false `call_argument_missing_separator` INVALID, so every structure-based optimizer objective (`sqpSolveMT`, `optmt`, `QNewtonmt`, `cmlmt`, `PV`/`DS` code) was `not_ready`. The procedure name in a `proc`/`keyword` header is no longer checked as a call. A real call with the same shape (`y = f(struct PV p);`) is still INVALID.
 - **Added: INVALID rule `proc_header_parameter`.** Each header parameter must be `name`, `&name`, `struct Type name` or `struct Type *name`. Every shape comes from a real `tgauss.exe -b` spot check (s1, s2, h1-h14):

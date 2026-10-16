@@ -196,6 +196,26 @@ _LANGUAGE_CONSTRUCT_KEYWORDS = frozenset({
 
 _CALL_SHAPED_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(")
 
+#: v0.86.0 (live finding 75.19): GAUSS's word operators. `operators.rst`
+#: ("Logical Operators") and `cc/operators.rst` document `and`, `or`, `not`,
+#: `xor` and `eqv`, each in an element-wise (`.and`) and a matrix (`and`)
+#: form; the relational words `eq`/`ne`/`lt`/`le`/`gt`/`ge` (and `.lt` ...)
+#: appear only in examples (`recode.rst`, `delif.rst`: `(20 .lt x) .and
+#: (x .le 30)`). Real `tgauss.exe -b` (GAUSS 26.1.4, 2026-10-16; planning
+#: v0.86 §2.2): all eleven run in every position -- `(a) .or (b)`,
+#: `(a).or(b)`, `a .or b`, `sumc((a) .or (b))`, `maxc(s or t)`, `not(s)`,
+#: `if (s) or (t);`, upper and mixed case -- and every one is a reserved
+#: word (`or = 1;` and `proc (1) = or(x);` -> "G0276 Illegal use of reserved
+#: word"). So `or (` is never a call: before v0.86.0, `(x .< 2) .or (x .> 8)`
+#: made `or` an unknown call (not_ready), and `.and (` grounded by accident
+#: on `logical-and.rst`.
+_WORD_OPERATORS = frozenset({"and", "or", "not", "xor", "eqv", "eq", "ne", "lt", "le", "gt", "ge"})
+#: One word-operator token on MASKED text, with its optional element-wise
+#: `.` (a whole identifier, so `order`, `notes` and `ltrim` never match).
+_WORD_OPERATOR_RE = re.compile(
+    r"(?<![A-Za-z0-9_])\.?(?:and|or|not|xor|eqv|eq|ne|lt|le|gt|ge)(?![A-Za-z0-9_])", re.IGNORECASE,
+)
+
 
 def _split_top_level_args(raw: str) -> list[str]:
     """Splits `raw` on top-level commas only -- commas nested inside
@@ -499,8 +519,17 @@ def call_scan_view(code: str) -> str:
     each declaration statement (`_DECLARATION_LINE_KEYWORDS`) blanked and
     each `for`/`threadfor` header's counter blanked. Same length as `code`,
     so offsets map back to the original text, from which argument text is
-    sliced."""
-    chars = list(lex_gauss_source(code).masked_view)
+    sliced.
+
+    v0.86.0 (live finding 75.19): every word operator (`_WORD_OPERATORS`,
+    with its optional `.`) is blanked too, so `(x .< 2) .or (x .> 8)` is
+    never a call to `or` -- for both consumers at once. Argument text is
+    still sliced from the code view, so such an argument keeps its full
+    text (and stays an expression for role checks)."""
+    masked = lex_gauss_source(code).masked_view
+    chars = list(masked)
+    for match in _WORD_OPERATOR_RE.finditer(masked):
+        _blank(chars, match.start(), match.end(), " ")
     for statement in source_statements(code):
         word = _leading_word(statement.masked)
         if word in _DECLARATION_LINE_KEYWORDS:
@@ -1961,7 +1990,9 @@ _SYNTAX_RULE_REGISTRY: dict[str, SyntaxRule] = {
         name="matrix_literal_row_separator",
         description=(
             "A GAUSS matrix literal's rows are separated by `,`; elements within a row are separated by "
-            "whitespace. `;` is not a valid row separator."
+            "whitespace. `;` is not a valid row separator. The body of a structure definition "
+            "(`struct Name { matrix b; ... };`) is not a matrix literal; it is checked by "
+            "`struct_definition_shape` (v0.86.0)."
         ),
         source=(
             'let.rst (official docs): "let x = { 1 2 3, 4 5 6, 7 8 9 };" ... "If curly braces are used, '
@@ -2013,7 +2044,10 @@ _SYNTAX_RULE_REGISTRY: dict[str, SyntaxRule] = {
             "whitespace within one call argument, with no comma and no operator between them (e.g. "
             "`rndu(1e5 4)`, `reshape(5 3)`, `sprintf(\"...\" pi)`) -- GAUSS requires an explicit comma or "
             "operator between them. The procedure name in a `proc`/`keyword` header is not a call: its "
-            "parameter list is checked by `proc_header_parameter` (v0.85.0)."
+            "parameter list is checked by `proc_header_parameter` (v0.85.0). A word operator (`and`, "
+            "`or`, `not`, `xor`, `eqv`, `eq`, `ne`, `lt`, `le`, `gt`, `ge`, with or without a leading "
+            "`.`) is an operator, never a call or a token (v0.86.0); the unary `not` may start an operand "
+            "but not follow one."
         ),
         source=(
             "v0.77.0 differential baseline corpus run (this milestone's own real `tgauss.exe -b` "
@@ -2031,7 +2065,13 @@ _SYNTAX_RULE_REGISTRY: dict[str, SyntaxRule] = {
             "`tgauss.exe -b` confirmed `error G0063` for this exact snippet. Fixed by narrowing this "
             "check's own skip list to `_BLOCK_CONSTRUCT_KEYWORDS` (genuine loop/conditional/proc "
             "headers only), so a genuinely parenthesized, call-shaped `print(...)` is checked like any "
-            "other call."
+            "other call. v0.86.0, live finding 75.19: `meanc((x .< 2) .or (x .> 8))` was a false INVALID "
+            "(`or (` read as adjacent tokens), as was `selif.rst`'s own `(...) .and (...)` example. Real "
+            "`tgauss.exe -b` (GAUSS 26.1.4, 2026-10-16; planning v0.86 §2.2) runs every word operator in "
+            "every position, inside calls too (`sumc((a) .or (b))`, `sumc(a .xor b)`, `maxc(s or t)`, "
+            "`sumc(.not a)`, `maxc((s) lt (1))`, upper case), and rejects each as a name (G0276). Still "
+            "flagged: `sumc(a .or b a)` (G0063) and the binary misuse of `not`, `maxc(s not t)` and "
+            "`sumc((a) .not (b))` (G0136)."
         ),
         applies_to="call",
     ),
@@ -2200,8 +2240,11 @@ _SYNTAX_RULE_REGISTRY: dict[str, SyntaxRule] = {
         name="let_statement_shape",
         description=(
             "An assignment whose right-hand side BEGINS with `{` is a `let` statement: its target must be "
-            "a plain name (not indexed or a member), and nothing may follow the closing `}` "
-            "(no transpose, operator, or concatenation)."
+            "a plain name or (v0.86.0) a structure-member path written without whitespace (`s.x`, "
+            "`s.a.b`, `d0[1].x` for a structure-array element), and nothing may follow the closing `}` "
+            "(no transpose, operator, or concatenation). Flagged: a target ending in an index, plain or "
+            "member (`v[1]`, `s.x[1:2]`); whitespace around a member `.` (`s . x`); and a "
+            "structure-pointer member (`pp->x`)."
         ),
         source=(
             'let.rst (official docs): "If curly braces are used, the let is optional" -- `x = {...}` IS a '
@@ -2212,9 +2255,56 @@ _SYNTAX_RULE_REGISTRY: dict[str, SyntaxRule] = {
             "`v[2] = {5};` -> \"G0047 Rows don't match\" + G0008. A literal that does not begin the "
             "right-hand side is unaffected and runs: `x = ({1, 2}) + 1;`, `x = 2 * {1, 2};`, "
             "`x = -{1, 2};`, `y = meanc({1, 2, 3}) + 1;`, `y = sumc({1, 2, 3}');`, and "
-            "`v[., 1] = ones(3, 1);`. Before v0.82.0 every flagged case was reported VALIDATED."
+            "`v[., 1] = ones(3, 1);`. Before v0.82.0 every flagged case was reported VALIDATED. "
+            "v0.86.0, live findings 75.8 and 75.18: the member branch had no evidence, and "
+            "`ctl.bStart = {0, 0};` was a false INVALID. Real `tgauss.exe -b` (GAUSS 26.1.4, 2026-10-16; "
+            "planning v0.86 §2.1; `struct pt { matrix x; }; struct pt s;` first): run -- sc01-sc03 "
+            "(75.x), m01 `s.x = {1 2};`, m02 a multi-line literal, m03 `s.a.b = {1};`, m08 "
+            "`let s.x = {1 2};`, m10 `s.x = ({1, 2})';`, m11 a string list into a `string array` member, "
+            "m15 `d.dataMatrix = {1 ., 3 4};`. Rejected, as for plain names: m06 `s.x = {1, 2}';`, m07 "
+            "`+ 1`, m13 `~ {3 4}`, m31 `let s.x = {1 2} + 1;` (G0008). Indexed: m04/m22 "
+            "`s.x = {1 2 3}; s.x[1] = {5};` and m18 `v = {1 2 3}; v[1] = {5};` RUN but silently replace "
+            "the whole variable with the 1x1 literal (m16, without braces, sets one element); m17/m19/m21 "
+            "`[2] = {5}` G0047, m20 `[1, 2] = {9}` G0046, m05 `s.x[1:2] = {7 8}` G0008. Whitespace "
+            "around `.`: m09 `s . x`, m28 `s .x`, m29 `s. x` (errors; m30 `s . x = 3;` G0174). Pointer "
+            "member: m24/m25 `pp->x = {3 4};` / `{3}` rejected (before v0.86.0 it matched nothing and "
+            "reached handoff_candidate), while m26 `pp->x = ({3 4});` and m23/m27 run. Structure-array "
+            "elements (`s = reshape(s, 2, 1);` first): m33 `s[1].x = {1 2};` and m37 the docs' own "
+            "`d0[1].dataMatrix = {8.3, 10.3, 19.0};` (cmlmtprofile.rst) run; m34 `s[1].x = {1, 2}';` and "
+            "m38 `s[1] .x = {1 2};` G0008; m35 `s[1].x[1] = {5};` runs with the same whole-member "
+            "replacement as m04."
         ),
         applies_to="assignment",
+    ),
+    "struct_definition_shape": SyntaxRule(
+        name="struct_definition_shape",
+        description=(
+            "A structure definition is `struct Name { member; ... };`. Each member is one of `scalar`, "
+            "`matrix`, `array`, `string`, `string array`, `sparse matrix` or `struct Type`, followed by "
+            "exactly one name (case-insensitive; the final `;` inside the body and an empty body are "
+            "allowed). Any other member item, or a definition with no type name, is flagged. After the "
+            "`}`, `;` or one declared name and `;` is validated (`struct_definition`); anything else is an "
+            "unknown construct. Structure TYPES are not modelled: a literal assigned to a `scalar` member "
+            "(G0071), an undefined member type or a declaration before the definition (G0507), and a "
+            "different redefinition (G0467) are not caught."
+        ),
+        source=(
+            "v0.86.0, live finding 75.20: every definition was a false `matrix_literal_row_separator` "
+            "INVALID. structures.rst (\"Defining Structures\", \"Member types\": scalar, matrix, array, "
+            "string, string array, struct) and declare.rst (`sparse matrix sm;`). Real `tgauss.exe -b` "
+            "(GAUSS 26.1.4, 2026-10-16; planning v0.86 §2.3): run -- sc04 (75.20's program), d01 the "
+            "docs' member types, d02 one line, d03/d31 `array` and nested/built-in `struct` members, d04 "
+            "`sparse matrix`, d10 an empty body, d12 no `;` after the last member, d13/d35 "
+            "`struct pt { matrix x; } s;` (declares `s`), d14/d32/d33 case and whitespace, d23 after "
+            "other code on one line, d36 comments, d37 `matrix string;`, d29 an identical redefinition, "
+            "d42/d43 inside `if`/`for`. Rejected with G0008: d05/d40 `struct pt *p;` / `* p`, d06 "
+            "`matrix a, b;`, d07 `matrix a b;`, d08 `x;`, d09 `matrix x = 1;`, d15 `vector v;`, d16 "
+            "`local v;`, d17 `{1 2};`, d20 `stringarray n;`, d25 `matrix;`, d26 `struct pt;`, d27 "
+            "`sparse x;`, d28 `matrix x[2];`, d30 `print 5;`, d34 a nested definition (+ G0507), d39 "
+            "`struct { matrix x; };`, and d11 (no `;` after `}`; left unknown, one observation). Not "
+            "caught (type-level): d18 inside a `proc` (G0468), d19 (G0467), d21/d41 (G0507), m12 (G0071)."
+        ),
+        applies_to="struct_definition",
     ),
 }
 
@@ -2319,12 +2409,23 @@ def _check_balanced_delimiters(masked_code: str) -> tuple[list[SyntaxIssue], boo
     return issues, found
 
 
-def _check_matrix_literals(code: str) -> tuple[list[SyntaxIssue], bool]:
+def _check_matrix_literals(
+    code: str, definitions: list[_StructDefinition] | None = None,
+) -> tuple[list[SyntaxIssue], bool]:
     """Scans every top-level `{...}` occurrence in `code`. Does not attempt
     to validate a literal nested inside another literal -- no documented
     example in this repository's own docs checkout nests one matrix literal
     inside another. An unterminated `{` is deliberately left to
-    `_check_balanced_delimiters(...)` rather than double-reported here."""
+    `_check_balanced_delimiters(...)` rather than double-reported here.
+
+    v0.86.0 (live finding 75.20): the body of a structure definition
+    (`definitions`, from `_struct_definitions(...)`) is not a matrix
+    literal -- its member declarations' `;` made every
+    `struct Name { matrix b; ... };` a false `matrix_literal_row_separator`
+    INVALID. It is skipped whole and checked by `struct_definition_shape`;
+    every other `{...}`, including one right after a definition (d24), is
+    checked exactly as before."""
+    bodies = {d.open_brace: d.close_brace for d in definitions or () if d.close_brace is not None}
     issues: list[SyntaxIssue] = []
     found = False
     idx = 0
@@ -2332,6 +2433,9 @@ def _check_matrix_literals(code: str) -> tuple[list[SyntaxIssue], bool]:
         open_idx = code.find("{", idx)
         if open_idx == -1:
             break
+        if open_idx in bodies:
+            idx = bodies[open_idx] + 1
+            continue
         close_idx = _find_matching_brace(code, open_idx)
         if close_idx is None:
             break  # reported by _check_balanced_delimiters instead
@@ -2483,6 +2587,21 @@ def _find_matching_bracket(text: str, open_idx: int) -> int | None:
 _ADJACENT_BARE_TOKENS_RE = re.compile(r"[A-Za-z0-9_'#\)\]]\s+[A-Za-z0-9_#\(]")
 
 
+def _mask_word_operators(argument: str) -> str:
+    """v0.86.0 (live finding 75.19): word operators are operators to the
+    adjacency check, not tokens. Each binary one (`.or`, `and`, `lt`, ...)
+    becomes `+` padded to the same length, which can neither end nor start
+    an operand, so `(x .< 2) .or (x .> 8)` and `s or t` pass. The unary
+    `not`/`.not` becomes `(`: it may start an operand but never end one, so
+    `.not (a)` and `a .and .not b` pass while its binary misuse, `s not t`
+    and `(a) .not (b)` (real "G0136", planning v0.86 §2.2), stays adjacent.
+    Same length, so offsets are unchanged."""
+    def replace(match: re.Match[str]) -> str:
+        fill = "(" if match.group(0).lstrip(".").lower() == "not" else "+"
+        return fill.ljust(len(match.group(0)))
+    return _WORD_OPERATOR_RE.sub(replace, argument)
+
+
 def _check_call_argument_missing_separator(masked_code: str) -> list[SyntaxIssue]:
     """See `call_argument_missing_separator`'s own registry entry for the
     real `tgauss.exe -b`-verified regression cluster this closes. Operates
@@ -2508,7 +2627,14 @@ def _check_call_argument_missing_separator(masked_code: str) -> list[SyntaxIssue
     `proc (1) = myFunc(struct PV p);` is a declaration, not a call, and its
     parameter list is checked by `proc_header_parameter` instead. Every
     other call-shaped match, including a call with the same shape
-    (`y = f(struct PV p);`, spot check h5), is checked exactly as before."""
+    (`y = f(struct PV p);`, spot check h5), is checked exactly as before.
+
+    v0.86.0 (live finding 75.19): a word operator followed by `(` is never
+    a call (`_WORD_OPERATORS`, all reserved), and inside an argument word
+    operators are masked as operators (`_mask_word_operators`), so
+    `meanc((x .< 2) .or (x .> 8))` -- and `selif.rst`'s own
+    `(...) .and (...)` example -- are no longer false INVALIDs. The
+    message still quotes the argument's own text."""
     # Headers are found on `masked_code`, never `scan_text`: the `@` fill
     # below would read as an `@ ... @` comment to the lexer. Same offsets.
     header_names = {header.name_offset for header in _proc_headers(masked_code)}
@@ -2517,7 +2643,7 @@ def _check_call_argument_missing_separator(masked_code: str) -> list[SyntaxIssue
     issues: list[SyntaxIssue] = []
     for match in _CALL_SHAPED_RE.finditer(scan_text):
         symbol = match.group(1)
-        if symbol.lower() in _BLOCK_CONSTRUCT_KEYWORDS:
+        if symbol.lower() in _BLOCK_CONSTRUCT_KEYWORDS or symbol.lower() in _WORD_OPERATORS:
             continue
         if match.start(1) in header_names:
             continue
@@ -2528,7 +2654,7 @@ def _check_call_argument_missing_separator(masked_code: str) -> list[SyntaxIssue
         if not raw.strip():
             continue  # a genuine zero-argument call, e.g. f()
         for arg in _split_top_level_args_keep_empty(raw):
-            if _ADJACENT_BARE_TOKENS_RE.search(arg):
+            if _ADJACENT_BARE_TOKENS_RE.search(_mask_word_operators(arg)):
                 issues.append(SyntaxIssue(
                     rule="call_argument_missing_separator",
                     message=(
@@ -2633,6 +2759,139 @@ def _check_proc_header_parameters(masked_code: str) -> list[SyntaxIssue]:
             ))
             break
     return issues
+
+
+#: v0.86.0 (live finding 75.20): the start of a structure definition,
+#: matched at the start of one masked statement: `struct`, the type name
+#: (optional here so a nameless `struct { ... };`, real G0008 (d39), is
+#: still recognized and flagged) and the `{` that opens the body. A
+#: declaration (`struct pt s;`) has no `{` and never matches.
+_STRUCT_DEFINITION_RE = re.compile(r"struct\b\s*(?:([A-Za-z_][A-Za-z0-9_]*)\s*)?\{", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class _StructDefinition:
+    """v0.86.0: one `struct Name { ... }` definition. Offsets are into the
+    masked code. `close_brace` is None when the body is never closed
+    (`balanced_delimiters` reports that); `after` is the masked text from
+    the `}` to the next `;` (stripped), and `terminated` says whether that
+    `;` exists."""
+
+    name: str | None
+    open_brace: int
+    close_brace: int | None
+    line_number: int
+    after: str
+    terminated: bool
+
+
+def _struct_definitions(masked_code: str) -> list[_StructDefinition]:
+    """v0.86.0: every statement whose LEADING word is `struct` and that
+    opens a body (`source_statements(...)`, so `struct` inside a string or
+    comment is never a definition, and one after a `;` on the same line is,
+    d23). `source_statements` splits the body at its inner `;`; the body's
+    real end is its matching `}` on the masked view. A definition nested in
+    another one's body (d34, real G0507 + G0008) is part of the outer body,
+    not a definition of its own."""
+    definitions: list[_StructDefinition] = []
+    covered_until = -1
+    for statement in source_statements(masked_code):
+        if statement.start <= covered_until or _leading_word(statement.masked) != "struct":
+            continue
+        match = _STRUCT_DEFINITION_RE.match(statement.masked)
+        if match is None:
+            continue
+        open_brace = statement.start + match.end() - 1
+        close_brace = _find_matching_brace(masked_code, open_brace)
+        after, terminated = "", False
+        if close_brace is not None:
+            covered_until = close_brace
+            semi = masked_code.find(";", close_brace + 1)
+            terminated = semi != -1
+            after = masked_code[close_brace + 1 : semi if terminated else len(masked_code)].strip()
+        definitions.append(_StructDefinition(
+            name=match.group(1), open_brace=open_brace, close_brace=close_brace,
+            line_number=statement.line, after=after, terminated=terminated,
+        ))
+    return definitions
+
+
+#: v0.86.0: one legal member item, whitespace collapsed to single spaces:
+#: one of the seven type phrases, then exactly one name. `structures.rst`
+#: ("Member types") documents `scalar`, `matrix`, `array`, `string`,
+#: `string array` and `struct`; `declare.rst`'s example adds `sparse
+#: matrix`. Real GAUSS runs every one (sc04, d01, d03, d04, d31), in any
+#: case (d14, d32), with any whitespace between words (d33), and with a
+#: type word as the member name (d37).
+_STRUCT_MEMBER_LEGAL_RE = re.compile(
+    r"(?:scalar|matrix|array|string|string array|sparse matrix|struct [A-Za-z_][A-Za-z0-9_]*)"
+    r" [A-Za-z_][A-Za-z0-9_]*",
+    re.IGNORECASE,
+)
+_SINGLE_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def _split_struct_body(body: str) -> list[tuple[int, str]]:
+    """`(offset_in_body, item)` for each `;`-separated item at brace depth
+    0, so a stray `{...}` (d17) or a nested definition (d34) stays inside
+    one item. The last item needs no `;` (d12)."""
+    items: list[tuple[int, str]] = []
+    depth = 0
+    begin = 0
+    for k, ch in enumerate(body + ";"):
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+        elif ch == ";" and depth <= 0:
+            items.append((begin, body[begin:k]))
+            begin = k + 1
+    return items
+
+
+def _check_struct_definitions(
+    masked_code: str, definitions: list[_StructDefinition],
+) -> tuple[list[SyntaxIssue], bool]:
+    """See `struct_definition_shape`'s registry entry. Returns `(issues,
+    any_unknown)`. Every member item must match `_STRUCT_MEMBER_LEGAL_RE`;
+    any other item is INVALID (planning v0.86 §8 decision 5: the 15
+    observed failing items deviate in every way an item can). Empty items
+    are ignored (d10, d12). One issue per definition, on the offending
+    item's line. After the `}`, `;` (sc04) or one name and `;` (d13, d35)
+    is legal; anything else -- including d11's missing `;`, the one
+    failing observation -- is the unknown construct `struct_definition`."""
+    issues: list[SyntaxIssue] = []
+    any_unknown = False
+    for definition in definitions:
+        if definition.close_brace is None:
+            continue  # reported by _check_balanced_delimiters
+        label = f"`{definition.name}`" if definition.name else "(no type name)"
+        if definition.name is None:
+            issues.append(SyntaxIssue(
+                rule="struct_definition_shape",
+                message="a structure definition needs a type name (`struct Name { ... };`)",
+                line_number=definition.line_number, construct="struct_definition",
+            ))
+            continue
+        body_start = definition.open_brace + 1
+        for offset, item in _split_struct_body(masked_code[body_start : definition.close_brace]):
+            text = " ".join(item.split())
+            if not text or _STRUCT_MEMBER_LEGAL_RE.fullmatch(text):
+                continue
+            issues.append(SyntaxIssue(
+                rule="struct_definition_shape",
+                message=(
+                    f"structure {label} has a member GAUSS rejects (`{text}`): each member is one of "
+                    "`scalar`, `matrix`, `array`, `string`, `string array`, `sparse matrix` or "
+                    "`struct Type`, followed by exactly one name"
+                ),
+                line_number=masked_code.count("\n", 0, body_start + offset + (len(item) - len(item.lstrip()))) + 1,
+                construct="struct_definition",
+            ))
+            break
+        if not definition.terminated or (definition.after and not _SINGLE_NAME_RE.fullmatch(definition.after)):
+            any_unknown = True
+    return issues, any_unknown
 
 
 #: A narrower set than `_LANGUAGE_CONSTRUCT_KEYWORDS` above -- that set
@@ -2946,20 +3205,37 @@ def _check_control_flow_blocks(masked_code: str) -> tuple[list[SyntaxIssue], boo
 
 
 #: v0.82.0: `[let] target = {` -- the start of a `let` statement (see
-#: `let_statement_shape`'s registry entry). `target` may be indexed or a
-#: member so the rule can flag it; a multi-target `{a, b} = ...` never
-#: matches (it does not start with an identifier).
+#: `let_statement_shape`'s registry entry). `target` may be indexed, a
+#: member, or (v0.86.0) a structure-pointer member (`pp->x`), so the rule
+#: can classify it; a multi-target `{a, b} = ...` never matches (it does
+#: not start with an identifier).
 _LET_STATEMENT_RE = re.compile(
-    r"^(?:let\s+)?(?P<target>[A-Za-z_][A-Za-z0-9_]*(?:\s*\[[^\]]*\]|\s*\.\s*[A-Za-z_][A-Za-z0-9_]*)*)"
+    r"^(?:let\s+)?(?P<target>[A-Za-z_][A-Za-z0-9_]*"
+    r"(?:\s*\[[^\]]*\]|\s*\.\s*[A-Za-z_][A-Za-z0-9_]*|\s*->\s*[A-Za-z_][A-Za-z0-9_]*)*)"
     r"\s*=(?!=)\s*(?=\{)",
     re.IGNORECASE,
 )
+#: v0.86.0: whitespace on either side of a member `.` (`s . x`, `s .x`,
+#: `s. x`) -- not a member access to GAUSS (spot checks m09, m28-m30).
+_MEMBER_DOT_WHITESPACE_RE = re.compile(r"\s\.|\.\s")
 
 
 def _check_let_statements(masked_code: str) -> list[SyntaxIssue]:
     """v0.82.0: see `let_statement_shape`'s registry entry. Operates on
     whole statements, so a multi-line literal is handled; an unterminated
-    `{` is left to `_check_balanced_delimiters(...)`."""
+    `{` is left to `_check_balanced_delimiters(...)`.
+
+    v0.86.0 (live findings 75.8, 75.18): a member path written without
+    whitespace (`s.x`, `s.a.b`, `let s.x`) is a valid target, exactly like a
+    plain name, including the rule that nothing may follow the literal
+    (m06, m07, m13, m31, m34), and so is a member of a structure-array
+    element (`d0[1].dataMatrix`, m33/m37). Before v0.86.0 every `.` target was flagged, with
+    no evidence behind the member branch. Still flagged, each with its own
+    message: an indexed target, plain or member (an error, or for a 1x1
+    index on a row a silent replacement of the whole variable: m04, m18);
+    whitespace around `.` (m09, m28, m29); and, new, a structure-pointer
+    member (`pp->x = {3 4};`, m24/m25), which was matched by nothing and
+    reached handoff_candidate."""
     issues: list[SyntaxIssue] = []
     for statement in _split_statements(masked_code):
         match = _LET_STATEMENT_RE.match(statement.text)
@@ -2970,11 +3246,28 @@ def _check_let_statements(masked_code: str) -> list[SyntaxIssue]:
         if close_idx is None:
             continue
         target = match.group("target")
+        shown = " ".join(target.split())
         trailing = statement.text[close_idx + 1:].strip()
-        if "[" in target or "." in target:
+        # Indexed means the literal goes into an element: the target ENDS in
+        # `[...]` (`v[1]`, `s.x[1]`, m04/m35). An index earlier in the path
+        # selects a structure-array element, whose member is an ordinary
+        # member target (`d0[1].dataMatrix = {...}`, cmlmtprofile.rst; m33,
+        # m37 run).
+        if target.rstrip().endswith("]"):
             message = (
-                f"`{target.strip()} = {{...}}` is a `let` statement, whose target must be a plain name -- "
-                "assign the literal to a variable first, or use a call such as `ones(...)`"
+                f"`{shown} = {{...}}`: a `{{...}}` literal cannot be assigned to an indexed target -- GAUSS "
+                "rejects it, or, for a 1x1 index, silently replaces the whole variable with the literal; "
+                "assign without braces (`v[1] = 5;`) or build the matrix first"
+            )
+        elif "->" in target:
+            message = (
+                f"`{shown} = {{...}}`: a `{{...}}` literal cannot be assigned through a structure pointer -- "
+                "wrap it in parentheses (`p->x = ({...});`) or assign a variable"
+            )
+        elif "." in target and _MEMBER_DOT_WHITESPACE_RE.search(target):
+            message = (
+                f"`{shown} = {{...}}`: whitespace around the member `.` is not a member access in GAUSS "
+                "-- write `s.x`"
             )
         elif trailing:
             message = (
@@ -3007,8 +3300,13 @@ def validate_syntax(code: str) -> SyntaxValidationResult:
 
     # v0.84.0: masked, so a `{`/`}`/`;` inside a string is never part of a
     # literal (`s = { "a;b" };` was a false row-separator INVALID).
-    matrix_issues, matrix_found = _check_matrix_literals(masked)
+    # v0.86.0: structure definitions are found first, so their bodies are
+    # never read as matrix literals (live finding 75.20).
+    definitions = _struct_definitions(masked)
+    matrix_issues, matrix_found = _check_matrix_literals(masked, definitions)
     issues.extend(matrix_issues)
+    struct_issues, struct_unknown = _check_struct_definitions(masked, definitions)
+    issues.extend(struct_issues)
 
     issues.extend(_check_lexical_closure(lexed))
     issues.extend(_check_bare_multi_token_literals(masked))
@@ -3040,12 +3338,18 @@ def validate_syntax(code: str) -> SyntaxValidationResult:
         validated.append("call")
     if string_found:
         validated.append("string_literal")
+    if any(d.close_brace is not None for d in definitions):
+        validated.append("struct_definition")
 
     block_issues, for_validated, block_unknown = _check_control_flow_blocks(masked)
     issues.extend(block_issues)
     if for_validated:
         validated.append("for_block")
     unknown_list: list[str] = ["control_flow_block"] if block_unknown else []
+    # v0.86.0: a definition whose `}` is followed by anything but `;` or one
+    # name and `;` (d11 is the only failing observation, so no INVALID).
+    if struct_unknown:
+        unknown_list.append("struct_definition")
     # v0.84.0 (planning v0.84 §8 decisions 3 and 5): legal GAUSS that the
     # rules mask exactly as GAUSS does, but never vouch for -- a string closed
     # on a later line (a5), and the comment forms the published docs never

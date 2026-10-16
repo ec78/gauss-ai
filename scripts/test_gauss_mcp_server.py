@@ -464,6 +464,39 @@ def test_25_v085_struct_procedure_header_is_not_a_syntax_violation() -> None:
         check("h8: syntax invalid", bad["syntax"] == "invalid")
 
 
+def test_26_v086_structure_definitions_and_member_literals_are_not_syntax_violations() -> None:
+    """Live findings 75.20 and 75.8: a structure definition (sc04) and a
+    brace literal assigned to a member (sc01) were false syntax INVALIDs."""
+    definition = (
+        "struct regResults {\n    matrix b;\n    matrix se;\n    string label;\n};\nstruct regResults r;\n"
+        "r.b = zeros(2, 1);\nr.label = \"OLS\";\nprint r.label;"
+    )
+    ds = (
+        "proc (1) = dsMean(struct DS d);\n    retp(meanc(d.dataMatrix));\nendp;\nstruct DS myData;\n"
+        "myData = dsCreate();\nmyData.dataMatrix = { 1  2,\n                      3  4 };\nm = dsMean(myData);"
+    )
+    pages = {
+        "zeros.rst": ("zeros", "y = zeros(r, c)"),
+        "meanc.rst": ("meanc", "y = meanc(x)"),
+        "dscreate.rst": ("dsCreate", "d = dsCreate()"),
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        sid = _start(tmp)
+        for file_name, (title, function) in pages.items():
+            (Path(tmp) / "docs" / file_name).write_text(
+                f"{title}\n{'=' * len(title)}\n\nFormat\n------\n.. function:: {function}\n", encoding="utf-8",
+            )
+        resp = server_mod.gauss_validate_code(sid, definition)
+        check("definition: syntax validated", resp["syntax"] == "validated")
+        check("definition: no syntax reason", not any(r.startswith("syntax:") for r in resp["handoff_readiness"]["reasons"]))
+        member = server_mod.gauss_validate_code(sid, ds)
+        check("member literal: syntax partial (the proc block)", member["syntax"] == "partial")
+        check("member literal: no syntax reason",
+              not any(r.startswith("syntax:") for r in member["handoff_readiness"]["reasons"]))
+        bad = server_mod.gauss_validate_code(sid, definition.replace("string label;", "vector label;"))
+        check("d15 shape: syntax invalid", bad["syntax"] == "invalid")
+
+
 def _run_all() -> int:
     test_fns = [obj for name, obj in sorted(globals().items()) if name.startswith("test_") and callable(obj)]
     for fn in test_fns:
