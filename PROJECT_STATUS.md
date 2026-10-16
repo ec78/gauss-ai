@@ -4,14 +4,14 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 
 ## Current Objective
 
-**v0.86.0 "Structure Members, Word Operators and Structure Definitions" is implemented, NOT committed** (2026-10-16): a validator-fix milestone for 75.x findings 1-3. Plan and record: `planning/v0.86-members-word-operators-struct-definitions.md` (§1-§8 approved with every recommendation; §9 deviations and diffs; §10 testing; 201 `tgauss.exe -b` spot checks, m/w/r/d series).
+**v0.86.0 "Structure Members, Word Operators and Structure Definitions" is committed (`5bb1eaa`) and tagged `v0.86.0` locally, NOT pushed** (2026-10-16): a validator-fix milestone for 75.x findings 1-3. Plan and record: `planning/v0.86-members-word-operators-struct-definitions.md` (§1-§8 approved with every recommendation; §9 deviations and diffs; §10 testing; 201 `tgauss.exe -b` spot checks, m/w/r/d series).
 - Done:
   - the code, all in `gauss_pre_execution_validation.py`: member targets in `let_statement_shape` (plus the new `pp->x = {…}` INVALID), `_WORD_OPERATORS` blanked in `call_scan_view` and masked in the separator rule, and `_struct_definitions` with the new INVALID rule `struct_definition_shape`;
   - tests: pre-exec 175-179, engine 150-154 and MCP 26, each confirmed failing on HEAD; 48 files and `check_release_readiness.py` pass;
   - the diffs: docs syntax (79 blocks, exactly as predicted), verdicts (365 programs; all 125 earlier snippets unchanged), gate (61 questions identical), and AST (the engine is unchanged);
   - the version bump to 0.86.0; `README.md`, `CHANGELOG.md` and `KNOWN_LIMITATIONS.md` updated.
 - One deviation (§9.2): an index earlier in the path (`d0[1].dataMatrix = {…}`, a structure-array element) is a member target. The all-docs diff found it, and spot checks m33-m38 confirmed it.
-- Next: the user reviews, then commit + tag `v0.86.0` → confirm before pushing / GitHub release → reinstall (stop `gauss-ai-mcp.exe` first) → live evaluation 76.x in a fresh conversation. The drafted search milestone became v0.87.0: `planning/v0.87-search-and-grounding-recall.md` (renamed from v0.86, title updated, otherwise unchanged; still untracked and unapproved; its §7 still says "76.x", which is now v0.86.0's category).
+- Next: confirm with the user before pushing `main` + tag / creating the GitHub release → reinstall (stop `gauss-ai-mcp.exe` first) → live evaluation 76.x in a fresh conversation. The drafted search milestone became v0.87.0: `planning/v0.87-search-and-grounding-recall.md` (renamed from v0.86, title updated, otherwise unchanged; still untracked and unapproved; its §7 still says "76.x", which is now v0.86.0's category).
 
 v0.85.0 "Procedure Headers, Defining Pages and Code-Loading Statements" was released on 2026-10-15: https://github.com/ec78/gauss-ai/releases/tag/v0.85.0 (tag `v0.85.0`, commit `f11505e`; `main` pushed). Plan and record: `planning/v0.85-proc-headers-and-defining-pages.md` (§1-§8 plan, §9 deviations and diffs, §10 testing, **§11 live evaluation 75.x**). v0.84.0's record, including live evaluation 74.x (17 pass, 2 fail on the two defects v0.85.0 fixes), is `planning/v0.84-lexical-statement-stream.md` §11.
 
