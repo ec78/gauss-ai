@@ -7641,3 +7641,161 @@ Expected behavior:
 
 Expected behavior:
 - A correct answer from grounded pages; partial verdicts name causes that are true about the documentation.
+
+## Procedure Headers and Defining Pages (Live Client)
+
+Validates v0.85.0 after its release, through a REAL connected MCP client (Claude Code over stdio, `gauss-ai-mcp`
+v0.85.0) on this machine's real configuration, in the `73.x`/`74.x` style: the human asks an ordinary task in plain
+words and the calling Claude session writes whatever queries and GAUSS it naturally would. The question is whether
+v0.85.0's changes hold live: a `proc`/`keyword` header is checked by its own grammar and never as a call, every
+per-symbol signature and grounding excerpt comes from the page grounding resolved (`miss`), and code-loading
+statements (`library`, `dlibrary`, `dllcall`) are never handoff candidates. The planning doc (§7) suggested shapes
+(struct-parameter procedures, missing-value cleaning, package use) but no wording; the prompts below are the ones the
+user actually asked, and the expectations were written at recording time from the v0.85.0 design.
+
+### Prompt 75.1: Is the MCP server connected?
+
+"Is the GAUSS MCP server connected?"
+
+Expected behavior:
+- A session opens and reports runner and docs root.
+
+### Prompt 75.2: Uncoaxed: minimize a user procedure myObj with sqpSolveMT
+
+"Write GAUSS code that minimizes my own procedure myObj with sqpSolveMT. My parameters are a 2x1 vector of coefficients."
+
+Expected behavior:
+- A procedure with a typed `struct PV` parameter is review_required at worst, never syntax INVALID (74.18 fixed).
+
+### Prompt 75.3: Uncoaxed: maximize a user-written log-likelihood with optmt
+
+"Show me how to maximize a log-likelihood I write myself using optmt."
+
+Expected behavior:
+- not_ready only because of `library optmt;` (`source_inclusion`), with a true reason; no false syntax INVALID.
+
+### Prompt 75.4: Uncoaxed: -999 to missing, drop incomplete rows, fill with zeros
+
+"I have a matrix where -999 means missing. Show me how to convert those to GAUSS missing values, drop the incomplete rows, and fill the rest with zeros."
+
+Expected behavior:
+- `miss`/`packr`/`missrv` code is judged against `missmissrv.rst` (74.19 fixed): no false signature or return-type gaps.
+
+### Prompt 75.5: Docs lookup: miss vs missrv
+
+"What does miss do, and how is it different from missrv"
+
+Expected behavior:
+- A correct answer read from the page the excerpt cites.
+
+### Prompt 75.6: Uncoaxed: a structural-break unit root test with tspdlib
+
+"Run a unit root test with a structural break using the tspdlib package."
+
+Expected behavior:
+- not_ready because of `library tspdlib;` (`source_inclusion`), with a true reason.
+
+### Prompt 75.7: Docs lookup: calling a C DLL
+
+"Can GAUSS call a function from a C DLL I wrote?"
+
+Expected behavior:
+- A correct answer from `dlibrary`/`dllcall`; any snippet using them is not_ready (`native_code`).
+
+### Prompt 75.8: Uncoaxed: a procedure taking a DS structure
+
+"Write a procedure that takes a DS structure and returns the mean of its data member."
+
+Expected behavior:
+- A `struct DS` parameter is not an INVALID; valid GAUSS is never a syntax INVALID.
+
+### Prompt 75.9: Uncoaxed: determinant with a label
+
+"Compute the determinant of a 3x3 matrix and print it with a label."
+
+Expected behavior:
+- handoff_candidate; the label never affects the verdict.
+
+### Prompt 75.10: Uncoaxed: eigenvalues of a multi-line symmetric matrix
+
+"Create a 3x3 symmetric matrix written across multiple lines and compute its eigenvalues."
+
+Expected behavior:
+- handoff_candidate on a multi-line literal.
+
+### Prompt 75.11: Uncoaxed: fill squares with a loop, print the mean
+
+"Fill a 10x1 vector with squares using a loop and print its mean."
+
+Expected behavior:
+- handoff_candidate (`for_block` validated).
+
+### Prompt 75.12: Is the MCP server working?
+
+"Is the GAUSS MCP server working?"
+
+Expected behavior:
+- An honest status, including what has not been exercised.
+
+### Prompt 75.13: Docs lookup: the 95th percentile of each column
+
+"How do I compute the 95th percentile of each column?"
+
+Expected behavior:
+- `quantile` code reaches handoff_candidate. Search is observed: the percentile recall gap and the `setColDateFormats` false grounding are known limitations.
+
+### Prompt 75.14: Docs lookup: sort a matrix by its second column
+
+"How do I sort a matrix by its second column?"
+
+Expected behavior:
+- `sortc(x, 2)` reaches handoff_candidate. Search is observed: the `sortc` recall gap is a known limitation.
+
+### Prompt 75.15: Docs lookup: reorder the columns of a matrix
+
+"How do I reorder the columns in a matrix?"
+
+Expected behavior:
+- Indexing code reaches handoff_candidate; search grounds only on pages with reference content.
+
+### Prompt 75.16: Docs lookup: the order procedure
+
+"What about the order procedure?"
+
+Expected behavior:
+- A correct answer; the docs' own matrix-vs-dataframe inconsistency is reported as a gap, never as a mismatch.
+
+### Prompt 75.17: Docs lookup: matrix vs dataframe
+
+"What is the difference between a matrix and a dataframe in GAUSS?"
+
+Expected behavior:
+- A correct answer from grounded pages, reached through candidates if the plain query is ungrounded.
+
+### Prompt 75.18: Uncoaxed: a GMM example
+
+"Provide example code from running a generalized method of moments model."
+
+Expected behavior:
+- Valid GAUSS is never a syntax INVALID; partial verdicts name true causes.
+
+### Prompt 75.19: Uncoaxed: identify outliers
+
+"How can I identify outliers in my data using GAUSS? Write me an example code snippet."
+
+Expected behavior:
+- GAUSS's element-wise logical operators are never unknown calls; the code given to the user runs.
+
+### Prompt 75.20: Docs lookup: must structures be declared?
+
+"Do I have to declare my structures before using them in GAUSS?"
+
+Expected behavior:
+- A correct answer; a structure definition is never a syntax INVALID.
+
+### Prompt 75.21: User-supplied GAUSS 26 syntax (undeclared structures, struct return types, named defaults)
+
+The user's four messages on GAUSS 26 structure declarations and named, defaulted arguments (run file `-021`).
+
+Expected behavior:
+- GAUSS 26 header forms (`proc (struct T) = ...`, `name=default` parameters) are not false INVALIDs; the client neither invents nor overstates rules.
