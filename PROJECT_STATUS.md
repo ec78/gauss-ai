@@ -21,7 +21,7 @@ Also: a false INCOMPATIBLE on `dftype(x, "category")` (string vs documented "vec
 - Next (not started; only if the user asks): commit the 75.x records; then the user chooses the next milestone: a small validator milestone for 75.x findings 1-3 (v0.85 plan §11.6), and/or the drafted search milestone `planning/v0.86-search-and-grounding-recall.md` (untracked draft, not approved; 75.x finding 7 feeds it).
 - Unchanged: `&` parameters (v0.83.0's decision kept); trailing commas in headers are accepted.
 - New pre-existing findings (§9.2 items 5-6): a matrix literal with `.` elements is "an expression" for role checks; a `keyword` definition's name is read as an undocumented call, so its snippet is not_ready.
-- Uncommitted as of 2026-10-16: the 75.x records (21 run files, `INDEX.md`, `benchmark-prompts.md`, `benchmark-coverage.md`, v0.85 plan §11) and this status update. `planning/v0.86-search-and-grounding-recall.md` is a separate untracked draft. Check with `git status` and `git log origin/main..main`.
+- The 75.x records (21 run files, `INDEX.md`, `benchmark-prompts.md`, `benchmark-coverage.md`, v0.85 plan §11) are committed (`abcf29a`, 2026-10-16) but **not pushed**. `planning/v0.86-search-and-grounding-recall.md` is a separate untracked draft. Check with `git status` and `git log origin/main..main`.
 
 **Recorded for a later search/grounding milestone** (item 4 was excluded, plan §2.5; also in `KNOWN_LIMITATIONS.md`):
 - the 73.12 `sortc` and 73.13 "percentile" recall gaps (both reproduced in 74.14/74.15);
