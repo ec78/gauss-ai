@@ -29,6 +29,7 @@ Durable, project-wide guidance for Claude Code sessions in this repository. For 
 - Install: `pip install -e .` — re-run this after every `git pull`/branch switch that touches `scripts/`, since a stale editable install can silently resolve to a different checkout. On Windows, a running `gauss-ai-mcp.exe` (e.g. spawned by a Claude Code window) locks its executable and makes the reinstall fail partway, leaving `gauss-ai` uninstalled — stop that process first, then reinstall.
 - Verify install: `gauss-ai version`, `gauss-ai doctor`.
 - Optional real backends used only for manual/live validation, never by automated tests: a local **Ollama** install (`chat-provider=ollama`, default model `qwen2.5-coder:7b`) and a real GAUSS installation (`tgauss.exe`, configured via `gauss-ai config set gauss-executable <path>`). The documentation under `docs-root` is also machine-specific (downloaded or cloned per user, never committed).
+- The MCP server is registered for Claude Code in the repo's **tracked** `.mcp.json` (project scope, empty `env`). The operator opt-in that lets MCP execution run real GAUSS (`GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1`) belongs only in a local-scope override (`claude mcp add gauss-ai --scope local -e GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1 -- gauss-ai-mcp`). Never put it in `.mcp.json`: that would turn real execution on for everyone who clones the repo.
 
 ## Important Commands
 
@@ -75,6 +76,7 @@ Durable, project-wide guidance for Claude Code sessions in this repository. For 
   - for search tasks, say whether the client followed a candidate back to a grounded page, or whether its query was steered by prior knowledge;
   - disclose whether the client read source during the tasks, or deliberately shaped code around a known defect;
   - re-run every snippet on a `git archive` of the previous release, so the record separates what the milestone changed from pre-existing behavior (74.x);
+  - for every run through the execution handoff, record the exact `gauss_execution_prepare` prompt, the user's own decision, and the result. Re-run approved code with `tgauss.exe -b` to compare, and confirm a declined run executed nothing. The client must never answer a run prompt itself;
   - before calling a finding a new defect, check `KNOWN_LIMITATIONS.md` and earlier planning docs. Some gaps are disclosed on purpose (74.16 rediscovered v0.83.0's deliberately unfixed `&`-parameter gap).
 
   Run files carry the date the tasks were actually run.

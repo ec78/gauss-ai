@@ -11,11 +11,16 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
   - the diffs: docs syntax (79 blocks, exactly as predicted), verdicts (365 programs; all 125 earlier snippets unchanged), gate (61 questions identical), and AST (the engine is unchanged);
   - the version bump to 0.86.0; `README.md`, `CHANGELOG.md` and `KNOWN_LIMITATIONS.md` updated.
 - One deviation (§9.2): an index earlier in the path (`d0[1].dataMatrix = {…}`, a structure-array element) is a member target. The all-docs diff found it, and spot checks m33-m38 confirmed it.
-- Next: reinstalled (`pip install -e ".[mcp]"`, 0.86.0, 2026-10-16). The user chose to include **real-GAUSS execution through MCP** in 76.x: set `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1` as a **local-scope** override of the `gauss-ai` server (never in the tracked `.mcp.json`), reload the window, then run live evaluation 76.x in a fresh conversation, including tasks the user asks to have run (the first live validate → prepare → approve → execute test). The drafted search milestone became v0.87.0: `planning/v0.87-search-and-grounding-recall.md` (renamed from v0.86, title updated, otherwise unchanged; still untracked and unapproved; its §7 still says "76.x", which is now v0.86.0's category).
+- **Next: live evaluation 76.x, in a fresh conversation** (nothing else is in progress). Setup is done (2026-10-16/17):
+  - reinstalled (`pip install -e ".[mcp]"`, 0.86.0);
+  - the `claude` CLI (`C:\Users\Owner\.local\bin\claude.exe`, 2.1.301) is on the user PATH;
+  - the user set `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1` as a **local-scope** override of the `gauss-ai` server (`claude mcp add gauss-ai --scope local -e GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1 -- gauss-ai-mcp`; never in the tracked `.mcp.json`) and restarted VS Code.
+
+  76.x includes **real-GAUSS execution through MCP** (user decision), the first live validate → prepare → approve → execute test. The user holds the 20-task list and the reporting prompt, so a testing session must not look for expected answers here until the tasks are done. `f97caa1` (a status-only commit) and this update are local and not pushed. The drafted search milestone became v0.87.0: `planning/v0.87-search-and-grounding-recall.md` (renamed from v0.86, title updated, otherwise unchanged; still untracked and unapproved; its §7 still says "76.x", which is now v0.86.0's category).
 
 v0.85.0 "Procedure Headers, Defining Pages and Code-Loading Statements" was released on 2026-10-15: https://github.com/ec78/gauss-ai/releases/tag/v0.85.0 (tag `v0.85.0`, commit `f11505e`; `main` pushed). Plan and record: `planning/v0.85-proc-headers-and-defining-pages.md` (§1-§8 plan, §9 deviations and diffs, §10 testing, **§11 live evaluation 75.x**). v0.84.0's record, including live evaluation 74.x (17 pass, 2 fail on the two defects v0.85.0 fixes), is `planning/v0.84-lexical-statement-stream.md` §11.
 
-**Live evaluation 75.x (2026-10-16; v0.85 plan §11; run files `2026-10-16-…-proc-headers-defining-pages-run-001.md` … `-021.md`):** 17 pass, 4 fail. v0.85.0's three changes all held live (v0.84.0 archive comparison: 4 state changes, all toward the evidence), including the user's GAUSS 26 `proc (struct T) = f(..., struct C c, w=0);` headers. **Recorded, uncommitted** (records only; no code change). The four fails come from three pre-existing, safe-direction validator defects, each located and spot-checked (`tgauss.exe -b` sc01-sc13):
+**Live evaluation 75.x (2026-10-16; v0.85 plan §11; run files `2026-10-16-…-proc-headers-defining-pages-run-001.md` … `-021.md`):** 17 pass, 4 fail. v0.85.0's three changes all held live (v0.84.0 archive comparison: 4 state changes, all toward the evidence), including the user's GAUSS 26 `proc (struct T) = f(..., struct C c, w=0);` headers. Recorded and pushed (`abcf29a`, `163182d`). The four fails come from three pre-existing, safe-direction validator defects, each located and spot-checked (`tgauss.exe -b` sc01-sc13):
 1. `let_statement_shape` rejects `s.member = {…}` (valid GAUSS; its evidence covers indexed targets only);
 2. `_CALL_SHAPED_RE` reads `.or (`, `.not (`, `or (` … as calls (false not_ready; INVALID inside call arguments);
 3. `_check_matrix_literals` reads every `struct Name { … };` definition as a matrix literal.
@@ -30,7 +35,7 @@ Also: a false INCOMPATIBLE on `dftype(x, "category")` (string vs documented "vec
 - Next: the user chose the validator milestone for 75.x findings 1-3 as v0.86.0 (implemented, above); the search milestone follows as v0.87.0 (`planning/v0.87-search-and-grounding-recall.md`; 75.x finding 7 feeds it).
 - Unchanged: `&` parameters (v0.83.0's decision kept); trailing commas in headers are accepted.
 - New pre-existing findings (§9.2 items 5-6): a matrix literal with `.` elements is "an expression" for role checks; a `keyword` definition's name is read as an undocumented call, so its snippet is not_ready.
-- The 75.x records (21 run files, `INDEX.md`, `benchmark-prompts.md`, `benchmark-coverage.md`, v0.85 plan §11) are committed (`abcf29a`, 2026-10-16) but **not pushed**. `planning/v0.87-search-and-grounding-recall.md` (formerly v0.86) is a separate untracked draft. Check with `git status` and `git log origin/main..main`.
+- The 75.x records (21 run files, `INDEX.md`, `benchmark-prompts.md`, `benchmark-coverage.md`, v0.85 plan §11) are committed (`abcf29a`) and pushed. `planning/v0.87-search-and-grounding-recall.md` (formerly v0.86) is a separate untracked draft. Check with `git status` and `git log origin/main..main`.
 
 **Recorded for a later search/grounding milestone** (item 4 was excluded, plan §2.5; also in `KNOWN_LIMITATIONS.md`):
 - the 73.12 `sortc` and 73.13 "percentile" recall gaps (both reproduced in 74.14/74.15);
@@ -45,9 +50,14 @@ Also: a false INCOMPATIBLE on `dftype(x, "category")` (string vs documented "vec
 - category inference for elementwise expressions (72.3 finding 1; 73.5 is the same shape; needs its own design);
 - the public release readiness track (below).
 
-## Where Things Stand (v0.85.0, released 2026-10-15)
+## Where Things Stand (v0.86.0, released 2026-10-16)
 
-Full detail is in CHANGELOG and the planning docs (`planning/v0.85-*.md`, `planning/v0.84-*.md`). v0.84.0 is released at https://github.com/ec78/gauss-ai/releases/tag/v0.84.0.
+Full detail is in CHANGELOG and the planning docs (`planning/v0.86-*.md`, `planning/v0.85-*.md`, `planning/v0.84-*.md`).
+
+- **v0.86.0 additions** (all in `gauss_pre_execution_validation.py`; the engine is unchanged):
+  - `let_statement_shape` accepts a brace literal on a member path (`s.x`, `s.a.b`, `d0[1].x`). A target ending in an index and whitespace around `.` stay INVALID, and `pp->x = {…}` is newly INVALID (spot checks m01-m38).
+  - The 11 `_WORD_OPERATORS` (all reserved, G0276) are blanked in `call_scan_view` and masked as operators in `call_argument_missing_separator` (w and r series).
+  - `_struct_definitions` and the new INVALID rule `struct_definition_shape` check each member: seven type phrases plus one name (d series). A valid definition is the validated construct `struct_definition`.
 
 - **v0.85.0 additions:** the INVALID rule `proc_header_parameter` (`proc`/`keyword` header grammar from spot checks s1, s2, h1-h14; header names are no longer checked as calls); `_lookup_defining_page` (grounding excerpt and validator signatures come from the page grounding resolved); `library` → `source_inclusion`, `dlibrary`/`dllcall` → new category `native_code` (216 registry entries).
 - **v0.84.0 additions:**
@@ -91,7 +101,7 @@ Full detail is in CHANGELOG and the planning docs (`planning/v0.85-*.md`, `plann
 
 ## Known Issues
 
-- See the top paragraphs of `KNOWN_LIMITATIONS.md` (v0.84.0, v0.83.0, v0.82.0). The 73.x findings are fixed in v0.84.0, except the search recall gaps, which are listed there.
+- See the top paragraphs of `KNOWN_LIMITATIONS.md` (v0.86.0, v0.85.0, v0.84.0). v0.86.0's paragraph also holds 75.x findings 4-6 (deferred by decision) and the unmodelled structure-type errors (G0071/G0467/G0507). The 73.x findings are fixed in v0.84.0, except the search recall gaps, which are listed there.
 - The 74.x findings that remain open (search items, the header grammar's unchecked shapes, the 8 still-ambiguous symbols, `.` literals, `keyword` names) are in `KNOWN_LIMITATIONS.md` (v0.85.0 paragraph).
 - **Claude Code keeps stale tool descriptions** for MCP tools whose names didn't change across a server upgrade. This is cosmetic.
 - **Pip debris:** `~auss_ai-0.79.0.dist-info` in `C:\Users\Owner\AppData\Local\Programs\Python\Python312\Lib\site-packages` causes a harmless "Ignoring invalid distribution" warning. The user can delete it at any time.
@@ -107,12 +117,12 @@ Full detail is in CHANGELOG and the planning docs (`planning/v0.85-*.md`, `plann
 - optionally ask Aptech about the docs (the `aptech/docs` repo declares no license; the posture is per-user download, never redistribution).
 
 **Smaller standalone items:**
-- Live real-GAUSS evaluation through MCP. It needs `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1` in the server's environment. The server is defined in the repo's tracked `.mcp.json` (project scope, `env: {}`), so the opt-in belongs in a local-scope override, never in that file. Planned for 76.x (user decision, 2026-10-16).
+- Live real-GAUSS evaluation through MCP. It needs `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1` in the server's environment. The server is defined in the repo's tracked `.mcp.json` (project scope, `env: {}`), so the opt-in belongs in a local-scope override, never in that file. The override is set (2026-10-16) and is first exercised live in 76.x.
 - Idle-session eviction for long-running MCP servers.
 - MCP sampling, so strict-mode chat could use the client's model. Blocked: Claude Code doesn't support sampling as a client (anthropics/claude-code#1785).
 
 ## Handoff Notes
 
-- **Windows reinstall** (see `CLAUDE.md`): stop any running `gauss-ai-mcp.exe` before `pip install -e ".[mcp]"`. Then reload the VS Code window (`Ctrl+Shift+P` → "Developer: Reload Window"). New MCP tools and changed behavior appear only in a fresh conversation, so a milestone's live evaluation (`75.x` next) must happen in a new conversation after the reinstall.
-- **Machine config** (`C:\Users\Owner\.gauss-ai\config.json`): `chat_provider: ollama` (`qwen2.5-coder:7b`), `default_runner: gauss`, `gauss_executable: C:\gauss26\tgauss.exe`, `workspace_parent: C:\Users\eclow\OneDrive\Documents\GAUSS-AI-Workspaces`, `docs_root: C:/Users/Owner/.gauss-ai/docs` (the published copy). `GAUSS_AI_MCP_ALLOW_REAL_GAUSS` is **off**, so every MCP prepare on the `gauss` runner returns `real_gauss_not_allowed`, as designed.
+- **Windows reinstall** (see `CLAUDE.md`): stop any running `gauss-ai-mcp.exe` before `pip install -e ".[mcp]"`. Then reload the VS Code window (`Ctrl+Shift+P` → "Developer: Reload Window"). New MCP tools and changed behavior appear only in a fresh conversation, so a milestone's live evaluation (`76.x` next) must happen in a new conversation after the reinstall.
+- **Machine config** (`C:\Users\Owner\.gauss-ai\config.json`): `chat_provider: ollama` (`qwen2.5-coder:7b`), `default_runner: gauss`, `gauss_executable: C:\gauss26\tgauss.exe`, `workspace_parent: C:\Users\eclow\OneDrive\Documents\GAUSS-AI-Workspaces`, `docs_root: C:/Users/Owner/.gauss-ai/docs` (the published copy). `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1` is **on**, through the local-scope `gauss-ai` MCP override (Claude Code's `~/.claude.json`, this project only; check with `claude mcp get gauss-ai`). So MCP prepare/decide on the `gauss` runner really runs `tgauss.exe` after the user's own yes. With only the tracked `.mcp.json`, prepare returns `real_gauss_not_allowed`, as designed.
 - The `evaluations/differential_runs/2026-09-18-*` untracked directories are leftovers from v0.77.0, deliberately untouched; don't commit them.
