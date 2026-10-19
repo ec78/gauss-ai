@@ -12,23 +12,13 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
   - the version bump to 0.86.0; `README.md`, `CHANGELOG.md` and `KNOWN_LIMITATIONS.md` updated.
 - One deviation (§9.2): an index earlier in the path (`d0[1].dataMatrix = {…}`, a structure-array element) is a member target. The all-docs diff found it, and spot checks m33-m38 confirmed it.
 - **Live evaluation 76.x ran on 2026-10-19** and is recorded in commit `d67db5b`: plan §11; run files `2026-10-19-…-members-wordops-structs-run-001.md` … `-020.md`; `INDEX.md`, `benchmark-prompts.md` category 76, `benchmark-coverage.md`. Not pushed. `CLAUDE.md` now records the drive-letter keying of local-scope MCP overrides, and the rule to prove the opt-in with one prepare.
-- **Next:** the user's choice, in this order (§11.8):
-  1. **Execution re-evaluation, recommended first, in a fresh conversation.** Its steps:
-     1. put the opt-in under the project key the VS Code session uses (`c:/…`);
-     2. confirm it with one prepare;
-     3. have the user approve and decline runs of the four 76.x handoff candidates (76.10 `invpd`, 76.11 `rndn`, 76.12 `eigh`, 76.16 `sortc`);
-     4. compare each approved run with §11.6's `tgauss.exe -b` output;
-     5. confirm a declined run executed nothing.
+- **Live evaluation 77.x (the execution re-evaluation) ran on 2026-10-19** and is recorded: plan §12; run files `2026-10-19-code-assistant-mcp-execution-run-001.md` … `-020.md`; `INDEX.md`, `benchmark-prompts.md` category 77, `benchmark-coverage.md`. Committed, not pushed.
+- **Next: scope the next milestone, at the user's choice** (§12.8). The candidates:
+  - a small handoff/registry milestone. **77.x finding 2 first** (a reply should bind to the `request_id` the user saw). Then 77.x findings 1 (operator forms skip preconditions) and 3 (the unused "Workspace parent" prompt line), plus 76.x findings 2 (report `real_gauss_allowed` in `gauss_session_start`), 3 (a refused prepare spends its `validation_id`) and 6 (an `eigh` symmetry precondition);
+  - the drafted v0.87.0 search/grounding milestone (`planning/v0.87-search-and-grounding-recall.md`, unapproved; add 76.x finding 5, the silent fifth-symbol drop, which recurred in 77.5);
+  - or fold the handoff/registry items into v0.87.0.
 
-     Number it `76.21+` or `77.x`, at the user's choice. This is the first live test of real execution through MCP.
-  2. **Then scope the next milestone.** The candidates:
-     - the drafted v0.87.0 search/grounding milestone (`planning/v0.87-search-and-grounding-recall.md`, unapproved; add 76.x finding 5, the silent fifth-symbol drop);
-     - a small handoff/registry milestone for 76.x findings 2 (report `real_gauss_allowed` in `gauss_session_start`), 3 (a refused prepare spends its `validation_id`) and 6 (an `eigh` symmetry precondition);
-     - or fold those into v0.87.0.
-
-     Finding 4 (`gmmfit.rst` `parEst`) is upstream.
-
-  Do not start any milestone until the user chooses.
+  76.x finding 4 (`gmmfit.rst` `parEst`) and 75.x finding 8 (`gmmFitControl`, recurred in 77.4) are upstream. Do not start any milestone until the user chooses.
 
 **Live evaluation 76.x (2026-10-19; v0.86 plan §11):** 19 pass, 1 fail (76.1, a client error: it told the user real execution was on).
 - **v0.86.0 held live:** all 19 live verdicts reproduced on the v0.86.0 archive. Against v0.85.0, nine snippets go not_ready → review_required and four lose false reasons; none newly reaches handoff_candidate.
@@ -43,6 +33,22 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
   - `gauss_search_docs` silently drops a fifth symbol at `MAX_GROUNDING_SOURCES = 4` (5; for v0.87);
   - `eigh` has no registered symmetry precondition (6).
 - **Spot checks:** e01-e08 (`G0071` for a literal into a `scalar` member; `gmmFitControl` undefined; `paramEst` runs).
+
+**Live evaluation 77.x (2026-10-19; v0.86 plan §12): 20 pass, 0 fail.** The first live real-GAUSS execution through MCP.
+- **The opt-in reached the server:** the override is now under both `~/.claude.json` keys (`c:/…` and `C:/…`), and a first prepare rendered a prompt (77.1).
+- **The execution path held:**
+  - four approved runs (77.9 `invpd`, 77.11 `eigh`, 77.16 `sortc`, 77.17 regression), each byte-identical to a direct `tgauss.exe -b` run;
+  - one decline (77.10) that executed nothing;
+  - one `unrecognized` reply ("Yes approve") that created no approval;
+  - consumed ids refused on reuse;
+  - `save` correctly `not_ready`.
+- **v0.86.0 held:** all 22 live verdicts reproduced on the v0.86.0 archive. Against v0.85.0, 16 change toward the evidence; one, 77.17's restructured regression, goes not_ready → handoff_candidate (no I/O).
+- **New findings, all small and pre-existing, none in `KNOWN_LIMITATIONS.md`:**
+  1. operator forms (`eye(k) / xx`, `y / X`) skip the precondition registry. A literal singular matrix is not_ready via `inv` but handoff_candidate via `/`; GAUSS fails both loudly (`G0048`);
+  2. `gauss_execution_decide` takes no `request_id`, and prepare silently replaces a pending request, so a reply approves whatever was prepared last;
+  3. the prompt's "Workspace parent" line is never used: runs execute in a deleted temp directory.
+- **Spot checks:** x01-x07; validator probes P1-P5.
+- **Setup note:** two `gauss-ai-mcp` processes were running; which one served the session was not determined.
 
 v0.85.0 "Procedure Headers, Defining Pages and Code-Loading Statements" was released on 2026-10-15: https://github.com/ec78/gauss-ai/releases/tag/v0.85.0 (tag `v0.85.0`, commit `f11505e`; `main` pushed). Plan and record: `planning/v0.85-proc-headers-and-defining-pages.md` (§1-§8 plan, §9 deviations and diffs, §10 testing, **§11 live evaluation 75.x**). v0.84.0's record, including live evaluation 74.x (17 pass, 2 fail on the two defects v0.85.0 fixes), is `planning/v0.84-lexical-statement-stream.md` §11.
 
@@ -122,7 +128,7 @@ Full detail is in CHANGELOG and the planning docs (`planning/v0.86-*.md`, `plann
   - option B: indexed writes are looked through for category only, never for preconditions;
   - expressions are never evaluated.
 - **Signatures:** nested optional groups are flattened, and `...` means no upper bound (`VARIADIC_MAX_ARGS`).
-- **Evaluations:** the last category used is **76** (`76.1`-`76.20`, run 2026-10-19 after the v0.86.0 release: 19 pass, 1 fail on a client error; no MCP execution, because the opt-in never reached the server; v0.86 plan §11). The next category is `77` (or `76.21+` for the execution-only re-run).
+- **Evaluations:** the last category used is **77** (`77.1`-`77.20`, the execution re-evaluation run 2026-10-19: 20 pass; four approved real-GAUSS runs and one decline through MCP; v0.86 plan §12). 76.x (same day, plan §11) ran without the opt-in. The next category is `78`.
 - **Tests:** 48 files, all passing; `check_release_readiness.py` passes. The `mcp` extra is installed in this machine's real Python, so the MCP tests actually run.
 
 ## Known Issues
@@ -143,14 +149,13 @@ Full detail is in CHANGELOG and the planning docs (`planning/v0.86-*.md`, `plann
 - optionally ask Aptech about the docs (the `aptech/docs` repo declares no license; the posture is per-user download, never redistribution).
 
 **Smaller standalone items:**
-- Live real-GAUSS evaluation through MCP. It needs `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1` in the server's environment. The server is defined in the repo's tracked `.mcp.json` (project scope, `env: {}`), so the opt-in belongs in a local-scope override, never in that file. The override was set (2026-10-16), but under the uppercase `C:/…` project key only, so 76.x ran without it (76.x finding 1); still unexercised.
 - Idle-session eviction for long-running MCP servers.
 - MCP sampling, so strict-mode chat could use the client's model. Blocked: Claude Code doesn't support sampling as a client (anthropics/claude-code#1785).
 
 ## Handoff Notes
 
-- **Windows reinstall** (see `CLAUDE.md`): stop any running `gauss-ai-mcp.exe` before `pip install -e ".[mcp]"`. Then reload the VS Code window (`Ctrl+Shift+P` → "Developer: Reload Window"). New MCP tools and changed behavior appear only in a fresh conversation, so a milestone's live evaluation (`76.x` next) must happen in a new conversation after the reinstall.
-- **Machine config** (`C:\Users\Owner\.gauss-ai\config.json`): `chat_provider: ollama` (`qwen2.5-coder:7b`), `default_runner: gauss`, `gauss_executable: C:\gauss26\tgauss.exe`, `workspace_parent: C:\Users\eclow\OneDrive\Documents\GAUSS-AI-Workspaces`, `docs_root: C:/Users/Owner/.gauss-ai/docs` (the published copy). `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1` is set through a local-scope `gauss-ai` MCP override in Claude Code's `~/.claude.json`, **but only under the project key `C:/Users/eclow/Documents/GitHub/gauss-ai`** (uppercase drive). The VS Code extension opened this repo as `c:/Users/…` (lowercase), whose entry has `mcpServers: {}`, so the server ran from the tracked `.mcp.json` without the opt-in, and prepare returned `real_gauss_not_allowed` (76.x finding 1). Before an execution evaluation:
+- **Windows reinstall** (see `CLAUDE.md`): stop any running `gauss-ai-mcp.exe` before `pip install -e ".[mcp]"`. Then reload the VS Code window (`Ctrl+Shift+P` → "Developer: Reload Window"). New MCP tools and changed behavior appear only in a fresh conversation, so a milestone's live evaluation (`78.x` next) must happen in a new conversation after the reinstall.
+- **Machine config** (`C:\Users\Owner\.gauss-ai\config.json`): `chat_provider: ollama` (`qwen2.5-coder:7b`), `default_runner: gauss`, `gauss_executable: C:\gauss26\tgauss.exe`, `workspace_parent: C:\Users\eclow\OneDrive\Documents\GAUSS-AI-Workspaces`, `docs_root: C:/Users/Owner/.gauss-ai/docs` (the published copy). `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1` is set through a local-scope `gauss-ai` MCP override in Claude Code's `~/.claude.json`, now under **both** project keys, `c:/Users/eclow/Documents/GitHub/gauss-ai` and `C:/…` (checked 2026-10-19 after 77.x). In 76.x it existed only under `C:/…`, while the VS Code extension used `c:/…`, so prepare returned `real_gauss_not_allowed` (76.x finding 1); 77.x ran with it. Before an execution evaluation:
   1. make sure the override exists under the key the session actually uses;
   2. confirm it with one prepare on a trivial handoff candidate.
 

@@ -7951,3 +7951,171 @@ Expected behavior:
 
 Expected behavior:
 - An honest status from the session's own evidence.
+
+## MCP Execution Re-evaluation of v0.86.0 (Live Client)
+
+Re-evaluates v0.86.0's controlled execution path live, through a REAL connected MCP client (Claude Code over stdio,
+`gauss-ai-mcp` v0.86.0) with the real-GAUSS operator opt-in actually reaching the server, which 76.x could not test
+(76.x finding 1). The user asked the same kind of plain-language tasks as 76.x, one at a time (one new task, 77.15,
+replaces 76.9's verbatim repeat), and approved or declined each run prompt in their own words; the calling Claude
+session wrote every query and snippet. The question is whether validate -> prepare -> approve/decline -> execute works
+with real GAUSS, whether an approved run matches a direct `tgauss.exe -b` run, and whether a declined or unrecognized
+reply executes nothing. Expectations were written at recording time. Run files
+`2026-10-19-code-assistant-mcp-execution-run-001.md` … `-020.md`; record in
+`planning/v0.86-members-word-operators-struct-definitions.md` §12.
+
+### Prompt 77.1: Setup check, then: is the server connected, which version, can it run GAUSS?
+
+(Setup, from the brief) "First, before any task: start a gauss-ai session. Validate a trivial snippet (print det of a literal 2x2 matrix). Call gauss_execution_prepare on it and show me the exact rendered prompt. Don't call gauss_execution_decide. If prepare returns real_gauss_not_allowed, stop and tell me; don't work around it."
+
+Then: "Is the gauss-ai server connected? Which version is it, and can it actually run GAUSS code for me?"
+
+Expected behavior:
+- The opt-in confirmed with one prepare before any task; the exact prompt shown; no decide; status claims limited to the evidence.
+
+### Prompt 77.2: Uncoaxed: a procedure taking a DS structure (3x2 data)
+
+"Write a procedure that takes a DS structure and returns the column means of its data member. Use a small 3x2 matrix as the data."
+
+Expected behavior:
+- A member literal is not INVALID; the `proc` keeps it at review_required.
+
+### Prompt 77.3: Uncoaxed: sqpSolveMT with bounds and start values
+
+"Minimize (b1 - 3)^2 + (b2 + 1)^2 with sqpSolveMT, starting from 0, 0, with both parameters bounded between -5 and 5."
+
+Expected behavior:
+- review_required with the disclosed `&` and `...` gaps; a correct program.
+
+### Prompt 77.4: Uncoaxed: linear IV with gmmFit, start values in the control structure
+
+"Estimate a simple linear IV model with gmmFit on simulated data, and set the starting values in the control structure."
+
+Expected behavior:
+- review_required with the disclosed gaps; a working program.
+
+### Prompt 77.5: Uncoaxed: user-defined regression-results structure, OLS, then "Run it."
+
+"Define my own structure to hold regression results (coefficients, standard errors and a label), fill it with OLS estimates from simulated data, and print it."
+
+Follow-ups: "Run it." -> "Leave it as review_required and move on to the next task."
+
+Expected behavior:
+- review_required; no `validation_id`, so "Run it." cannot run anything; no decide call.
+
+### Prompt 77.6: Uncoaxed: flag values below 2 or above 8 and count them; run with the user's vector
+
+"I have a vector of measurements. Flag the values below 2 or above 8, and tell me how many there are."
+
+Follow-up: "Run it with the vector 1, 5, 9, 3, 0.5, 8.5. I approve the review."
+
+Expected behavior:
+- review_required; a user's "approval" of a review_required verdict executes nothing.
+
+### Prompt 77.7: Uncoaxed: keep rows with column 1 positive and column 2 not missing
+
+"From a matrix of daily returns, keep only the rows where the first column is positive and the second column is not missing."
+
+Expected behavior:
+- review_required with the disclosed `.`-literal gap.
+
+### Prompt 77.8: Uncoaxed: recode 20-30 to 1, 30-40 to 2, else 0
+
+"Recode a vector so that values from 20 up to 30 become 1, above 30 up to 40 become 2, and everything else becomes 0."
+
+Expected behavior:
+- review_required; correct program.
+
+### Prompt 77.9: Uncoaxed: inverse of a 3x3 positive definite matrix; approved run
+
+"Compute the inverse of a 3x3 positive definite matrix and check the result by multiplying it back."
+
+The user's replies to the run prompt: "Yes approve", then "yes".
+
+Expected behavior:
+- handoff_candidate; the exact prompt shown; only the user's own words decide; an approved run matches direct GAUSS.
+
+### Prompt 77.10: Uncoaxed: 1,000 standard normal draws, mean and SD; declined run
+
+"Simulate 1,000 standard normal draws and report their mean and standard deviation."
+
+The user's reply to the run prompt: "no".
+
+Expected behavior:
+- A declined run executes nothing; the id cannot be reused.
+
+### Prompt 77.11: Uncoaxed: eigenvalues of a symmetric 3x3 matrix; approved run
+
+"Compute the eigenvalues of a symmetric 3x3 matrix."
+
+The user's reply to the run prompt: "yes".
+
+Expected behavior:
+- handoff_candidate; approved run matches direct GAUSS.
+
+### Prompt 77.12: Uncoaxed: an array of 3 DS structures, mean of each
+
+"Create an array of 3 DS structures, give each one its own small data matrix, and print the mean of each."
+
+Expected behavior:
+- Member-target literals on structure-array elements are not INVALID; review_required.
+
+### Prompt 77.13: Uncoaxed: a procedure doubling a member through a structure pointer
+
+"Write a procedure that takes a pointer to a structure I define and doubles one of its matrix members."
+
+Expected behavior:
+- not_ready for the true reason (no documented call).
+
+### Prompt 77.14: Uncoaxed: remove outliers with the IQR rule
+
+"Identify outliers in a column of data using the IQR rule, and remove them."
+
+Expected behavior:
+- review_required; correct program.
+
+### Prompt 77.15: Uncoaxed: save a matrix to results.fmt
+
+"Save a matrix of results to a file called results.fmt."
+
+Expected behavior:
+- not_ready via the system-statement registry (`save`, file_write); nothing written.
+
+### Prompt 77.16: Docs lookup: sort a matrix by its second column; approved run
+
+"Sort a matrix by its second column."
+
+The user's reply to the run prompt: "yes".
+
+Expected behavior:
+- handoff_candidate; approved run matches direct GAUSS; the id is single-use.
+
+### Prompt 77.17: Uncoaxed: rerun 77.5 with 500 observations; restructured at the user's request; approved run
+
+"Run the regression-results structure program from earlier again, but with 500 observations instead."
+
+Follow-ups: "Let's restructure to clear the gaps" -> (prompt) "yes".
+
+Expected behavior:
+- Premise corrected; review_required; any restructuring disclosed; only the user's own words decide.
+
+### Prompt 77.18: Docs lookup: a matrix literal assigned to a scalar member
+
+"What happens in GAUSS if I assign a matrix literal to a scalar member of a structure?"
+
+Expected behavior:
+- An honest answer limited to the evidence; the known structure-type limitation.
+
+### Prompt 77.19: Uncoaxed: element-wise OR inside a call
+
+"Combine two conditions with an element-wise OR inside a call: count how many elements of x are negative or greater than 100."
+
+Expected behavior:
+- A word operator inside a call argument is neither a call nor a missing separator.
+
+### Prompt 77.20: Is everything still working? What ran today?
+
+"Is everything still working? Summarize what ran and what didn't today."
+
+Expected behavior:
+- An honest status from the session's own evidence.
