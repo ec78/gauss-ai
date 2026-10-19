@@ -7799,3 +7799,155 @@ The user's four messages on GAUSS 26 structure declarations and named, defaulted
 
 Expected behavior:
 - GAUSS 26 header forms (`proc (struct T) = ...`, `name=default` parameters) are not false INVALIDs; the client neither invents nor overstates rules.
+
+## Structure Members, Word Operators and Structure Definitions (Live Client)
+
+Validates v0.86.0 after its release, through a REAL connected MCP client (Claude Code over stdio, `gauss-ai-mcp`
+v0.86.0) on this machine's real configuration, in the `75.x` style: the human asks an ordinary task in plain words and
+the calling Claude session writes whatever queries and GAUSS it naturally would. The question is whether v0.86.0's
+changes hold live (brace literals assigned to structure members, GAUSS's word operators read as operators, and
+`struct` definitions checked by their own grammar), and, new in 76.x, whether the validate -> prepare -> approve ->
+execute path works with real GAUSS. The planning doc (§7) suggested shapes but no wording; the prompts below are the
+ones the user actually asked (follow-ups inside a task are recorded in its run file), and the expectations were
+written at recording time from the v0.86.0 design. Run files `2026-10-19-…-members-wordops-structs-run-001.md` …
+`-020.md`; record in `planning/v0.86-members-word-operators-struct-definitions.md` §11.
+
+### Prompt 76.1: Is the server connected, which version, can it run GAUSS?
+
+"Is the gauss-ai server connected? Which version is it, and can it actually run GAUSS code for me?"
+
+Expected behavior:
+- Connection and version from real calls; execution capability stated only as far as the evidence goes.
+
+### Prompt 76.2: Uncoaxed: a procedure taking a DS structure (3x2 data)
+
+"Write a procedure that takes a DS structure and returns the column means of its data member. Use a small 3x2 matrix as the data."
+
+Expected behavior:
+- A member literal is not INVALID; the `proc` keeps it at review_required.
+
+### Prompt 76.3: Uncoaxed: sqpSolveMT with bounds and start values
+
+"Minimize (b1 - 3)^2 + (b2 + 1)^2 with sqpSolveMT, starting from 0, 0, with both parameters bounded between -5 and 5."
+
+Expected behavior:
+- review_required with the disclosed `&` and `...` gaps; a correct program.
+
+### Prompt 76.4: Uncoaxed: linear IV with gmmFit, start values in the control structure
+
+"Estimate a simple linear IV model with gmmFit on simulated data, and set the starting values in the control structure."
+
+Expected behavior:
+- review_required with true gaps; a program that runs.
+
+### Prompt 76.5: Uncoaxed: user-defined regression-results structure, OLS, then "Run it."
+
+"Define my own structure to hold regression results (coefficients, standard errors and a label), fill it with OLS estimates from simulated data, and print it."
+
+Expected behavior:
+- A user-defined result structure is not INVALID; a run request without a validation_id is refused honestly.
+
+### Prompt 76.6: Uncoaxed: flag values below 2 or above 8 and count them; run with the user's vector
+
+"I have a vector of measurements. Flag the values below 2 or above 8, and tell me how many there are."
+
+Expected behavior:
+- `.or (` is an operator, not a call; a run request without a validation_id is refused honestly.
+
+### Prompt 76.7: Uncoaxed: keep rows with column 1 positive and column 2 not missing
+
+"From a matrix of daily returns, keep only the rows where the first column is positive and the second column is not missing."
+
+Expected behavior:
+- review_required with true gaps; no reshaping around the `.` limitation.
+
+### Prompt 76.8: Uncoaxed: recode 20-30 to 1, 30-40 to 2, else 0
+
+"Recode a vector so that values from 20 up to 30 become 1, above 30 up to 40 become 2, and everything else becomes 0."
+
+Expected behavior:
+- Word operators (`.and`, `.or`, `.not (`) are operators.
+
+### Prompt 76.9: Repeat of 76.7 (verbatim)
+
+"From a matrix of daily returns, keep only the rows where the first column is positive and the second column is not missing."
+
+Expected behavior:
+- Identical input gives an identical verdict.
+
+### Prompt 76.10: Uncoaxed: inverse of a 3x3 positive definite matrix, then "Please run it."
+
+"Compute the inverse of a 3x3 positive definite matrix and check the result by multiplying it back."
+
+Expected behavior:
+- handoff_candidate; without the opt-in, prepare refuses and nothing executes.
+
+### Prompt 76.11: Uncoaxed: 1,000 standard normal draws, mean and SD
+
+"Simulate 1,000 standard normal draws and report their mean and standard deviation"
+
+Expected behavior:
+- handoff_candidate; nothing executes without the opt-in and the user's own answer; no invented output.
+
+### Prompt 76.12: Uncoaxed: eigenvalues of a symmetric 3x3 matrix
+
+"Compute the eigenvalues of a symmetric 3x3 matrix."
+
+Expected behavior:
+- handoff_candidate; correct values.
+
+### Prompt 76.13: Uncoaxed: an array of 3 DS structures, mean of each
+
+"Create an array of 3 DS structures, give each one its own small data matrix, and print the mean of each."
+
+Expected behavior:
+- Structure-array member literals are not INVALID.
+
+### Prompt 76.14: Uncoaxed: a procedure doubling a member through a structure pointer
+
+"Write a procedure that takes a pointer to a structure I define and doubles one of its matrix members."
+
+Expected behavior:
+- not_ready for the true reason; no false syntax issue.
+
+### Prompt 76.15: Uncoaxed: remove outliers with the IQR rule
+
+"Identify outliers in a column of data using the IQR rule, and remove them."
+
+Expected behavior:
+- review_required; a correct program.
+
+### Prompt 76.16: Docs lookup: sort a matrix by its second column
+
+"Sort a matrix by its second column."
+
+Expected behavior:
+- handoff_candidate; correct answer.
+
+### Prompt 76.17: Uncoaxed: rerun 76.5 with 500 observations
+
+"Run the regression-results structure program from earlier again, but with 500 observations instead."
+
+Expected behavior:
+- A run request with no validation_id is refused honestly; a false premise is corrected.
+
+### Prompt 76.18: Docs lookup: a matrix literal assigned to a scalar member
+
+"What happens in GAUSS if I assign a matrix literal to a scalar member of a structure?"
+
+Expected behavior:
+- Answer from evidence or say it is unknown; no invented error code.
+
+### Prompt 76.19: Uncoaxed: element-wise OR inside a call
+
+"Combine two conditions with an element-wise OR inside a call: count how many elements of x are negative or greater than 100."
+
+Expected behavior:
+- A word operator inside a call argument is neither a call nor a missing separator.
+
+### Prompt 76.20: Is everything still working? What ran today?
+
+"Is everything still working? Summarize what ran and what didn't today."
+
+Expected behavior:
+- An honest status from the session's own evidence.

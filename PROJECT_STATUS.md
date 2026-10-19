@@ -11,12 +11,28 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
   - the diffs: docs syntax (79 blocks, exactly as predicted), verdicts (365 programs; all 125 earlier snippets unchanged), gate (61 questions identical), and AST (the engine is unchanged);
   - the version bump to 0.86.0; `README.md`, `CHANGELOG.md` and `KNOWN_LIMITATIONS.md` updated.
 - One deviation (§9.2): an index earlier in the path (`d0[1].dataMatrix = {…}`, a structure-array element) is a member target. The all-docs diff found it, and spot checks m33-m38 confirmed it.
-- **Next: live evaluation 76.x, in a fresh conversation** (nothing else is in progress). Setup is done (2026-10-16/17):
-  - reinstalled (`pip install -e ".[mcp]"`, 0.86.0);
-  - the `claude` CLI (`C:\Users\Owner\.local\bin\claude.exe`, 2.1.301) is on the user PATH;
-  - the user set `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1` as a **local-scope** override of the `gauss-ai` server (`claude mcp add gauss-ai --scope local -e GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1 -- gauss-ai-mcp`; never in the tracked `.mcp.json`) and restarted VS Code.
+- **Live evaluation 76.x ran on 2026-10-19** and is recorded (plan §11; run files `2026-10-19-…-members-wordops-structs-run-001.md` … `-020.md`; `INDEX.md`, `benchmark-prompts.md` category 76, `benchmark-coverage.md`). Not pushed.
+- **Next:** the user's choice. The recommendation (§11.8) is a short execution-only re-run in a fresh conversation:
+  1. fix the opt-in's project key first (below);
+  2. confirm the opt-in with one prepare;
+  3. approve and decline the four 76.x handoff candidates;
+  4. compare with §11.6's `tgauss.exe -b` outputs.
 
-  76.x includes **real-GAUSS execution through MCP** (user decision), the first live validate → prepare → approve → execute test. The user holds the 20-task list and the reporting prompt, so a testing session must not look for expected answers here until the tasks are done. `f97caa1` (a status-only commit) and this update are local and not pushed. The drafted search milestone became v0.87.0: `planning/v0.87-search-and-grounding-recall.md` (renamed from v0.86, title updated, otherwise unchanged; still untracked and unapproved; its §7 still says "76.x", which is now v0.86.0's category).
+  Do not start v0.87.0 or any other milestone until the user chooses.
+
+**Live evaluation 76.x (2026-10-19; v0.86 plan §11):** 19 pass, 1 fail (76.1, a client error: it told the user real execution was on).
+- **v0.86.0 held live:** all 19 live verdicts reproduced on the v0.86.0 archive. Against v0.85.0, nine snippets go not_ready → review_required and four lose false reasons; none newly reaches handoff_candidate.
+- **No code executed through MCP.** The server never received `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1` (finding 1):
+  - the local-scope override is stored under the `~/.claude.json` project key `C:/Users/eclow/Documents/GitHub/gauss-ai`;
+  - the VS Code session ran under `c:/Users/eclow/Documents/GitHub/gauss-ai` (lowercase drive, `mcpServers: {}`), so the tracked `.mcp.json` was used;
+  - all three prepares returned `real_gauss_not_allowed`. No prompt was rendered, no decide call was made, and the planned 76.11 decline never happened.
+- **Other findings, all pre-existing and safe-direction:**
+  - nothing in `gauss_session_start` reports the opt-in (2);
+  - a refused prepare still spends its `validation_id`, because the id is popped before the opt-in check (3);
+  - upstream, `gmmfit.rst` documents `gOut.parEst` but the member is `paramEst` (4; `G0504`);
+  - `gauss_search_docs` silently drops a fifth symbol at `MAX_GROUNDING_SOURCES = 4` (5; for v0.87);
+  - `eigh` has no registered symmetry precondition (6).
+- **Spot checks:** e01-e08 (`G0071` for a literal into a `scalar` member; `gmmFitControl` undefined; `paramEst` runs).
 
 v0.85.0 "Procedure Headers, Defining Pages and Code-Loading Statements" was released on 2026-10-15: https://github.com/ec78/gauss-ai/releases/tag/v0.85.0 (tag `v0.85.0`, commit `f11505e`; `main` pushed). Plan and record: `planning/v0.85-proc-headers-and-defining-pages.md` (§1-§8 plan, §9 deviations and diffs, §10 testing, **§11 live evaluation 75.x**). v0.84.0's record, including live evaluation 74.x (17 pass, 2 fail on the two defects v0.85.0 fixes), is `planning/v0.84-lexical-statement-stream.md` §11.
 
@@ -96,7 +112,7 @@ Full detail is in CHANGELOG and the planning docs (`planning/v0.86-*.md`, `plann
   - option B: indexed writes are looked through for category only, never for preconditions;
   - expressions are never evaluated.
 - **Signatures:** nested optional groups are flattened, and `...` means no upper bound (`VARIADIC_MAX_ARGS`).
-- **Evaluations:** the last category used is **75** (`75.1`-`75.21`, run 2026-10-16 after the v0.85.0 release: 17 pass, 4 fail on three real pre-existing defects, v0.85 plan §11). The next category is `76`.
+- **Evaluations:** the last category used is **76** (`76.1`-`76.20`, run 2026-10-19 after the v0.86.0 release: 19 pass, 1 fail on a client error; no MCP execution, because the opt-in never reached the server; v0.86 plan §11). The next category is `77` (or `76.21+` for the execution-only re-run).
 - **Tests:** 48 files, all passing; `check_release_readiness.py` passes. The `mcp` extra is installed in this machine's real Python, so the MCP tests actually run.
 
 ## Known Issues
@@ -117,12 +133,16 @@ Full detail is in CHANGELOG and the planning docs (`planning/v0.86-*.md`, `plann
 - optionally ask Aptech about the docs (the `aptech/docs` repo declares no license; the posture is per-user download, never redistribution).
 
 **Smaller standalone items:**
-- Live real-GAUSS evaluation through MCP. It needs `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1` in the server's environment. The server is defined in the repo's tracked `.mcp.json` (project scope, `env: {}`), so the opt-in belongs in a local-scope override, never in that file. The override is set (2026-10-16) and is first exercised live in 76.x.
+- Live real-GAUSS evaluation through MCP. It needs `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1` in the server's environment. The server is defined in the repo's tracked `.mcp.json` (project scope, `env: {}`), so the opt-in belongs in a local-scope override, never in that file. The override was set (2026-10-16), but under the uppercase `C:/…` project key only, so 76.x ran without it (76.x finding 1); still unexercised.
 - Idle-session eviction for long-running MCP servers.
 - MCP sampling, so strict-mode chat could use the client's model. Blocked: Claude Code doesn't support sampling as a client (anthropics/claude-code#1785).
 
 ## Handoff Notes
 
 - **Windows reinstall** (see `CLAUDE.md`): stop any running `gauss-ai-mcp.exe` before `pip install -e ".[mcp]"`. Then reload the VS Code window (`Ctrl+Shift+P` → "Developer: Reload Window"). New MCP tools and changed behavior appear only in a fresh conversation, so a milestone's live evaluation (`76.x` next) must happen in a new conversation after the reinstall.
-- **Machine config** (`C:\Users\Owner\.gauss-ai\config.json`): `chat_provider: ollama` (`qwen2.5-coder:7b`), `default_runner: gauss`, `gauss_executable: C:\gauss26\tgauss.exe`, `workspace_parent: C:\Users\eclow\OneDrive\Documents\GAUSS-AI-Workspaces`, `docs_root: C:/Users/Owner/.gauss-ai/docs` (the published copy). `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1` is **on**, through the local-scope `gauss-ai` MCP override (Claude Code's `~/.claude.json`, this project only; check with `claude mcp get gauss-ai`). So MCP prepare/decide on the `gauss` runner really runs `tgauss.exe` after the user's own yes. With only the tracked `.mcp.json`, prepare returns `real_gauss_not_allowed`, as designed.
+- **Machine config** (`C:\Users\Owner\.gauss-ai\config.json`): `chat_provider: ollama` (`qwen2.5-coder:7b`), `default_runner: gauss`, `gauss_executable: C:\gauss26\tgauss.exe`, `workspace_parent: C:\Users\eclow\OneDrive\Documents\GAUSS-AI-Workspaces`, `docs_root: C:/Users/Owner/.gauss-ai/docs` (the published copy). `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1` is set through a local-scope `gauss-ai` MCP override in Claude Code's `~/.claude.json`, **but only under the project key `C:/Users/eclow/Documents/GitHub/gauss-ai`** (uppercase drive). The VS Code extension opened this repo as `c:/Users/…` (lowercase), whose entry has `mcpServers: {}`, so the server ran from the tracked `.mcp.json` without the opt-in, and prepare returned `real_gauss_not_allowed` (76.x finding 1). Before an execution evaluation:
+  1. make sure the override exists under the key the session actually uses;
+  2. confirm it with one prepare on a trivial handoff candidate.
+
+  With only the tracked `.mcp.json`, prepare returns `real_gauss_not_allowed`, as designed.
 - The `evaluations/differential_runs/2026-09-18-*` untracked directories are leftovers from v0.77.0, deliberately untouched; don't commit them.
