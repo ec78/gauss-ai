@@ -30,6 +30,9 @@ Durable, project-wide guidance for Claude Code sessions in this repository. For 
 - Verify install: `gauss-ai version`, `gauss-ai doctor`.
 - Optional real backends used only for manual/live validation, never by automated tests: a local **Ollama** install (`chat-provider=ollama`, default model `qwen2.5-coder:7b`) and a real GAUSS installation (`tgauss.exe`, configured via `gauss-ai config set gauss-executable <path>`). The documentation under `docs-root` is also machine-specific (downloaded or cloned per user, never committed).
 - The MCP server is registered for Claude Code in the repo's **tracked** `.mcp.json` (project scope, empty `env`). The operator opt-in that lets MCP execution run real GAUSS (`GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1`) belongs only in a local-scope override (`claude mcp add gauss-ai --scope local -e GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1 -- gauss-ai-mcp`). Never put it in `.mcp.json`: that would turn real execution on for everyone who clones the repo.
+  - **Claude Code keys local-scope servers by the exact project-path string, and the drive letter's case counts.** The VS Code extension opens this repo as `c:/…`, while a terminal usually gives `C:/…`. In 76.x the override existed only under `C:/…`, so the server ran without the opt-in.
+  - Check `~/.claude.json` for the key the session actually uses. Then prove the opt-in before relying on it: one `gauss_execution_prepare` on a trivial handoff candidate must return a `rendered_prompt`, not `real_gauss_not_allowed`.
+  - Never tell a user that real execution is available on the strength of the config file alone (76.1).
 
 ## Important Commands
 
@@ -78,5 +81,7 @@ Durable, project-wide guidance for Claude Code sessions in this repository. For 
   - re-run every snippet on a `git archive` of the previous release, so the record separates what the milestone changed from pre-existing behavior (74.x);
   - for every run through the execution handoff, record the exact `gauss_execution_prepare` prompt, the user's own decision, and the result. Re-run approved code with `tgauss.exe -b` to compare, and confirm a declined run executed nothing. The client must never answer a run prompt itself;
   - before calling a finding a new defect, check `KNOWN_LIMITATIONS.md` and earlier planning docs. Some gaps are disclosed on purpose (74.16 rediscovered v0.83.0's deliberately unfixed `&`-parameter gap).
+
+  An evaluation that includes execution starts by confirming the opt-in with one prepare, as described in Development Environment above. If the opt-in is missing, fix it before the tasks. Otherwise the run path goes untested, as in 76.x.
 
   Run files carry the date the tasks were actually run.

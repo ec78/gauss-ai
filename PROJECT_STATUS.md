@@ -11,14 +11,24 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
   - the diffs: docs syntax (79 blocks, exactly as predicted), verdicts (365 programs; all 125 earlier snippets unchanged), gate (61 questions identical), and AST (the engine is unchanged);
   - the version bump to 0.86.0; `README.md`, `CHANGELOG.md` and `KNOWN_LIMITATIONS.md` updated.
 - One deviation (§9.2): an index earlier in the path (`d0[1].dataMatrix = {…}`, a structure-array element) is a member target. The all-docs diff found it, and spot checks m33-m38 confirmed it.
-- **Live evaluation 76.x ran on 2026-10-19** and is recorded (plan §11; run files `2026-10-19-…-members-wordops-structs-run-001.md` … `-020.md`; `INDEX.md`, `benchmark-prompts.md` category 76, `benchmark-coverage.md`). Not pushed.
-- **Next:** the user's choice. The recommendation (§11.8) is a short execution-only re-run in a fresh conversation:
-  1. fix the opt-in's project key first (below);
-  2. confirm the opt-in with one prepare;
-  3. approve and decline the four 76.x handoff candidates;
-  4. compare with §11.6's `tgauss.exe -b` outputs.
+- **Live evaluation 76.x ran on 2026-10-19** and is recorded in commit `d67db5b`: plan §11; run files `2026-10-19-…-members-wordops-structs-run-001.md` … `-020.md`; `INDEX.md`, `benchmark-prompts.md` category 76, `benchmark-coverage.md`. Not pushed. `CLAUDE.md` now records the drive-letter keying of local-scope MCP overrides, and the rule to prove the opt-in with one prepare.
+- **Next:** the user's choice, in this order (§11.8):
+  1. **Execution re-evaluation, recommended first, in a fresh conversation.** Its steps:
+     1. put the opt-in under the project key the VS Code session uses (`c:/…`);
+     2. confirm it with one prepare;
+     3. have the user approve and decline runs of the four 76.x handoff candidates (76.10 `invpd`, 76.11 `rndn`, 76.12 `eigh`, 76.16 `sortc`);
+     4. compare each approved run with §11.6's `tgauss.exe -b` output;
+     5. confirm a declined run executed nothing.
 
-  Do not start v0.87.0 or any other milestone until the user chooses.
+     Number it `76.21+` or `77.x`, at the user's choice. This is the first live test of real execution through MCP.
+  2. **Then scope the next milestone.** The candidates:
+     - the drafted v0.87.0 search/grounding milestone (`planning/v0.87-search-and-grounding-recall.md`, unapproved; add 76.x finding 5, the silent fifth-symbol drop);
+     - a small handoff/registry milestone for 76.x findings 2 (report `real_gauss_allowed` in `gauss_session_start`), 3 (a refused prepare spends its `validation_id`) and 6 (an `eigh` symmetry precondition);
+     - or fold those into v0.87.0.
+
+     Finding 4 (`gmmfit.rst` `parEst`) is upstream.
+
+  Do not start any milestone until the user chooses.
 
 **Live evaluation 76.x (2026-10-19; v0.86 plan §11):** 19 pass, 1 fail (76.1, a client error: it told the user real execution was on).
 - **v0.86.0 held live:** all 19 live verdicts reproduced on the v0.86.0 archive. Against v0.85.0, nine snippets go not_ready → review_required and four lose false reasons; none newly reaches handoff_candidate.
