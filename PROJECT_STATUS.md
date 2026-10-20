@@ -147,6 +147,14 @@ Full detail is in CHANGELOG and the planning docs (`planning/v0.86-*.md`, `plann
 
 ## Later
 
+**Path to MVP (agreed with the user 2026-10-20).** The MVP is a publicly available MCP that a stranger can install, connect and use safely. The path:
+1. v0.87.0: handoff binding plus small handoff/registry items (the handoff prompt above);
+2. v0.88.0: search/grounding recall (the current draft, renumbered);
+3. v0.89.0: release readiness (the decisions below, README quickstart, PyPI packaging, platform decision);
+4. a round with one or two outside GAUSS testers on a clean install, then a public-alpha / v1.0 decision.
+
+Open product question (needs the user's sign-off, since it touches a project-wide constraint): the run path is narrow. In 77.x only 6 of 22 snippets reached a run prompt, because expressions are never evaluated. The choice is to pitch the MVP as validation-first, or to widen what can run.
+
 **Public release readiness** (the user's longer-term goal: a publicly available MCP). This is mostly a list of decisions:
 - drop "Private Alpha"?
 - publish to PyPI as `gauss-ai`?
