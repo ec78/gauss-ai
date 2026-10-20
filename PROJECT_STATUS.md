@@ -12,13 +12,20 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
   - the version bump to 0.86.0; `README.md`, `CHANGELOG.md` and `KNOWN_LIMITATIONS.md` updated.
 - One deviation (§9.2): an index earlier in the path (`d0[1].dataMatrix = {…}`, a structure-array element) is a member target. The all-docs diff found it, and spot checks m33-m38 confirmed it.
 - **Live evaluation 76.x ran on 2026-10-19** and is recorded in commit `d67db5b`: plan §11; run files `2026-10-19-…-members-wordops-structs-run-001.md` … `-020.md`; `INDEX.md`, `benchmark-prompts.md` category 76, `benchmark-coverage.md`. Not pushed. `CLAUDE.md` now records the drive-letter keying of local-scope MCP overrides, and the rule to prove the opt-in with one prepare.
-- **Live evaluation 77.x (the execution re-evaluation) ran on 2026-10-19** and is recorded: plan §12; run files `2026-10-19-code-assistant-mcp-execution-run-001.md` … `-020.md`; `INDEX.md`, `benchmark-prompts.md` category 77, `benchmark-coverage.md`. Committed, not pushed.
+- **Live evaluation 77.x (the execution re-evaluation) ran on 2026-10-19** and is recorded: plan §12; run files `2026-10-19-code-assistant-mcp-execution-run-001.md` … `-020.md`; `INDEX.md`, `benchmark-prompts.md` category 77, `benchmark-coverage.md`. Committed (`01dbeee`), not pushed; `main` is ahead of `origin/main` by the 76.x and 77.x record commits.
 - **Next: scope the next milestone, at the user's choice** (§12.8). The candidates:
   - a small handoff/registry milestone. **77.x finding 2 first** (a reply should bind to the `request_id` the user saw). Then 77.x findings 1 (operator forms skip preconditions) and 3 (the unused "Workspace parent" prompt line), plus 76.x findings 2 (report `real_gauss_allowed` in `gauss_session_start`), 3 (a refused prepare spends its `validation_id`) and 6 (an `eigh` symmetry precondition);
   - the drafted v0.87.0 search/grounding milestone (`planning/v0.87-search-and-grounding-recall.md`, unapproved; add 76.x finding 5, the silent fifth-symbol drop, which recurred in 77.5);
   - or fold the handoff/registry items into v0.87.0.
 
   76.x finding 4 (`gmmfit.rst` `parEst`) and 75.x finding 8 (`gmmFitControl`, recurred in 77.4) are upstream. Do not start any milestone until the user chooses.
+- **Recommended (2026-10-20):** do the handoff/registry items first, as their own small milestone, **v0.87.0 "Handoff Binding and Precondition Coverage"**. Renumber the unapproved search draft to v0.88.0. Its §7 still names a "Live evaluation 76.x", so the number must change too. Reasons:
+  - finding 2 is the only open item that touches the consent contract;
+  - the items are small and local (`gauss_mcp_server.py`, `gauss_execution_handoff.py`, the precondition registry);
+  - the search milestone deliberately changes the `ask()` gate and is much larger.
+
+  The first step in a new session is to write that plan doc and stop for approval. The user has the handoff prompt.
+- **Push:** `main` has unpushed record commits (`d67db5b`, `18f6470`, `01dbeee`, plus this update). Pushing is the user's call.
 
 **Live evaluation 76.x (2026-10-19; v0.86 plan §11):** 19 pass, 1 fail (76.1, a client error: it told the user real execution was on).
 - **v0.86.0 held live:** all 19 live verdicts reproduced on the v0.86.0 archive. Against v0.85.0, nine snippets go not_ready → review_required and four lose false reasons; none newly reaches handoff_candidate.
