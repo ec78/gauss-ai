@@ -800,6 +800,37 @@ def test_48_chat_module_never_imports_subprocess_or_the_real_helper_directly() -
                 check(f"import line {stripped!r} does not reference {token!r}", token not in stripped)
 
 
+
+def test_49_v087_prompt_says_where_code_runs_not_the_workspace_parent() -> None:
+    """v0.87.0 (live finding 77.x f3): the handoff always runs in a fresh,
+    deleted temporary directory, so a configured workspace parent is no
+    longer shown in the prompt or put on the request."""
+    with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as workspace:
+        engine = _handoff_engine(tmp)
+        messages: list[str] = []
+        built: list = []
+        original = handoff_mod.create_execution_handoff_request
+
+        def spy(**kwargs):
+            request = original(**kwargs)
+            built.append(request)
+            return request
+
+        handoff_mod.create_execution_handoff_request = spy
+        try:
+            chat_mod.run_chat(
+                prompt_fn=_scripted(["Use invpd to invert this matrix.", "run this", "no", "exit"]),
+                print_fn=messages.append, engine=engine,
+                config=config_mod.GaussAiConfig(workspace_parent=workspace), env={},
+            )
+        finally:
+            handoff_mod.create_execution_handoff_request = original
+        joined = "\n".join(messages)
+        check("prompt shown", "Approve this exact execution" in joined)
+        check("no Workspace parent line", "Workspace parent" not in joined and workspace not in joined)
+        check("a Runs in line", "Runs in: a new temporary directory, deleted after the run" in joined)
+        check("the request carries no workspace parent", len(built) == 1 and built[0].workspace_parent is None)
+
 def run_tests() -> int:
     tests = [
         (name, fn)

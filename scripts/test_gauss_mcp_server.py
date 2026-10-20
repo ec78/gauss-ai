@@ -175,7 +175,8 @@ def test_06_validated_candidate_round_trip_executes_with_fake_runner() -> None:
         check("code digest returned", len(validation.get("code_sha256", "")) == 64)
         prepared = server_mod.gauss_execution_prepare(sid, validation["validation_id"])
         check("prompt shows the exact validated code", "invpd({2 1, 1 2})" in prepared.get("rendered_prompt", ""))
-        decided = server_mod.gauss_execution_decide(sid, "yes")
+        # v0.87.0 decision 2: decide is bound to the prompt's request_id (superseded: a bare reply).
+        decided = server_mod.gauss_execution_decide(sid, "yes", request_id=prepared["request_id"])
         check("success", decided.get("outcome") == handoff_mod.HandoffOutcome.SUCCESS.value)
 
 
@@ -235,11 +236,16 @@ def test_11_outstanding_validation_ids_are_capped() -> None:
 def test_12_decline_and_unrecognized_on_validated_request() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         sid = _start(tmp)
-        server_mod.gauss_execution_prepare(sid, server_mod.gauss_validate_code(sid, CANDIDATE_CODE)["validation_id"])
-        check("unrecognized creates no approval", server_mod.gauss_execution_decide(sid, "sure")["outcome"] == "unrecognized"
+        rid = server_mod.gauss_execution_prepare(
+            sid, server_mod.gauss_validate_code(sid, CANDIDATE_CODE)["validation_id"],
+        )["request_id"]
+        # v0.87.0 decision 2: decide is bound to the prompt's request_id (superseded: a bare reply).
+        check("unrecognized creates no approval",
+              server_mod.gauss_execution_decide(sid, "sure", request_id=rid)["outcome"] == "unrecognized"
               and len(server_mod._sessions[sid].approval_store) == 0)
-        check("decline", server_mod.gauss_execution_decide(sid, "no")["outcome"] == "declined")
-        check("nothing left pending", server_mod.gauss_execution_decide(sid, "yes") == {"error": "no_pending_request"})
+        check("decline", server_mod.gauss_execution_decide(sid, "no", request_id=rid)["outcome"] == "declined")
+        check("nothing left pending",
+              server_mod.gauss_execution_decide(sid, "yes", request_id=rid) == {"error": "no_pending_request"})
 
 
 # ---------------------------------------------------------------------------
@@ -254,8 +260,11 @@ def test_13_chat_candidate_round_trip() -> None:
         _with_chat_engine(sid, docs, "```gauss\ny = invpd({2 1, 1 2});\nprint y;\n```")
         ask = server_mod.gauss_chat_ask(sid, "Use invpd to invert this matrix.")
         check("offer eligible", ask["execution_offer_eligible"] is True)
-        check("prepare without validation_id uses the chat answer", "digest" in server_mod.gauss_execution_prepare(sid))
-        check("success", server_mod.gauss_execution_decide(sid, "yes")["outcome"] == handoff_mod.HandoffOutcome.SUCCESS.value)
+        prepared = server_mod.gauss_execution_prepare(sid)
+        check("prepare without validation_id uses the chat answer", "digest" in prepared)
+        # v0.87.0 decision 2: decide is bound to the prompt's request_id (superseded: a bare reply).
+        decided = server_mod.gauss_execution_decide(sid, "yes", request_id=prepared["request_id"])
+        check("success", decided["outcome"] == handoff_mod.HandoffOutcome.SUCCESS.value)
 
 
 def test_14_non_candidate_chat_answer_cannot_be_prepared() -> None:
@@ -274,8 +283,9 @@ def test_15_validated_execution_never_clears_a_pending_chat_offer() -> None:
         _with_chat_engine(sid, docs, "```gauss\ny = invpd({2 1, 1 2});\nprint y;\n```")
         server_mod.gauss_chat_ask(sid, "Use invpd to invert this matrix.")
         vid = server_mod.gauss_validate_code(sid, CANDIDATE_CODE)["validation_id"]
-        server_mod.gauss_execution_prepare(sid, vid)
-        server_mod.gauss_execution_decide(sid, "yes")
+        rid = server_mod.gauss_execution_prepare(sid, vid)["request_id"]
+        # v0.87.0 decision 2: decide is bound to the prompt's request_id (superseded: a bare reply).
+        server_mod.gauss_execution_decide(sid, "yes", request_id=rid)
         check("chat offer still pending", server_mod._sessions[sid].pending_code is not None)
 
 
@@ -314,8 +324,10 @@ def test_18_real_gauss_opt_in_still_requires_a_reachable_executable() -> None:
         try:
             sid = _start(tmp, runner="gauss", gauss_executable=fake_exe)
             vid = server_mod.gauss_validate_code(sid, CANDIDATE_CODE)["validation_id"]
-            check("prepare allowed", "digest" in server_mod.gauss_execution_prepare(sid, vid))
-            decided = server_mod.gauss_execution_decide(sid, "yes")
+            prepared = server_mod.gauss_execution_prepare(sid, vid)
+            check("prepare allowed", "digest" in prepared)
+            # v0.87.0 decision 2: decide is bound to the prompt's request_id (superseded: a bare reply).
+            decided = server_mod.gauss_execution_decide(sid, "yes", request_id=prepared["request_id"])
             check("never launched -- infrastructure_failure", decided["outcome"] == handoff_mod.HandoffOutcome.INFRASTRUCTURE_FAILURE.value)
         finally:
             del os.environ[server_mod.ENV_ALLOW_REAL_GAUSS]
@@ -495,6 +507,184 @@ def test_26_v086_structure_definitions_and_member_literals_are_not_syntax_violat
               not any(r.startswith("syntax:") for r in member["handoff_readiness"]["reasons"]))
         bad = server_mod.gauss_validate_code(sid, definition.replace("string label;", "vector label;"))
         check("d15 shape: syntax invalid", bad["syntax"] == "invalid")
+
+
+# ---------------------------------------------------------------------------
+# v0.87.0: handoff binding and refusals (live findings 77.x f2/f3, 76.x f2/f3;
+# planning v0.87 §3.1-§3.4). Fake runner throughout.
+# ---------------------------------------------------------------------------
+
+#: A second candidate on the same fixture page, distinguishable from
+#: CANDIDATE_CODE by its literal.
+OTHER_CANDIDATE_CODE = "y = invpd({4 1, 1 4});\nprint y;"
+
+
+class _SpyHelper:
+    """Stands in for `select_helper(...)`: records each code text it runs,
+    then behaves like the default fake helper."""
+
+    def __init__(self) -> None:
+        self.codes: list[str] = []
+
+    def select(self, runner: str):
+        def helper(**kwargs):
+            self.codes.append(kwargs.get("code"))
+            return handoff_mod.build_default_fake_helper()(**kwargs)
+        return helper
+
+
+def _with_spy(fn):
+    spy = _SpyHelper()
+    original = server_mod.handoff_mod.select_helper
+    server_mod.handoff_mod.select_helper = spy.select
+    try:
+        fn(spy)
+    finally:
+        server_mod.handoff_mod.select_helper = original
+
+
+def test_27_v087_decide_is_bound_to_the_prompt_it_answers() -> None:
+    """Probe P5 (v0.86 §12.6): before v0.87.0 a "yes" after two prepares ran
+    the second request, whichever prompt the user answered."""
+    def body(spy: _SpyHelper) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sid = _start(tmp)
+            va = server_mod.gauss_validate_code(sid, CANDIDATE_CODE)["validation_id"]
+            vb = server_mod.gauss_validate_code(sid, OTHER_CANDIDATE_CODE)["validation_id"]
+            pa = server_mod.gauss_execution_prepare(sid, va)
+            check("27: a first prepare reports no replacement", "replaced_request_id" not in pa)
+            pb = server_mod.gauss_execution_prepare(sid, vb)
+            check("27: the second prepare reports the replaced request", pb.get("replaced_request_id") == pa["request_id"])
+            check("27: ... with a notice naming it", pa["request_id"] in pb.get("notice", ""))
+            try:
+                stale = server_mod.gauss_execution_decide(sid, "yes", request_id=pa["request_id"])
+            except TypeError:
+                stale = {}
+            check("27: a reply to the replaced prompt is refused", stale.get("error") == "request_superseded")
+            check("27: ... naming the pending request", stale.get("pending_request_id") == pb["request_id"])
+            check("27: ... and nothing ran or was approved",
+                  spy.codes == [] and len(server_mod._sessions[sid].approval_store) == 0)
+            check("27: the newer request is still pending",
+                  server_mod._sessions[sid].pending_request is not None
+                  and server_mod._sessions[sid].pending_request.request_id == pb["request_id"])
+            try:
+                ran = server_mod.gauss_execution_decide(sid, "yes", request_id=pb["request_id"])
+            except TypeError:
+                ran = {}
+            check("27: the named request runs", ran.get("outcome") == handoff_mod.HandoffOutcome.SUCCESS.value)
+            check("27: ... and it is the second program", spy.codes == [OTHER_CANDIDATE_CODE])
+            check("27: decide echoes the request it acted on",
+                  ran.get("request_id") == pb["request_id"] and ran.get("request_digest") == pb["digest"])
+    _with_spy(body)
+
+
+def test_28_v087_request_id_is_required_in_effect() -> None:
+    def body(spy: _SpyHelper) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sid = _start(tmp)
+            prepared = server_mod.gauss_execution_prepare(sid, server_mod.gauss_validate_code(sid, CANDIDATE_CODE)["validation_id"])
+            rid = prepared["request_id"]
+            bare = server_mod.gauss_execution_decide(sid, "yes")
+            check("28: a bare reply is refused", bare.get("error") == "request_id_required")
+            check("28: ... with an explanation naming request_id", "request_id" in bare.get("detail", ""))
+            check("28: ... nothing approved, nothing ran, still pending",
+                  len(server_mod._sessions[sid].approval_store) == 0 and spy.codes == []
+                  and server_mod._sessions[sid].pending_request is not None)
+            try:
+                made_up = server_mod.gauss_execution_decide(sid, "yes", request_id="not-a-real-request")
+                unrecognized = server_mod.gauss_execution_decide(sid, "Yes approve", request_id=rid)
+                declined = server_mod.gauss_execution_decide(sid, "no", request_id=rid)
+                again = server_mod.gauss_execution_decide(sid, "yes", request_id=rid)
+            except TypeError:
+                made_up = unrecognized = declined = again = {}
+            check("28: an unknown request_id is refused", made_up.get("error") == "request_not_pending")
+            check("28: unrecognized keeps the request pending and echoes it",
+                  unrecognized.get("outcome") == "unrecognized" and unrecognized.get("request_id") == rid
+                  and unrecognized.get("request_digest") == prepared["digest"])
+            check("28: decline echoes the request",
+                  declined.get("outcome") == "declined" and declined.get("request_id") == rid)
+            check("28: a decided request is not pending", again == {"error": "no_pending_request"})
+            check("28: nothing ran", spy.codes == [])
+    _with_spy(body)
+
+
+def test_29_v087_a_refused_prepare_does_not_spend_its_validation_id() -> None:
+    """Live finding 76.x f3: the id used to be popped before every check,
+    so a resubmission was told `unknown_or_used_validation_id`."""
+    assert os.environ.get(server_mod.ENV_ALLOW_REAL_GAUSS) is None, "test environment must not pre-set this"
+    with tempfile.TemporaryDirectory() as tmp:
+        fake_exe = os.path.join(tmp, "does-not-exist-tgauss.exe")
+        sid = _start(tmp, runner="gauss", gauss_executable=fake_exe)
+        vid = server_mod.gauss_validate_code(sid, CANDIDATE_CODE)["validation_id"]
+        first = server_mod.gauss_execution_prepare(sid, vid).get("error")
+        second = server_mod.gauss_execution_prepare(sid, vid).get("error")
+        check("29: opt-in refusal repeats", first == second == "real_gauss_not_allowed")
+    with tempfile.TemporaryDirectory() as tmp:
+        sid = _start(tmp)
+        vid = server_mod.gauss_validate_code(sid, CANDIDATE_CODE)["validation_id"]
+        page = Path(tmp) / "docs" / "invinvpd.rst"
+        page.rename(page.with_suffix(".bak"))
+        stale = [server_mod.gauss_execution_prepare(sid, vid).get("error") for _ in range(2)]
+        check("29: stale refusal repeats", stale == ["validation_stale", "validation_stale"])
+        page.with_suffix(".bak").rename(page)
+        check("29: once the docs are back, the same id prepares", "rendered_prompt" in server_mod.gauss_execution_prepare(sid, vid))
+        check("29: a successful prepare spends it", server_mod.gauss_execution_prepare(sid, vid) == {"error": "unknown_or_used_validation_id"})
+    with tempfile.TemporaryDirectory() as tmp:
+        os.environ[server_mod.ENV_ALLOW_REAL_GAUSS] = "1"
+        try:
+            sid = _start(tmp, runner="gauss")
+            server_mod._sessions[sid].executable_path = None  # no executable configured: request_rejected
+            vid = server_mod.gauss_validate_code(sid, CANDIDATE_CODE)["validation_id"]
+            check("29: request_rejected", server_mod.gauss_execution_prepare(sid, vid).get("error") == "request_rejected")
+            check("29: ... leaves the id usable", vid in server_mod._sessions[sid].validated)
+        finally:
+            del os.environ[server_mod.ENV_ALLOW_REAL_GAUSS]
+
+
+def test_30_v087_session_start_reports_the_opt_in() -> None:
+    assert os.environ.get(server_mod.ENV_ALLOW_REAL_GAUSS) is None, "test environment must not pre-set this"
+    with tempfile.TemporaryDirectory() as tmp:
+        docs = _fixture_docs_root(tmp)
+        fake = server_mod.gauss_session_start(runner="fake", docs_root=docs)
+        real = server_mod.gauss_session_start(runner="gauss", docs_root=docs)
+        check("30: off, fake runner", fake.get("real_gauss_allowed") is False and "execution_hint" not in fake)
+        check("30: off, gauss runner, with a hint",
+              real.get("real_gauss_allowed") is False and server_mod.ENV_ALLOW_REAL_GAUSS in real.get("execution_hint", ""))
+        os.environ[server_mod.ENV_ALLOW_REAL_GAUSS] = "1"
+        try:
+            on_fake = server_mod.gauss_session_start(runner="fake", docs_root=docs)
+            on_real = server_mod.gauss_session_start(runner="gauss", docs_root=docs)
+        finally:
+            del os.environ[server_mod.ENV_ALLOW_REAL_GAUSS]
+        check("30: on, both runners, no hint",
+              on_fake.get("real_gauss_allowed") is True and on_real.get("real_gauss_allowed") is True
+              and "execution_hint" not in on_real)
+
+
+def test_31_v087_prompt_says_where_code_runs_and_digest_ignores_workspace() -> None:
+    """Live finding 77.x f3: runs always execute in a deleted temp directory,
+    so the configured workspace parent is neither shown nor digest-bound."""
+    with tempfile.TemporaryDirectory() as tmp_a, tempfile.TemporaryDirectory() as tmp_b:
+        sid_a = _start(tmp_a, workspace_parent=tmp_a)
+        sid_b = _start(tmp_b, workspace_parent=tmp_b)
+        pa = server_mod.gauss_execution_prepare(sid_a, server_mod.gauss_validate_code(sid_a, CANDIDATE_CODE)["validation_id"])
+        pb = server_mod.gauss_execution_prepare(sid_b, server_mod.gauss_validate_code(sid_b, CANDIDATE_CODE)["validation_id"])
+        prompt = pa["rendered_prompt"]
+        check("31: no Workspace parent line", "Workspace parent" not in prompt and tmp_a not in prompt)
+        check("31: a Runs in line", "Runs in: a new temporary directory, deleted after the run" in prompt)
+        check("31: the digest does not depend on the workspace parent", pa["digest"] == pb["digest"])
+        check("31: the pending request carries none", server_mod._sessions[sid_a].pending_request.workspace_parent is None)
+
+
+def test_32_v087_wording_names_request_id() -> None:
+    import inspect
+    params = inspect.signature(server_mod.gauss_execution_decide).parameters
+    check("32: decide takes request_id, last and optional",
+          list(params)[-1] == "request_id" and params["request_id"].default is None)
+    check("32: decide's description names request_id", "request_id" in (server_mod.gauss_execution_decide.__doc__ or ""))
+    check("32: prepare's description names the replacement", "replaced_request_id" in (server_mod.gauss_execution_prepare.__doc__ or ""))
+    check("32: session start's description names the flag", "real_gauss_allowed" in (server_mod.gauss_session_start.__doc__ or ""))
+    check("32: server instructions name request_id", "request_id" in (server_mod.server.instructions or ""))
 
 
 def _run_all() -> int:

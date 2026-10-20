@@ -655,6 +655,12 @@ def execute_execution_handoff(
 # ---------------------------------------------------------------------------
 
 
+#: v0.87.0: what the prompt's "Runs in" line says -- true of every run,
+#: since `execute_execution_handoff` always uses a new
+#: `tempfile.TemporaryDirectory(prefix="gauss_ai_handoff_")`.
+HANDOFF_WORKING_DIRECTORY_DESCRIPTION = "a new temporary directory, deleted after the run"
+
+
 def render_execution_handoff_prompt(request: ExecutionHandoffRequest) -> str:
     """Shows the exact code and exact execution details BEFORE approval is
     requested -- Phase 5/23 of the milestone brief. Never summarizes the
@@ -673,8 +679,15 @@ def render_execution_handoff_prompt(request: ExecutionHandoffRequest) -> str:
     if request.executable_path:
         lines.append(f"Executable: {request.executable_path}")
     lines.append(f"Timeout: {request.timeout_seconds:g} seconds")
-    if request.workspace_parent:
-        lines.append(f"Workspace parent: {request.workspace_parent}")
+    # v0.87.0 (live finding 77.x f3): the prompt used to print "Workspace
+    # parent: <path>" whenever the request carried one, but
+    # `execute_execution_handoff` always runs in a fresh
+    # `tempfile.TemporaryDirectory` (the v0.78.0 design) and never reads
+    # `workspace_parent`. Every approved 77.x run executed somewhere other
+    # than the directory the prompt named. The prompt now states where code
+    # really runs; `workspace_parent` is never printed, and both callers stop
+    # setting it (the field and its digest position are unchanged).
+    lines.append(f"Runs in: {HANDOFF_WORKING_DIRECTORY_DESCRIPTION}")
     lines.append(f"Request digest: {request.digest}")
     lines.extend([
         "",

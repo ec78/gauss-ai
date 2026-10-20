@@ -44,6 +44,13 @@ test_gauss_mcp_server.py):
   process's own environment at startup -- an extra gate on top of the
   per-request digest/approval flow, since an MCP client is one step further
   removed from the human at the keyboard than a terminal user.
+- v0.87.0 (live finding 77.x f2): `gauss_execution_decide` acts only on the
+  pending request whose `request_id` the client names -- the prompt the
+  user's reply answers. A prepare that replaces a pending request says so,
+  and a reply aimed at the replaced prompt is refused without creating an
+  approval. The server cannot prove the user saw a prompt (the client
+  relays both prompt and reply); it can refuse to run a request other than
+  the one the client says the reply answers.
 - Sessions are process-local and in-memory only, like every other approval
   store in this repository.
 
@@ -60,7 +67,7 @@ import dataclasses
 import hashlib
 import os
 import uuid
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -80,7 +87,7 @@ import gauss_code_assistant_cli as cli_mod
 import gauss_conversation_engine as engine_mod
 import gauss_execution_handoff as handoff_mod
 
-__version__ = "0.86.0"
+__version__ = "0.87.0"
 
 #: Set by the server OPERATOR in the process's own environment before
 #: launch -- never read from a tool-call argument. See module docstring.
@@ -90,6 +97,12 @@ ENV_ALLOW_REAL_GAUSS = "GAUSS_AI_MCP_ALLOW_REAL_GAUSS"
 MAX_VALIDATIONS_PER_SESSION = 8
 
 DOCS_FETCH_HINT = "Run 'gauss-ai docs fetch' once to download the official GAUSS documentation."
+
+_REAL_GAUSS_NOT_ALLOWED_DETAIL = (
+    "This session is configured for runner 'gauss', but the gauss-ai-mcp server process was not "
+    f"started with {ENV_ALLOW_REAL_GAUSS}=1. Real GAUSS execution via MCP requires this explicit "
+    "server-operator opt-in, in addition to the per-request approval."
+)
 
 
 def _real_gauss_allowed(env: dict[str, str] | None = None) -> bool:
@@ -140,6 +153,12 @@ class Session:
     #: request never clears an unrelated pending chat offer.
     pending_request: "handoff_mod.ExecutionHandoffRequest | None" = None
     pending_source: str | None = None
+    #: v0.87.0 (live finding 77.x f2): request_ids a later prepare replaced
+    #: while they were still pending, newest last and capped like
+    #: `validated`. Kept only so `gauss_execution_decide` can say
+    #: `request_superseded` (name the prompt that replaced it) instead of a
+    #: bare `request_not_pending`; a superseded request can never be approved.
+    superseded_request_ids: "deque[str]" = field(default_factory=lambda: deque(maxlen=MAX_VALIDATIONS_PER_SESSION))
 
 
 @dataclass
@@ -255,9 +274,9 @@ server = MCPServer(
         "the GAUSS code yourself -> gauss_validate_code to get a deterministic verdict (signatures, documented "
         "preconditions, syntax, unknown functions, and system-touching statements). Only code that reaches "
         "handoff_candidate gets a validation_id; to run it, call gauss_execution_prepare(validation_id), show the "
-        "user the exact prompt it returns, and pass the user's own yes/no to gauss_execution_decide. Never answer "
-        "yes on the user's behalf. gauss_repair_* tools drive the guided repair pipeline for real files, one REPL "
-        "command per call. gauss_chat_ask exists only when the server is configured with its own model."
+        "user the exact prompt it returns, and pass the user's own yes/no to gauss_execution_decide together with "
+        "that prompt's request_id. Never answer yes on the user's behalf. gauss_repair_* tools drive the guided "
+        "repair pipeline for real files, one REPL command per call. gauss_chat_ask exists only when the server is configured with its own model."
     ),
 )
 
@@ -274,7 +293,10 @@ def gauss_session_start(
     """Start a session for validating and (optionally) executing GAUSS
     code. Settings left out resolve exactly as the gauss-ai CLI resolves
     them (argument > environment variable > config file > default). Returns
-    a `session_id` for the other gauss_* tools."""
+    a `session_id` for the other gauss_* tools, and `real_gauss_allowed`:
+    whether the server operator started this server with
+    GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1. It reflects that opt-in only; whether
+    the GAUSS executable actually launches is known only from a run."""
     config = _get_config()
     env = os.environ
     sid = session_id or _new_id()
@@ -291,7 +313,15 @@ def gauss_session_start(
         "session_id": sid,
         "runner": _sessions[sid].runner,
         "docs_root_configured": resolved_docs_root is not None,
+        # v0.87.0 (live finding 76.x f2): in 76.1 a client could not tell
+        # that a run was impossible until a prepare failed, guessed from a
+        # config file, and told the user real execution was on. The flag is
+        # the same categorical value prepare already checks -- it adds no
+        # capability, and it says nothing about whether the executable runs.
+        "real_gauss_allowed": _real_gauss_allowed(),
     }
+    if _sessions[sid].runner == "gauss" and not response["real_gauss_allowed"]:
+        response["execution_hint"] = _REAL_GAUSS_NOT_ALLOWED_DETAIL
     if resolved_docs_root is None:
         response["hint"] = DOCS_FETCH_HINT
     return response
@@ -380,15 +410,31 @@ def gauss_execution_prepare(session_id: str, validation_id: str | None = None) -
     `gauss_validate_code`, single-use) or, without a validation_id, the
     session's last offer-eligible `gauss_chat_ask` answer. Code is never
     accepted directly here. Returns the exact code, runner, timeout and a
-    digest for the human to review; nothing is executed by this call. Real
-    GAUSS (`runner="gauss"`) also requires the server to have been started
-    with GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1."""
+    digest for the human to review, plus the `request_id` to pass to
+    `gauss_execution_decide` with the human's answer; nothing is executed by
+    this call. Preparing again replaces a still-pending request and says so
+    (`replaced_request_id`): only the newest prompt can then be answered. A
+    validation_id is spent only by a prepare that returns a prompt; a
+    refusal leaves it usable. Real GAUSS (`runner="gauss"`) also requires
+    the server to have been started with GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1."""
     session = _sessions.get(session_id)
     if session is None:
         return {"error": "unknown_session"}
 
+    # v0.87.0 (live finding 76.x f3): every refusal below happens BEFORE the
+    # validation_id is spent. Before this the id was popped first, so a
+    # `real_gauss_not_allowed` or `validation_stale` refusal consumed it and
+    # a resubmission was told `unknown_or_used_validation_id` -- false, the
+    # id had never been used (76.10's client re-validated to recover). The
+    # rule is now: an id is spent only by a prepare that returns a prompt
+    # (v0.87 plan decision 4), and a refused id gets the same refusal again.
+    # The opt-in gate comes first, since it applies to both paths and no id
+    # could ever get past it in this server process.
+    if session.runner == "gauss" and not _real_gauss_allowed():
+        return {"error": "real_gauss_not_allowed", "detail": _REAL_GAUSS_NOT_ALLOWED_DETAIL}
+
     if validation_id is not None:
-        entry = session.validated.pop(validation_id, None)
+        entry = session.validated.get(validation_id)
         if entry is None:
             return {"error": "unknown_or_used_validation_id"}
         # The docs may have changed since validation (e.g. a `gauss-ai docs
@@ -402,49 +448,102 @@ def gauss_execution_prepare(session_id: str, validation_id: str | None = None) -
             return {"error": "no_pending_handoff_candidate"}
         code, readiness_state, source = session.pending_code, session.pending_readiness_state, "chat"
 
-    if session.runner == "gauss" and not _real_gauss_allowed():
-        return {
-            "error": "real_gauss_not_allowed",
-            "detail": (
-                "This session is configured for runner 'gauss', but the gauss-ai-mcp server process was not "
-                f"started with {ENV_ALLOW_REAL_GAUSS}=1. Real GAUSS execution via MCP requires this explicit "
-                "server-operator opt-in, in addition to the per-request approval."
-            ),
-        }
     try:
+        # v0.87.0 (live finding 77.x f3): no `workspace_parent`. The handoff
+        # always runs in a fresh temporary directory (v0.78 plan; see
+        # `execute_execution_handoff`), so the configured workspace parent
+        # was shown in the prompt and bound into the digest without ever
+        # being used. Leaving it out keeps the digest to what the prompt
+        # shows and the run uses. Guided repair resolves its own.
         request = handoff_mod.create_execution_handoff_request(
             code=code, readiness_state=readiness_state, request_id=str(uuid.uuid4()), created_at=_clock(),
             runner=session.runner, executable_path=session.executable_path,
-            timeout_seconds=session.timeout_seconds, workspace_parent=session.workspace_parent,
+            timeout_seconds=session.timeout_seconds,
         )
     except (handoff_mod.HandoffNotEligibleError, handoff_mod.HandoffRequestValidationError) as exc:
         return {"error": "request_rejected", "detail": str(exc)}
-    session.pending_request = request
-    session.pending_source = source
-    return {
+    if validation_id is not None:
+        session.validated.pop(validation_id, None)
+
+    response: dict[str, Any] = {
         "request_id": request.request_id,
         "digest": request.digest,
         "rendered_prompt": handoff_mod.render_execution_handoff_prompt(request),
     }
+    # v0.87.0 (live finding 77.x f2): before this a prepare silently
+    # replaced a pending request, so a "yes" given to the earlier prompt
+    # approved this one (77.1's request was replaced by 77.9's; probe P5).
+    # The single slot stays (plan decision 3); the replacement is reported,
+    # and the replaced id is remembered only so decide can say why it is
+    # refused.
+    replaced = session.pending_request
+    if replaced is not None:
+        session.superseded_request_ids.append(replaced.request_id)
+        response["replaced_request_id"] = replaced.request_id
+        response["notice"] = (
+            f"An earlier prompt (request {replaced.request_id}) was pending and is no longer valid. "
+            "Show the user this prompt instead."
+        )
+    session.pending_request = request
+    session.pending_source = source
+    return response
 
 
 @server.tool()
-def gauss_execution_decide(session_id: str, response_text: str) -> dict[str, Any]:
+def gauss_execution_decide(session_id: str, response_text: str, request_id: str | None = None) -> dict[str, Any]:
     """Step 2 of 2. `response_text` must be the human's own raw answer to
-    the prompt `gauss_execution_prepare` returned -- parsed server-side by
-    the same narrow parser `gauss-ai chat` uses (only "yes"/"approve" or
-    "no"/"decline"; anything else returns `outcome: "unrecognized"` and
-    creates no approval). On approval, records it and invokes the existing
-    GAUSS execution adapter exactly once, in this same call."""
+    the prompt `gauss_execution_prepare` returned, and `request_id` must be
+    the request_id that prepare returned WITH THAT PROMPT. A missing
+    request_id, or one that is not the pending request (for example a
+    prompt a later prepare replaced), is refused and creates no approval.
+    The answer is parsed server-side by the same narrow parser `gauss-ai
+    chat` uses (only "yes"/"approve" or "no"/"decline"; anything else
+    returns `outcome: "unrecognized"`, creates no approval, and keeps the
+    request pending). On approval, records it and invokes the existing GAUSS
+    execution adapter exactly once, in this same call. Every outcome echoes
+    the `request_id` and `request_digest` it acted on."""
     session = _sessions.get(session_id)
     if session is None:
         return {"error": "unknown_session"}
     request = session.pending_request
     if request is None:
         return {"error": "no_pending_request"}
+    # v0.87.0 (live finding 77.x f2): the reply is bound to the prompt the
+    # client says it answers, checked before the reply is parsed or any
+    # approval exists. `request_id` is optional in the schema but required
+    # in effect (plan decision 2): a client still holding a stale tool
+    # description (KL v0.80.0, 70.x) gets this explanation instead of a
+    # generic schema error.
+    if request_id is None:
+        return {
+            "error": "request_id_required",
+            "detail": (
+                "Pass request_id: the request_id gauss_execution_prepare returned with the prompt the user "
+                "answered. Nothing was approved; the request is still pending."
+            ),
+        }
+    if request_id != request.request_id:
+        if request_id in session.superseded_request_ids:
+            return {
+                "error": "request_superseded",
+                "detail": (
+                    "That prompt was replaced by a later gauss_execution_prepare and can no longer be approved. "
+                    "Nothing was approved or run. Show the user the pending prompt, or prepare again."
+                ),
+                "pending_request_id": request.request_id,
+            }
+        return {
+            "error": "request_not_pending",
+            "detail": (
+                "That request_id is not pending in this session (unknown, or already decided). "
+                "Nothing was approved or run."
+            ),
+        }
+    echo = {"request_id": request.request_id, "request_digest": request.digest}
+
     parsed = handoff_mod.parse_execution_approval_response(response_text)
     if parsed == "unrecognized":
-        return {"outcome": "unrecognized", "message": "Please answer exactly 'yes' or 'no'."}
+        return {"outcome": "unrecognized", "message": "Please answer exactly 'yes' or 'no'.", **echo}
 
     try:
         approval = handoff_mod.create_execution_handoff_approval(
@@ -452,7 +551,7 @@ def gauss_execution_decide(session_id: str, response_text: str) -> dict[str, Any
         )
         session.approval_store.record(approval)
     except handoff_mod.ExecutionApprovalValidationError as exc:
-        return {"error": "approval_rejected", "detail": str(exc)}
+        return {"error": "approval_rejected", "detail": str(exc), **echo}
 
     if session.pending_source == "chat":
         session.pending_code = None
@@ -461,7 +560,7 @@ def gauss_execution_decide(session_id: str, response_text: str) -> dict[str, Any
     session.pending_source = None
 
     if parsed == "declined":
-        return {"outcome": "declined", "consent_statement": approval.consent_statement}
+        return {"outcome": "declined", "consent_statement": approval.consent_statement, **echo}
 
     helper = handoff_mod.select_helper(request.runner)
     result = handoff_mod.execute_execution_handoff(request, approval, store=session.approval_store, helper=helper)
@@ -472,6 +571,7 @@ def gauss_execution_decide(session_id: str, response_text: str) -> dict[str, Any
         "result_digest": result.result_digest,
         "rendered": handoff_mod.render_conversational_execution_result(result),
         "evidence": dataclasses.asdict(result.evidence) if result.evidence is not None else None,
+        **echo,
     }
 
 

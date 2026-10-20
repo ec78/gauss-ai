@@ -26,6 +26,7 @@ Before you can approve anything, you see, in full:
 - The **runner** (`fake` for a local demo/no-GAUSS-installed session, or `GAUSS` for the real `tgauss.exe`).
 - The **executable path**, when a real runner is used.
 - The **timeout**.
+- Where the code **runs**: a new temporary directory, deleted after the run (since `v0.87.0`; earlier prompts showed a "Workspace parent" line, which the run never used).
 - The request's **digest** (a SHA-256 fingerprint over every field that affects execution).
 - An explicit statement that the code has **not yet run**, and that success will not prove methodological correctness.
 
@@ -37,6 +38,7 @@ Approval is bound to exactly one request, identified by its digest, and is **sin
 - Changing the code, the runner, the executable, or the timeout after approval invalidates the approval — the digest no longer matches, and execution is blocked before anything runs.
 - A decline can never later be treated as approval.
 - Once an execution attempt is actually made — success, GAUSS error, or timeout — that approval is consumed and cannot be used again. Running the same code again requires typing `run this` again and answering `yes` again, which creates a brand-new request and a brand-new approval.
+- Through the MCP server (`v0.87.0`), `gauss_execution_decide` must name the `request_id` of the prompt the answer was given to. A prompt that a later `gauss_execution_prepare` replaced can no longer be approved, and an answer without a `request_id` approves nothing.
 - Approval from a *repair* workflow, a *draft* workflow, or an *application* workflow (all pre-existing, unrelated approval stores in this repository) never counts as execution consent, and vice versa.
 
 ## What the model can and cannot do
@@ -124,6 +126,7 @@ print y;
 Runner: GAUSS
 Executable: C:\gauss26\tgauss.exe
 Timeout: 30 seconds
+Runs in: a new temporary directory, deleted after the run
 Request digest: 1991dc63b90f2a1b6e54c44afd24ac2892a15bc3679370cccd5e57668c822f04
 
 This code has not been executed.

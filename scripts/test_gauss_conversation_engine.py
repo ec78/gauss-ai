@@ -3002,6 +3002,118 @@ def test_154_v086_ask_path_symbol_check_and_gate() -> None:
             check(f"gate unchanged: {question!r}", actual == _V085_PINNED_GATE[question])
 
 
+# ---------------------------------------------------------------------------
+# v0.87.0: preconditions for `/` (live finding 77.x f1) and `eigh`/`eighv`
+# (76.x f6). Every program shape below is a real `tgauss.exe -b` spot check
+# (GAUSS 26.1.4, 2026-10-20; planning v0.87 §2.5/§2.6), cited by its ID, or
+# one of the plan's validator probes (V-rows).
+# ---------------------------------------------------------------------------
+
+_V087_RST = dict(_V086_RST, **{
+    "eye.rst": _fn_page("eye", "y = eye(n)", "    :param n: size\n    :type n: scalar\n\n",
+                        "    :return y: identity matrix\n    :rtype y: NxN matrix\n"),
+    "eigh.rst": _fn_page("eigh", "va = eigh(x)", "    :param x: data\n    :type x: NxN matrix\n\n",
+                         "    :return va: eigenvalues\n    :rtype va: Nx1 vector\n"),
+    "eighv.rst": _fn_page("eighv", "{ va, ve } = eighv(x)", "    :param x: data\n    :type x: NxN matrix\n\n",
+                          "    :return va: eigenvalues\n    :rtype va: Nx1 vector\n\n"
+                          "    :return ve: eigenvectors\n    :rtype ve: NxN matrix\n"),
+    "vcx.rst": _fn_page("vcx", "vc = vcx(x)", "    :param x: data\n    :type x: NxK matrix\n\n",
+                        "    :return vc: variance-covariance matrix\n    :rtype vc: KxK matrix\n"),
+})
+
+
+def _v087_docs_root(tmp: str) -> str:
+    root = Path(tmp) / "docs"
+    root.mkdir()
+    for name, text in _V087_RST.items():
+        (root / name).write_text(text, encoding="utf-8")
+    return str(root)
+
+
+def _operator_checks(result) -> list[tuple[str, str]]:
+    return [(c.precondition.symbol, c.status) for c in result.pre_execution.preconditions
+            if c.precondition.symbol in ("/", "eigh", "eighv")]
+
+
+def test_155_v087_a_literal_singular_divisor_is_no_longer_a_candidate() -> None:
+    """P2 (v0.86 §12.6) was handoff_candidate while P1 (`inv(a)`) was
+    not_ready; GAUSS fails both with G0048 (dv03, x02/x03)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v087_docs_root(tmp)
+        p2 = engine_mod.validate_code("a = {1 2, 2 4};\nxi = eye(2) / a;\nprint xi;", docs_root=root)
+        check("P2: review_required (was handoff_candidate)", p2.handoff_readiness.state == "review_required")
+        check("P2: `/` unverified, since eye(2)'s shape is not evaluated", _operator_checks(p2) == [("/", "unverified")])
+        check("P2: a runtime_dependent gap on `/`", any(
+            g.check == "precondition" and g.symbol == "/" and g.cause == "runtime_dependent"
+            for g in p2.pre_execution.coverage_gaps))
+        inline = engine_mod.validate_code("x = eye(2) / {1 2, 2 4};\nprint x;", docs_root=root)
+        check("V06/dv23: inline literal divisor, review_required", inline.handoff_readiness.state == "review_required")
+        known = engine_mod.validate_code(
+            "a = {1 2, 2 4};\nb = {1 2, 3 4};\nx = b / a;\nm = sumc(x);\nprint m;", docs_root=root)
+        check("V03/dv12: known matrix dividend, not_ready", known.handoff_readiness.state == "not_ready")
+        check("V03: the reason names `/` and G0048", any(r.startswith("/:") and "G0048" in r
+                                                       for r in known.pre_execution.unresolved_issues))
+        scalar = engine_mod.validate_code("a = {1 2, 2 4};\nx = 1 / a;\nm = sumc(x);\nprint m;", docs_root=root)
+        check("dv04: a scalar dividend divides element-wise, no `/` check", _operator_checks(scalar) == [])
+
+
+def test_156_v087_tall_and_wide_divisors_and_the_disclosed_runtime_gap() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v087_docs_root(tmp)
+        collinear = engine_mod.validate_code(
+            "X = {1 2, 2 4, 3 6};\ny = {1, 2, 3};\nb = y / X;\nm = sumc(b);\nprint m;", docs_root=root)
+        check("V04/dv06: rank-deficient tall divisor, not_ready", collinear.handoff_readiness.state == "not_ready"
+              and _operator_checks(collinear) == [("/", "violated")])
+        wide = engine_mod.validate_code(
+            "X = {1 2 3, 4 5 6};\ny = {1, 2};\nb = y / X;\nm = sumc(b);\nprint m;", docs_root=root)
+        check("dv08: wide divisor, not_ready", wide.handoff_readiness.state == "not_ready")
+        full = engine_mod.validate_code(
+            "X = {1 1, 1 2, 1 3};\ny = {1, 2, 4};\nb = y / X;\nm = sumc(b);\nprint m;", docs_root=root)
+        check("dv07: full-rank tall divisor, `/` satisfied", _operator_checks(full) == [("/", "satisfied")])
+        # Pinned so a change to it is deliberate: a runtime divisor is never
+        # checked (planning v0.87 decision 7; KNOWN_LIMITATIONS.md v0.87.0).
+        runtime = engine_mod.validate_code(
+            "X = rndn(10, 2);\nxx = X'X;\nxi = eye(2) / xx;\nprint xi;", docs_root=root)
+        check("V11: runtime divisor stays handoff_candidate (disclosed)",
+              runtime.handoff_readiness.state == "handoff_candidate" and _operator_checks(runtime) == [])
+
+
+def test_157_v087_eigh_and_eighv_require_a_symmetric_literal() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v087_docs_root(tmp)
+        lower = engine_mod.validate_code("x = {4 1, 0 3};\nva = eigh(x);\nprint va;", docs_root=root)
+        check("V08/eg01: non-symmetric eigh, not_ready (was handoff_candidate)",
+              lower.handoff_readiness.state == "not_ready" and _operator_checks(lower) == [("eigh", "violated")])
+        check("V08: the reason names the lower triangle", any(
+            r.startswith("eigh:") and "lower triangle" in r for r in lower.pre_execution.unresolved_issues))
+        vectors = engine_mod.validate_code("x = {4 1, 0 3};\n{va, ve} = eighv(x);\nprint va;", docs_root=root)
+        check("V09/eg05: non-symmetric eighv, not_ready", vectors.handoff_readiness.state == "not_ready"
+              and _operator_checks(vectors) == [("eighv", "violated")])
+        symmetric = engine_mod.validate_code("x = {4 1, 1 3};\nva = eigh(x);\nprint va;", docs_root=root)
+        check("V10/eg03: symmetric eigh stays handoff_candidate, satisfied",
+              symmetric.handoff_readiness.state == "handoff_candidate"
+              and _operator_checks(symmetric) == [("eigh", "satisfied")])
+        runtime = engine_mod.validate_code("x = rndn(20, 3);\nv = vcx(x);\nva = eigh(v);\nprint va;", docs_root=root)
+        check("eigh of a runtime value: review_required (decision 8)",
+              runtime.handoff_readiness.state == "review_required"
+              and _operator_checks(runtime) == [("eigh", "unverified")])
+
+
+def test_158_v087_gate_and_existing_preconditions_unchanged() -> None:
+    """The new preconditions are verdict evidence only: grounding and the
+    generation gate never read them, and the four v0.75.0 checkers return
+    what they always did."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v087_docs_root(tmp)
+        p1 = engine_mod.validate_code("a = {1 2, 2 4};\nxi = inv(a);\nprint xi;", docs_root=root)
+        check("P1: inv still violated, and no `/` check", [(c.precondition.symbol, c.status)
+              for c in p1.pre_execution.preconditions] == [("inv", "violated")])
+        import gauss_pre_execution_validation as validation_mod
+        check("documented_preconditions('/') stays empty", validation_mod.documented_preconditions("/") == ())
+    test_149_v085_defining_page_never_changes_the_generation_gate()
+    test_138_v083_search_candidates_never_reach_the_generation_gate()
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

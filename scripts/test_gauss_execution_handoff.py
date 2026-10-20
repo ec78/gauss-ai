@@ -603,6 +603,21 @@ def test_45_duplicate_approval_id_rejected() -> None:
         check("duplicate approval_id rejected", True)
 
 
+
+def test_46_v087_prompt_never_shows_workspace_parent_and_says_where_code_runs() -> None:
+    """v0.87.0 (live finding 77.x f3): `execute_execution_handoff` always runs
+    in a fresh `tempfile.TemporaryDirectory` and never reads
+    `workspace_parent`, so the prompt no longer prints it, even for a request
+    built with one, and always says where code runs. The field and its
+    digest position are unchanged (test_06's mutation check still holds)."""
+    with_parent = handoff.render_execution_handoff_prompt(_make_request(workspace_parent="C:/workspaces"))
+    without = handoff.render_execution_handoff_prompt(_make_request())
+    for label, rendered in (("with a workspace parent", with_parent), ("without", without)):
+        check(f"{label}: no Workspace parent line", "Workspace parent" not in rendered and "C:/workspaces" not in rendered)
+        check(f"{label}: Runs in line", f"Runs in: {handoff.HANDOFF_WORKING_DIRECTORY_DESCRIPTION}" in rendered)
+    check("the description says the directory is temporary and deleted",
+          handoff.HANDOFF_WORKING_DIRECTORY_DESCRIPTION == "a new temporary directory, deleted after the run")
+
 def _run_all() -> int:
     test_fns = [obj for name, obj in sorted(globals().items()) if name.startswith("test_") and callable(obj)]
     for fn in test_fns:

@@ -1770,6 +1770,9 @@ def validate_generated_code(
         cleaned_block = _strip_comments_for_analysis(block)
         for call in validation_mod.extract_generated_calls(cleaned_block):
             precondition_checks.extend(validation_mod.check_preconditions(call, code=cleaned_block))
+        # v0.87.0 (live finding 77.x f1): `/` solves like `inv`, but is never
+        # a call -- its literal-divisor check (planning v0.87 §3.5).
+        precondition_checks.extend(validation_mod.check_operator_preconditions(cleaned_block))
 
     # v0.75.0 Phase 5/6: parameter-role/type validation -- positional,
     # against whatever documented parameter metadata

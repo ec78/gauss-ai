@@ -1547,6 +1547,36 @@ _PRECONDITION_INDEX: dict[str, tuple[DocumentedPrecondition, ...]] = {
             ),
         ),
     ),
+    # v0.87.0 (live finding 76.x f6): eigh/eighv document a symmetric input
+    # but not what happens without one. Real `tgauss.exe -b` spot checks
+    # (GAUSS 26.1.4, 2026-10-20, planning v0.87 §2.6) show they read ONLY the
+    # lower triangle and return the eigenvalues of that triangle's
+    # reflection, with no error -- the same silent class as invpd's own
+    # documented "(erroneously) appear to operate successfully" case.
+    "eigh": (
+        DocumentedPrecondition(
+            symbol="eigh", kind=PreconditionKind.PROPERTY.value, machine_checkable=True,
+            source="eigh.rst",
+            description=(
+                'eigh.rst: "Computes the eigenvalues of a complex hermitian or real symmetric matrix." '
+                '":type x: NxN matrix or KxNxN array". Spot checks (planning v0.87 §2.6): eigh({4 1, 0 3}) '
+                "prints 3 4, the eigenvalues of the lower triangle's reflection, while eig gives 4 3 (eg01, "
+                "eg06); eg02/eg03 and the 3x3 eg08 agree; a non-square input fails with G0150 (eg07). "
+                "Checked with invpd's own square/symmetry tests (see check_symmetric_eigen_precondition(...))."
+            ),
+        ),
+    ),
+    "eighv": (
+        DocumentedPrecondition(
+            symbol="eighv", kind=PreconditionKind.PROPERTY.value, machine_checkable=True,
+            source="eighv.rst",
+            description=(
+                'eighv.rst: "Computes eigenvalues and eigenvectors of a complex hermitian or real symmetric '
+                'matrix." Spot check eg05 (planning v0.87 §2.6): {va, ve} = eighv({4 1, 0 3}) gives va = 3 4, '
+                "the same lower-triangle behavior as eigh. Checked the same way as eigh."
+            ),
+        ),
+    ),
 }
 
 
@@ -1895,6 +1925,34 @@ def check_chol_precondition(call: GeneratedCall, *, code: str) -> PreconditionCh
     return _check_upper_triangle_positive_definite(call, precondition=_PRECONDITION_INDEX["chol"][0], code=code)
 
 
+def check_symmetric_eigen_precondition(call: GeneratedCall, *, code: str) -> PreconditionCheck:
+    """v0.87.0 (live finding 76.x f6): `eigh`/`eighv`. Uses the same
+    `_is_square`/`_is_symmetric` tests as `check_invpd_precondition(...)`
+    (which is unchanged). A runtime input is UNVERIFIED, exactly as for
+    `invpd` (planning v0.87 decision 8): the failure this guards against is
+    silent, so an input that cannot be checked is not assumed symmetric."""
+    precondition = _PRECONDITION_INDEX[call.symbol.lower()][0]
+    rows, reason = _literal_matrix_for_precondition_argument(call, argument_index=precondition.argument_index, code=code)
+    if rows is None:
+        return PreconditionCheck(precondition, PreconditionStatus.UNVERIFIED.value, reason)
+    if not _is_square(rows):
+        return PreconditionCheck(
+            precondition, PreconditionStatus.VIOLATED.value,
+            f"the literal input matrix is not square ({precondition.symbol} requires an NxN matrix; GAUSS stops "
+            "with G0150)",
+        )
+    if not _is_symmetric(rows):
+        return PreconditionCheck(
+            precondition, PreconditionStatus.VIOLATED.value,
+            f"the literal input matrix is not symmetric; {precondition.symbol} reads only its lower triangle and "
+            "would silently return the eigenvalues of a different matrix (use eig for a general matrix)",
+        )
+    return PreconditionCheck(
+        precondition, PreconditionStatus.SATISFIED.value,
+        "the literal input matrix is square and symmetric",
+    )
+
+
 #: v0.75.0: dispatch from symbol to its deterministic checker -- every entry
 #: here must have a matching `machine_checkable=True` entry in
 #: `_PRECONDITION_INDEX`; `check_preconditions(...)` never calls a checker
@@ -1904,6 +1962,8 @@ _PRECONDITION_CHECKERS: dict[str, "Callable[[GeneratedCall], PreconditionCheck]"
     "inv": check_inv_precondition,
     "solpd": check_solpd_precondition,
     "chol": check_chol_precondition,
+    "eigh": check_symmetric_eigen_precondition,
+    "eighv": check_symmetric_eigen_precondition,
 }
 
 
@@ -1921,6 +1981,193 @@ def check_preconditions(call: GeneratedCall, *, code: str) -> tuple[Precondition
             checks.append(PreconditionCheck(
                 precondition, PreconditionStatus.UNVERIFIED.value,
                 "no deterministic validator is implemented for this precondition in this version",
+            ))
+    return tuple(checks)
+
+
+# ---------------------------------------------------------------------------
+# v0.87.0: the `/` operator (live finding 77.x f1)
+#
+# `check_preconditions(...)` runs only for extracted CALLS, so `eye(2) / a`
+# skipped the check `inv(a)` gets: a literal singular matrix was not_ready
+# through `inv` and handoff_candidate through `/` (77.17, probes P1/P2).
+# Real `tgauss.exe -b` spot checks (GAUSS 26.1.4, 2026-10-20, planning v0.87
+# §2.5, the dv series) establish what `/` does:
+#   - it solves only when BOTH operands are non-scalar (dv01, dv07); a
+#     scalar on either side divides element-wise, even a scalar a call
+#     returns (dv04, dv05, dv25, dv26), and element-wise division by zero
+#     gives +INF without error (dv09);
+#   - a singular square divisor fails with G0048 (dv02, dv03, dv12, dv22,
+#     dv23); a rank-deficient tall divisor (dv06, dv20, dv32) and any wide
+#     divisor (dv08) fail with G0121, although matrix-division.rst says the
+#     solve uses QR;
+#   - `/` and `*` associate left (dv15), `'` binds first (dv16), `+` binds
+#     after (dv19).
+# So whether `eye(2) / a` fails depends on the dividend's shape, which is
+# never evaluated here. Only a LITERAL divisor is checked (planning v0.87
+# decision 7): a runtime divisor would be unverifiable at all 496 docs
+# occurrences, including every `s / n` scalar division, and gets no check
+# (disclosed in KNOWN_LIMITATIONS.md).
+# ---------------------------------------------------------------------------
+
+#: Not call-keyed, so deliberately outside `_PRECONDITION_INDEX` /
+#: `_PRECONDITION_CHECKERS`; `documented_preconditions("/")` stays empty.
+_OPERATOR_PRECONDITIONS: dict[str, DocumentedPrecondition] = {
+    "/": DocumentedPrecondition(
+        symbol="/", kind=PreconditionKind.PROPERTY.value, machine_checkable=True,
+        source="user-guide/fundamentals/operators.rst; matrix-division.rst",
+        description=(
+            'user-guide/fundamentals/operators.rst: "A / B is equivalent to inv(B) * A. If either operand is a '
+            'scalar, performs element-wise division instead." matrix-division.rst: "Computes the least squares '
+            'solution to a system of equations, or performs scalar division"; Remarks: "computes the least '
+            'squares solution using QR decomposition." Spot checks (planning v0.87 §2.5): a singular square '
+            "divisor fails with G0048 (dv02, dv03, dv12, dv22, dv23); a rank-deficient tall or any wide divisor "
+            "fails with G0121 (dv06, dv08, dv20, dv32), not with a QR result; a scalar operand divides "
+            "element-wise (dv04, dv25, dv26). Checked only for a literal divisor (see "
+            "check_operator_preconditions(...))."
+        ),
+    ),
+}
+
+_DIVISION_OPERATOR_RE = re.compile(r"(?<![./*])/(?![/*])")
+_OPERAND_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*'?")
+_OPERAND_NUMBER_RE = re.compile(r"(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
+#: What may follow a divisor for it to be the WHOLE divisor: a token that
+#: binds no tighter than `/`. `*` (dv15), `+` (dv19) and the statement end
+#: are spot-checked; `-`, `~`, `|`, `)`, `,`, `]` and relational/word
+#: operators bind looser still. Anything else (`^`, `[`, `(`, `.`, `!`,
+#: `.*`, `./`, `*~`, `%`) leaves the divisor an expression: no check.
+_DIVISOR_END_RE = re.compile(
+    r"\s*(?:$|[;),\]+\-~|<>]|\*(?!~)|/(?![/*])|==|!=|\.(?:==|!=|<|>)"
+    r"|\.?(?:eq|ne|lt|le|gt|ge|and|or|xor|eqv)(?![A-Za-z0-9_]))",
+    re.IGNORECASE,
+)
+#: What may precede a dividend for it to be the WHOLE dividend: a token that
+#: binds looser than `/`, or the statement start.
+_DIVIDEND_START_CHARS = frozenset("=(,+-~|;")
+
+
+def _transpose(rows: list[list[float]]) -> list[list[float]]:
+    return [list(column) for column in zip(*rows)]
+
+
+def _division_divisor(lexed: LexedSource, code: str, slash: int) -> list[list[float]] | None:
+    """The divisor's literal value, or `None` when it is not a whole literal
+    or a name traced to one (a runtime value, an expression, or too large to
+    check)."""
+    masked = lexed.masked_view
+    start = slash + 1
+    while start < len(masked) and masked[start] in " \t\r\n":
+        start += 1
+    if start < len(masked) and masked[start] == "{":
+        close = _find_matching_brace(masked, start)
+        if close is None:
+            return None
+        token, end, transposed = lexed.code_view[start:close + 1], close + 1, False
+    else:
+        match = _OPERAND_NAME_RE.match(masked, start)
+        if match is None:
+            return None
+        token, end = match.group(0), match.end()
+        transposed = token.endswith("'")
+    if not _DIVISOR_END_RE.match(masked, end):
+        return None
+    line_number, column = lexed.position(slash)
+    rows = _find_literal_matrix_for_argument(token, code=code, line_number=line_number, column=column)
+    if rows is None or len(rows) > MAX_CHECKED_MATRIX_DIM or len(rows[0]) > MAX_CHECKED_MATRIX_DIM:
+        return None
+    return _transpose(rows) if transposed else rows
+
+
+def _division_dividend_shape(lexed: LexedSource, code: str, slash: int) -> str:
+    """`"scalar"`, `"matrix"` or `"unknown"`. Only a whole operand -- a
+    number, or a name traced to a literal -- has a known shape; a call
+    result (`eye(2)`, `eye(1)`: dv26), a product or an untraced name is
+    unknown, since expressions are never evaluated."""
+    before = lexed.masked_view[:slash].rstrip()
+    match = re.search(r"(?<![A-Za-z0-9_.])(?:[A-Za-z_][A-Za-z0-9_]*'?|(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)$", before)
+    if match is None:
+        return "unknown"
+    preceding = before[:match.start()].rstrip()
+    if preceding and preceding[-1] not in _DIVIDEND_START_CHARS:
+        return "unknown"
+    token = match.group(0)
+    if _OPERAND_NUMBER_RE.fullmatch(token):
+        return "scalar"
+    line_number, column = lexed.position(slash)
+    rhs = _governing_assignment(token.rstrip("'"), code=code, line_number=line_number, column=column)
+    if rhs is None:
+        return "unknown"
+    if re.fullmatch(r"-?\s*" + _OPERAND_NUMBER_RE.pattern, rhs):
+        return "scalar"  # dv25: `s = 3; x = s / a;` divides element-wise
+    if rhs.startswith("{") and rhs.endswith("}"):
+        rows = _parse_literal_matrix(rhs)
+        if rows is not None:
+            return "scalar" if len(rows) == 1 and len(rows[0]) == 1 else "matrix"
+    return "unknown"
+
+
+def _division_failure(rows: list[list[float]]) -> str | None:
+    """Why GAUSS's solve fails for this divisor, or `None` if it solves.
+    Uses the same exact determinant and tolerance as the `inv` check, so the
+    two spellings agree (including on dv10's disclosed false violation)."""
+    m, k = len(rows), len(rows[0])
+    if m == k:
+        if abs(_determinant(rows)) <= _SINGULAR_DETERMINANT_TOLERANCE:
+            return "the literal divisor is a singular square matrix (zero determinant); GAUSS stops with G0048"
+        return None
+    if m < k:
+        return (
+            f"the literal divisor is {m}x{k}, wider than it is tall, so its cross-product is singular; GAUSS "
+            "stops with G0121"
+        )
+    gram = [[sum(rows[r][i] * rows[r][j] for r in range(m)) for j in range(k)] for i in range(k)]
+    if abs(_determinant(gram)) <= _SINGULAR_DETERMINANT_TOLERANCE:
+        return (
+            f"the literal divisor is {m}x{k} with linearly dependent columns; GAUSS's least-squares solve stops "
+            "with G0121"
+        )
+    return None
+
+
+def check_operator_preconditions(code: str) -> tuple[PreconditionCheck, ...]:
+    """v0.87.0: one `PreconditionCheck` per `/` whose divisor is a literal
+    matrix (inline or traced) and whose outcome the dividend's shape decides
+    (planning v0.87 §3.5):
+
+    | divisor \\ dividend | scalar   | matrix    | unknown    |
+    |---------------------|----------|-----------|------------|
+    | runtime / 1x1       | -        | -         | -          |
+    | solves              | -        | SATISFIED | -          |
+    | fails               | -        | VIOLATED  | UNVERIFIED |
+
+    Reads the masked view, so `/` inside a string or comment is never seen;
+    `./` (element-wise, dv31) is skipped. Never evaluates an expression."""
+    precondition = _OPERATOR_PRECONDITIONS["/"]
+    lexed = lex_gauss_source(code)
+    checks: list[PreconditionCheck] = []
+    for match in _DIVISION_OPERATOR_RE.finditer(lexed.masked_view):
+        slash = match.start()
+        rows = _division_divisor(lexed, code, slash)
+        if rows is None or (len(rows) == 1 and len(rows[0]) == 1):
+            continue
+        dividend = _division_dividend_shape(lexed, code, slash)
+        if dividend == "scalar":
+            continue
+        failure = _division_failure(rows)
+        if dividend == "matrix":
+            if failure is not None:
+                checks.append(PreconditionCheck(precondition, PreconditionStatus.VIOLATED.value, failure))
+            else:
+                checks.append(PreconditionCheck(
+                    precondition, PreconditionStatus.SATISFIED.value,
+                    "the literal divisor has full column rank, so GAUSS's solve succeeds",
+                ))
+        elif failure is not None:
+            checks.append(PreconditionCheck(
+                precondition, PreconditionStatus.UNVERIFIED.value,
+                f"if the dividend is a matrix, {failure}; if it is a scalar, GAUSS divides element-wise "
+                "instead (the dividend's shape is not evaluated)",
             ))
     return tuple(checks)
 

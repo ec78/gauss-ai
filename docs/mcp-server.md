@@ -34,7 +34,7 @@ This repository also ships a project-scoped `.mcp.json` and a Claude Code plugin
 2. `gauss_search_docs` to look up the functions you need
 3. write the code
 4. `gauss_validate_code`
-5. if eligible: `gauss_execution_prepare(validation_id)` → the user's own yes/no → `gauss_execution_decide`
+5. if eligible: `gauss_execution_prepare(validation_id)` → show the user the prompt → the user's own yes/no → `gauss_execution_decide(session_id, response_text, request_id)`, with the `request_id` prepare returned alongside that prompt
 
 The code comes from the client; the readiness verdict is always computed by `gauss-ai`.
 
@@ -44,12 +44,12 @@ The code comes from the client; the readiness verdict is always computed by `gau
 
 | Tool | Purpose |
 | --- | --- |
-| `gauss_session_start` | Starts a session. Optional `runner`, `gauss_executable`, `workspace_parent`, `timeout_seconds`, `docs_root`, `session_id`; anything omitted resolves like the CLI (environment variable, then `gauss-ai config`, then a safe default). |
+| `gauss_session_start` | Starts a session. Optional `runner`, `gauss_executable`, `workspace_parent`, `timeout_seconds`, `docs_root`, `session_id`; anything omitted resolves like the CLI (environment variable, then `gauss-ai config`, then a safe default). Returns `real_gauss_allowed` (whether the server operator enabled real GAUSS; see below), plus an `execution_hint` when `runner` is `gauss` and it is not enabled. |
 | `gauss_session_close` | Ends a session. |
 | `gauss_search_docs` | Returns official-documentation excerpts (and verified error-catalog entries for codes like `G0025`) for a question or function names. When nothing is grounded but pages look relevant, it also lists labeled `candidates` (page, symbols, Purpose sentence); a candidate is not a grounded answer, so search its name to read the page. Local and read-only. |
 | `gauss_validate_code` | Deterministic verdict on raw GAUSS code: documented call signatures, documented preconditions (e.g. `invpd` needs a symmetric positive-definite matrix), syntax, unknown (possibly hallucinated) functions, and system-touching statements. Code that reaches `handoff_candidate` gets a single-use `validation_id`. Otherwise the reasons name the cause, and `coverage_gaps` lists each missing piece of evidence (symbol, argument, parameter, cause). |
-| `gauss_execution_prepare` | Step 1 of execution. Takes a `validation_id` (hybrid) or nothing (strict: the last chat answer). Never accepts code directly. The stored code is re-validated first, and refused with `validation_stale` if the docs changed underneath it. Returns the exact code and a digest for the human to review. |
-| `gauss_execution_decide` | Step 2. Takes the human's own raw `yes`/`no`; anything else is `unrecognized` and approves nothing. On approval, runs the existing GAUSS execution adapter exactly once. |
+| `gauss_execution_prepare` | Step 1 of execution. Takes a `validation_id` (hybrid) or nothing (strict: the last chat answer). Never accepts code directly. The stored code is re-validated first, and refused with `validation_stale` if the docs changed underneath it. Returns the exact code, a digest and a `request_id`. Preparing again while a request is pending replaces it and says so (`replaced_request_id`). A `validation_id` is spent only by a prepare that returns a prompt; a refusal (`real_gauss_not_allowed`, `validation_stale`, `request_rejected`) leaves it usable. |
+| `gauss_execution_decide` | Step 2. Takes the human's own raw `yes`/`no` and the `request_id` of the prompt they answered. A missing `request_id` (`request_id_required`), a replaced prompt (`request_superseded`) or any other id (`request_not_pending`) approves nothing. Anything but yes/no is `unrecognized`, approves nothing and keeps the request pending. On approval, runs the existing GAUSS execution adapter exactly once. Every outcome echoes `request_id` and `request_digest`. |
 | `gauss_repair_start` / `gauss_repair_command` / `gauss_repair_close` | Drive the guided repair pipeline one REPL command per call (`workspace create`, `request`, `plan`, `confirm <hash>`, `execute`, `diagnose`, `repair-plan`, `approve-repair <digest>`, ...), identical to `gauss-ai repl`. |
 | `gauss_chat_ask` / `gauss_chat_reset` | Strict mode only (see above). |
 
@@ -76,7 +76,7 @@ The handoff is for self-contained snippets that compute in memory. Work with rea
 
 ## Real GAUSS needs an extra opt-in
 
-A `runner="gauss"` request is refused unless the server process itself was started with `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1`. That gate is controlled only by whoever launches the server, and it comes on top of the per-request approval. It never bypasses the execution adapter's own checks: a nonexistent executable still never launches.
+A `runner="gauss"` request is refused unless the server process itself was started with `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1`. That gate is controlled only by whoever launches the server, and it comes on top of the per-request approval. It never bypasses the execution adapter's own checks: a nonexistent executable still never launches. `gauss_session_start` reports the opt-in as `real_gauss_allowed`; that says only that the operator enabled it, not that the executable runs.
 
 ## Session model
 

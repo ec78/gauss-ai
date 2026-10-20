@@ -2,6 +2,20 @@
 
 See also [docs/known-alpha-limitations.md](docs/known-alpha-limitations.md) for a shorter, tester-facing summary of current-phase limitations.
 
+`v0.87.0` binds `gauss_execution_decide` to the `request_id` of the prompt the user answered, keeps a refused prepare from spending its `validation_id`, reports the real-GAUSS opt-in in `gauss_session_start`, replaces the prompt's unused "Workspace parent" line, checks the `/` operator's literal divisor and requires a symmetric `eigh`/`eighv` input. This fixes live findings 77.x 1-3 and 76.x 2, 3 and 6. Limitations:
+- **The binding is client-mediated.** The server checks that the client names the pending prompt's `request_id`; it cannot check that the user saw that prompt, or that the client relays the reply faithfully. Only one request is pending per session: a prompt a later prepare replaced cannot be approved, and the client must prepare again.
+- **A client that does not send `request_id` cannot run code.** Some clients keep stale tool descriptions (see v0.80.0 below); such a client gets `request_id_required`, which says what to send.
+- **A refused `validation_id` stays until evicted** (8 per session). A stale one keeps failing on resubmission, since re-validation is deterministic.
+- **`real_gauss_allowed: true` does not mean GAUSS launches.** It reports the operator's opt-in only; a missing or wrong executable is found by the execution adapter at run time.
+- **`/` is checked only for a literal divisor.**
+  - A runtime divisor is never checked, unlike `inv(x)`, which is `review_required`. So `xxi = eye(k) / xx;` (77.17) is `HANDOFF_CANDIDATE` while `xxi = inv(xx);` is not. Checking runtime divisors would have flagged every `s / n` scalar division (496 occurrences in the docs), because the validator cannot tell a scalar from a matrix. GAUSS fails a singular solve loudly (`G0048`/`G0121`), and the handoff reports it.
+  - With a dividend whose shape is unknown (`eye(2) / a`), a failing literal divisor is `review_required`, not `not_ready`, because a scalar dividend divides element-wise (`eye(1) / a` runs).
+  - Parenthesized (`(a)`) and indexed (`a[1:2, 1:2]`) divisors, and row conformability (`G0036`), are not checked.
+- **`trap 1` is not modelled.** Under it, a singular `/` or `inv` returns a missing value silently instead of stopping. This was already true for `inv`.
+- **The singularity bound is an absolute 1e-9 on the determinant.** `inv({1 0, 0 1e-10})` and the same `/` are reported as violations, but GAUSS 26.1.4 inverts that matrix (it fails at 1e-17). GAUSS's threshold is not documented.
+- **`eigh`/`eighv` of a runtime value is `review_required`,** including `eigh(x'x)`, which is always symmetric, because expressions are never evaluated.
+- **The docs and GAUSS disagree on `/`.** `matrix-division.rst` says the solve uses QR; GAUSS 26.1.4 fails a rank-deficient divisor with `G0121 Matrix not positive definite`. The rule follows GAUSS.
+
 `v0.86.0` accepts brace literals assigned to structure members, reads GAUSS's word operators as operators, and checks structure definitions with their own spot-checked member grammar, instead of as matrix literals. This fixes live findings 75.8/75.18, 75.19 and 75.20, and flags `pp->x = {…}`, which real GAUSS rejects. Limitations, including the 75.x findings deliberately left for later:
 - **Structure types are not modelled.** These fail when run, and the handoff reports them honestly:
   - a brace literal assigned to a `scalar` member (`G0071 Type mismatch`);

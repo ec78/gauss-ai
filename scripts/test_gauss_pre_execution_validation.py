@@ -2733,6 +2733,130 @@ def test_179_v086_rule_provenance() -> None:
     check("literal rule points at the definition rule", "struct_definition_shape" in literal.description)
 
 
+# ---------------------------------------------------------------------------
+# v0.87.0: the `/` operator (live finding 77.x f1) and `eigh`/`eighv`
+# symmetry (76.x f6). Every program below is a real `tgauss.exe -b` spot
+# check (GAUSS 26.1.4, 2026-10-20; planning v0.87 §2.5/§2.6), cited by its ID.
+# ---------------------------------------------------------------------------
+
+_SINGULAR = "a = {1 2, 2 4};\n"
+
+#: ID -> (program, expected `/` statuses). GAUSS's own result is in the
+#: comment: G0048/G0121 fail, "solves"/"element-wise" run.
+_V087_DIVISION_ROWS = {
+    "dv01": ("a = {1 2, 3 4};\nb = {5, 11};\nx = b / a;", ["satisfied"]),  # solves
+    "dv02": (_SINGULAR + "b = {1, 2};\nx = b / a;", ["violated"]),  # G0048
+    "dv03": (_SINGULAR + "x = eye(2) / a;", ["unverified"]),  # G0048; eye(2)'s shape not evaluated
+    "dv04": (_SINGULAR + "x = 1 / a;", []),  # element-wise
+    "dv05": (_SINGULAR + "x = a / 2;", []),  # element-wise
+    "dv06": ("X = {1 2, 2 4, 3 6};\ny = {1, 2, 3};\nb = y / X;", ["violated"]),  # G0121
+    "dv07": ("X = {1 1, 1 2, 1 3};\ny = {1, 2, 4};\nb = y / X;", ["satisfied"]),  # least squares
+    "dv08": ("X = {1 2 3, 4 5 6};\ny = {1, 2};\nb = y / X;", ["violated"]),  # G0121
+    "dv12": (_SINGULAR + "b = {1 2, 3 4};\nx = b / a;", ["violated"]),  # G0048
+    "dv16": ("a = {1 2, 3 4};\nx = eye(2) / a';", []),  # solves; call dividend
+    "dv19": (_SINGULAR + "x = eye(2) / a + 1;", ["unverified"]),  # G0048: `+` binds after `/`
+    "dv20": ("X = {1 2, 2 4, 3 6};\ny = {1 2, 2 4, 3 6};\nb = y / X;", ["violated"]),  # G0121
+    "dv22": ("x = eye(3) / {1 2 3, 4 5 6, 7 8 9};", ["unverified"]),  # G0048
+    "dv23": ("x = eye(2) / {1 2, 2 4};", ["unverified"]),  # G0048
+    "dv24": ("b = {1, 2};\nx = b / {1 2, 3 4};", ["satisfied"]),  # solves
+    "dv25": ("s = 3;\n" + _SINGULAR + "x = s / a;", []),  # element-wise
+    "dv26": (_SINGULAR + "x = eye(1) / a;", ["unverified"]),  # element-wise: eye(1) is a scalar
+    "dv27": (_SINGULAR + "x = (eye(2)) / (a);", []),  # G0048, but a parenthesized divisor is unchecked
+    "dv28": (_SINGULAR + "b = {1 2, 3 4};\nx = b / a[1:2, 1:2];", []),  # G0048, indexed: unchecked
+    "dv31": ("b = {1 2, 2 4};\nx = eye(2) ./ b;", []),  # element-wise operator
+    "dv32": ("X = {1 2, 2 4, 3 6};\ny = {1, 2, 3};\nb = y / X;\nprint \"after\";", ["violated"]),  # G0121
+}
+
+
+def test_180_v087_division_operator_follows_the_spot_checks() -> None:
+    for spot_id, (code, expected) in _V087_DIVISION_ROWS.items():
+        got = [c.status for c in validation_mod.check_operator_preconditions(code)]
+        check(f"{spot_id}: {expected}", got == expected)
+    lexical = {
+        "string": 'x = "b / a";',
+        "line comment": _SINGULAR + "x = 1; // b / a",
+        "block comment": _SINGULAR + "x = 1; /* b / a */",
+        "power binds first": _SINGULAR + "b = {1 2, 3 4};\nx = b / a ^ 2;",
+        "a call is not a divisor": _SINGULAR + "b = {1 2, 3 4};\nx = b / inv(a);",
+        "member is not a divisor": "x = eye(2) / s.a;",
+    }
+    for label, code in lexical.items():
+        check(f"no `/` check: {label}", validation_mod.check_operator_preconditions(code) == ())
+    check("`*` associates left (dv15)", [c.status for c in validation_mod.check_operator_preconditions(
+        _SINGULAR + "b = {1 2, 3 4};\nx = b / a * a;")] == ["violated"])
+    big = "a = {" + ", ".join(" ".join("1" if i == j else "0" for j in range(7)) for i in range(7)) + "};\n"
+    check("a 7x7 divisor is beyond the checked bound", validation_mod.check_operator_preconditions(
+        big + "b = a;\nx = b / a;") == ())
+    check("a later reassignment is not the divisor's value", [c.status for c in validation_mod.check_operator_preconditions(
+        _SINGULAR + "b = {1 2, 3 4};\nx = b / a;\na = {1 0, 0 1};")] == ["violated"])
+
+
+_V087_EIGEN_ROWS = {
+    "eg01": ("x = {4 1, 0 3};\nva = eigh(x);", "violated"),  # prints 3 4: the lower triangle's
+    "eg02": ("x = {4 0, 1 3};\nva = eigh(x);", "violated"),  # = eg03's answer, silently
+    "eg03": ("x = {4 1, 1 3};\nva = eigh(x);", "satisfied"),
+    "eg04": ("x = {4 0, 0 3};\nva = eigh(x);", "satisfied"),
+    "eg05": ("x = {4 1, 0 3};\n{va, ve} = eighv(x);", "violated"),
+    "eg07": ("x = {1 2 3, 4 5 6};\nva = eigh(x);", "violated"),  # G0150 Matrix not square
+    "eg08": ("x = {2 -1 0, 5 2 -1, 7 9 2};\nva = eigh(x);", "violated"),
+    "eg09": ("x = {4 1, 1.0000000001 3};\nva = eigh(x);", "satisfied"),  # inside the 1e-9 tolerance
+    # prints 2.38 4.62 (the transpose's lower triangle), not eig's 4 3:
+    # the transposed literal is just as non-symmetric
+    "eg10": ("x = {4 1, 0 3};\nva = eigh(x');", "violated"),
+    "eg10 symmetric control": ("x = {4 1, 1 3};\nva = eigh(x');", "satisfied"),
+}
+
+
+def test_181_v087_eigh_and_eighv_symmetry() -> None:
+    for spot_id, (code, expected) in _V087_EIGEN_ROWS.items():
+        calls = [c for c in validation_mod.extract_generated_calls(code) if c.symbol.lower() in ("eigh", "eighv")]
+        got = [p.status for c in calls for p in validation_mod.check_preconditions(c, code=code)]
+        check(f"{spot_id}: {expected}", got == [expected])
+    runtime = "x = rndn(4, 3);\nva = eigh(x'x);"
+    call = [c for c in validation_mod.extract_generated_calls(runtime) if c.symbol == "eigh"][0]
+    check("a runtime input is unverified (decision 8)",
+          [p.status for p in validation_mod.check_preconditions(call, code=runtime)] == ["unverified"])
+    lower = validation_mod.check_preconditions(validation_mod.extract_generated_calls(_V087_EIGEN_ROWS["eg01"][0])[0],
+                                               code=_V087_EIGEN_ROWS["eg01"][0])
+    check("the violation says why", "lower triangle" in lower[0].explanation)
+
+
+def test_182_v087_precondition_provenance() -> None:
+    division = validation_mod._OPERATOR_PRECONDITIONS["/"]
+    check("`/` cites its pages", "operators.rst" in division.source and "matrix-division.rst" in division.source)
+    check("`/` cites the dv series", all(f"dv{n:02d}" in division.description for n in (2, 3, 4, 6, 8, 12, 20, 22, 23, 25, 26, 32)))
+    check("`/` records the QR contradiction", "QR" in division.description and "G0121" in division.description)
+    for symbol, ids in (("eigh", ("eg01", "eg06", "eg07", "eg08")), ("eighv", ("eg05",))):
+        entry = validation_mod.documented_preconditions(symbol)
+        check(f"{symbol} registered", len(entry) == 1 and entry[0].machine_checkable)
+        if entry:
+            check(f"{symbol} cites its page", entry[0].source == f"{symbol}.rst")
+            check(f"{symbol} cites its spot checks", all(i in entry[0].description for i in ids))
+    for symbol in validation_mod._PRECONDITION_CHECKERS:
+        entries = validation_mod.documented_preconditions(symbol)
+        check(f"checker {symbol} has a machine_checkable entry", bool(entries) and entries[0].machine_checkable)
+    check("`/` is not call-keyed", validation_mod.documented_preconditions("/") == ())
+
+
+def test_183_v087_existing_checkers_unchanged() -> None:
+    rows = {
+        "inv singular": ("a = {1 2, 2 4};\nxi = inv(a);", "inv", "violated"),
+        "inv regular": ("a = {2 1, 1 2};\nxi = inv(a);", "inv", "satisfied"),
+        "invpd non-symmetric": ("a = {2 1, 0 2};\nxi = invpd(a);", "invpd", "violated"),
+        "invpd spd": ("a = {2 1, 1 2};\nxi = invpd(a);", "invpd", "satisfied"),
+        "solpd upper triangle": ("A = {2 1, 0 2};\nb = {1, 1};\nx = solpd(b, A);", "solpd", "satisfied"),
+        "chol not pd": ("a = {1 2, 2 1};\nc = chol(a);", "chol", "violated"),
+        "inv runtime": ("X = rndn(5, 2);\nxi = inv(X'X);", "inv", "unverified"),
+        # Disclosed (planning v0.87 §2.5, decision 11): GAUSS inverts this
+        # (dv10/dv11), but the absolute 1e-9 determinant bound is unchanged.
+        "inv det 1e-10": ("a = {1 0, 0 1e-10};\nxi = inv(a);", "inv", "violated"),
+    }
+    for label, (code, symbol, expected) in rows.items():
+        calls = [c for c in validation_mod.extract_generated_calls(code) if c.symbol == symbol]
+        got = [p.status for c in calls for p in validation_mod.check_preconditions(c, code=code)]
+        check(f"{label}: {expected}", got == [expected])
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

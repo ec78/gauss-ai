@@ -245,12 +245,17 @@ def _run_execution_handoff_flow(
     parse result, build the approval and execute exactly once through the
     existing `gauss_execution_adapter.GaussExecutionAdapter` (via
     `gauss_execution_handoff.execute_execution_handoff`). Never retries,
-    never repairs, never constructs a second request or approval."""
+    never repairs, never constructs a second request or approval.
+
+    v0.87.0 (live finding 77.x f3): `workspace_parent` is accepted but no
+    longer put on the request. The handoff always runs in a fresh temporary
+    directory, so the prompt showed (and the digest bound) a directory the
+    run never used; the prompt now says where code really runs."""
+    del workspace_parent  # deliberately unused; see docstring
     try:
         request = handoff_mod.create_execution_handoff_request(
             code=code, readiness_state=readiness_state, request_id=id_fn(), created_at=clock_fn(),
             runner=runner, executable_path=executable_path, timeout_seconds=timeout_seconds,
-            workspace_parent=workspace_parent,
         )
     except (handoff_mod.HandoffNotEligibleError, handoff_mod.HandoffRequestValidationError) as exc:
         print_fn(f"Cannot prepare this execution: {exc}")
