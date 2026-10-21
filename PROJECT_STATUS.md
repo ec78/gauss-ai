@@ -4,7 +4,7 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 
 ## Current Objective
 
-**v0.87.0 "Handoff Binding and Precondition Coverage" was committed, tagged and pushed on 2026-10-20** (tag `v0.87.0`, commit `4103280`; `main` pushed). No GitHub release page has been created yet; that is the user's call. Plan and record: `planning/v0.87-handoff-binding-and-precondition-coverage.md` (§1-§8 approved on 2026-10-20 with every recommendation; §9 deviations and diffs; §10 testing; 42 `tgauss.exe -b` spot checks, dv/eg series). It fixes 77.x findings 1-3 and 76.x findings 2, 3 and 6.
+**v0.87.0 "Handoff Binding and Precondition Coverage" was committed, tagged and pushed on 2026-10-20** (tag `v0.87.0`, commit `4103280`; `main` pushed). GitHub release: https://github.com/ec78/gauss-ai/releases/tag/v0.87.0. Plan and record: `planning/v0.87-handoff-binding-and-precondition-coverage.md` (§1-§8 approved on 2026-10-20 with every recommendation; §9 deviations and diffs; §10 testing; 42 `tgauss.exe -b` spot checks, dv/eg series). It fixes 77.x findings 1-3 and 76.x findings 2, 3 and 6.
 - Done:
   - `gauss_mcp_server.py`: `gauss_execution_decide(..., request_id)` refuses a missing id (`request_id_required`), a replaced prompt (`request_superseded`) or any other id (`request_not_pending`) before parsing, and echoes `request_id`/`request_digest`; prepare reports `replaced_request_id`; a refused prepare no longer spends its `validation_id`; `gauss_session_start` reports `real_gauss_allowed` (+ `execution_hint`);
   - the prompt's "Workspace parent" line is now "Runs in: a new temporary directory, deleted after the run", and neither caller puts `workspace_parent` on the request (the only change in `gauss_execution_handoff.py`);
@@ -21,7 +21,7 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
   - Findings: (1) one pending prompt per session, but sessions multiply it, so with several open prompts the client alone maps a bare reply (disclose in KL); (2) the client suggested labelled replies ("A: yes") that the parser rejects (one sentence of guidance in the decide description); (3) `eigh` of a runtime value holds back correct covariance code and steers toward `eig` (decision 8's cost, observation); (4) the no-documented-call rule was met by an incidental `ones(2,2)` call (pre-existing, observation). Known items recurred: the 1e-9 bound, runtime `/` divisors, the fifth-symbol search drop, English-word grounding.
   - Client conduct: it grepped `KNOWN_LIMITATIONS.md` and this milestone's plan and read one source file during the tasks (plan §11.7).
   - Recommendation (§11.8): v0.87.0 stays released; no dedicated binding re-run; carry findings 1-2 into the next release's KL and tool text.
-  - Not yet committed (the 78.x records).
+  - Recorded in commit `2071119` and pushed.
 - **Next:** at the user's choice, per the agreed path to MVP, v0.88.0 search/grounding recall (`planning/v0.88-search-and-grounding-recall.md`, unapproved; re-check its findings against v0.87.0 first). Do not start it until the user chooses.
 
 **v0.86.0 "Structure Members, Word Operators and Structure Definitions" was released on 2026-10-16** (https://github.com/ec78/gauss-ai/releases/tag/v0.86.0; tag `v0.86.0`, commit `5bb1eaa`): a validator-fix milestone for 75.x findings 1-3. Plan and record: `planning/v0.86-members-word-operators-struct-definitions.md` (§9-§10 implementation; §11 live evaluation 76.x; §12 live evaluation 77.x, both recorded and committed).
