@@ -22,6 +22,7 @@ if str(_SCRIPT_DIR) not in sys.path:
 
 import gauss_chat_provider as provider_mod  # noqa: E402
 import gauss_conversation_engine as engine_mod  # noqa: E402
+import command_doc_lookup as doc_lookup_mod  # noqa: E402
 
 
 _failures: list[str] = []
@@ -1154,26 +1155,33 @@ def test_83_companion_function_in_the_same_retrieved_source_is_not_a_false_posit
 
 
 def test_84_documentation_derived_index_resolves_a_phrase_not_in_curated_aliases() -> None:
-    """`corrx` is NOT in `_CONCEPT_ALIAS_INDEX` at all -- this proves the new
-    documentation-DERIVED index (built from the fixture doc's own heading +
-    Purpose text) can resolve a natural-language phrase on its own."""
+    """`corrx` is NOT in `_CONCEPT_ALIAS_INDEX` at all. Until v0.88.0 this
+    proved the documentation-DERIVED index (built from the fixture doc's own
+    heading + Purpose text) could resolve a natural-language phrase on its
+    own; since v0.88.0 (decision 1A) it proves the derived match is only a
+    labeled candidate (see the inline comment)."""
     with tempfile.TemporaryDirectory() as tmp:
         docs_root = _fixture_docs_root(tmp)
         provider = provider_mod.FakeModelProvider(canned_answer="```gauss\ny = corrx(x);\n```")
         engine = engine_mod.ConversationEngine(provider=provider, docs_root=str(docs_root))
         result = engine.ask("Write GAUSS code for the correlation between the columns of my dataset.")
-        check("resolved to corrx via the derived index", "corrx" in [s.topic for s in result.grounding_sources])
-        origins = {s.topic: s.origin for s in result.grounding_sources}
-        check("provenance is derived_from_docs, not a curated alias", origins.get("corrx") == "derived_from_docs")
-        # "dataset" is itself also attempted as a literal candidate token and
-        # honestly reported unmatched (it is not a real symbol) -- this
-        # makes the bundle PARTIALLY_GROUNDED, not GROUNDED, which is
-        # correct: only that generation was still permitted at all is
-        # actually being asserted here.
-        check(
-            "generation was permitted (FULL or SUPPORTED_ONLY)",
-            result.generation_policy in (engine_mod.GenerationPolicy.FULL.value, engine_mod.GenerationPolicy.SUPPORTED_ONLY.value),
+        # v0.88.0 (planning v0.88 §3.1, decision 1A): superseded. Derived
+        # keyword overlap grounded unrelated pages in almost every measured
+        # case (139 of 915 questions; "95th percentile of a column" ->
+        # `setColDateFormats`), so it no longer grounds at all. `corrx` is
+        # now a labeled `derived_from_docs` search candidate, and the
+        # request, naming no symbol and no curated alias, is blocked.
+        check("not grounded on corrx", "corrx" not in [s.topic for s in result.grounding_sources])
+        check("generation blocked", result.generation_policy == engine_mod.GenerationPolicy.BLOCK.value)
+        bundle = engine_mod.ground_multi(
+            "Write GAUSS code for the correlation between the columns of my dataset.", docs_root_str=str(docs_root),
         )
+        found = engine_mod.search_candidates(
+            "Write GAUSS code for the correlation between the columns of my dataset.", bundle,
+            docs_root_str=str(docs_root),
+        )
+        check("corrx listed as a derived candidate",
+              [(c.symbols, c.origin) for c in found.candidates][:1] == [(("corrx",), "derived_from_docs")])
 
 
 def test_85_documentation_derived_candidate_not_in_this_docs_root_produces_no_resolution() -> None:
@@ -2307,7 +2315,17 @@ def test_137_v083_search_candidates_are_labeled_and_ranked() -> None:
             engine_mod.MAX_SEARCH_CANDIDATES = saved
         check("cap respected and disclosed", len(capped.candidates) == 2 and capped.truncated)
 
-        ambiguous = engine_mod.ground_multi("cholesky decomposition", docs_root_str=root)
+        # v0.88.0: "cholesky decomposition" was ambiguous only through the
+        # derived-index tie, which decision 1A removed (it now grounds `chol`
+        # through a curated alias). Mode A itself is unchanged, so it is
+        # exercised with the same AMBIGUOUS resolution built directly.
+        ambiguous = engine_mod.GroundingBundle(
+            sources=(), matched_topics=(), unmatched_topics=(), ambiguous_topics=("cholesky decomposition",),
+            resolutions=(engine_mod.FunctionResolution(
+                user_phrase="cholesky decomposition", status=engine_mod.ResolutionStatus.AMBIGUOUS.value,
+                candidates=("bandchol", "chol"),
+            ),),
+        )
         found = engine_mod.search_candidates("cholesky decomposition", ambiguous, docs_root_str=root)
         check("mode A: the ambiguous resolution's pages",
               sorted(c.citation for c in found.candidates) == ["bandchol.rst", "chol.rst"])
@@ -2328,15 +2346,24 @@ def test_137_v083_search_candidates_are_labeled_and_ranked() -> None:
 #: (status, policy, matched, unmatched, ambiguous).
 _PINNED_GATE = {
     "covariance": ("ungrounded", "block", (), ("covariance",), ()),
-    "covariance estimates": ("ungrounded", "clarify", (), ("covariance", "estimates"), ("covariance estimates",)),
-    "how is covariance computed": ("grounded", "full", ("estimation-guide",), (), ()),
-    "cholesky decomposition": ("ungrounded", "clarify", (), ("cholesky", "decomposition"), ("cholesky decomposition",)),
+    # v0.88.0 (decision 1A): the derived-index tie that forced `clarify` is a
+    # candidate listing now, so the question is blocked like any question
+    # naming no symbol and no alias.
+    "covariance estimates": ("ungrounded", "block", (), ("covariance", "estimates"), ()),
+    # v0.88.0 (decision 1A): the guide page was grounded by derived keyword
+    # overlap alone; it is now a `derived_from_docs` candidate.
+    "how is covariance computed": ("ungrounded", "block", (), ("covariance", "computed"), ()),
+    # v0.88.0 (decision 4): the curated `cholesky decomposition` -> `chol`
+    # alias (chol.rst Purpose) replaces the derived chol/bandchol tie.
+    "cholesky decomposition": ("grounded", "full", ("chol",), (), ()),
     "meanc": ("grounded", "full", ("meanc",), (), ()),
     "column means": ("grounded", "full", ("meanc",), (), ()),
     "write code for the column means": ("grounded", "full", ("meanc",), (), ()),
     "zzz": ("ungrounded", "block", (), ("zzz",), ()),
     "what does G0025 mean": ("grounded", "full", ("G0025",), (), ()),
-    "positive definite banded matrix": ("grounded", "full", ("bandchol",), (), ()),
+    # v0.88.0 (decision 1A): derived keyword overlap alone no longer grounds;
+    # `bandchol` is listed as a `derived_from_docs` candidate instead.
+    "positive definite banded matrix": ("ungrounded", "block", (), ("positive", "definite", "banded"), ()),
 }
 
 
@@ -3112,6 +3139,333 @@ def test_158_v087_gate_and_existing_preconditions_unchanged() -> None:
         check("documented_preconditions('/') stays empty", validation_mod.documented_preconditions("/") == ())
     test_149_v085_defining_page_never_changes_the_generation_gate()
     test_138_v083_search_candidates_never_reach_the_generation_gate()
+
+
+# ---------------------------------------------------------------------------
+# v0.88.0: search and grounding recall (planning v0.88 §6.1). Synthetic pages
+# shaped like the published ones each finding was measured on.
+# ---------------------------------------------------------------------------
+
+
+def _v088_statement_page(name: str, purpose: str, *lines: str) -> str:
+    """A statement page like the published `run.rst`/`break.rst`: a Format
+    literal block, no `.. function::` and no `name(` call form."""
+    body = "\n".join(f"    {line}" for line in lines)
+    return (f"{name}\n{'=' * len(name)}\n\nPurpose\n----------------\n\n{purpose}\n\n"
+            f"Format\n----------------\n\n::\n\n{body}\n")
+
+
+def _v088_function_page(name: str, purpose: str, function: str) -> str:
+    return (f"{name}\n{'=' * len(name)}\n\nPurpose\n-------\n\n{purpose}\n\nFormat\n------\n"
+            f".. function:: {function}\n\n    :param x: input matrix\n    :type x: NxK matrix\n\n"
+            f"    :return y: result\n    :rtype y: NxK matrix\n")
+
+
+#: 77.3/74.18's shape: an estimator whose Inputs fill the 1,500-character
+#: bundled budget before its Outputs.
+_V088_LONG_INPUTS = "".join(
+    f"    :param p{i}: parameter number {i}, " + "described at some length, " * 6 + f"\n    :type p{i}: scalar\n\n"
+    for i in range(12)
+)
+_V088_BIGFIT_RST = (
+    "bigFit\n======\n\nPurpose\n-------\n\nEstimates a big model.\n\nFormat\n------\n"
+    f".. function:: out = bigFit(p0, p1)\n\n{_V088_LONG_INPUTS}"
+    "    :return out: an instance of a bigOut structure with members ``out.beta`` and ``out.vcov``.\n"
+    "    :rtype out: struct bigOut\n"
+)
+
+_V088_RST = {
+    # Finding 1: like the published `setColDateFormats` page, which grounded
+    # "how do I compute the 95th percentile of a column" `full`.
+    "setcoldateformats.rst": _v088_function_page(
+        "setColDateFormats", "Sets how the dates of a column are displayed when you compute or print a column.",
+        "y = setColDateFormats(x)"),
+    "dtdate.rst": _v088_function_page(
+        "dtDate", "Sets how the dates of a column are displayed when you compute or print a column.",
+        "y = dtDate(x)"),
+    # Findings 2-3 and the §3.2 aliases.
+    "quantile.rst": (
+        "quantile\n========\n\nPurpose\n-------\n\nComputes quantiles from a matrix, given specified "
+        "probabilities.\n\nFormat\n------\n.. function:: y = quantile(x, e)\n\n    :param x: input matrix\n"
+        "    :type x: NxK matrix\n\n    :param e: quantile levels or probabilities.\n    :type e: Lx1 vector\n\n"
+        "    :return y: quantiles.\n    :rtype y: LxK matrix\n"
+    ),
+    "sortc.rst": _v088_function_page("sortc", "Sorts a matrix, dataframe or string array.", "y = sortc(x, c)"),
+    "sortmc.rst": _v088_function_page("sortmc", "Sorts a matrix on multiple columns.", "y = sortmc(x, v)"),
+    "for.rst": _v088_statement_page("for", "Begins a ``for`` loop.", "for i (start, stop, step);", "    ...",
+                                    "endfor;"),
+    # Finding 5.
+    "tspdlib/docs/tspdlib-landing.rst": (
+        "GAUSS Time-Series Panel Data (TSPDLIB)\n======================================\n\n"
+        "The tspdlib library provides unit root and cointegration tests.\n"
+    ),
+    "tspdlib/docs/landing-notes.rst": "Landing notes\n=============\n\nNotes about landing pages.\n",
+    # Finding 6.
+    "bigfit.rst": _V088_BIGFIT_RST,
+    # Finding 8.
+    "datalist.rst": (
+        "datalist\n========\n\nPurpose\n-------\n\nList selected variables in a data set.\n\nFormat\n------\n"
+        ".. function:: datalist dataset [[var 1 [[var 2 ...]]]]\n\nGlobal Input\n------------\n\n"
+        # Like the published page, whose `.. data::` directives are what make
+        # `data` score 150 on it.
+        ".. data:: __range\n\n    scalar, the range of rows to list.\n"
+    ),
+    # Finding 9.
+    "run.rst": _v088_statement_page("run", "Runs a source code or compiled code program.", "run filename;"),
+    "break.rst": _v088_statement_page("break", "Breaks out of a loop.", "break;"),
+    "rndseed.rst": _v088_statement_page("rndseed", "Sets the seed of the random number generator.", "rndseed seed;"),
+    "rndn.rst": _v088_function_page("rndn", "Creates a matrix of standard normal random numbers.", "y = rndn(r, c)"),
+    "meanc.rst": _v088_function_page("meanc", "Computes the mean of every column of a matrix.", "y = meanc(x)"),
+    "stdc.rst": _v088_function_page("stdc", "Computes the standard deviation of every column.", "y = stdc(x)"),
+    "rows.rst": _v088_function_page("rows", "Returns the number of rows in a matrix.", "y = rows(x)"),
+    "cols.rst": _v088_function_page("cols", "Returns the number of columns in a matrix.", "y = cols(x)"),
+    "diag.rst": _v088_function_page("diag", "Creates a column vector from the diagonal of a matrix.", "y = diag(x)"),
+    "sqrt.rst": _v088_function_page("sqrt", "Computes the square root of every element.", "y = sqrt(x)"),
+    # Finding 11: like the published combined page.
+    "invinvpd.rst": (
+        "inv, invpd\n==========\n\nPurpose\n-------\n\ninv returns the inverse of an invertible matrix. invpd returns "
+        "the inverse of a symmetric, positive definite matrix.\n\nFormat\n------\n.. function:: xi = inv(x)\n"
+        "              xi = invpd(x)\n\n    :param x: square matrix\n    :type x: NxN matrix\n\n"
+        "    :return xi: the inverse\n    :rtype xi: NxN matrix\n"
+    ),
+    # Finding 10: toctree navigation, no Purpose or Format.
+    "index.rst": "GAUSS Help\n==========\n\n.. toctree::\n   :maxdepth: 1\n\n   meanc\n   rows\n",
+}
+
+
+def _v088_docs_root(tmp: str, pages: dict | None = None) -> str:
+    root = Path(tmp) / "docs"
+    for name, text in (pages if pages is not None else _V088_RST).items():
+        (root / name).parent.mkdir(parents=True, exist_ok=True)
+        (root / name).write_text(text, encoding="utf-8")
+    return str(root)
+
+
+def _v088_gate(question: str, root: str, **kwargs) -> tuple:
+    bundle = engine_mod.ground_multi(question, docs_root_str=root, **kwargs)
+    gate = engine_mod.compute_generation_gate(bundle)
+    return bundle, gate
+
+
+def test_159_v088_derived_keyword_overlap_is_a_candidate_never_grounding() -> None:
+    """Finding 1 (73.x, 74.15, 75.x; decision 1A)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v088_docs_root(tmp)
+        question = "how do I compute the date of a column"
+        bundle, gate = _v088_gate(question, root)
+        check("a derived keyword page never grounds",
+              not {"setColDateFormats", "dtDate"} & set(bundle.matched_topics) and bundle.status.value == "ungrounded")
+        check("a derived tie no longer forces clarify", gate.policy == "block" and bundle.ambiguous_topics == ())
+        check("no DERIVED_FROM_DOCS source", not any(s.origin == "derived_from_docs" for s in bundle.sources))
+        found = engine_mod.search_candidates(question, bundle, docs_root_str=root)
+        derived = [c.citation for c in found.candidates if c.origin == "derived_from_docs"]
+        check("the derived pages are labeled candidates", sorted(derived) == ["dtdate.rst", "setcoldateformats.rst"])
+        check("every candidate is labeled", all(c.status == "candidate" for c in found.candidates))
+
+
+def test_160_v088_curated_aliases_resolve_and_are_verified() -> None:
+    """Findings 2-4 (73.12-73.13, 74.14-74.15, 75.x, 77.16) and §3.2."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v088_docs_root(tmp)
+        for question, symbol in (("percentile", "quantile"), ("what is the 95th percentile of x", "quantile"),
+                                 ("sort a matrix by a column", "sortc"),
+                                 ("How do I sort a matrix by its second column?", "sortc"), ("endfor", "for")):
+            bundle, gate = _v088_gate(question, root)
+            check(f"{question!r} -> {symbol}", symbol in bundle.matched_topics)
+            check(f"{question!r}: never clarify", gate.policy != "clarify")
+        bundle, _gate = _v088_gate("sort a matrix by a column", root)
+        check("sortc is an alias source citing sortc.rst",
+              [(s.topic, s.citation, s.origin) for s in bundle.sources] == [("sortc", "sortc.rst", "resolved_concept")])
+        bundle, _gate = _v088_gate("unit root test with a structural break", root)
+        check("aliases match whole words: `struct` is not in `structural`", "structures" not in bundle.matched_topics)
+
+    new_entries = [e for e in engine_mod._CONCEPT_ALIAS_INDEX if e.symbol not in ("meanc", "stdc", "vec", "inv", "tscsfit")]
+    check("every v0.88 alias carries quoted evidence", all('"' in e.evidence for e in new_entries) and len(new_entries) == 12)
+    for entry in new_entries:
+        page = (_v088_function_page(entry.symbol, "A page.", f"y = {entry.symbol}(x)") if entry.symbol.isidentifier()
+                else _v088_statement_page(entry.symbol, "An operator page.", "y = b / a"))
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _v088_docs_root(tmp, {entry.citation: page})
+            bundle, _gate = _v088_gate(entry.phrases[0], root)
+            check(f"alias {entry.phrases[0]!r} verified on {entry.citation}",
+                  [(s.topic, s.citation) for s in bundle.sources] == [(entry.symbol, entry.citation)])
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _v088_docs_root(tmp, {"meanc.rst": _V088_RST["meanc.rst"]})
+            bundle, _gate = _v088_gate(entry.phrases[0], root)
+            check(f"alias {entry.phrases[0]!r} dropped when its page is absent", entry.symbol not in bundle.matched_topics)
+
+
+def test_161_v088_a_one_word_stopword_query_is_looked_up() -> None:
+    """Finding 4 (74.x: a search for "for" returned nothing at all)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v088_docs_root(tmp)
+        for question in ("for", " for? "):
+            bundle, gate = _v088_gate(question, root)
+            check(f"{question!r} grounds for.rst", [s.citation for s in bundle.sources] == ["for.rst"] and gate.policy == "full")
+        bundle, _gate = _v088_gate("write code for the column means", root)
+        check("a multi-word question still drops `for`", "for" not in bundle.matched_topics + bundle.unmatched_topics)
+        check("and is otherwise unchanged", bundle.matched_topics == ("meanc",))
+
+
+def test_162_v088_hyphenated_page_names_open_by_name() -> None:
+    """Finding 5 (74.x: `tspdlib-landing` could not be opened by name)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v088_docs_root(tmp)
+        bundle, gate = _v088_gate("tspdlib-landing", root)
+        check("the hyphenated page opens", [s.citation for s in bundle.sources] == ["tspdlib/docs/tspdlib-landing.rst"]
+              and gate.policy == "full")
+        tokens = engine_mod._candidate_tokens("show the tspdlib-landing page", docs_root=Path(root))
+        check("kept whole inside a question", "tspdlib-landing" in tokens and "landing" not in tokens)
+        check("no page with that stem: split as before",
+              engine_mod._candidate_tokens("a cross-section regression", docs_root=Path(root)) == ["cross", "section", "regression"])
+
+
+def test_163_v088_excerpts_keep_outputs() -> None:
+    """Finding 6 (74.16, 74.18, 77.3: 33 symbols never showed Outputs)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v088_docs_root(tmp)
+        long_match = doc_lookup_mod.lookup("bigFit", Path(root), max_results=1)["best_match"]
+        excerpt = engine_mod._format_doc_match(long_match, max_chars=engine_mod.MAX_GROUNDING_CHARS_BUNDLED)
+        check("a long page keeps Outputs", "Outputs:" in excerpt and "out.vcov" in excerpt)
+        check("within the budget", len(excerpt) <= engine_mod.MAX_GROUNDING_CHARS_BUNDLED)
+        check("Inputs shortened, ending in an ellipsis", "…\n\nOutputs:" in excerpt and "Inputs:\n" in excerpt)
+        check("section order unchanged", excerpt.index("Syntax:") < excerpt.index("Inputs:") < excerpt.index("Outputs:"))
+        short_match = doc_lookup_mod.lookup("quantile", Path(root), max_results=1)["best_match"]
+        short = engine_mod._format_doc_match(short_match, max_chars=engine_mod.MAX_GROUNDING_CHARS_BUNDLED)
+        parts = [short_match["heading"], "Syntax: " + "; ".join(short_match["syntax_blocks"]),
+                 f"Inputs:\n{short_match['inputs_section']}", f"Outputs:\n{short_match['outputs_section']}"]
+        check("a page that fits is byte-identical", short == "\n\n".join(parts))
+
+
+def test_164_v088_every_grounding_relookup_reads_the_defining_page() -> None:
+    """Finding 7 (§3.6) on v0.85's `miss` tie (74.19), where a
+    `max_results=1` lookup reads `ismiss.rst` instead of `missmissrv.rst`."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v085_docs_root(tmp)
+        legacy = engine_mod.ground("miss", docs_root_str=root)
+        check("legacy ground(): the defining page", legacy.citation == "missmissrv.rst")
+        follow_up = engine_mod.ground_multi("and now?", docs_root_str=root, recent_topics=("miss",))
+        check("recent-topic fallback: the defining page",
+              [(s.citation, s.origin) for s in follow_up.sources] == [("missmissrv.rst", "recent_topic")]
+              and follow_up.sources[0].content.splitlines()[0] == "miss, missrv")
+        saved = engine_mod._CONCEPT_ALIAS_INDEX
+        engine_mod._CONCEPT_ALIAS_INDEX = saved + (engine_mod.ConceptAliasEntry(
+            phrases=("missing value code",), symbol="miss", citation="missmissrv.rst", evidence='"test"'),)
+        try:
+            alias = engine_mod.ground_multi("a missing value code", docs_root_str=root)
+        finally:
+            engine_mod._CONCEPT_ALIAS_INDEX = saved
+        check("alias verification: the defining page",
+              [(r.resolved_symbol, r.citation) for r in alias.resolutions if r.status == "resolved"] == [("miss", "missmissrv.rst")])
+
+
+def test_165_v088_a_token_grounds_only_on_a_page_that_defines_it() -> None:
+    """Finding 8, search side (75.x, 78.7: `data` -> `datalist.rst`)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v088_docs_root(tmp)
+        bundle, gate = _v088_gate("data", root)
+        check("data does not ground on datalist.rst", bundle.sources == () and bundle.unmatched_topics == ("data",))
+        check("so the gate blocks", gate.policy == "block")
+        found = engine_mod.search_candidates("data", bundle, docs_root_str=root)
+        check("the page is still listed, labeled",
+              [(c.citation, c.origin) for c in found.candidates][:1] == [("datalist.rst", "non_defining_page")])
+        check("the page's own name still grounds", _v088_gate("datalist", root)[0].matched_topics == ("datalist",))
+        match = doc_lookup_mod.lookup("invpd", Path(root), max_results=1)["best_match"]
+        check("a heading symbol on a combined page defines it", engine_mod._page_defines("invpd", match))
+
+
+def test_166_v088_validate_code_invented_calls_are_unknown() -> None:
+    """Finding 8, verdict side (re-plan §2.8; GAUSS G0025, fn02)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v088_docs_root(tmp)
+        result = engine_mod.validate_code("y = data(x);", docs_root=root)
+        check("data(x): not_ready", result.handoff_readiness.state == "not_ready")
+        check("data is an unknown symbol", result.pre_execution.unknown_symbols == ("data",)
+              and result.unsupported_topics == ("data",) and result.grounding_sources == ())
+        valid = engine_mod.validate_code("x = { 4 1, 1 3 };\ny = invpd(x);\nprint y;", docs_root=root)
+        check("invpd on invinvpd.rst is still documented",
+              [(s.topic, s.citation) for s in valid.grounding_sources] == [("invpd", "invinvpd.rst")]
+              and valid.pre_execution.unknown_symbols == ())
+        nav = engine_mod.validate_code("y = index(x);", docs_root=root)
+        check("a navigation page documents no call", nav.pre_execution.unknown_symbols == ("index",))
+
+
+def test_167_v088_statement_pages_ground_only_when_code_marked() -> None:
+    """Finding 9 (75.x, 78.7; decision 3a)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v088_docs_root(tmp)
+        bundle, _gate = _v088_gate("Run a test with a structural break", root)
+        check("neither run nor break grounds from prose", not {"run", "break"} & set(bundle.matched_topics))
+        check("nor are they unmatched topics", not {"run", "break"} & set(bundle.unmatched_topics))
+        found = engine_mod.search_candidates("Run a test with a structural break", bundle, docs_root_str=root)
+        check("both listed as statement pages", {("run.rst", "statement_page"), ("break.rst", "statement_page")}
+              <= {(c.citation, c.origin) for c in found.candidates})
+        for question in ("break", "`break`", 'what does "break" do', "rndn rndseed meanc stdc"):
+            bundle, _gate = _v088_gate(question, root)
+            expected = {"rndseed"} if question.startswith("rndn") else {"break"}
+            check(f"code-marked: {question!r}", expected <= set(bundle.matched_topics))
+        bundle, _gate = _v088_gate("rndn rndseed meanc stdc", root)
+        check("the bare symbol list is fully grounded", bundle.status.value == "grounded" and len(bundle.sources) == 4)
+        bundle, _gate = _v088_gate("count the rows of a matrix", root)
+        check("a function page (rows) is unaffected by the statement rule", "rows" in bundle.matched_topics)
+
+
+def test_168_v088_navigation_pages_never_ground() -> None:
+    """Finding 10 (75.15: "index" grounded `full` on "GAUSS Help")."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v088_docs_root(tmp)
+        bundle, gate = _v088_gate("index", root)
+        check("index.rst never grounds", bundle.sources == () and gate.policy == "block")
+        found = engine_mod.search_candidates("index", bundle, docs_root_str=root)
+        check("it can still be listed", ("index.rst", "navigation_page") in [(c.citation, c.origin) for c in found.candidates])
+
+
+def test_169_v088_resolved_symbols_cut_by_a_bound_are_reported() -> None:
+    """Finding 11 (76.5, 77.5, 78.11; decision 9a)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v088_docs_root(tmp)
+        bundle, gate = _v088_gate("meanc stdc rows cols diag", root)
+        check("four sources", len(bundle.sources) == engine_mod.MAX_GROUNDING_SOURCES == 4)
+        check("one omitted topic", len(bundle.omitted_topics) == 1
+              and bundle.omitted_topics[0] not in bundle.matched_topics)
+        check("partially grounded, generation for the included topics", bundle.status.value == "partially_grounded"
+              and gate.policy == "supported_only" and bundle.unmatched_topics == ())
+        bundle, _gate = _v088_gate("invpd diag sqrt rows cols", root)
+        check("invpd (on invinvpd.rst) ranks with the named functions",
+              "invpd" in bundle.matched_topics and bundle.omitted_topics == ("cols",))
+        check("tier 3 is the documented-symbol set",
+              engine_mod._token_priority("invpd", question="x", docs_root=Path(root), recent_topics=()) == 3)
+
+        engine = engine_mod.ConversationEngine(
+            provider=provider_mod.FakeModelProvider(canned_answer="Here is an answer."), docs_root=root,
+        )
+        result = engine.ask("Show me how to use meanc stdc rows cols diag together.")
+        check("ask() reports the omitted topic", len(result.omitted_topics) == 1
+              and result.grounding_status == "partially_grounded")
+        import gauss_ai_chat as chat_mod
+        banner = chat_mod._render_grounding_disclosure(result)
+        check("the chat banner names it", f"`{result.omitted_topics[0]}` documented but left out" in banner)
+
+
+def test_170_v088_a_blocked_question_never_reaches_the_provider() -> None:
+    """Decision 3's cost, made safe: a plain request that used to generate
+    "grounded" on a statement page is now blocked before any provider call."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v088_docs_root(tmp)
+
+        class ExplodingProvider:
+            def complete(self, messages, *, max_tokens=1024):
+                raise AssertionError("the provider must never be called when generation is blocked")
+
+        engine = engine_mod.ConversationEngine(provider=ExplodingProvider(), docs_root=root)
+        result = engine.ask("Write GAUSS code to run a test with a structural break.")
+        check("blocked", result.generation_policy == "block" and result.generated_code == ())
+        check("nothing grounded on run.rst or break.rst", result.grounding_sources == ())
+        import inspect
+        check("ask() still never reads search candidates",
+              "search_candidates" not in inspect.getsource(engine_mod.ConversationEngine.ask))
+        check("GroundingBundle still carries no candidates field",
+              not any("candidate" in f for f in engine_mod.GroundingBundle.__dataclass_fields__))
 
 
 def run_tests() -> int:

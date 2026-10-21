@@ -81,10 +81,15 @@ def _render_grounding_disclosure(result: "engine_mod.AnswerResult") -> str:
     if result.grounding_status == "partially_grounded":
         grounded_names = ", ".join(s.topic for s in sources) if sources else "none"
         unsupported_names = ", ".join(f"`{t}`" for t in result.unsupported_topics)
-        return (
-            f"[Partially grounded: {grounded_names} documented; {unsupported_names} not found in the "
-            "configured GAUSS documentation or verified error catalog]"
-        )
+        parts = []
+        if unsupported_names:
+            parts.append(f"{unsupported_names} not found in the configured GAUSS documentation or verified error catalog")
+        # v0.88.0 (planning v0.88 §3.10): a resolved topic cut by the source
+        # bound is named, not dropped (live findings 76.5, 77.5, 78.11).
+        if result.omitted_topics:
+            omitted_names = ", ".join(f"`{t}`" for t in result.omitted_topics)
+            parts.append(f"{omitted_names} documented but left out (at most 4 sources per answer)")
+        return f"[Partially grounded: {grounded_names} documented; {'; '.join(parts)}]"
     if result.grounding_source == "uncataloged_error_code":
         return (
             f"[{result.grounding_topic} is not yet in this repository's verified error catalog -- the answer "

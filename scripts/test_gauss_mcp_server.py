@@ -687,6 +687,80 @@ def test_32_v087_wording_names_request_id() -> None:
     check("32: server instructions name request_id", "request_id" in (server_mod.server.instructions or ""))
 
 
+# ---------------------------------------------------------------------------
+# v0.88.0: search and grounding recall (planning v0.88 §6.1)
+# ---------------------------------------------------------------------------
+
+
+def _v088_page(name: str, function: str) -> str:
+    return (f"{name}\n{'=' * len(name)}\n\nPurpose\n-------\n\nA documented function.\n\nFormat\n------\n"
+            f".. function:: {function}\n\n    :param x: input matrix\n    :type x: NxK matrix\n")
+
+
+def _v088_docs_root(tmp: str) -> str:
+    root = Path(_fixture_docs_root(tmp))
+    pages = {
+        "tspdlib/docs/tspdlib-landing.rst": "GAUSS Time-Series Panel Data (TSPDLIB)\n=====\n\nThe tspdlib library.\n",
+        "for.rst": "for\n===\n\nPurpose\n----------------\n\nBegins a loop.\n\nFormat\n----------------\n\n::\n\n"
+                   "    for i (start, stop, step);\n        ...\n    endfor;\n",
+        "datalist.rst": "datalist\n========\n\nFormat\n------\n.. function:: datalist dataset [[var 1]]\n\n"
+                        "Global Input\n------------\n\n.. data:: __range\n\n    the range of rows.\n",
+        **{f"{n}.rst": _v088_page(n, f"y = {n}(x)") for n in ("meanc", "stdc", "rows", "cols", "diag")},
+    }
+    for name, text in pages.items():
+        (root / name).parent.mkdir(parents=True, exist_ok=True)
+        (root / name).write_text(text, encoding="utf-8")
+    return str(root)
+
+
+def test_33_v088_search_opens_hyphenated_and_stopword_pages() -> None:
+    """Findings 4-5 (74.x)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v088_docs_root(tmp)
+        landing = server_mod.gauss_search_docs("tspdlib-landing", docs_root=root)
+        check("33: tspdlib-landing returns its page", landing["grounding_status"] == "grounded"
+              and [s["citation"] for s in landing["sources"]] == ["tspdlib/docs/tspdlib-landing.rst"])
+        loop = server_mod.gauss_search_docs("for", docs_root=root)
+        check("33: for is grounded", loop["grounding_status"] == "grounded"
+              and [s["citation"] for s in loop["sources"]] == ["for.rst"])
+
+
+def test_34_v088_search_reports_omitted_topics() -> None:
+    """Finding 11 (76.5, 77.5, 78.11): a fifth named function was dropped."""
+    with tempfile.TemporaryDirectory() as tmp:
+        resp = server_mod.gauss_search_docs("meanc stdc rows cols diag", docs_root=_v088_docs_root(tmp))
+        check("34: four sources", len(resp["sources"]) == 4)
+        check("34: the fifth is named", len(resp.get("omitted_topics", [])) == 1
+              and resp["omitted_topics"][0] not in [s["topic"] for s in resp["sources"]])
+        check("34: with the fixed note", resp.get("omitted_note") == server_mod.OMITTED_TOPICS_NOTE
+              and "search these names separately" in server_mod.OMITTED_TOPICS_NOTE)
+        check("34: partially grounded", resp["grounding_status"] == "partially_grounded")
+        four = server_mod.gauss_search_docs("meanc stdc rows cols", docs_root=_v088_docs_root(tmp))
+        check("34: nothing omitted, no field", "omitted_topics" not in four and four["grounding_status"] == "grounded")
+
+
+def test_35_v088_validate_code_invented_call_is_not_ready() -> None:
+    """Finding 8 (re-plan §2.8): `data` used to ground on `datalist.rst`."""
+    with tempfile.TemporaryDirectory() as tmp:
+        sid = _start(tmp, docs_root=_v088_docs_root(tmp))
+        resp = server_mod.gauss_validate_code(sid, "y = data(x);")
+        check("35: not_ready", resp["handoff_readiness"]["state"] == "not_ready")
+        check("35: data is unknown", resp["unknown_symbols"] == ["data"] and resp["grounding_sources"] == [])
+        check("35: no validation_id", "validation_id" not in resp)
+        search = server_mod.gauss_search_docs("data", docs_root=_v088_docs_root(tmp))
+        check("35: search lists datalist as a non-defining candidate, not a source", search["sources"] == []
+              and ("datalist.rst", "non_defining_page") in [(c["citation"], c["origin"]) for c in search.get("candidates", [])])
+
+
+def test_36_v088_reply_guidance_in_decide_and_instructions() -> None:
+    """78.x findings 1-2 (v0.87 plan §11.8)."""
+    sentence = ("If several prompts are open, the user names the prompt in a separate message and replies with a "
+                "bare yes or no; never ask the user to label a reply.")
+    decide_doc = " ".join((server_mod.gauss_execution_decide.__doc__ or "").split())
+    check("36: decide description", sentence in decide_doc)
+    check("36: server instructions", sentence in (server_mod.server.instructions or ""))
+
+
 def _run_all() -> int:
     test_fns = [obj for name, obj in sorted(globals().items()) if name.startswith("test_") and callable(obj)]
     for fn in test_fns:

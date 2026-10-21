@@ -4,6 +4,38 @@ This file records notable changes to the GAUSS AI framework.
 
 ## [Unreleased]
 
+- Added `v0.88.0` Search and Grounding Recall. It fixes the search and grounding findings from live evaluations 73.x-78.x, and one verdict defect found while re-planning. **This release deliberately changes the `ask()` generation gate** (gate diff below).
+- **Changed (73.x, 74.15, 75.x): documentation-derived keyword overlap no longer grounds.** "how do I compute the 95th percentile of a column" grounded `full` on `setColDateFormats`. Over 915 questions, 139 got a derived source, almost all unrelated, and 35 were forced to `clarify` by a derived tie. Derived matches are now labeled search candidates (`origin: "derived_from_docs"`) in `gauss_search_docs` only; they never reach `GroundingBundle` or the gate.
+- **Fixed (75.x, 78.7; re-plan §2.8): a token grounded on a page that does not define it, and an invented call counted as documented.** A page now defines a token only by its file stem, a heading symbol, or a whole word in its Format/syntax blocks (this accepts the page of all 1,794 documented symbols). In search, `data` no longer grounds on `datalist.rst`; the page is listed as a `non_defining_page` candidate. In `gauss_validate_code` and `ask()`'s post-generation check, `solve(a, b)`, `data(x)`, `row(x, 1)`, `add(x, 1)`, `element(x, 1)` and `week(x)` are now unknown functions (`not_ready`, "unresolved/unsupported call symbol(s): solve"), not `review_required`. GAUSS reports `G0025 Undefined symbol` for each (spot checks fn01-fn07).
+- **Changed (75.x, 78.7): an English word on a GAUSS statement page grounds only when it is marked as code.** `run`, `output`, `print`, `call`, `new`, `system`, `library`, `break` … were 324 sources in 285 of 915 questions ("Run a unit root test with a structural break" grounded on `run.rst` and `break.rst`). A statement page, one whose Format shows no `name(` call form, now grounds only when the query is that word, the word is in backticks or quotes, or the query is a bare list of symbols (`rndn rndseed meanc stdc`). Otherwise the page is a `statement_page` candidate.
+- **Fixed (75.15): navigation `index.rst` pages never ground.** "index" grounded `full` on "GAUSS Help". They can still be listed (`navigation_page`).
+- **Added (73.12-73.13, 74.14-74.15, 75.x, 77.16): 12 curated aliases, each with quoted `.rst` evidence:**
+  - "percentile" → `quantile`, sort-by-column phrasings → `sortc`, `endfor` → `for`;
+  - "cholesky decomposition" → `chol`, "zivot andrews" → `zandrews`, "least squares solution"/"slash operator" → `matrix-division`;
+  - "column medians" → `median`, "logistic regression" → `logisticRegFit`, "generalized method of moments" → `gmmFit`;
+  - "save a matrix" … → `save`, structure phrasings → the structures guide, "index operator" → `range-operator`.
+
+  Alias phrases now match whole words only, which loses no earlier match.
+- **Fixed (74.x): a one-word query is looked up even if it is a stopword.** A search for `for` returned nothing at all. Multi-word questions are unchanged.
+- **Fixed (74.x): a hyphenated page name opens by name** (`tspdlib-landing`) when a page with exactly that stem exists. Otherwise the word is split as before.
+- **Fixed (74.16, 74.18, 77.3): long-page excerpts lost their Outputs section.** When Outputs would be cut, Inputs is shortened (ending in "…") so the heading, syntax and Outputs fit. Symbols that never show their Outputs: 33 → 0. Pages that already fit are byte-identical.
+- **Fixed (76.5, 77.5, 78.11): a resolved symbol was silently dropped at a bound.** "invpd diag sqrt rows cols" dropped `invpd` and still said `grounded`.
+  - A symbol cut by `MAX_RESOLUTIONS` or `MAX_GROUNDING_SOURCES` is now reported in `GroundingBundle.omitted_topics`, which makes the bundle `partially_grounded`.
+  - `gauss_search_docs` returns `omitted_topics` with a note to search them separately, and `ask()` and `gauss_chat_ask` report them too.
+  - `_token_priority`'s tier 3 uses the documented-symbol set, so `invpd` (on `invinvpd.rst`) ranks with the named functions.
+  - `MAX_RESOLUTIONS` (unchanged at 4) now counts only resolved and ambiguous entries, so sentence words can no longer push an alias out. The bounds are unchanged.
+- **Changed (v0.85 §2.2): the last `max_results=1` grounding re-lookups** (`_lookup_command`, alias verification) read the defining page.
+- **Added (78.x findings 1-2): reply guidance.** `gauss_execution_decide`'s description and the server instructions: "If several prompts are open, the user names the prompt in a separate message and replies with a bare yes or no; never ask the user to label a reply." No behavior change.
+- **Gate diff (915 real-docs questions; `planning/v0.88-gate-diff.md` lists every row):**
+  - 787 tuples and 297 policies change. Policy totals: `block` 258 → 466, `supported_only` 443 → 329, `clarify` 48 → 20, `full` 166 → 100;
+  - the 33 rows that move toward generation were reviewed individually, and each grounds on the page the question names or asks about;
+  - of the rows that move away, every lost source was a sentence word on a statement page, a non-defining or navigation page, or a derived keyword page.
+- **Cost (decision 3):** strict-mode `ask()` now blocks ordinary requests that used to generate "grounded" on `print.rst`, `run.rst` or `vector.rst`. The hybrid MCP path is unaffected, since `gauss_validate_code` grounds on the code's own calls.
+- **Verdict diff against v0.87.0:** v0.87's 460 programs are identical in every field; only the invented-call probes change. Nothing newly reaches `HANDOFF_CANDIDATE`.
+- **Unchanged:** `command_doc_lookup.py` and every extraction function, `compute_generation_gate`, every validator rule, the system-statement registry, the readiness chain and the execution core (only `gauss_execution_decide`'s description text changes).
+- Deferred and disclosed: `.. include::` expansion (120 pages, about 20 with estimator control/results structures).
+- 16 new deterministic tests, all confirmed to fail against v0.87.0. `test_84`, `test_137` and four pinned `test_138` rows are updated, each with an inline comment. The full suite (48 files) and `check_release_readiness.py` pass.
+- The live client evaluation `79.x` was not run before this release.
 - Added `v0.87.0` Handoff Binding and Precondition Coverage. It fixes six small, pre-existing findings from live evaluations 76.x and 77.x. One of them concerns the consent contract itself.
 - **Fixed (77.x finding 2): a reply was not bound to the prompt the user answered.** `gauss_execution_prepare` silently replaced a pending request, and `gauss_execution_decide` took no identifier, so a "yes" after two prepares ran the second request.
   - `gauss_execution_decide(session_id, response_text, request_id)` now acts only on the pending request whose `request_id` it is given, checked before the reply is parsed. `request_id` is optional in the schema but required in effect: without it the answer is `request_id_required`, which explains what to send (some clients keep stale tool descriptions). A prompt a later prepare replaced is `request_superseded`; any other id is `request_not_pending`. None of these creates an approval or runs anything.

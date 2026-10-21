@@ -87,7 +87,7 @@ import gauss_code_assistant_cli as cli_mod
 import gauss_conversation_engine as engine_mod
 import gauss_execution_handoff as handoff_mod
 
-__version__ = "0.87.0"
+__version__ = "0.88.0"
 
 #: Set by the server OPERATOR in the process's own environment before
 #: launch -- never read from a tool-call argument. See module docstring.
@@ -97,6 +97,17 @@ ENV_ALLOW_REAL_GAUSS = "GAUSS_AI_MCP_ALLOW_REAL_GAUSS"
 MAX_VALIDATIONS_PER_SESSION = 8
 
 DOCS_FETCH_HINT = "Run 'gauss-ai docs fetch' once to download the official GAUSS documentation."
+
+#: v0.88.0 (planning v0.88 §3.10): shown with `omitted_topics`.
+OMITTED_TOPICS_NOTE = "Resolved but not included (at most 4 per search); search these names separately."
+
+#: v0.88.0 (live finding 78.x f2; planning v0.88 §3.11, v0.87 plan §11.8): 78.x's client suggested
+#: labelled replies ("A: yes") that the reply parser rejects, and with prompts open in several sessions
+#: only the client maps a bare reply to a prompt. Text only: the parser and the binding are unchanged.
+REPLY_GUIDANCE = (
+    "If several prompts are open, the user names the prompt in a separate message and replies with a bare yes "
+    "or no; never ask the user to label a reply."
+)
 
 _REAL_GAUSS_NOT_ALLOWED_DETAIL = (
     "This session is configured for runner 'gauss', but the gauss-ai-mcp server process was not "
@@ -216,6 +227,7 @@ def _answer_result_to_dict(result: "engine_mod.AnswerResult", *, execution_offer
         "grounding_topic": result.grounding_topic,
         "grounding_sources": [{"source": s.source, "topic": s.topic} for s in result.grounding_sources],
         "unsupported_topics": list(result.unsupported_topics),
+        "omitted_topics": list(result.omitted_topics),
         "provider_name": result.provider_name,
         "provider_model": result.provider_model,
         "provider_success": result.provider_success,
@@ -275,7 +287,7 @@ server = MCPServer(
         "preconditions, syntax, unknown functions, and system-touching statements). Only code that reaches "
         "handoff_candidate gets a validation_id; to run it, call gauss_execution_prepare(validation_id), show the "
         "user the exact prompt it returns, and pass the user's own yes/no to gauss_execution_decide together with "
-        "that prompt's request_id. Never answer yes on the user's behalf. gauss_repair_* tools drive the guided "
+        "that prompt's request_id. Never answer yes on the user's behalf. " + REPLY_GUIDANCE + " gauss_repair_* tools drive the guided "
         "repair pipeline for real files, one REPL command per call. gauss_chat_ask exists only when the server is configured with its own model."
     ),
 )
@@ -341,8 +353,9 @@ def gauss_search_docs(query: str, docs_root: str | None = None) -> dict[str, Any
     function names. Returns the matching documentation excerpts to read
     before writing code. When nothing is grounded but pages look relevant,
     `candidates` lists them (name, citation, purpose) -- candidates are not
-    grounded answers; search a candidate's name to read its page. Purely
-    local and read-only."""
+    grounded answers; search a candidate's name to read its page. A
+    documented name cut by the 4-source bound is listed in
+    `omitted_topics`; search it separately. Purely local and read-only."""
     resolved = config_mod.resolve_docs_root(cli_value=docs_root, config=_get_config(), env=os.environ).value
     bundle = engine_mod.ground_multi(query, docs_root_str=resolved)
     response: dict[str, Any] = {
@@ -355,6 +368,12 @@ def gauss_search_docs(query: str, docs_root: str | None = None) -> dict[str, Any
         "ambiguous_topics": list(bundle.ambiguous_topics),
         "docs_root_configured": resolved is not None,
     }
+    # v0.88.0 (live findings 76.5, 77.5, 78.11; planning v0.88 §3.10): a
+    # fifth named function was cut at `MAX_GROUNDING_SOURCES` and nothing said
+    # so. It is now named, with what to do about it.
+    if bundle.omitted_topics:
+        response["omitted_topics"] = list(bundle.omitted_topics)
+        response["omitted_note"] = OMITTED_TOPICS_NOTE
     # v0.83.0 (live finding 72.16): labeled candidate pages when the query
     # was ambiguous or matched only weakly. Computed from the finished
     # bundle; the grounding fields above are exactly what they were.
@@ -501,7 +520,9 @@ def gauss_execution_decide(session_id: str, response_text: str, request_id: str 
     returns `outcome: "unrecognized"`, creates no approval, and keeps the
     request pending). On approval, records it and invokes the existing GAUSS
     execution adapter exactly once, in this same call. Every outcome echoes
-    the `request_id` and `request_digest` it acted on."""
+    the `request_id` and `request_digest` it acted on. If several prompts
+    are open, the user names the prompt in a separate message and replies
+    with a bare yes or no; never ask the user to label a reply."""
     session = _sessions.get(session_id)
     if session is None:
         return {"error": "unknown_session"}

@@ -4,6 +4,38 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 
 ## Current Objective
 
+**v0.88.0 "Search and Grounding Recall" was committed and tagged on 2026-10-21** (tag `v0.88.0`; not yet pushed, and no GitHub release yet: confirm with the user first). Plan and record: `planning/v0.88-search-and-grounding-recall.md` (§1-§8 approved with every recommendation: 1A, 2 yes, 3a, 4-8 yes, 9a, 10 defer, 11-12 yes; §9 deviations and diffs; §10 testing). The full gate diff is `planning/v0.88-gate-diff.md`. Baseline for every comparison: a `git archive` of `cf4434c`.
+- Done:
+  - `gauss_conversation_engine.py`:
+    - derived keyword matches are search candidates only;
+    - `_page_defines` (stem, heading symbol, or whole word in the syntax blocks) gates literal grounding, `validate_code` and `validate_generated_code`'s extra lookups;
+    - statement pages ground only when the word is code-marked;
+    - `index.rst` never grounds;
+    - 12 curated aliases, matched on whole words;
+    - one-word stopword queries and hyphenated page names;
+    - excerpts keep Outputs;
+    - `omitted_topics`, with tier 3 = the documented-symbol set;
+    - `_lookup_command` and the alias check read the defining page;
+    - `search_candidates` lists the new labeled origins.
+  - `gauss_mcp_server.py`: `omitted_topics` + `omitted_note` in search, `omitted_topics` in chat output, and `REPLY_GUIDANCE` in the instructions and the decide description. `gauss_ai_chat.py`: the banner names omitted topics.
+  - Tests: engine 159-170 and MCP 33-36 (16 new, all fail on `cf4434c`); `test_84`, `test_137` and four `test_138` rows updated with inline comments; `test_149` unchanged. 48 files and `check_release_readiness.py` pass.
+  - Diffs:
+    - baseline §2 numbers reproduced, all 915 HEAD rows equal the planning run (silent drops 74, not 72: two derived fifths);
+    - gate: 787 tuples and 297 policies change; the 33 rows toward generation were reviewed individually, each on the page the question names;
+    - verdicts: v0.87's 460 programs unchanged, only fn01-fn05/fn07 go review_required → not_ready, and nothing newly reaches handoff_candidate;
+    - excerpts: 77 change (33 had no Outputs, 44 a cut Outputs), and 0 symbols now lose Outputs;
+    - AST: `command_doc_lookup.py`, the gate, the validator and the execution core are identical.
+  - Version 0.88.0. `README.md` (v0.87.0 prepended to the chain), `CHANGELOG.md`, `KNOWN_LIMITATIONS.md` (including the 78.x multi-session line and the deferred `.. include::` item) and `docs/mcp-server.md` are updated.
+- **Deviations (plan §9.1):**
+  1. `MAX_RESOLUTIONS` counts only resolved/ambiguous entries. Sentence words were pushing aliases out ("Save a matrix of results to a file", the logistic prompt, "Translate this Python idea"), so every unresolved word is now reported;
+  2. alias list: `declare` dropped (its Purpose is global variables), `reorder columns` dropped, bare `structure` not a phrase, `gmmFit` added;
+  3. whole-word alias matching;
+  4. 77 excerpts change, not 33;
+  5. §3.9 also applies in `validate_code`;
+  6. pages already cited are not listed again as candidates.
+- **Observations disclosed:** `vector(x)` stays review_required (`vectordl.rst`'s heading names it); quoted prose words count as code ("continue"); `test`/`note` ambiguity forces `clarify` in 7 rows.
+- **Next:** confirm with the user before pushing `main` and the tag and creating the GitHub release. Then live evaluation **79.x** (plan §7) in a fresh conversation, after stopping every `gauss-ai-mcp.exe`, reinstalling and reloading the window.
+
 **v0.87.0 "Handoff Binding and Precondition Coverage" was committed, tagged and pushed on 2026-10-20** (tag `v0.87.0`, commit `4103280`; `main` pushed). GitHub release: https://github.com/ec78/gauss-ai/releases/tag/v0.87.0. Plan and record: `planning/v0.87-handoff-binding-and-precondition-coverage.md` (§1-§8 approved on 2026-10-20 with every recommendation; §9 deviations and diffs; §10 testing; 42 `tgauss.exe -b` spot checks, dv/eg series). It fixes 77.x findings 1-3 and 76.x findings 2, 3 and 6.
 - Done:
   - `gauss_mcp_server.py`: `gauss_execution_decide(..., request_id)` refuses a missing id (`request_id_required`), a replaced prompt (`request_superseded`) or any other id (`request_not_pending`) before parsing, and echoes `request_id`/`request_digest`; prepare reports `replaced_request_id`; a refused prepare no longer spends its `validation_id`; `gauss_session_start` reports `real_gauss_allowed` (+ `execution_hint`);
@@ -22,7 +54,7 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
   - Client conduct: it grepped `KNOWN_LIMITATIONS.md` and this milestone's plan and read one source file during the tasks (plan §11.7).
   - Recommendation (§11.8): v0.87.0 stays released; no dedicated binding re-run; carry findings 1-2 into the next release's KL and tool text.
   - Recorded in commit `2071119` and pushed.
-- **Next:** at the user's choice, per the agreed path to MVP, v0.88.0 search/grounding recall (`planning/v0.88-search-and-grounding-recall.md`, unapproved; re-check its findings against v0.87.0 first). Do not start it until the user chooses.
+- **Next (superseded):** v0.88.0 was chosen, re-planned and approved on 2026-10-21 (above).
 
 **v0.86.0 "Structure Members, Word Operators and Structure Definitions" was released on 2026-10-16** (https://github.com/ec78/gauss-ai/releases/tag/v0.86.0; tag `v0.86.0`, commit `5bb1eaa`): a validator-fix milestone for 75.x findings 1-3. Plan and record: `planning/v0.86-members-word-operators-struct-definitions.md` (§9-§10 implementation; §11 live evaluation 76.x; §12 live evaluation 77.x, both recorded and committed).
 
@@ -149,7 +181,7 @@ Full detail is in CHANGELOG and the planning docs (`planning/v0.86-*.md`, `plann
 
 **Path to MVP (agreed with the user 2026-10-20).** The MVP is a publicly available MCP that a stranger can install, connect and use safely. The path:
 1. v0.87.0: handoff binding plus small handoff/registry items (released 2026-10-20; 78.x: 16 pass);
-2. v0.88.0: search/grounding recall (`planning/v0.88-search-and-grounding-recall.md`, unapproved; add 76.x finding 5, the silent fifth-symbol drop; re-check its findings against v0.87.0);
+2. v0.88.0: search/grounding recall (`planning/v0.88-search-and-grounding-recall.md`, approved 2026-10-21; not yet implemented);
 3. v0.89.0: release readiness (the decisions below, README quickstart, PyPI packaging, platform decision);
 4. a round with one or two outside GAUSS testers on a clean install, then a public-alpha / v1.0 decision.
 

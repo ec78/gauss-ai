@@ -410,6 +410,29 @@ def _known_symbol_stems(docs_root_str: str) -> frozenset[str]:
         return frozenset()
 
 
+def _documented_symbols(docs_root: Path) -> frozenset[str]:
+    """v0.88.0 (live findings 76.5, 77.5, 78.11; planning v0.88 §2.11): the
+    symbols the documentation-derived concept index read from the pages' own
+    call syntax (`inv` AND `invpd` for `invinvpd.rst`), lower-cased. This is
+    `_token_priority(...)`'s tier 3. Until v0.88.0 tier 3 was the file-stem
+    set, so a function documented on a combined page ranked with the
+    sentence words: "invpd diag sqrt rows cols" looked up `invpd` last and
+    `MAX_RESOLUTIONS` cut it, silently. The index is the one
+    `resolve_concepts(...)` already builds and caches per docs root, so this
+    adds no documentation read of its own."""
+    index = concept_index_mod.get_documentation_concept_index(docs_root)
+    return frozenset(entry.symbol.lower() for entry in index.entries)
+
+
+#: v0.88.0 (live finding 74.x; planning v0.88 §2.4): a hyphenated word.
+#: `_TOKEN_RE` splits `tspdlib-landing` into two unresolvable tokens, so none
+#: of the 168 published hyphenated pages could be opened by name, although
+#: `search_candidates(...)` lists them -- breaking v0.83.0's "search a
+#: candidate's name to read it". Such a word is kept whole only when a page
+#: with exactly that stem exists (`_candidate_tokens(...)`).
+_HYPHENATED_RE = re.compile(r"[A-Za-z][A-Za-z0-9_]*(?:-[A-Za-z0-9_]+)+")
+
+
 #: v0.77.0 (Phase 12): matches `token` immediately followed by `(` in the
 #: ORIGINAL question text -- a real, disclosed regression (see
 #: `_candidate_tokens(...)`'s own docstring) found that
@@ -423,19 +446,20 @@ def _token_priority(
     the raw question (`meanc(...)`). Tier 1: the token IS the resolved
     symbol of a curated concept-alias entry (`_CONCEPT_ALIAS_INDEX`) --
     cheap, already-loaded, no extra I/O. Tier 2: the token matches a
-    recently confirmed conversation topic. Tier 3: the token is an exact,
-    real documented-symbol filename stem (`_known_symbol_stems(...)`,
-    cached). Tier 4: everything else (the original, sole, left-to-right
-    behavior). This function performs NO new real documentation lookup --
-    only cheap string/set membership checks plus, at most once per
-    `docs_root`, the cached filename scan above."""
+    recently confirmed conversation topic. Tier 3: the token is a documented
+    symbol (`_documented_symbols(...)`, cached; v0.88.0 -- until then the
+    page file stems, which ranked `invpd` on `invinvpd.rst` with the
+    sentence words). Tier 4: everything else (the original, sole,
+    left-to-right behavior). This function performs NO new real
+    documentation lookup -- only cheap string/set membership checks plus,
+    at most once per `docs_root`, the cached index above."""
     if re.search(rf"\b{re.escape(token)}\s*\(", question, re.IGNORECASE):
         return 0
     if any(token == entry.symbol.lower() for entry in _CONCEPT_ALIAS_INDEX):
         return 1
     if token in {t.lower() for t in recent_topics}:
         return 2
-    if docs_root is not None and token in _known_symbol_stems(str(docs_root)):
+    if docs_root is not None and token in _documented_symbols(docs_root):
         return 3
     return 4
 
@@ -450,9 +474,32 @@ def _candidate_tokens(
     performed by callers is unchanged; only which `MAX_TOKEN_LOOKUPS`
     candidates are chosen changes. `docs_root`/`recent_topics` are both
     optional so every existing call site remains valid with the original,
-    pure left-to-right behavior when omitted."""
+    pure left-to-right behavior when omitted.
+
+    v0.88.0 adds two exceptions to the plain word split (planning v0.88
+    §3.3-§3.4):
+
+    - a question that is exactly one word (ignoring surrounding whitespace
+      and a trailing `?`) keeps that word even if it is a stopword. 74.x
+      searched "for" and got nothing at all, because `for` is in
+      `_STOPWORDS`. Removing it from the list instead would ground every
+      "... for ..." question on `for.rst`;
+    - a hyphenated word is one token when a page with exactly that stem
+      exists (`tspdlib-landing`); otherwise it is split as before."""
+    single = question.strip().rstrip("?").strip()
+    if _TOKEN_RE.fullmatch(single) or (_HYPHENATED_RE.fullmatch(single) and docs_root is not None
+                                       and single.lower() in _known_symbol_stems(str(docs_root))):
+        return [single.lower()]
+    stems = _known_symbol_stems(str(docs_root)) if docs_root is not None else frozenset()
+    words: list[str] = []
+    for chunk in re.finditer(rf"{_HYPHENATED_RE.pattern}|{_TOKEN_RE.pattern}", question):
+        text = chunk.group(0)
+        if "-" in text and text.lower() not in stems:
+            words.extend(_TOKEN_RE.findall(text))
+        else:
+            words.append(text)
     seen: list[str] = []
-    for word in _TOKEN_RE.findall(question):
+    for word in words:
         lowered = word.lower()
         if lowered in _STOPWORDS or lowered in seen:
             continue
@@ -485,6 +532,24 @@ def _format_doc_match(best_match: dict, *, max_chars: int = MAX_GROUNDING_CHARS)
     if notes:
         parts.append(f"Notes:\n{notes}")
     text = "\n\n".join(parts)
+    # v0.88.0 (live findings 74.16, 74.18, 77.3; planning v0.88 §2.5): on a
+    # long page the cut fell inside Inputs, so 33 of the 1,304 symbols with
+    # an Outputs section never showed it at the bundled 1,500 characters
+    # (`olsmt`, `sqpSolveMT`, `QNewtonmt`, `arimaFit`, ...), and 77.3's and
+    # 74.18's clients took the output members from prior knowledge. When
+    # Outputs would be cut, Inputs is shortened first (ending in "…") so the
+    # heading, syntax and Outputs fit. A page that already fits is
+    # byte-identical, and the section order is unchanged.
+    if len(text) > max_chars and inputs_section and outputs_section:
+        outputs_part = f"Outputs:\n{outputs_section}"
+        outputs_end = text.index(outputs_part) + len(outputs_part)
+        if outputs_end > max_chars:
+            before_inputs = "\n\n".join(parts[: parts.index(f"Inputs:\n{inputs_section}")])
+            fixed = len(before_inputs) + (2 if before_inputs else 0) + len("Inputs:\n…\n\n") + len(outputs_part)
+            budget = max(0, max_chars - fixed)
+            shortened = f"Inputs:\n{inputs_section[:budget].rstrip()}…"
+            parts[parts.index(f"Inputs:\n{inputs_section}")] = shortened
+            text = "\n\n".join(parts)
     return text[:max_chars]
 
 
@@ -496,7 +561,9 @@ def _resolve_docs_root(docs_root_str: str | None) -> Path | None:
 
 
 def _lookup_command(token: str, docs_root: Path) -> KnowledgeLookupResult | None:
-    result = doc_lookup_mod.lookup(token, docs_root, max_results=1)
+    # v0.88.0 (planning v0.88 §3.6): the defining page, like every other
+    # grounding re-lookup since v0.85.0 -- the last `max_results=1` sites.
+    result = _lookup_defining_page(token, docs_root)
     if result["status"] == "found" and result["best_match"] and result["confidence"] >= MIN_DOC_CONFIDENCE:
         best_match = result["best_match"]
         return KnowledgeLookupResult(
@@ -644,6 +711,12 @@ class ResolutionStatus(str, enum.Enum):
     RESOLVED = "resolved"
     AMBIGUOUS = "ambiguous"
     UNRESOLVED = "unresolved"
+    #: v0.88.0: a page worth listing for `gauss_search_docs`, but not
+    #: evidence for the question: a statement page for a sentence word
+    #: (§3.8) or the documentation-derived keyword matches (§3.1). Neither a
+    #: source nor an unmatched topic, so it never reaches the generation
+    #: gate; `search_candidates(...)` lists it as a labeled candidate.
+    CANDIDATE = "candidate"
 
 
 class MatchType(str, enum.Enum):
@@ -691,8 +764,15 @@ class FunctionResolution:
     evidence: str = ""
     #: Populated only when `status == AMBIGUOUS`: the plausible symbol
     #: names `command_doc_lookup.lookup(...)` itself could not confidently
-    #: distinguish between.
+    #: distinguish between. v0.88.0: also for the derived-index CANDIDATE
+    #: entry (its matched symbols).
     candidates: tuple[str, ...] = ()
+    #: v0.88.0: why a page was examined but not grounded on, for
+    #: `search_candidates(...)`: "non_defining_page" or "navigation_page"
+    #: (an UNRESOLVED token, with the page in `citation`), "statement_page"
+    #: (a CANDIDATE token, page in `citation`) or "derived_from_docs" (the
+    #: CANDIDATE entry of the derived index, symbols in `candidates`).
+    candidate_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -765,17 +845,132 @@ _CONCEPT_ALIAS_INDEX: tuple[ConceptAliasEntry, ...] = (
         citation="tsmt/tscsfit.rst",
         evidence='tsmt/tscsfit.rst Purpose: "Estimates the parameters of the pooled time-series cross-section regression model."',
     ),
+    # v0.88.0 (planning v0.88 §3.2, decision 4): the concepts live
+    # evaluations 73.x-78.x asked about, and the right cases the
+    # documentation-derived index used to ground before decision 1A turned it
+    # into candidates. Each was re-read in the published docs (fetched
+    # 2026-10-08) and kept only where the quoted text supports the phrase;
+    # the final list comes from the §6.2 gate diff (§9).
+    ConceptAliasEntry(
+        # 73.13, 74.15, 75.x: "percentile" resolved to nothing; no page has
+        # it in a heading or Purpose.
+        phrases=("percentile", "percentiles"),
+        symbol="quantile",
+        citation="quantile.rst",
+        evidence='quantile.rst: ":param e: quantile levels or probabilities."; its example prints "95 percentiles"',
+    ),
+    ConceptAliasEntry(
+        # 73.12, 74.14, 75.x, 77.16: a clarify among sortmc/sortr/sortrc.
+        phrases=(
+            "sort by a column", "sort a matrix by a column", "sort by column", "sort on a column",
+            "sort rows by a column", "sort a matrix by column", "sort a matrix by its",
+        ),
+        symbol="sortc",
+        citation="sortc.rst",
+        evidence='sortc.rst: ":param c: Optional input, specifies the column(s) of *x* to sort on."',
+    ),
+    ConceptAliasEntry(
+        # 74.x: there is no endfor.rst; `for.rst` documents both keywords.
+        phrases=("endfor",),
+        symbol="for",
+        citation="for.rst",
+        evidence='for.rst Format: "for i (start, stop, step); ... endfor;"',
+    ),
+    ConceptAliasEntry(
+        phrases=("cholesky decomposition", "cholesky factorization"),
+        symbol="chol",
+        citation="chol.rst",
+        evidence='chol.rst Purpose: "Computes the Cholesky decomposition of a symmetric, positive definite square matrix."',
+    ),
+    ConceptAliasEntry(
+        phrases=("zivot andrews", "zivot-andrews", "zivot and andrews"),
+        symbol="zandrews",
+        citation="tsmt/zandrews.rst",
+        evidence='tsmt/zandrews.rst Purpose: "The Zivot and Andrews (1992) unit root test ..."',
+    ),
+    ConceptAliasEntry(
+        phrases=("least squares solution", "slash operator"),
+        symbol="matrix-division",
+        citation="matrix-division.rst",
+        evidence='matrix-division.rst Purpose: "Computes the least squares solution to a system of equations, or performs scalar division." Format: "y = b / a"',
+    ),
+    ConceptAliasEntry(
+        phrases=("column medians", "column median", "median of each column", "medians of the columns"),
+        symbol="median",
+        citation="median.rst",
+        evidence='median.rst Purpose: "Computes the medians of the columns of a matrix."',
+    ),
+    ConceptAliasEntry(
+        # The gate diff's one real loss among the derived groundings: GMM
+        # questions grounded on `gmmFitIV` (the instrumental-variables
+        # variant) by keyword overlap.
+        phrases=("generalized method of moments", "generalised method of moments"),
+        symbol="gmmFit",
+        citation="gmmfit.rst",
+        evidence='gmmfit.rst Purpose: "Estimate parameters using generalized method of moments."',
+    ),
+    ConceptAliasEntry(
+        phrases=("logistic regression",),
+        symbol="logisticRegFit",
+        citation="logisticregfit.rst",
+        evidence='logisticregfit.rst Purpose: "Fit a logistic regression model with an optional L1 and/or L2 penalty."',
+    ),
+    ConceptAliasEntry(
+        # A statement page (§3.8): only an alias grounds it from prose.
+        phrases=(
+            "save a matrix", "save the matrix", "save matrix", "save to a file", "save it to a", "save them to a",
+            "save the results", "save results",
+        ),
+        symbol="save",
+        citation="save.rst",
+        evidence='save.rst Purpose: "Saves matrices, strings, or procedures to a disk file."',
+    ),
+    ConceptAliasEntry(
+        # A guide page, so `structure`/`struct` never grounded literally
+        # (§3.7: the page defines neither word). The plan's `declare` alias is
+        # not used: `declare.rst`'s Purpose is "Initializes global variables at
+        # compile time", while this guide documents declaring a structure.
+        # Bare "structure" is not a phrase: the gate diff found it as English
+        # ("structure the code cleanly", "a cleaner structure") (§9).
+        phrases=(
+            "structures", "struct", "a structure", "ds structure", "control structure", "structure member",
+            "structure members", "structure definition", "structure declarations", "own structure",
+            "declare a structure", "declare structures",
+        ),
+        symbol="structures",
+        citation="user-guide/advanced/structures.rst",
+        evidence=(
+            'user-guide/advanced/structures.rst heading "Structures"; "To use a structure, declare an instance '
+            'with the ``struct`` keyword"'
+        ),
+    ),
+    ConceptAliasEntry(
+        phrases=("index operator", "index range"),
+        symbol="range-operator",
+        citation="range-operator.rst",
+        evidence=(
+            'range-operator.rst Purpose: "Creates a sequence of integers or stepped values as a column vector, '
+            'or specifies an index range when used inside brackets."'
+        ),
+    ),
 )
 
 #: v0.73.0: bounds how many `FunctionResolution` entries `resolve_concepts(...)`
 #: returns -- same conservative-bound discipline as `MAX_GROUNDING_SOURCES`.
+#: v0.88.0: counts RESOLVED and AMBIGUOUS entries only, and what it cuts is
+#: reported as `GroundingBundle.omitted_topics` (planning v0.88 §3.10, §9).
 MAX_RESOLUTIONS = 4
 
 
 def _iter_alias_matches(lowered_question: str):
+    # v0.88.0: a phrase matches whole words only. With the short v0.88
+    # phrases a substring test misfires: "struct" is inside "structural
+    # break", and "endfor" inside "threadendfor". Every pre-v0.88 phrase
+    # that matched a question of the 915-question corpus as a substring
+    # still matches as whole words (planning v0.88 §9).
     for entry in _CONCEPT_ALIAS_INDEX:
         for phrase in entry.phrases:
-            if phrase in lowered_question:
+            if re.search(rf"(?<![a-z0-9_]){re.escape(phrase)}(?![a-z0-9_])", lowered_question):
                 yield phrase, entry
                 break  # one match per entry is enough; move to the next entry
 
@@ -827,6 +1022,79 @@ def _lookup_defining_page(symbol: str, docs_root: Path) -> dict:
     return doc_lookup_mod.lookup(symbol, docs_root, max_results=1)
 
 
+# ---------------------------------------------------------------------------
+# v0.88.0: what a page documents (planning v0.88 §3.7-§3.9)
+# ---------------------------------------------------------------------------
+#
+# `command_doc_lookup.lookup(...)` scores fuzzy page matches, so a `"found"`
+# result says only that a page scored well for the token, not that the page
+# documents it. These three tests read only fields `lookup` already returns
+# (`file_path`, `heading`, `syntax_blocks`); `command_doc_lookup.py` and every
+# extraction function are unchanged (decision 11).
+
+
+def _page_defines(token: str, best_match: dict) -> bool:
+    """True when the page documents `token` itself: the page's file stem is
+    the token, the token is a word of the page heading (`inv, invpd`), or it
+    occurs as a whole word in the page's Format/syntax blocks.
+
+    Live findings 75.x and 78.7, and the v0.88 re-plan (§2.7-§2.8): before
+    v0.88.0 any confident match grounded, so `data` grounded on
+    `datalist.rst`, `solve` on `sqpsolvemt.rst` and `row` on
+    `dbquerygetnumrowsaffected.rst` (45 sources in 915 questions), and
+    `validate_code` counted an invented `solve()`, `data()`, `row()`, `add()`
+    or `element()` as documented. GAUSS reports `G0025 Undefined symbol` for
+    every one (spot checks fn01-fn05; `week`, fn07, too). Measured on all
+    1,794 documented symbols of the concept index, this test accepts the
+    resolved page of every one: no false negatives."""
+    lowered = token.lower()
+    if Path(best_match.get("file_path") or "").stem.lower() == lowered:
+        return True
+    if lowered in re.findall(r"[a-z_][a-z0-9_\-]*", str(best_match.get("heading") or "").lower()):
+        return True
+    syntax = " ".join(best_match.get("syntax_blocks") or ()).lower()
+    return re.search(rf"(?<![a-z0-9_.]){re.escape(lowered)}\b", syntax) is not None
+
+
+def _is_statement_page(token: str, best_match: dict) -> bool:
+    """True when the page defines `token` (`_page_defines`) but its syntax
+    blocks never show `token(`: the page documents a statement (`run
+    filename;`, `break;`, `new;`, `call function_name();`), not a function.
+    Read from the page's own Format -- a categorical property of the
+    documentation, not a word list (decision 3a). Re-plan §2.9: `run`,
+    `output`, `print`, `call`, `new`, `system`, `library`, `break` ... were
+    324 sources in 285 of 915 questions, almost all sentence words ("Run a
+    unit root test with a structural break" grounded on `run.rst` and
+    `break.rst`)."""
+    if not _page_defines(token, best_match):
+        return False
+    syntax = " ".join(best_match.get("syntax_blocks") or ()).lower()
+    return re.search(rf"(?<![a-z0-9_.]){re.escape(token.lower())}\s*\(", syntax) is None
+
+
+def _is_navigation_page(best_match: dict) -> bool:
+    """v0.88.0 (live finding 75.15; re-plan §2.10): the 24 published
+    `index.rst` pages are toctree navigation with no Purpose or Format.
+    "index" grounded `full` on the root one, whose whole excerpt is "GAUSS
+    Help". Such a page never grounds; it can still be listed as a search
+    candidate."""
+    return Path(best_match.get("file_path") or "").name.lower() == "index.rst"
+
+
+def _code_marked(token: str, question: str, *, bare_symbol_list: bool) -> bool:
+    """Whether the question marks `token` as code rather than prose (§3.8):
+    the question is that one word, the word is inside backticks or quotes,
+    or the question is a bare list of symbols (`rndn rndseed meanc stdc`,
+    `dlibrary dllcall`). The last condition is computed by the caller:
+    every word of the question is a looked-up token, and every one resolved
+    to a page that defines it."""
+    if question.strip().rstrip("?").strip().lower() == token.lower():
+        return True
+    if re.search(rf"[`'\"]{re.escape(token)}[`'\"]", question, re.IGNORECASE):
+        return True
+    return bare_symbol_list
+
+
 def resolve_concepts(
     question: str, *, docs_root_str: str | None, recent_topics: tuple[str, ...] = (),
 ) -> tuple[FunctionResolution, ...]:
@@ -843,29 +1111,85 @@ def resolve_concepts(
     one entry per successfully-verified alias match; truncated to
     `MAX_RESOLUTIONS` only if that combined total is exceeded. Returns an
     empty tuple if `docs_root_str` does not resolve to a real, existing
-    directory -- exactly like `ground_multi(...)`'s own behavior."""
+    directory -- exactly like `ground_multi(...)`'s own behavior.
+
+    v0.88.0 (planning v0.88 §3.1, §3.7-§3.10): a literal token grounds only
+    on a page that defines it, that is not a navigation page, and -- for a
+    statement page -- only when the question marks it as code. The
+    documentation-derived index no longer resolves anything: its matches
+    are one CANDIDATE entry. CANDIDATE entries come after the others.
+    `MAX_RESOLUTIONS` counts only RESOLVED and AMBIGUOUS entries; every
+    UNRESOLVED token is kept."""
+    resolutions, _omitted = _resolve_concepts_with_omitted(question, docs_root_str=docs_root_str, recent_topics=recent_topics)
+    return resolutions
+
+
+def _resolve_concepts_with_omitted(
+    question: str, *, docs_root_str: str | None, recent_topics: tuple[str, ...] = (),
+) -> tuple[tuple[FunctionResolution, ...], tuple[str, ...]]:
+    """`resolve_concepts(...)`, plus the symbols that resolved but were cut by
+    `MAX_RESOLUTIONS` (v0.88.0, §3.10), for `ground_multi(...)`'s
+    `omitted_topics`."""
     docs_root = _resolve_docs_root(docs_root_str)
     if docs_root is None:
-        return ()
+        return (), ()
 
     resolutions: list[FunctionResolution] = []
     seen_symbols: set[str] = set()
     lowered = question.lower()
     error_code = _extract_error_code(question)
 
+    looked_up: list[tuple[str, dict]] = []
     for token in _candidate_tokens(question, docs_root=docs_root, recent_topics=recent_topics):
         if error_code is not None and token == error_code.lower():
             continue  # handled by the error catalog, not documentation lookup
-        result = _resolve_ambiguous_by_definition(token, doc_lookup_mod.lookup(token, docs_root, max_results=3))
-        if result["status"] == "found" and result["best_match"] and result["confidence"] >= MIN_DOC_CONFIDENCE:
-            seen_symbols.add(token)
+        looked_up.append((token, _resolve_ambiguous_by_definition(token, doc_lookup_mod.lookup(token, docs_root, max_results=3))))
+
+    def _confident(result: dict) -> bool:
+        return result["status"] == "found" and bool(result["best_match"]) and result["confidence"] >= MIN_DOC_CONFIDENCE
+
+    # v0.88.0 (§3.8): a bare symbol list -- every word of the question was
+    # looked up, and every one resolved to a page that defines it -- marks
+    # each word as code: "rndn rndseed meanc stdc" keeps `rndseed`, and
+    # "dlibrary dllcall" keeps both, although their pages document statements.
+    question_words = {w.lower() for w in re.findall(r"[A-Za-z0-9_\-]+", question)}
+    bare_symbol_list = bool(looked_up) and question_words == {token for token, _ in looked_up} and all(
+        _confident(result) and _page_defines(token, result["best_match"])
+        and not _is_navigation_page(result["best_match"])
+        for token, result in looked_up
+    )
+
+    for token, result in looked_up:
+        if _confident(result):
             best_match = result["best_match"]
-            resolutions.append(FunctionResolution(
-                user_phrase=token, status=ResolutionStatus.RESOLVED.value, resolved_symbol=token,
-                match_type=MatchType.EXACT_SYMBOL.value, source="official_docs",
-                citation=best_match.get("file_path"),
-                evidence=f"literal token {token!r} matched {best_match.get('file_path')} directly",
-            ))
+            citation = best_match.get("file_path")
+            if _is_navigation_page(best_match):
+                resolutions.append(FunctionResolution(
+                    user_phrase=token, status=ResolutionStatus.UNRESOLVED.value, citation=citation,
+                    evidence=f"{citation} is a navigation page, not documentation of {token!r}",
+                    candidate_reason="navigation_page",
+                ))
+            elif not _page_defines(token, best_match):
+                resolutions.append(FunctionResolution(
+                    user_phrase=token, status=ResolutionStatus.UNRESOLVED.value, citation=citation,
+                    evidence=f"{citation} matched {token!r} but does not define it",
+                    candidate_reason="non_defining_page",
+                ))
+            elif _is_statement_page(token, best_match) and not _code_marked(
+                token, question, bare_symbol_list=bare_symbol_list,
+            ):
+                resolutions.append(FunctionResolution(
+                    user_phrase=token, status=ResolutionStatus.CANDIDATE.value, citation=citation,
+                    evidence=f"{citation} documents the GAUSS statement {token!r}; the question uses it as a word",
+                    candidate_reason="statement_page",
+                ))
+            else:
+                seen_symbols.add(token)
+                resolutions.append(FunctionResolution(
+                    user_phrase=token, status=ResolutionStatus.RESOLVED.value, resolved_symbol=token,
+                    match_type=MatchType.EXACT_SYMBOL.value, source="official_docs", citation=citation,
+                    evidence=f"literal token {token!r} matched {citation} directly",
+                ))
         elif result["status"] == "ambiguous" and result["confidence"] >= MIN_DOC_CONFIDENCE and result["matches"]:
             candidates = tuple(
                 dict.fromkeys(Path(m["file_path"]).stem for m in result["matches"] if m.get("file_path"))
@@ -885,8 +1209,9 @@ def resolve_concepts(
     for phrase, entry in _iter_alias_matches(lowered):
         if entry.symbol in seen_symbols:
             continue  # already resolved directly -- the alias would be redundant
-        result = doc_lookup_mod.lookup(entry.symbol, docs_root, max_results=1)
-        if result["status"] == "found" and result["best_match"] and result["confidence"] >= MIN_DOC_CONFIDENCE:
+        # v0.88.0 (§3.6): the defining page, as everywhere else since v0.85.0.
+        result = _lookup_defining_page(entry.symbol, docs_root)
+        if _confident(result) and not _is_navigation_page(result["best_match"]):
             seen_symbols.add(entry.symbol)
             best_match = result["best_match"]
             resolutions.append(FunctionResolution(
@@ -898,66 +1223,67 @@ def resolve_concepts(
         # If verification fails against THIS caller's own docs_root, the
         # alias produces no resolution at all -- never a fabricated one.
 
-    # v0.74.0: a documentation-DERIVED concept index (built directly from
-    # the caller's own configured documentation, not hand-curated)
-    # supplements the alias index above. Run once against the WHOLE
-    # question (not per-token) -- a natural-language concept is phrase-
-    # level, and a single generic word should not, by itself, propose a
-    # candidate (see `gauss_doc_concept_index.MIN_KEYWORD_OVERLAP`).
-    index = concept_index_mod.get_documentation_concept_index(docs_root)
-    derived_matches = concept_index_mod.resolve_derived_concepts(question, index)
-    distinct_derived_symbols = {m.symbol.lower() for m in derived_matches} - seen_symbols
-    if len(distinct_derived_symbols) == 1:
-        target = next(iter(distinct_derived_symbols))
-        match = next(m for m in derived_matches if m.symbol.lower() == target)
-        result = doc_lookup_mod.lookup(match.symbol, docs_root, max_results=1)
-        if result["status"] == "found" and result["best_match"] and result["confidence"] >= MIN_DOC_CONFIDENCE:
-            seen_symbols.add(match.symbol.lower())
-            best_match = result["best_match"]
-            resolutions.append(FunctionResolution(
-                user_phrase=question.strip(), status=ResolutionStatus.RESOLVED.value, resolved_symbol=match.symbol,
-                match_type=MatchType.DERIVED_FROM_DOCS.value, source="official_docs",
-                citation=best_match.get("file_path"),
-                evidence=(
-                    f"documentation-derived index matched keywords ({', '.join(match.overlap_keywords)}) in "
-                    f"{match.source} (re-verified against the configured docs-root: {best_match.get('file_path')})"
-                ),
-            ))
-        # If verification fails against THIS caller's own docs_root, the
-        # derived candidate produces no resolution at all -- never a
-        # fabricated one, exactly like the curated-alias path above.
-    elif len(distinct_derived_symbols) > 1:
-        resolutions.append(FunctionResolution(
-            user_phrase=question.strip(), status=ResolutionStatus.AMBIGUOUS.value,
-            evidence="the documentation-derived concept index matched more than one equally-scored symbol",
-            candidates=tuple(sorted(distinct_derived_symbols)),
-        ))
-    # A derived-index miss (zero candidates) is not reported as a separate
-    # UNRESOLVED entry here -- this is a supplemental, whole-question pass,
-    # not a per-token pass, and an absent match carries no new information
-    # beyond what the per-token loop above already reported honestly.
-
     # Once a phrase like "column means" has successfully resolved via the
-    # alias index (or, v0.74.0, the documentation-derived index), its own
-    # literal words (e.g. "means") should not ALSO be reported as a
-    # separate, confusing UNRESOLVED token -- the concept it expressed was
-    # resolved, even though the bare word is not itself a GAUSS symbol.
-    # This does not hide anything: the RESOLVED entry itself still names
-    # the full phrase and its real citation.
+    # alias index, its own literal words (e.g. "means") should not ALSO be
+    # reported as a separate, confusing UNRESOLVED token -- the concept it
+    # expressed was resolved, even though the bare word is not itself a
+    # GAUSS symbol. This does not hide anything: the RESOLVED entry itself
+    # still names the full phrase and its real citation.
     resolved_alias_words: set[str] = set()
     for resolution in resolutions:
-        if resolution.status == ResolutionStatus.RESOLVED.value and resolution.match_type in (
-            MatchType.ALIAS_OR_DESCRIPTION.value, MatchType.DERIVED_FROM_DOCS.value,
-        ):
+        if resolution.status == ResolutionStatus.RESOLVED.value and resolution.match_type == MatchType.ALIAS_OR_DESCRIPTION.value:
             resolved_alias_words.update(resolution.user_phrase.split())
     resolutions = [
         r for r in resolutions
         if not (r.status == ResolutionStatus.UNRESOLVED.value and r.user_phrase in resolved_alias_words)
     ]
 
-    if len(resolutions) > MAX_RESOLUTIONS:
-        return tuple(resolutions[:MAX_RESOLUTIONS])
-    return tuple(resolutions)
+    # v0.88.0 (live findings 73.x, 74.15, 75.x; planning v0.88 §2.1, §3.1,
+    # decision 1A): the documentation-DERIVED concept index (v0.74.0) used to
+    # resolve the whole question when its page keywords shared
+    # `MIN_KEYWORD_OVERLAP` words with it. The question's own words were
+    # never filtered, so "how do I compute the 95th percentile of a column"
+    # grounded `full` on `setColDateFormats`. Over 915 questions 139 got a
+    # derived source, almost all unrelated (`getlrv` 23, `trace` 13,
+    # `plotSave` 7), and 35 were forced to `clarify` by a derived tie. Its
+    # matches are now one CANDIDATE entry, listed only by
+    # `search_candidates(...)`; the measured right cases are curated aliases.
+    index = concept_index_mod.get_documentation_concept_index(docs_root)
+    derived_symbols = tuple(dict.fromkeys(
+        m.symbol for m in concept_index_mod.resolve_derived_concepts(question, index)
+        if m.symbol.lower() not in seen_symbols
+    ))
+    candidate_entries = [r for r in resolutions if r.status == ResolutionStatus.CANDIDATE.value]
+    if derived_symbols:
+        candidate_entries.append(FunctionResolution(
+            user_phrase=question.strip(), status=ResolutionStatus.CANDIDATE.value,
+            evidence="the documentation-derived concept index matched page keywords; a candidate, not grounding",
+            candidates=derived_symbols, candidate_reason="derived_from_docs",
+        ))
+
+    # v0.88.0 (§3.10): what `MAX_RESOLUTIONS` cuts is reported, not dropped.
+    # The bound counts RESOLVED and AMBIGUOUS entries only (planning v0.88
+    # §9): an UNRESOLVED word costs no lookup beyond the `MAX_TOKEN_LOOKUPS`
+    # already performed, and counting it let four sentence words push every
+    # alias out -- the gate diff found "Save a matrix of results to a file
+    # called results.fmt" (`save`), the logistic-regression tester prompt
+    # (`logisticRegFit`) and "Translate this Python idea ..." (`meanc`)
+    # cut that way. Every UNRESOLVED word is now reported, and a resolved
+    # symbol beyond the bound is named in `omitted_topics`.
+    kept: list[FunctionResolution] = []
+    omitted: list[str] = []
+    counted = 0
+    for resolution in resolutions:
+        if resolution.status == ResolutionStatus.CANDIDATE.value:
+            continue
+        if resolution.status in (ResolutionStatus.RESOLVED.value, ResolutionStatus.AMBIGUOUS.value):
+            counted += 1
+            if counted > MAX_RESOLUTIONS:
+                if resolution.status == ResolutionStatus.RESOLVED.value:
+                    omitted.append(resolution.resolved_symbol)
+                continue
+        kept.append(resolution)
+    return tuple(kept) + tuple(candidate_entries), tuple(omitted)
 
 
 @dataclass(frozen=True)
@@ -987,12 +1313,20 @@ class GroundingBundle:
     #: full provenance for whichever topics ended up in `sources`,
     #: `unmatched_topics`, or `ambiguous_topics`.
     resolutions: tuple[FunctionResolution, ...] = ()
+    #: v0.88.0 (live findings 76.5, 77.5, 78.11; planning v0.88 §3.10):
+    #: symbols that resolved but were cut by `MAX_RESOLUTIONS` or
+    #: `MAX_GROUNDING_SOURCES`. Until v0.88.0 they were in neither `sources`
+    #: nor `unmatched_topics`, so "invpd diag sqrt rows cols" dropped
+    #: `invpd` and still said `grounded` (72 of 915 questions lost a resolved
+    #: symbol). Like an unmatched topic, an omitted one makes the bundle
+    #: `partially_grounded`: `ask()` generates for the included topics only.
+    omitted_topics: tuple[str, ...] = ()
 
     @property
     def status(self) -> GroundingStatus:
         if not self.sources:
             return GroundingStatus.UNGROUNDED
-        if self.unmatched_topics:
+        if self.unmatched_topics or self.omitted_topics:
             return GroundingStatus.PARTIALLY_GROUNDED
         return GroundingStatus.GROUNDED
 
@@ -1057,15 +1391,20 @@ def ground_multi(
             _add_unmatched(error_code)
 
     docs_root = _resolve_docs_root(docs_root_str)
-    resolutions = (
-        resolve_concepts(question, docs_root_str=docs_root_str, recent_topics=recent_topics)
-        if docs_root is not None else ()
+    resolutions, omitted = (
+        _resolve_concepts_with_omitted(question, docs_root_str=docs_root_str, recent_topics=recent_topics)
+        if docs_root is not None else ((), ())
     )
+    omitted_topics: list[str] = list(omitted)
 
     for resolution in resolutions:
         if resolution.status == ResolutionStatus.RESOLVED.value:
             if len(sources) >= MAX_GROUNDING_SOURCES:
-                continue  # still recorded in `resolutions` for provenance, just not promoted to a source
+                # v0.88.0 (§3.10): still recorded in `resolutions` for
+                # provenance, and now reported as omitted instead of dropped.
+                if resolution.resolved_symbol not in seen_topics and resolution.resolved_symbol not in omitted_topics:
+                    omitted_topics.append(resolution.resolved_symbol)
+                continue
             # Re-fetches the full match rather than threading it through
             # `FunctionResolution` (which only carries a citation/evidence
             # summary) -- a second, real `command_doc_lookup.lookup(...)`
@@ -1093,6 +1432,8 @@ def ground_multi(
                 ))
         elif resolution.status == ResolutionStatus.AMBIGUOUS.value:
             _add_ambiguous(resolution.user_phrase)
+        elif resolution.status == ResolutionStatus.CANDIDATE.value:
+            continue  # v0.88.0: a search candidate only -- never a topic of the question
         else:
             _add_unmatched(resolution.user_phrase)
 
@@ -1108,7 +1449,7 @@ def ground_multi(
 
     return GroundingBundle(
         sources=tuple(sources), matched_topics=tuple(matched_topics), unmatched_topics=tuple(unmatched_topics),
-        ambiguous_topics=tuple(ambiguous_topics), resolutions=resolutions,
+        ambiguous_topics=tuple(ambiguous_topics), resolutions=resolutions, omitted_topics=tuple(omitted_topics),
     )
 
 
@@ -1404,6 +1745,9 @@ class AnswerResult:
     #: Topics referenced (a command name or error code) that could not be
     #: grounded -- always empty when `grounding_status` is `GROUNDED` or `None`.
     unsupported_topics: tuple[str, ...] = ()
+    #: v0.88.0 (§3.10): `GroundingBundle.omitted_topics` -- resolved, but cut
+    #: by the source bound, so not in the grounding given to the provider.
+    omitted_topics: tuple[str, ...] = ()
     #: Fenced GAUSS code blocks extracted from the answer text, in order.
     #: Populated whenever the answer text is code-shaped (v0.73.0: broadened
     #: from "only when `intent == CODE_GENERATION`" after live testing found
@@ -1534,7 +1878,7 @@ class ConversationEngine:
                     grounding_topic=legacy_topic, provider_name="none", provider_model=None,
                     provider_success=True, provider_error=None, intent=intent.value,
                     grounding_status=bundle.status.value, grounding_sources=bundle.sources,
-                    unsupported_topics=bundle.unmatched_topics, generation_policy=gate.policy,
+                    unsupported_topics=bundle.unmatched_topics, omitted_topics=bundle.omitted_topics, generation_policy=gate.policy,
                 )
             if gate.policy == GenerationPolicy.CLARIFY.value:
                 clarify_text = _render_clarify_message(bundle)
@@ -1545,7 +1889,7 @@ class ConversationEngine:
                     grounding_topic=legacy_topic, provider_name="none", provider_model=None,
                     provider_success=True, provider_error=None, intent=intent.value,
                     grounding_status=bundle.status.value, grounding_sources=bundle.sources,
-                    unsupported_topics=bundle.unmatched_topics, generation_policy=gate.policy,
+                    unsupported_topics=bundle.unmatched_topics, omitted_topics=bundle.omitted_topics, generation_policy=gate.policy,
                     ambiguous_topics=bundle.ambiguous_topics,
                 )
 
@@ -1572,7 +1916,7 @@ class ConversationEngine:
                 grounding_topic=legacy_topic, provider_name=result.provider_name, provider_model=result.model,
                 provider_success=False, provider_error=result.error_message,
                 intent=intent.value, grounding_status=bundle.status.value,
-                grounding_sources=bundle.sources, unsupported_topics=bundle.unmatched_topics,
+                grounding_sources=bundle.sources, unsupported_topics=bundle.unmatched_topics, omitted_topics=bundle.omitted_topics,
                 generation_policy=gate.policy,
             )
 
@@ -1634,7 +1978,7 @@ class ConversationEngine:
             text=text, grounded=bundle.hit, grounding_source=legacy_source, grounding_topic=legacy_topic,
             provider_name=result.provider_name, provider_model=result.model, provider_success=True, provider_error=None,
             intent=intent.value, grounding_status=bundle.status.value,
-            grounding_sources=bundle.sources, unsupported_topics=bundle.unmatched_topics,
+            grounding_sources=bundle.sources, unsupported_topics=bundle.unmatched_topics, omitted_topics=bundle.omitted_topics,
             generated_code=generated_code, executed=False, methodologically_validated=False,
             generation_policy=gate.policy, unknown_symbols=unknown_symbols,
             pre_execution_eligibility=pre_execution.eligibility if pre_execution else None,
@@ -1750,9 +2094,12 @@ def validate_generated_code(
                 break
             extra_lookups += 1
             result = _lookup_defining_page(symbol, docs_root)  # v0.85.0, as above
+            # v0.88.0 (§3.7): only a page that defines the call, as in
+            # `validate_code(...)`, so the `ask()` path's check agrees.
             if (
                 result["status"] == "found" and result["best_match"]
                 and result["confidence"] >= MIN_DOC_CONFIDENCE
+                and _page_defines(symbol, result["best_match"]) and not _is_navigation_page(result["best_match"])
             ):
                 documented_signatures[symbol] = validation_mod.extract_documented_signature(
                     call.symbol, result["best_match"],
@@ -1969,7 +2316,17 @@ def validate_code(code: str, *, docs_root: str | None) -> CodeValidationResult:
     ambiguous: list[str] = []
     for symbol in called:
         result = _resolve_ambiguous_by_definition(symbol, doc_lookup_mod.lookup(symbol, resolved_root, max_results=3))
-        if result["status"] == "found" and result["best_match"] and result["confidence"] >= MIN_DOC_CONFIDENCE:
+        # v0.88.0 (re-plan §2.8, decision 2): a call counts as documented only
+        # on a page that defines it, and never on a navigation page (§3.9).
+        # `x = solve(a, b);` grounded on `sqpsolvemt.rst` and was
+        # review_required ("signature could not be reliably extracted for:
+        # solve"); GAUSS says `G0025 Undefined symbol: 'solve'` (fn01). It is
+        # now an unknown symbol, so the snippet is not_ready, naming it. None
+        # of v0.87's 460 verdict programs grounds a call on such a page.
+        if (
+            result["status"] == "found" and result["best_match"] and result["confidence"] >= MIN_DOC_CONFIDENCE
+            and _page_defines(symbol, result["best_match"]) and not _is_navigation_page(result["best_match"])
+        ):
             best_match = result["best_match"]
             sources.append(GroundingSource(
                 source="official_docs", topic=symbol,
@@ -2041,6 +2398,17 @@ class CandidateOrigin(str, enum.Enum):
     AMBIGUOUS_RESOLUTION = "ambiguous_resolution"
     #: Listed by the one-keyword fallback (no source and no ambiguity).
     KEYWORD_MATCH = "keyword_match"
+    #: v0.88.0 (§3.1): the documentation-derived index's keyword matches,
+    #: which grounded until v0.88.0.
+    DERIVED_FROM_DOCS = "derived_from_docs"
+    #: v0.88.0 (§3.8): the page documents a GAUSS statement that the question
+    #: used as an ordinary word ("run", "call", "break").
+    STATEMENT_PAGE = "statement_page"
+    #: v0.88.0 (§3.7): the page matched a word it does not define (`data` on
+    #: `datalist.rst`).
+    NON_DEFINING_PAGE = "non_defining_page"
+    #: v0.88.0 (§3.9): an `index.rst` navigation page.
+    NAVIGATION_PAGE = "navigation_page"
 
 
 @dataclass(frozen=True)
@@ -2139,7 +2507,14 @@ def search_candidates(query: str, bundle: GroundingBundle, *, docs_root_str: str
 
     Either way, entries are grouped by page, each page is re-verified with
     `_candidate_verified(...)` in rank order, and at most
-    `MAX_SEARCH_CANDIDATES` are listed. Never modifies `bundle`."""
+    `MAX_SEARCH_CANDIDATES` are listed. Never modifies `bundle`.
+
+    v0.88.0: between A and B, the pages `resolve_concepts(...)` examined but
+    did not ground on are listed, in resolution order, labeled by why
+    (`CandidateOrigin`): a statement page, a non-defining page, a navigation
+    page, and the documentation-derived keyword matches. Mode B's condition
+    and both existing modes' order and labels are unchanged; a page is
+    listed once, with its first label."""
     docs_root = _resolve_docs_root(docs_root_str)
     if docs_root is None:
         return _NO_CANDIDATES
@@ -2147,27 +2522,51 @@ def search_candidates(query: str, bundle: GroundingBundle, *, docs_root_str: str
 
     # page source -> (symbols, purpose evidence, shared keywords)
     pages: dict[str, tuple[list[str], str, tuple[str, ...]]] = {}
+    origins: dict[str, str] = {}
 
-    def _add(entry, keywords: tuple[str, ...]) -> None:
+    def _add(entry, keywords: tuple[str, ...], origin: str) -> None:
+        origins.setdefault(entry.source, origin)
         symbols, evidence, existing = pages.setdefault(entry.source, ([], entry.evidence, keywords))
         if entry.symbol not in symbols:
             symbols.append(entry.symbol)
         if len(keywords) > len(existing):
             pages[entry.source] = (symbols, evidence, keywords)
 
+    def _add_named(name: str, origin: str) -> None:
+        for entry in index.entries:
+            if entry.symbol.lower() == name or Path(entry.source).stem.lower() == name:
+                _add(entry, (), origin)
+
     ambiguous_names = [
         name.lower() for r in bundle.resolutions
         if r.status == ResolutionStatus.AMBIGUOUS.value for name in r.candidates
     ]
-    if ambiguous_names:
-        origin = CandidateOrigin.AMBIGUOUS_RESOLUTION.value
-        for name in dict.fromkeys(ambiguous_names):
-            for entry in index.entries:
-                if entry.symbol.lower() == name or Path(entry.source).stem.lower() == name:
-                    _add(entry, ())
-        ordered = list(pages)
-    elif not bundle.sources:
-        origin = CandidateOrigin.KEYWORD_MATCH.value
+    for name in dict.fromkeys(ambiguous_names):
+        _add_named(name, CandidateOrigin.AMBIGUOUS_RESOLUTION.value)
+    ordered = list(pages)
+
+    # A page already grounded as a source (`save.rst` through its alias, when
+    # the word "save" was also a statement candidate) is not listed again.
+    cited = {source.citation for source in bundle.sources}
+    for resolution in bundle.resolutions:
+        if resolution.candidate_reason == CandidateOrigin.DERIVED_FROM_DOCS.value:
+            for name in resolution.candidates:
+                for entry in index.entries:
+                    if entry.source not in cited and (
+                        entry.symbol.lower() == name.lower() or Path(entry.source).stem.lower() == name.lower()
+                    ):
+                        _add(entry, (), resolution.candidate_reason)
+        elif resolution.candidate_reason and resolution.citation and resolution.citation not in cited:
+            entries = [entry for entry in index.entries if entry.source == resolution.citation]
+            for entry in entries:
+                _add(entry, (), resolution.candidate_reason)
+            if not entries:  # a page the index has no keywords for (a bare `index.rst`)
+                origins.setdefault(resolution.citation, resolution.candidate_reason)
+                pages.setdefault(resolution.citation, ([resolution.user_phrase], "", ()))
+    ordered += [src for src in pages if src not in ordered]
+
+    if not ambiguous_names and not bundle.sources:
+        keyword_sources: list[str] = []
         matches = concept_index_mod.keyword_overlap_entries(query, index, min_overlap=SEARCH_CANDIDATE_MIN_OVERLAP)
         # Only the best keyword-overlap count is listed: once some page shares
         # three of the query's keywords, a page sharing one ("Balances a
@@ -2175,11 +2574,14 @@ def search_candidates(query: str, bundle: GroundingBundle, *, docs_root_str: str
         best = max((len(overlap) for _entry, overlap in matches), default=0)
         for entry, overlap in matches:
             if len(overlap) == best:
-                _add(entry, overlap)
-        ordered = sorted(
-            pages, key=lambda src: (*_candidate_page_rank(docs_root, src, pages[src][2]), src.lower()),
+                _add(entry, overlap, CandidateOrigin.KEYWORD_MATCH.value)
+                if entry.source not in keyword_sources:
+                    keyword_sources.append(entry.source)
+        ordered += sorted(
+            (src for src in keyword_sources if src not in ordered),
+            key=lambda src: (*_candidate_page_rank(docs_root, src, pages[src][2]), src.lower()),
         )
-    else:
+    if not ordered:
         return _NO_CANDIDATES
 
     # Verified lazily, in rank order, so a broad keyword costs at most
@@ -2193,6 +2595,6 @@ def search_candidates(query: str, bundle: GroundingBundle, *, docs_root_str: str
         if any(_candidate_verified(docs_root, symbol, src) for symbol in pages[src][0]):
             listed.append(SearchCandidate(
                 symbols=tuple(pages[src][0]), citation=src, purpose=_purpose_sentence(pages[src][1]),
-                origin=origin, keywords=pages[src][2],
+                origin=origins[src], keywords=pages[src][2],
             ))
     return SearchCandidates(candidates=tuple(listed), matched_pages=len(ordered), truncated=examined < len(ordered))
