@@ -4,7 +4,7 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 
 ## Current Objective
 
-**v0.88.0 "Search and Grounding Recall" was committed and tagged on 2026-10-21** (tag `v0.88.0`; not yet pushed, and no GitHub release yet: confirm with the user first). Plan and record: `planning/v0.88-search-and-grounding-recall.md` (§1-§8 approved with every recommendation: 1A, 2 yes, 3a, 4-8 yes, 9a, 10 defer, 11-12 yes; §9 deviations and diffs; §10 testing). The full gate diff is `planning/v0.88-gate-diff.md`. Baseline for every comparison: a `git archive` of `cf4434c`.
+**v0.88.0 "Search and Grounding Recall" was committed, tagged and pushed on 2026-10-21** (tag `v0.88.0`, commit `be3df16`; `main` pushed). GitHub release: https://github.com/ec78/gauss-ai/releases/tag/v0.88.0 (published 22:57 UTC). Plan and record: `planning/v0.88-search-and-grounding-recall.md` (§1-§8 approved with every recommendation: 1A, 2 yes, 3a, 4-8 yes, 9a, 10 defer, 11-12 yes; §9 deviations and diffs; §10 testing). The full gate diff is `planning/v0.88-gate-diff.md`. Baseline for every comparison: a `git archive` of `cf4434c`.
 - Done:
   - `gauss_conversation_engine.py`:
     - derived keyword matches are search candidates only;
@@ -34,7 +34,19 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
   5. §3.9 also applies in `validate_code`;
   6. pages already cited are not listed again as candidates.
 - **Observations disclosed:** `vector(x)` stays review_required (`vectordl.rst`'s heading names it); quoted prose words count as code ("continue"); `test`/`note` ambiguity forces `clarify` in 7 rows.
-- **Next:** confirm with the user before pushing `main` and the tag and creating the GitHub release. Then live evaluation **79.x** (plan §7) in a fresh conversation, after stopping every `gauss-ai-mcp.exe`, reinstalling and reloading the window.
+- **Live evaluation 79.x ran on 2026-10-21** (19:10-19:30 local, after the release), and is recorded: plan §11; run files `2026-10-21-code-assistant-mcp-search-grounding-recall-run-001.md` … `-013.md`; `INDEX.md`, `benchmark-prompts.md` category 79, `benchmark-coverage.md`. **13 pass.**
+  - All 24 live responses (13 searches, 11 validations) are identical to a v0.88.0 archive re-run in every field. No verdict differs on v0.87.0. 9 of 13 search bundles do, all toward the evidence: `quantile` and `sortc` aliases, no `break.rst` for "structural break", `for`/`endfor` open, Outputs in `sqpSolveMT`'s excerpt, `omitted_topics: ['cols']` (v0.87.0 silently dropped `invpd`).
+  - Two approved real-GAUSS runs (79.1, 79.2), byte-identical to direct `tgauss.exe -b`. Two correct blocks (`library`; `dlibrary`/`dllcall`). Every review_required snippet runs correctly in GAUSS. No decline; a post-run spent-id resubmission was refused (the recording session's own "yes" on a non-pending request is disclosed, plan §11.5).
+  - The client followed the `adf_1break` candidate to its page and used `omitted_topics`. It read doc files from disk five times, three of them for content past the 1,500-character excerpt.
+  - Findings (§11.6):
+    1. No tool returns more than the excerpt (`sqpSolveMT` return codes, `dllcall` Remarks), and KL's "the full page is one search away" is wrong for that case. This matters for a stranger's client without disk access → v0.89.0;
+    2. a `for t` loop makes an earlier `T` untraced wherever the loop is (pre-existing, safe-direction, not in KL);
+    3. the client bypassed search for content search can reach (observation);
+    4. upstream `logical-or.rst` names a nonexistent `dotor`;
+    5. a probe: "return codes" grounds `return.rst` (already disclosed class).
+  - Not exercised live: an invented name (a probe gives not_ready), `olsmt`, strict-mode `gauss_chat_ask`, opening a hyphenated candidate by name (the client bypassed the tool; a probe shows it works).
+  - Recommendation (§11.8): v0.88.0 holds; carry findings 1-2 into v0.89.0; no re-run needed.
+- **Next:** v0.89.0 (release readiness), with 79.x findings 1-2. Do not start it until the user asks.
 
 **v0.87.0 "Handoff Binding and Precondition Coverage" was committed, tagged and pushed on 2026-10-20** (tag `v0.87.0`, commit `4103280`; `main` pushed). GitHub release: https://github.com/ec78/gauss-ai/releases/tag/v0.87.0. Plan and record: `planning/v0.87-handoff-binding-and-precondition-coverage.md` (§1-§8 approved on 2026-10-20 with every recommendation; §9 deviations and diffs; §10 testing; 42 `tgauss.exe -b` spot checks, dv/eg series). It fixes 77.x findings 1-3 and 76.x findings 2, 3 and 6.
 - Done:
@@ -167,7 +179,7 @@ Full detail is in CHANGELOG and the planning docs (`planning/v0.86-*.md`, `plann
   - option B: indexed writes are looked through for category only, never for preconditions;
   - expressions are never evaluated.
 - **Signatures:** nested optional groups are flattened, and `...` means no upper bound (`VARIADIC_MAX_ARGS`).
-- **Evaluations:** the last category used is **78** (`78.1`-`78.16`, v0.87.0, run 2026-10-20: 16 pass; plan §11). Before that, **77** (`77.1`-`77.20`, the execution re-evaluation run 2026-10-19: 20 pass; four approved real-GAUSS runs and one decline through MCP; v0.86 plan §12). 76.x (same day, plan §11) ran without the opt-in. The next category is `79`.
+- **Evaluations:** the last category used is **79** (`79.1`-`79.13`, v0.88.0, run 2026-10-21: 13 pass; v0.88 plan §11). The next category is `80`. Before that, **78** (`78.1`-`78.16`, v0.87.0, run 2026-10-20: 16 pass; plan §11). Before that, **77** (`77.1`-`77.20`, the execution re-evaluation run 2026-10-19: 20 pass; four approved real-GAUSS runs and one decline through MCP; v0.86 plan §12). 76.x (same day, plan §11) ran without the opt-in.
 - **Tests:** 48 files, all passing; `check_release_readiness.py` passes. The `mcp` extra is installed in this machine's real Python, so the MCP tests actually run.
 
 ## Known Issues
@@ -181,7 +193,7 @@ Full detail is in CHANGELOG and the planning docs (`planning/v0.86-*.md`, `plann
 
 **Path to MVP (agreed with the user 2026-10-20).** The MVP is a publicly available MCP that a stranger can install, connect and use safely. The path:
 1. v0.87.0: handoff binding plus small handoff/registry items (released 2026-10-20; 78.x: 16 pass);
-2. v0.88.0: search/grounding recall (`planning/v0.88-search-and-grounding-recall.md`, approved 2026-10-21; not yet implemented);
+2. v0.88.0: search/grounding recall (`planning/v0.88-search-and-grounding-recall.md`; released 2026-10-21; 79.x: 13 pass);
 3. v0.89.0: release readiness (the decisions below, README quickstart, PyPI packaging, platform decision);
 4. a round with one or two outside GAUSS testers on a clean install, then a public-alpha / v1.0 decision.
 
@@ -201,7 +213,7 @@ Open product question (needs the user's sign-off, since it touches a project-wid
 
 ## Handoff Notes
 
-- **Windows reinstall** (see `CLAUDE.md`): stop any running `gauss-ai-mcp.exe` before `pip install -e ".[mcp]"`. Then reload the VS Code window (`Ctrl+Shift+P` → "Developer: Reload Window"). New MCP tools and changed behavior appear only in a fresh conversation, so a milestone's live evaluation (`79.x` next) must happen in a new conversation after the reinstall.
+- **Windows reinstall** (see `CLAUDE.md`): stop any running `gauss-ai-mcp.exe` before `pip install -e ".[mcp]"`. Then reload the VS Code window (`Ctrl+Shift+P` → "Developer: Reload Window"). New MCP tools and changed behavior appear only in a fresh conversation, so a milestone's live evaluation (`80.x` next) must happen in a new conversation after the reinstall.
 - **Machine config** (`C:\Users\Owner\.gauss-ai\config.json`): `chat_provider: ollama` (`qwen2.5-coder:7b`), `default_runner: gauss`, `gauss_executable: C:\gauss26\tgauss.exe`, `workspace_parent: C:\Users\eclow\OneDrive\Documents\GAUSS-AI-Workspaces`, `docs_root: C:/Users/Owner/.gauss-ai/docs` (the published copy). `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1` is set through a local-scope `gauss-ai` MCP override in Claude Code's `~/.claude.json`, now under **both** project keys, `c:/Users/eclow/Documents/GitHub/gauss-ai` and `C:/…` (checked 2026-10-19 after 77.x). In 76.x it existed only under `C:/…`, while the VS Code extension used `c:/…`, so prepare returned `real_gauss_not_allowed` (76.x finding 1); 77.x ran with it. Before an execution evaluation:
   1. make sure the override exists under the key the session actually uses;
   2. confirm it with one prepare on a trivial handoff candidate.

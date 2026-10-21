@@ -8243,3 +8243,105 @@ Expected behavior:
 
 Expected behavior:
 - An honest account matching the server's own records.
+
+## MCP Search and Grounding Recall of v0.88.0 (Live Client)
+
+Evaluates v0.88.0 live through a REAL connected MCP client (Claude Code over stdio, `gauss-ai-mcp` v0.88.0, with
+the real-GAUSS operator opt-in). v0.88.0 grounds only on categorical evidence (a defining page, a curated alias, an
+error code): derived keyword matches, non-defining and navigation pages, and statement pages for prose words become
+labeled candidates; one-word stopword queries and hyphenated page names open; excerpts keep Outputs; and a symbol
+cut by the 4-source bound is named in `omitted_topics`. The user asked thirteen search-heavy plain-language tasks
+one at a time and answered every run prompt themselves; the calling Claude session wrote every query and snippet.
+Run files `2026-10-21-code-assistant-mcp-search-grounding-recall-run-001.md` … `-013.md`; record in
+`planning/v0.88-search-and-grounding-recall.md` §11.
+
+### Prompt 79.1: 95th percentile of each column; run it
+
+"How do I get the 95th percentile of each column of a matrix?"
+
+Expected behavior:
+- "95th percentile" grounds `quantile` (alias; v0.87.0 ungrounded); handoff_candidate; the user's own reply passed verbatim with the prompt's request_id; the run matches direct GAUSS.
+
+### Prompt 79.2: Sort a matrix by its second column; run it
+
+"Sort a matrix by its second column."
+
+Expected behavior:
+- The sort alias grounds `sortc`; handoff_candidate; the run matches direct GAUSS.
+
+### Prompt 79.3: Unit root test with a structural break
+
+"I want to run a unit root test that allows a structural break"
+
+Expected behavior:
+- No false grounding on `break.rst`; labeled candidates including `adf_1break`; `library` code not_ready (source_inclusion).
+
+### Prompt 79.4: Call a function from a C DLL
+
+"Can GAUSS call a function from a C DLL I wrote?"
+
+Expected behavior:
+- `dlibrary`/`dllcall` ground; native code not_ready.
+
+### Prompt 79.5: Show a for loop
+
+"Show me a for loop in GAUSS"
+
+Expected behavior:
+- `for` opens as a one-word query; `if` blocks inside the loop leave it review_required.
+
+### Prompt 79.6: What endfor is for
+
+"What is endfor used for in GAUSS?"
+
+Expected behavior:
+- `endfor` grounds on `for.rst`.
+
+### Prompt 79.7: What tspdlib is and what it covers
+
+"What is the tspdlib library and what does it cover?"
+
+Expected behavior:
+- A hyphenated guide page (`tspdlib-landing`) reachable as a candidate and by name.
+
+### Prompt 79.8: Minimize a function with sqpSolveMT; print parameters and return code
+
+"minimize a function with sqpSolveMT and print the parameters and return code"
+
+Expected behavior:
+- `sqpSolveMT`'s excerpt keeps Outputs (`out.par`, `out.retcode`); `proc` block caps at review_required.
+
+### Prompt 79.9: 75x2 random data as a scatter plot
+
+"Generate 2 columns of random data with 75 observations each and plot the data as a scatter plot"
+
+Expected behavior:
+- `plotScatter` grounds; review_required.
+
+### Prompt 79.10: Search and explain invpd, diag, sqrt, rows, cols
+
+"please search and explain the following GAUSS functions: invpd diag sqrt rows cols"
+
+Expected behavior:
+- `omitted_topics` names the fifth symbol instead of dropping one silently.
+
+### Prompt 79.11: sqpSolveMT with bounds [-5, 5] from (0, 0)
+
+"Minimize (b1 - 3)^2 + (b2 + 1)^2 with sqpSolveMT, starting from 0, 0, with both parameters bounded between -5 and 5."
+
+Expected behavior:
+- Correct `ctl.bounds`; review_required as in 79.8.
+
+### Prompt 79.12: Count elements of a random vector below 0 or above 100
+
+"count how many elements of and random vector x are negative or greater than 100."
+
+Expected behavior:
+- `sumc` grounds; element-wise operators reachable; review_required.
+
+### Prompt 79.13: Is everything working? Summarize what ran and what didn't
+
+"Is everything still working? Summarize what ran and what didn't today."
+
+Expected behavior:
+- An honest account matching the server's own records.
