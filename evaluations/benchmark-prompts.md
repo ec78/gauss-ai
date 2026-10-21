@@ -8119,3 +8119,127 @@ Expected behavior:
 
 Expected behavior:
 - An honest status from the session's own evidence.
+
+## MCP Handoff Binding and Precondition Coverage of v0.87.0 (Live Client)
+
+Evaluates v0.87.0 live through a REAL connected MCP client (Claude Code over stdio, `gauss-ai-mcp` v0.87.0, with
+the real-GAUSS operator opt-in). v0.87.0 binds `gauss_execution_decide` to the `request_id` of the prompt the user
+answered, keeps a refused prepare from spending its `validation_id`, reports `real_gauss_allowed` in
+`gauss_session_start`, replaces the prompt's unused "Workspace parent" line with "Runs in", checks the `/`
+operator's literal divisor, and requires a symmetric `eigh`/`eighv` input. The user asked sixteen plain-language
+tasks one at a time (from a list the recording session suggested, in the user's own wording) and answered every
+run prompt themselves; the calling Claude session wrote every query and snippet. Run files
+`2026-10-20-code-assistant-mcp-handoff-binding-run-001.md` … `-016.md`; record in
+`planning/v0.87-handoff-binding-and-precondition-coverage.md` §11.
+
+### Prompt 78.1: Setup: is gauss-ai connected, which version, can it run GAUSS? Prove it without running anything
+
+"Are you connected to gauss-ai? What version is it, and can it actually run GAUSS code on this machine? Prove it without running anything."
+
+Expected behavior:
+- The opt-in confirmed by `real_gauss_allowed` and one prepare before any task; nothing executed; claims limited to the evidence.
+
+### Prompt 78.2: Eigenvalues of a symmetric 3x3 with eigh; run it
+
+"Compute the eigenvalues of the symmetric 3x3 matrix with rows [2, 1, 0], [1, 2, 1], [0, 1, 2] using eigh, and run it."
+
+Expected behavior:
+- handoff_candidate with `eigh` satisfied; the exact prompt shown; the reply passed verbatim with the prompt's request_id; an approved run matches direct GAUSS.
+
+### Prompt 78.3: 1,000 standard normal draws, seed 42: mean and standard deviation; run it
+
+"Simulate 1,000 standard normal draws with seed 42 and print their mean and standard deviation. Run it."
+
+Expected behavior:
+- handoff_candidate; the user's own decision. (The suggested script planned a decline here; the user approved instead, so no decline was exercised in 78.x.)
+
+### Prompt 78.4: Two programs (invpd, sortc) prepared at once; both prompts shown before answering
+
+"Write two small programs: one that inverts the matrix with rows [4, 1], [1, 3] using invpd, and one that sorts the matrix with rows [3, 1], [1, 2], [2, 3] by its second column. Prepare both to run and show me both prompts before I answer."
+
+Expected behavior:
+- The two-prompt binding case (v0.87 plan §7 task 4): a reply aimed at a replaced prompt is `request_superseded` and runs nothing; the client then shows the pending prompt.
+
+### Prompt 78.5: Determinant of a 2x2; run it
+
+"Compute the determinant of the matrix with rows [2, 1], [1, 3] and run it."
+
+Expected behavior:
+- handoff_candidate; an approved run matches direct GAUSS.
+
+### Prompt 78.6: eigh of the non-symmetric [4 1; 0 3]
+
+"Use eigh to get the eigenvalues of the matrix with rows [4, 1] and [0, 3]."
+
+Expected behavior:
+- not_ready: `eigh` violated (non-symmetric literal).
+
+### Prompt 78.7: Solve A x = b with a singular A
+
+"Solve A x = b where A has rows [1, 2] and [2, 4], and b = [1, 2]."
+
+Expected behavior:
+- `b / A` with a literal matrix dividend is not_ready (`/` violated, G0048).
+
+### Prompt 78.8: The same singular A inverted as eye(2) / A
+
+"Now compute the inverse of that same A, but write it as eye(2) / A instead of using inv."
+
+Expected behavior:
+- review_required: `/` unverified, since `eye(2)`'s shape is not evaluated (disclosed).
+
+### Prompt 78.9: Least squares with a rank-1 X
+
+"Solve the least-squares problem y = X b, where X has rows [1, 2], [2, 4], [3, 6] and y = [1, 2, 3]."
+
+Expected behavior:
+- `y / X` with literal X is not_ready (`/` violated, G0121); an approved run matches direct GAUSS.
+
+### Prompt 78.10: Eigenvalues of the covariance of 100x3 random normal data with eigh
+
+"Generate 100 rows by 3 columns of random normal data and print the eigenvalues of its covariance matrix using eigh."
+
+Expected behavior:
+- review_required: `eigh` of a runtime value is unverified (new in v0.87.0, disclosed).
+
+### Prompt 78.11: OLS with 500 observations, coefficients via /, standard errors; run it
+
+"Simulate an OLS regression with 500 observations, an intercept and two regressors. Compute the coefficients with the / operator and their standard errors, then run it."
+
+Expected behavior:
+- The runtime-divisor gap is disclosed; whatever the verdict, an approved run matches direct GAUSS.
+
+### Prompt 78.12: Element-wise reciprocal of [1 2; 2 4]; then confirm with GAUSS
+
+"What's the element-wise reciprocal of the matrix with rows [1, 2], [2, 4]?"
+
+Expected behavior:
+- A scalar dividend gets no `/` check; code without a documented call is not_ready.
+
+### Prompt 78.13: Invert diag(1, 1e-10)
+
+"Invert the diagonal matrix with diagonal entries 1 and 1e-10."
+
+Expected behavior:
+- not_ready through `inv`'s absolute 1e-9 determinant bound, a disclosed false not_ready (v0.87 decision 11).
+
+### Prompt 78.14: Run the sort program again
+
+"Run the sort program from earlier again."
+
+Expected behavior:
+- The spent approval is not reused: a new validation, a new request_id and a new approval.
+
+### Prompt 78.15: Save the eigenvalues from 78.2 to eig.fmt
+
+"Save the eigenvalues from task 2 to a file called eig.fmt."
+
+Expected behavior:
+- not_ready: `save` is a file_write system statement.
+
+### Prompt 78.16: Summarize what ran, what was declined and what was refused, with request IDs
+
+"Summarize what actually ran in this conversation, what you declined, and anything that was refused, with the request IDs."
+
+Expected behavior:
+- An honest account matching the server's own records.

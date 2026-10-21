@@ -4,7 +4,7 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 
 ## Current Objective
 
-**v0.87.0 "Handoff Binding and Precondition Coverage" is implemented (2026-10-20), not committed, tagged or released.** Plan and record: `planning/v0.87-handoff-binding-and-precondition-coverage.md` (§1-§8 approved on 2026-10-20 with every recommendation; §9 deviations and diffs; §10 testing; 42 `tgauss.exe -b` spot checks, dv/eg series). It fixes 77.x findings 1-3 and 76.x findings 2, 3 and 6.
+**v0.87.0 "Handoff Binding and Precondition Coverage" was committed, tagged and pushed on 2026-10-20** (tag `v0.87.0`, commit `4103280`; `main` pushed). No GitHub release page has been created yet; that is the user's call. Plan and record: `planning/v0.87-handoff-binding-and-precondition-coverage.md` (§1-§8 approved on 2026-10-20 with every recommendation; §9 deviations and diffs; §10 testing; 42 `tgauss.exe -b` spot checks, dv/eg series). It fixes 77.x findings 1-3 and 76.x findings 2, 3 and 6.
 - Done:
   - `gauss_mcp_server.py`: `gauss_execution_decide(..., request_id)` refuses a missing id (`request_id_required`), a replaced prompt (`request_superseded`) or any other id (`request_not_pending`) before parsing, and echoes `request_id`/`request_digest`; prepare reports `replaced_request_id`; a refused prepare no longer spends its `validation_id`; `gauss_session_start` reports `real_gauss_allowed` (+ `execution_hint`);
   - the prompt's "Workspace parent" line is now "Runs in: a new temporary directory, deleted after the run", and neither caller puts `workspace_parent` on the request (the only change in `gauss_execution_handoff.py`);
@@ -15,8 +15,14 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
   - the search draft renamed to `planning/v0.88-search-and-grounding-recall.md` (v0.88.0; its live evaluation renumbered 79.x).
 - One plan error corrected (§9.2): eg10 (`eigh(x')` of a non-symmetric literal) is violated, not satisfied.
 - New pre-existing finding, disclosed (decision 11): `inv`'s absolute 1e-9 determinant bound flags `{1 0, 0 1e-10}`, which GAUSS inverts (dv10/dv11).
-- **Next:** the user reviews, then commit → tag `v0.87.0` → confirm before pushing/creating the GitHub release. Then live evaluation **78.x** (plan §7) in a fresh conversation after reinstalling (stop every `gauss-ai-mcp.exe` first). It must include real approved and declined runs, and the two-prompt binding case.
-- **Push:** `main` is ahead of `origin/main` by one commit (`8e368bb`, the MVP-path status update). Pushing is the user's call.
+- **Live evaluation 78.x ran on 2026-10-20** and is recorded: plan §11; run files `2026-10-20-code-assistant-mcp-handoff-binding-run-001.md` … `-016.md`; `INDEX.md`, `benchmark-prompts.md` category 78, `benchmark-coverage.md`. **16 pass.**
+  - Eight approved real-GAUSS runs, each byte-identical to direct GAUSS; every decide carried and echoed the prompt's request_id; three unrecognized replies ("ye", "A: yes", "Prompt B: yes") ran nothing; `save` blocked. All 21 live verdicts reproduced on the v0.87.0 archive; against v0.86.0, three change state, all toward the evidence (non-symmetric `eigh`, `eye(2) / A`, `eigh(vcx(x))`).
+  - **Not exercised live:** the replacement path (the client opened one session per prompt, finding 1), and any decline (the user approved 78.3). Probe B1 (recording session, real stdio transport, fake runner) confirmed `replaced_request_id`, `request_superseded`, `request_id_required`, a decline with echo, a refused spent id and a repeated refusal.
+  - Findings: (1) one pending prompt per session, but sessions multiply it, so with several open prompts the client alone maps a bare reply (disclose in KL); (2) the client suggested labelled replies ("A: yes") that the parser rejects (one sentence of guidance in the decide description); (3) `eigh` of a runtime value holds back correct covariance code and steers toward `eig` (decision 8's cost, observation); (4) the no-documented-call rule was met by an incidental `ones(2,2)` call (pre-existing, observation). Known items recurred: the 1e-9 bound, runtime `/` divisors, the fifth-symbol search drop, English-word grounding.
+  - Client conduct: it grepped `KNOWN_LIMITATIONS.md` and this milestone's plan and read one source file during the tasks (plan §11.7).
+  - Recommendation (§11.8): v0.87.0 stays released; no dedicated binding re-run; carry findings 1-2 into the next release's KL and tool text.
+  - Not yet committed (the 78.x records).
+- **Next:** at the user's choice, per the agreed path to MVP, v0.88.0 search/grounding recall (`planning/v0.88-search-and-grounding-recall.md`, unapproved; re-check its findings against v0.87.0 first). Do not start it until the user chooses.
 
 **v0.86.0 "Structure Members, Word Operators and Structure Definitions" was released on 2026-10-16** (https://github.com/ec78/gauss-ai/releases/tag/v0.86.0; tag `v0.86.0`, commit `5bb1eaa`): a validator-fix milestone for 75.x findings 1-3. Plan and record: `planning/v0.86-members-word-operators-struct-definitions.md` (§9-§10 implementation; §11 live evaluation 76.x; §12 live evaluation 77.x, both recorded and committed).
 
@@ -129,7 +135,7 @@ Full detail is in CHANGELOG and the planning docs (`planning/v0.86-*.md`, `plann
   - option B: indexed writes are looked through for category only, never for preconditions;
   - expressions are never evaluated.
 - **Signatures:** nested optional groups are flattened, and `...` means no upper bound (`VARIADIC_MAX_ARGS`).
-- **Evaluations:** the last category used is **77** (`77.1`-`77.20`, the execution re-evaluation run 2026-10-19: 20 pass; four approved real-GAUSS runs and one decline through MCP; v0.86 plan §12). 76.x (same day, plan §11) ran without the opt-in. The next category is `78`.
+- **Evaluations:** the last category used is **78** (`78.1`-`78.16`, v0.87.0, run 2026-10-20: 16 pass; plan §11). Before that, **77** (`77.1`-`77.20`, the execution re-evaluation run 2026-10-19: 20 pass; four approved real-GAUSS runs and one decline through MCP; v0.86 plan §12). 76.x (same day, plan §11) ran without the opt-in. The next category is `79`.
 - **Tests:** 48 files, all passing; `check_release_readiness.py` passes. The `mcp` extra is installed in this machine's real Python, so the MCP tests actually run.
 
 ## Known Issues
@@ -142,7 +148,7 @@ Full detail is in CHANGELOG and the planning docs (`planning/v0.86-*.md`, `plann
 ## Later
 
 **Path to MVP (agreed with the user 2026-10-20).** The MVP is a publicly available MCP that a stranger can install, connect and use safely. The path:
-1. v0.87.0: handoff binding plus small handoff/registry items (implemented 2026-10-20; 78.x pending);
+1. v0.87.0: handoff binding plus small handoff/registry items (released 2026-10-20; 78.x: 16 pass);
 2. v0.88.0: search/grounding recall (`planning/v0.88-search-and-grounding-recall.md`, unapproved; add 76.x finding 5, the silent fifth-symbol drop; re-check its findings against v0.87.0);
 3. v0.89.0: release readiness (the decisions below, README quickstart, PyPI packaging, platform decision);
 4. a round with one or two outside GAUSS testers on a clean install, then a public-alpha / v1.0 decision.
@@ -163,7 +169,7 @@ Open product question (needs the user's sign-off, since it touches a project-wid
 
 ## Handoff Notes
 
-- **Windows reinstall** (see `CLAUDE.md`): stop any running `gauss-ai-mcp.exe` before `pip install -e ".[mcp]"`. Then reload the VS Code window (`Ctrl+Shift+P` → "Developer: Reload Window"). New MCP tools and changed behavior appear only in a fresh conversation, so a milestone's live evaluation (`78.x` next, for v0.87.0) must happen in a new conversation after the reinstall.
+- **Windows reinstall** (see `CLAUDE.md`): stop any running `gauss-ai-mcp.exe` before `pip install -e ".[mcp]"`. Then reload the VS Code window (`Ctrl+Shift+P` → "Developer: Reload Window"). New MCP tools and changed behavior appear only in a fresh conversation, so a milestone's live evaluation (`79.x` next) must happen in a new conversation after the reinstall.
 - **Machine config** (`C:\Users\Owner\.gauss-ai\config.json`): `chat_provider: ollama` (`qwen2.5-coder:7b`), `default_runner: gauss`, `gauss_executable: C:\gauss26\tgauss.exe`, `workspace_parent: C:\Users\eclow\OneDrive\Documents\GAUSS-AI-Workspaces`, `docs_root: C:/Users/Owner/.gauss-ai/docs` (the published copy). `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1` is set through a local-scope `gauss-ai` MCP override in Claude Code's `~/.claude.json`, now under **both** project keys, `c:/Users/eclow/Documents/GitHub/gauss-ai` and `C:/…` (checked 2026-10-19 after 77.x). In 76.x it existed only under `C:/…`, while the VS Code extension used `c:/…`, so prepare returned `real_gauss_not_allowed` (76.x finding 1); 77.x ran with it. Before an execution evaluation:
   1. make sure the override exists under the key the session actually uses;
   2. confirm it with one prepare on a trivial handoff candidate.
