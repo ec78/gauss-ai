@@ -24,3 +24,59 @@ jobs:
 
       - name: Run release-readiness checks
         run: python scripts/check_release_readiness.py
+
+  # v0.89.0 (planning v0.89 §2.3, §3.2): until now CI never ran the test
+  # suite, so Python 3.10 (the declared minimum) and macOS were never
+  # tested. Every test file is standalone and network-free; only the
+  # install step uses the network. test_gauss_ai_packaging.py builds venvs
+  # and a wheel, so it runs once, in its own job.
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.10", "3.11", "3.12"]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install gauss-ai with the mcp extra
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[mcp]"
+
+      - name: Run every test file
+        shell: bash
+        run: |
+          status=0
+          for f in scripts/test_*.py; do
+            [ "$f" = scripts/test_gauss_ai_packaging.py ] && continue
+            if python "$f" > test-output.txt 2>&1; then
+              echo "PASS $f"
+            else
+              echo "FAIL $f"; tail -40 test-output.txt; status=1
+            fi
+          done
+          exit $status
+
+  packaging:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run the packaging tests
+        run: python scripts/test_gauss_ai_packaging.py

@@ -20,7 +20,7 @@ Durable, project-wide guidance for Claude Code sessions in this repository. For 
 - The repair pipeline (`gauss_code_assistant_workflow.py`, `gauss_execution_*`, `gauss_repair_*`, `gauss_verification_*`) — the original governed execute→diagnose→repair→verify→review pipeline. The conversational layer has **no import path into any of these modules** (structurally enforced and tested).
 - `planning/v{X}-*.md` — one design/readiness document per milestone, mirroring that milestone's required final-report structure.
 - `evaluations/` — `benchmark-prompts.md`, `benchmark-coverage.md`, `runs/` (real transcripts), `runs/INDEX.md`.
-- `docs/` — user/alpha-tester-facing documentation. `README.md` carries a "Current Status" + chained "Previous milestone" history.
+- `docs/` — user/alpha-tester-facing documentation. `docs/development-history.md` carries a "Current Status" + chained "Previous milestone" history; `README.md` is the stranger's quickstart, and `docs/pypi-readme.md` is the PyPI description.
 - `agents/`, `experts/`, `prompts/`, `tools/`, `workflows/`, `configs/` — a separate, mostly-aspirational multi-agent framework layer described in `ARCHITECTURE.md`; not the actively-developed `gauss-ai` product surface.
 
 ## Development Environment
@@ -71,7 +71,7 @@ Durable, project-wide guidance for Claude Code sessions in this repository. For 
 ## Workflow Rules
 
 - Work proceeds in versioned milestones (`vX.Y.0`), each typically specified as one large upfront brief. Each milestone gets its own `planning/v{X}-*.md` doc and typically ends with a mandatory multi-section final report — including an explicit recommendation on whether to proceed to the next milestone. **Do not auto-start the next milestone** unless the user asks.
-- Release sequence: full test suite → update `README.md` ("Current Status" + prepend to the "Previous milestone" chain), `CHANGELOG.md` (`[Unreleased]`), `KNOWN_LIMITATIONS.md` → commit → tag `vX.Y.0` → **confirm with the user before pushing/creating a GitHub release**.
+- Release sequence: full test suite → update `docs/development-history.md` ("Current Status" + prepend to the "Previous milestone" chain) and the README's one-line current milestone, `CHANGELOG.md` (`[Unreleased]`), `KNOWN_LIMITATIONS.md` → commit → tag `vX.Y.0` → **confirm with the user before pushing/creating a GitHub release**.
 - New evaluation categories are numbered sequentially (e.g. `62.x`, `63.x`) in `evaluations/benchmark-prompts.md`, with matching dated files under `evaluations/runs/`, an `evaluations/runs/INDEX.md` entry and an `evaluations/benchmark-coverage.md` row. CI's `check_evaluation_tracking.py` fails without the coverage row. Score honestly — a correctly-blocked unsafe request is not a failure; a real defect found live is reported as a real defect, not smoothed over.
 - Live MCP-client evaluations (`70.x` onward): the user asks plain-language tasks one at a time in a fresh conversation, and that session writes the code itself. The testing session does not read the milestone's planning doc or `PROJECT_STATUS.md` expectations until the tasks are done. Before recording why a verdict was `review_required`/partial, diagnose it by calling `validate_code(...)` directly and inspecting `pre_execution.coverage` and `parameter_role_checks`, because a client's in-conversation explanation can be a wrong guess (72.3, 72.15).
 

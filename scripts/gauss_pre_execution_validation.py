@@ -1665,21 +1665,39 @@ def _governing_assignment(
     docs' own layout) was never traced, and a known two-line `invpd` SPD
     violation softened to review_required (live finding 73.10). "Ends
     before the call" compares the statement's `;` position with the call's
-    `(line_number, column)`."""
+    `(line_number, column)`.
+
+    v0.89.0 (live finding 79.x-2; planning v0.89 §3.7): a `for`/`threadfor`
+    header that names `name` no longer refuses when it STARTS after the
+    call and the call itself sits at block depth 0. Before, any such header
+    anywhere refused, so `T = 200; e = rndn(T, 1); for t (1, 3, 1); endfor;`
+    left `T` untraced (GAUSS names are case-insensitive). Real `tgauss.exe
+    -b` (GAUSS 26.1.4, 2026-10-21, planning v0.89 §9, fs1-fs6): the counter
+    is local to the loop -- after `endfor`, `T` is 200 again, whether the
+    header comes before or after the call (fs1, fs4, fs6) -- but INSIDE the
+    loop `T` is the counter (fs3: `e = rndn(T, 1);` in the body gives 3
+    rows). So a header before or around the call, and any call inside a
+    block (a loop's back edge can run a later header first), still refuse.
+    The "before" case is left refusing on purpose: it is not the measured
+    case. Every other unmodelled write keeps its position-blind refusal
+    (decision 9a, not 9b)."""
     target = (
         line_number if line_number is not None else float("inf"),
         column if column is not None else float("inf"),
     )
     escaped = re.escape(name)
     plain_re = re.compile(rf"^\s*(?:let\s+)?{escaped}\s*=(?!=)", re.IGNORECASE)
+    for_header_re = re.compile(rf"^\s*(?:thread)?for\s+{escaped}\b", re.IGNORECASE)
     other_write_res = (
         re.compile(rf"^\s*{escaped}\s*\.[A-Za-z_]", re.IGNORECASE),
         re.compile(rf"^\s*\{{[^}}]*\b{escaped}\b[^}}]*\}}\s*=(?!=)", re.IGNORECASE),
-        re.compile(rf"^\s*(?:thread)?for\s+{escaped}\b", re.IGNORECASE),
         re.compile(rf"^\s*clear(?:all)?\b.*\b{escaped}\b", re.IGNORECASE | re.DOTALL),
     )
     indexed_write_re = re.compile(rf"^\s*{escaped}\s*\[", re.IGNORECASE)
     depth = 0
+    # The block depth of the statement holding the call, once it is reached
+    # (None until then, and always None for an end-of-code target).
+    call_depth: int | None = None
     governing: str | None = None
     for statement in source_statements(code):
         masked = statement.masked
@@ -1687,6 +1705,12 @@ def _governing_assignment(
         if word in _BLOCK_CLOSE_KEYWORDS:
             depth = max(0, depth - 1)
             continue
+        if call_depth is None and (statement.end_line, statement.end_column) >= target:
+            call_depth = depth
+        if for_header_re.search(masked):
+            header_after_call = (statement.line, statement.column) > target
+            if not (header_after_call and call_depth == 0):
+                return None
         if any(r.search(masked) for r in other_write_res):
             return None
         if indexed_write_re.search(masked):

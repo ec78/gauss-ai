@@ -66,6 +66,7 @@ import atexit
 import dataclasses
 import hashlib
 import os
+import time
 import uuid
 from collections import OrderedDict, deque
 from dataclasses import dataclass, field
@@ -74,10 +75,11 @@ from typing import Any
 
 try:
     from mcp.server.mcpserver import MCPServer
+    from mcp.types import ToolAnnotations
 except ImportError as exc:  # pragma: no cover - exercised only without the optional extra installed
     raise ImportError(
         "The 'mcp' package is required to run the gauss-ai MCP server. Install it with: "
-        'pip install -e ".[mcp]"'
+        'pip install "gauss-ai[mcp]"'
     ) from exc
 
 import gauss_ai_chat as chat_mod
@@ -85,9 +87,10 @@ import gauss_ai_config as config_mod
 import gauss_chat_provider as provider_mod
 import gauss_code_assistant_cli as cli_mod
 import gauss_conversation_engine as engine_mod
+import gauss_doc_reader as doc_reader_mod
 import gauss_execution_handoff as handoff_mod
 
-__version__ = "0.88.0"
+__version__ = "0.89.0"
 
 #: Set by the server OPERATOR in the process's own environment before
 #: launch -- never read from a tool-call argument. See module docstring.
@@ -96,7 +99,32 @@ ENV_ALLOW_REAL_GAUSS = "GAUSS_AI_MCP_ALLOW_REAL_GAUSS"
 #: Per-session cap on outstanding validation_ids (oldest evicted first).
 MAX_VALIDATIONS_PER_SESSION = 8
 
+#: v0.89.0 (planning v0.89 §3.8): a long-running server (one per Claude
+#: Code window) kept every session until close or exit. A session idle
+#: longer than this is closed by the sweep at the start of the next tool
+#: call; 8 hours lets a prompt left open over a working day survive. An
+#: evicted session's pending request and validation_ids die with it and
+#: never approve anything.
+SESSION_IDLE_SECONDS = 8 * 3600
+
+#: v0.89.0: at most this many sessions of each kind; past it, the least
+#: recently used is closed.
+MAX_SESSIONS = 64
+
 DOCS_FETCH_HINT = "Run 'gauss-ai docs fetch' once to download the official GAUSS documentation."
+
+#: v0.89.0 (live finding 79.x-1; planning v0.89 §3.6): shown on every
+#: documentation source, since the excerpt is cut and extraction drops some
+#: value lists (`sqpSolveMT`'s return codes).
+READ_DOC_HINT = (
+    "The content is an excerpt. Call gauss_read_doc with this citation to see the page's sections, "
+    "then read any section in full."
+)
+
+_SESSION_EXPIRED_DETAIL = (
+    f"This session was closed after {SESSION_IDLE_SECONDS // 3600} idle hours (or to stay under "
+    f"{MAX_SESSIONS} open sessions). Nothing it held was approved or run. Start a new session."
+)
 
 #: v0.88.0 (planning v0.88 §3.10): shown with `omitted_topics`.
 OMITTED_TOPICS_NOTE = "Resolved but not included (at most 4 per search); search these names separately."
@@ -127,6 +155,13 @@ def _new_id() -> str:
 
 def _clock() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _monotonic() -> float:
+    """v0.89.0: the idle clock for session eviction, a module-level function
+    so tests can replace it. Monotonic, so a wall-clock change never evicts
+    or keeps a session."""
+    return time.monotonic()
 
 
 # ---------------------------------------------------------------------------
@@ -170,15 +205,21 @@ class Session:
     #: `request_superseded` (name the prompt that replaced it) instead of a
     #: bare `request_not_pending`; a superseded request can never be approved.
     superseded_request_ids: "deque[str]" = field(default_factory=lambda: deque(maxlen=MAX_VALIDATIONS_PER_SESSION))
+    #: v0.89.0: `_monotonic()` at the last tool call that used this session.
+    last_used: float = field(default_factory=lambda: _monotonic())
 
 
 @dataclass
 class RepairSession:
     adapter: "cli_mod.InteractiveMvpAdapter"
+    last_used: float = field(default_factory=lambda: _monotonic())
 
 
 _sessions: dict[str, Session] = {}
 _repair_sessions: dict[str, RepairSession] = {}
+#: v0.89.0: ids the sweep closed, newest last, so a later call can say
+#: `session_expired` instead of a bare `unknown_session`.
+_expired_session_ids: "deque[str]" = deque(maxlen=4 * MAX_SESSIONS)
 _config: "config_mod.GaussAiConfig | None" = None
 
 
@@ -204,6 +245,96 @@ def _close_all_sessions() -> None:
 
 
 atexit.register(_close_all_sessions)
+
+
+def _close_repair_session(session_id: str) -> bool:
+    """The one path that closes a repair session and frees its workspace,
+    shared by `gauss_repair_close` and the eviction sweep."""
+    repair_session = _repair_sessions.pop(session_id, None)
+    if repair_session is None:
+        return False
+    repair_session.adapter.close()
+    return True
+
+
+def _sweep_sessions() -> None:
+    """v0.89.0 (planning v0.89 §3.8): run at the start of every tool call.
+    Closes each session idle longer than `SESSION_IDLE_SECONDS`, then, while
+    either kind still exceeds `MAX_SESSIONS`, the least recently used.
+    Deterministic given `_monotonic()`."""
+    now = _monotonic()
+    for sid, session in list(_sessions.items()):
+        if now - session.last_used > SESSION_IDLE_SECONDS:
+            del _sessions[sid]
+            _expired_session_ids.append(sid)
+    for sid, repair_session in list(_repair_sessions.items()):
+        if now - repair_session.last_used > SESSION_IDLE_SECONDS:
+            _close_repair_session(sid)
+            _expired_session_ids.append(sid)
+    while len(_sessions) > MAX_SESSIONS:
+        sid = min(_sessions, key=lambda k: _sessions[k].last_used)
+        del _sessions[sid]
+        _expired_session_ids.append(sid)
+    while len(_repair_sessions) > MAX_SESSIONS:
+        sid = min(_repair_sessions, key=lambda k: _repair_sessions[k].last_used)
+        _close_repair_session(sid)
+        _expired_session_ids.append(sid)
+
+
+def _missing_session_error(session_id: str) -> dict[str, Any]:
+    if session_id in _expired_session_ids:
+        return {"error": "session_expired", "detail": _SESSION_EXPIRED_DETAIL}
+    return {"error": "unknown_session"}
+
+
+def _use_session(session_id: str) -> "tuple[Session | None, dict[str, Any] | None]":
+    """Sweeps, then returns `(session, None)` with its idle clock reset, or
+    `(None, error)`."""
+    _sweep_sessions()
+    session = _sessions.get(session_id)
+    if session is None:
+        return None, _missing_session_error(session_id)
+    session.last_used = _monotonic()
+    return session, None
+
+
+def _use_repair_session(session_id: str) -> "tuple[RepairSession | None, dict[str, Any] | None]":
+    _sweep_sessions()
+    repair_session = _repair_sessions.get(session_id)
+    if repair_session is None:
+        return None, _missing_session_error(session_id)
+    repair_session.last_used = _monotonic()
+    return repair_session, None
+
+
+def _resolve_docs_root(docs_root: str | None, session_id: str | None) -> "tuple[str | None, dict[str, Any] | None]":
+    """v0.89.0 (planning v0.89 §2.6, §3.9): the docs root for the read-only
+    doc tools. An explicit `docs_root` wins; otherwise a given session's own
+    root (a client that set `docs_root` in `gauss_session_start` used to get
+    grounded validation but ungrounded search); otherwise the usual
+    environment-then-config resolution. Only which root is passed in
+    changes; grounding itself is untouched."""
+    if docs_root is None and session_id is not None:
+        session, error = _use_session(session_id)
+        if session is None:
+            return None, error
+        if session.docs_root is not None:
+            return session.docs_root, None
+    else:
+        _sweep_sessions()
+    return config_mod.resolve_docs_root(cli_value=docs_root, config=_get_config(), env=os.environ).value, None
+
+
+# v0.89.0 (planning v0.89 §2.7, §3.9): MCP tool annotations, fixed here and
+# pinned by a test. A client may use them to decide what to auto-approve, so
+# a wrong hint is worse than none: `gauss_execution_decide` runs GAUSS and
+# the repair tools write in a workspace, so neither is read-only.
+_READ_ONLY = ToolAnnotations(read_only_hint=True, open_world_hint=False)
+_RUNS_CODE = ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=False, open_world_hint=False)
+_MANAGES_WORKSPACE = ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=False)
+_WRITES_WORKSPACE = ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=False, open_world_hint=False)
+#: Strict-mode chat may call a cloud model provider the user enabled.
+_ASKS_MODEL = ToolAnnotations(read_only_hint=True, open_world_hint=True)
 
 
 # ---------------------------------------------------------------------------
@@ -282,8 +413,9 @@ server = MCPServer(
     version=__version__,
     instructions=(
         "GAUSS programming assistant backed by the official GAUSS documentation and deterministic checks. "
-        "Recommended flow: gauss_session_start -> gauss_search_docs to look up the functions you need -> write "
-        "the GAUSS code yourself -> gauss_validate_code to get a deterministic verdict (signatures, documented "
+        "Recommended flow: gauss_session_start -> gauss_search_docs to look up the functions you need (its "
+        "excerpts are cut; gauss_read_doc reads any section of a cited page in full, such as Remarks or return "
+        "codes) -> write the GAUSS code yourself -> gauss_validate_code to get a deterministic verdict (signatures, documented "
         "preconditions, syntax, unknown functions, and system-touching statements). Only code that reaches "
         "handoff_candidate gets a validation_id; to run it, call gauss_execution_prepare(validation_id), show the "
         "user the exact prompt it returns, and pass the user's own yes/no to gauss_execution_decide together with "
@@ -293,7 +425,7 @@ server = MCPServer(
 )
 
 
-@server.tool()
+@server.tool(annotations=_READ_ONLY)
 def gauss_session_start(
     runner: str | None = None,
     gauss_executable: str | None = None,
@@ -308,10 +440,17 @@ def gauss_session_start(
     a `session_id` for the other gauss_* tools, and `real_gauss_allowed`:
     whether the server operator started this server with
     GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1. It reflects that opt-in only; whether
-    the GAUSS executable actually launches is known only from a run."""
+    the GAUSS executable actually launches is known only from a run. Also
+    returns `server_version`: if it is not the version you installed, or a
+    tool asks for an argument its description does not mention, restart
+    the MCP client and start a new conversation. Sessions idle for 8 hours
+    are closed."""
+    _sweep_sessions()
     config = _get_config()
     env = os.environ
     sid = session_id or _new_id()
+    if sid in _expired_session_ids:
+        _expired_session_ids.remove(sid)
     resolved_docs_root = config_mod.resolve_docs_root(cli_value=docs_root, config=config, env=env).value
     _sessions[sid] = Session(
         approval_store=handoff_mod.ExecutionHandoffApprovalStore(),
@@ -323,6 +462,11 @@ def gauss_session_start(
     )
     response: dict[str, Any] = {
         "session_id": sid,
+        # v0.89.0 (planning v0.89 §2.7, §3.9): some clients keep a tool's old
+        # description across an upgrade, and since v0.87.0 a stale
+        # `gauss_execution_decide` description omits `request_id`. The
+        # version makes the mismatch visible to the user and in bug reports.
+        "server_version": __version__,
         "runner": _sessions[sid].runner,
         "docs_root_configured": resolved_docs_root is not None,
         # v0.87.0 (live finding 76.x f2): in 76.1 a client could not tell
@@ -339,31 +483,48 @@ def gauss_session_start(
     return response
 
 
-@server.tool()
+@server.tool(annotations=_READ_ONLY)
 def gauss_session_close(session_id: str) -> dict[str, Any]:
     """End a session and free its state."""
+    _sweep_sessions()
     existed = _sessions.pop(session_id, None) is not None
     return {"session_id": session_id, "closed": existed}
 
 
-@server.tool()
-def gauss_search_docs(query: str, docs_root: str | None = None) -> dict[str, Any]:
+def _source_dict(source: Any) -> dict[str, Any]:
+    entry = {"source": source.source, "topic": source.topic, "citation": source.citation, "content": source.content}
+    # v0.89.0: only a documentation page can be read further; an error-catalog
+    # entry is already whole.
+    if isinstance(source.citation, str) and source.citation.endswith(".rst"):
+        entry["read_hint"] = READ_DOC_HINT
+        # v0.89.0 (planning v0.89 §9.3): Aptech asked for a link back to the
+        # page with each result. Built from the citation; no network.
+        entry["docs_url"] = doc_reader_mod.docs_url(source.citation)
+    return entry
+
+
+@server.tool(annotations=_READ_ONLY)
+def gauss_search_docs(query: str, docs_root: str | None = None, session_id: str | None = None) -> dict[str, Any]:
     """Search the official GAUSS documentation (and the verified GAUSS error
     catalog, for codes like G0025) for a natural-language question or
     function names. Returns the matching documentation excerpts to read
-    before writing code. When nothing is grounded but pages look relevant,
-    `candidates` lists them (name, citation, purpose) -- candidates are not
-    grounded answers; search a candidate's name to read its page. A
-    documented name cut by the 4-source bound is listed in
-    `omitted_topics`; search it separately. Purely local and read-only."""
-    resolved = config_mod.resolve_docs_root(cli_value=docs_root, config=_get_config(), env=os.environ).value
+    before writing code. Excerpts are cut at about 1,500 characters, and
+    some value lists (return codes, option codes) are not in them: call
+    gauss_read_doc with a source's citation to read any section in full.
+    When nothing is grounded but pages look relevant, `candidates` lists
+    them (name, citation, purpose) -- candidates are not grounded answers;
+    search a candidate's name to read its page. A documented name cut by
+    the 4-source bound is listed in `omitted_topics`; search it separately.
+    Each documentation source carries `docs_url`, its page on
+    docs.aptech.com, to cite. Pass `session_id` to use that session's docs root. Purely local and
+    read-only."""
+    resolved, error = _resolve_docs_root(docs_root, session_id)
+    if error is not None:
+        return error
     bundle = engine_mod.ground_multi(query, docs_root_str=resolved)
     response: dict[str, Any] = {
         "grounding_status": bundle.status.value,
-        "sources": [
-            {"source": s.source, "topic": s.topic, "citation": s.citation, "content": s.content}
-            for s in bundle.sources
-        ],
+        "sources": [_source_dict(s) for s in bundle.sources],
         "unmatched_topics": list(bundle.unmatched_topics),
         "ambiguous_topics": list(bundle.ambiguous_topics),
         "docs_root_configured": resolved is not None,
@@ -387,7 +548,36 @@ def gauss_search_docs(query: str, docs_root: str | None = None) -> dict[str, Any
     return response
 
 
-@server.tool()
+@server.tool(annotations=_READ_ONLY)
+def gauss_read_doc(
+    page: str,
+    section: str | None = None,
+    offset: int = 0,
+    docs_root: str | None = None,
+    session_id: str | None = None,
+) -> dict[str, Any]:
+    """Read one official GAUSS documentation page in full, verbatim, as its
+    RST source. `page` is a citation exactly as gauss_search_docs returns it
+    (e.g. "sqpsolvemt.rst"). Without `section`, returns the page's outline:
+    each heading, its level and its size. With `section` (a heading such as
+    "Remarks" or "Format", matched case-insensitively; or "*" for the whole
+    page), returns up to 8,000 characters of that section from `offset`,
+    and `next_offset` when more remains -- call again with it to continue.
+    Use this for content the search excerpt cuts or leaves out, such as an
+    optimizer's return codes or a function's Remarks. Purely local and
+    read-only; reading a page never changes a grounding status or a
+    validation verdict. Each result carries `docs_url`, the page on
+    docs.aptech.com, to cite. Pass `session_id` to use that session's docs
+    root."""
+    resolved, error = _resolve_docs_root(docs_root, session_id)
+    if error is not None:
+        return error
+    if resolved is None:
+        return {"error": "docs_root_not_configured", "hint": DOCS_FETCH_HINT}
+    return doc_reader_mod.read_doc(resolved, page, section=section, offset=offset)
+
+
+@server.tool(annotations=_READ_ONLY)
 def gauss_validate_code(session_id: str, code: str) -> dict[str, Any]:
     """Deterministically validate GAUSS code you wrote: documented
     signatures, documented preconditions, syntax, unknown (possibly
@@ -395,9 +585,9 @@ def gauss_validate_code(session_id: str, code: str) -> dict[str, Any]:
     code, not a Markdown block. Nothing is executed. If the result reaches
     handoff_candidate, the response includes a single-use `validation_id`
     for `gauss_execution_prepare`."""
-    session = _sessions.get(session_id)
+    session, error = _use_session(session_id)
     if session is None:
-        return {"error": "unknown_session"}
+        return error
     result = engine_mod.validate_code(code, docs_root=session.docs_root)
     if result.rejected_reason is not None:
         response: dict[str, Any] = {
@@ -422,7 +612,7 @@ def gauss_validate_code(session_id: str, code: str) -> dict[str, Any]:
     return response
 
 
-@server.tool()
+@server.tool(annotations=_READ_ONLY)
 def gauss_execution_prepare(session_id: str, validation_id: str | None = None) -> dict[str, Any]:
     """Step 1 of 2 in the controlled execution handoff. Prepares exactly
     the code the server itself validated (`validation_id` from
@@ -436,9 +626,9 @@ def gauss_execution_prepare(session_id: str, validation_id: str | None = None) -
     validation_id is spent only by a prepare that returns a prompt; a
     refusal leaves it usable. Real GAUSS (`runner="gauss"`) also requires
     the server to have been started with GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1."""
-    session = _sessions.get(session_id)
+    session, error = _use_session(session_id)
     if session is None:
-        return {"error": "unknown_session"}
+        return error
 
     # v0.87.0 (live finding 76.x f3): every refusal below happens BEFORE the
     # validation_id is spent. Before this the id was popped first, so a
@@ -508,7 +698,7 @@ def gauss_execution_prepare(session_id: str, validation_id: str | None = None) -
     return response
 
 
-@server.tool()
+@server.tool(annotations=_RUNS_CODE)
 def gauss_execution_decide(session_id: str, response_text: str, request_id: str | None = None) -> dict[str, Any]:
     """Step 2 of 2. `response_text` must be the human's own raw answer to
     the prompt `gauss_execution_prepare` returned, and `request_id` must be
@@ -523,9 +713,9 @@ def gauss_execution_decide(session_id: str, response_text: str, request_id: str 
     the `request_id` and `request_digest` it acted on. If several prompts
     are open, the user names the prompt in a separate message and replies
     with a bare yes or no; never ask the user to label a reply."""
-    session = _sessions.get(session_id)
+    session, error = _use_session(session_id)
     if session is None:
-        return {"error": "unknown_session"}
+        return error
     request = session.pending_request
     if request is None:
         return {"error": "no_pending_request"}
@@ -596,7 +786,7 @@ def gauss_execution_decide(session_id: str, response_text: str, request_id: str 
     }
 
 
-@server.tool()
+@server.tool(annotations=_MANAGES_WORKSPACE)
 def gauss_repair_start(
     runner: str | None = None,
     gauss_executable: str | None = None,
@@ -608,6 +798,7 @@ def gauss_repair_start(
     one REPL command at a time (e.g. "workspace create", "request", "plan",
     "confirm <hash>", "execute", "diagnose", "repair-plan",
     "approve-repair <digest>", ... -- the full `gauss-ai repl` command set)."""
+    _sweep_sessions()
     config = _get_config()
     env = os.environ
     resolved_runner = config_mod.resolve_default_runner(cli_value=runner, config=config, env=env).value
@@ -640,31 +831,27 @@ def gauss_repair_start(
     return {"session_id": sid, "backend": adapter.backend_label}
 
 
-@server.tool()
+@server.tool(annotations=_WRITES_WORKSPACE)
 def gauss_repair_command(session_id: str, command: str) -> dict[str, Any]:
     """Send one REPL command line to a guided-repair session -- the same
     dispatcher `gauss-ai repl` uses, so every command and decline path
     behaves identically. Errors come back as output lines, never a raised
     exception. "exit" or "quit" closes the session."""
-    repair_session = _repair_sessions.get(session_id)
+    repair_session, error = _use_repair_session(session_id)
     if repair_session is None:
-        return {"error": "unknown_session"}
+        return error
     keep_going, output_lines = repair_session.adapter.handle_line(command)
     if not keep_going:
-        repair_session.adapter.close()
-        del _repair_sessions[session_id]
+        _close_repair_session(session_id)
     return {"output": output_lines, "session_closed": not keep_going}
 
 
-@server.tool()
+@server.tool(annotations=_MANAGES_WORKSPACE)
 def gauss_repair_close(session_id: str) -> dict[str, Any]:
     """End a guided-repair session and free its workspace, for a client
     that disconnects without sending "exit"."""
-    repair_session = _repair_sessions.pop(session_id, None)
-    if repair_session is None:
-        return {"session_id": session_id, "closed": False}
-    repair_session.adapter.close()
-    return {"session_id": session_id, "closed": True}
+    _sweep_sessions()
+    return {"session_id": session_id, "closed": _close_repair_session(session_id)}
 
 
 # ---------------------------------------------------------------------------
@@ -681,9 +868,9 @@ def gauss_chat_ask(session_id: str, question: str) -> dict[str, Any]:
     and whether the answer may be offered for controlled execution
     (`execution_offer_eligible` -- then call `gauss_execution_prepare`
     without a validation_id). Nothing is executed or written."""
-    session = _sessions.get(session_id)
+    session, error = _use_session(session_id)
     if session is None:
-        return {"error": "unknown_session"}
+        return error
     if session.engine is None:
         config = _get_config()
         env = os.environ
@@ -711,9 +898,9 @@ def gauss_chat_ask(session_id: str, question: str) -> dict[str, Any]:
 def gauss_chat_reset(session_id: str) -> dict[str, Any]:
     """Strict mode: clear the session's conversation history and any
     pending chat execution offer -- equivalent to `reset` in `gauss-ai chat`."""
-    session = _sessions.get(session_id)
+    session, error = _use_session(session_id)
     if session is None:
-        return {"error": "unknown_session"}
+        return error
     if session.engine is not None:
         session.engine.reset()
     session.pending_code = None
@@ -722,8 +909,8 @@ def gauss_chat_reset(session_id: str) -> dict[str, Any]:
 
 
 def _register_chat_tools(target_server: "MCPServer") -> None:
-    target_server.add_tool(gauss_chat_ask)
-    target_server.add_tool(gauss_chat_reset)
+    target_server.add_tool(gauss_chat_ask, annotations=_ASKS_MODEL)
+    target_server.add_tool(gauss_chat_reset, annotations=_READ_ONLY)
 
 
 def chat_tools_enabled(config: "config_mod.GaussAiConfig", env: dict[str, str]) -> bool:

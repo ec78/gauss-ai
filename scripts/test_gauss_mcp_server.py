@@ -97,12 +97,14 @@ def test_01_base_tool_surface_and_opt_in_chat_registration() -> None:
     # hybrid path added gauss_search_docs/gauss_validate_code, and the two
     # strict-mode chat tools are registered only on explicit opt-in.
     names = {t.name for t in asyncio.run(server_mod.server.list_tools())}
+    # v0.89.0 (planning v0.89 §3.6): gauss_read_doc joins the base set, so
+    # the count is 10; nothing else was added or removed.
     base = {
-        "gauss_session_start", "gauss_session_close", "gauss_search_docs", "gauss_validate_code",
+        "gauss_session_start", "gauss_session_close", "gauss_search_docs", "gauss_read_doc", "gauss_validate_code",
         "gauss_execution_prepare", "gauss_execution_decide",
         "gauss_repair_start", "gauss_repair_command", "gauss_repair_close",
     }
-    check("exactly the 9 base tools are registered at import", names == base)
+    check("exactly the 10 base tools are registered at import", names == base)
     fresh = MCPServer("probe")
     server_mod._register_chat_tools(fresh)
     check("opt-in registers exactly the 2 chat tools", {t.name for t in asyncio.run(fresh.list_tools())} == {"gauss_chat_ask", "gauss_chat_reset"})
@@ -759,6 +761,228 @@ def test_36_v088_reply_guidance_in_decide_and_instructions() -> None:
     decide_doc = " ".join((server_mod.gauss_execution_decide.__doc__ or "").split())
     check("36: decide description", sentence in decide_doc)
     check("36: server instructions", sentence in (server_mod.server.instructions or ""))
+
+
+# ---------------------------------------------------------------------------
+# v0.89.0 (planning v0.89 §3.6, §3.8, §3.9)
+# ---------------------------------------------------------------------------
+
+#: The 79.x-1 shape: a return-code field list nested in the `out`
+#: description, which extraction drops from the search excerpt, and a
+#: Remarks section with a subsection.
+_V089_PAGE = """zzsolve
+=======
+
+Purpose
+-------
+Solves a fixture problem.
+
+Format
+------
+.. function:: out = zzsolve(x)
+
+    :param x: data
+    :type x: scalar
+    :return out: instance of a structure. Members:
+
+        .. list-table::
+
+            * - out.retcode
+              - return code:
+
+                  :0: normal convergence.
+                  :1: forced exit.
+
+    :rtype out: struct
+
+Remarks
+-------
+Remarks text.
+
+Details
++++++++
+Nested detail.
+
+Source
+------
+zzsolve.src
+"""
+
+
+def _v089_docs_root(tmp: str) -> str:
+    root = Path(tmp) / "v089docs"
+    (root / "sub").mkdir(parents=True, exist_ok=True)
+    (root / "zzsolve.rst").write_text(_V089_PAGE, encoding="utf-8", newline="\n")
+    (root / "zzlong.rst").write_text("zzlong\n======\n\nRemarks\n-------\n" + ("abcdefghij" * 2000) + "\n", encoding="utf-8", newline="\n")
+    (root / "sub" / "zzinclude.rst").write_text("No heading at all, like an include page.\n", encoding="utf-8", newline="\n")
+    (root / "notes.txt").write_text("not a page", encoding="utf-8")
+    return str(root)
+
+
+def test_37_v089_read_doc_outline_and_verbatim_sections() -> None:
+    """79.x finding 1: the return codes and Remarks reach a client with no disk access."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v089_docs_root(tmp)
+        outline = server_mod.gauss_read_doc("zzsolve.rst", docs_root=root)
+        check("37: outline title", outline.get("title") == "zzsolve")
+        check("37: outline headings and levels", [(s["heading"], s["level"]) for s in outline.get("sections", [])] == [
+            ("zzsolve", 1), ("Purpose", 2), ("Format", 2), ("Remarks", 2), ("Details", 3), ("Source", 2)])
+        check("37: outline has no content", "content" not in outline)
+        check("37: every read links its docs.aptech.com page", outline.get("docs_url") == "https://docs.aptech.com/gauss/zzsolve.html"
+              and server_mod.gauss_read_doc("sub/zzinclude.rst", section="*", docs_root=root).get("docs_url")
+              == "https://docs.aptech.com/gauss/sub/zzinclude.html")
+        fmt = server_mod.gauss_read_doc("zzsolve.rst", section="format", docs_root=root)
+        start = _V089_PAGE.index("Format\n------")
+        end = _V089_PAGE.index("Remarks\n-------")
+        check("37: a section is the raw source, byte-for-byte", fmt.get("content") == _V089_PAGE[start:end])
+        check("37: the nested return codes are there", ":0: normal convergence." in fmt.get("content", ""))
+        check("37: one call, no continuation", fmt.get("next_offset") is None and fmt.get("offset") == 0)
+        remarks = server_mod.gauss_read_doc("zzsolve.rst", section="Remarks", docs_root=root)
+        check("37: a section includes its subsections", "Nested detail." in remarks.get("content", "")
+              and "Source" not in remarks.get("content", ""))
+        whole = server_mod.gauss_read_doc("zzsolve.rst", section="*", docs_root=root)
+        check("37: '*' is the whole page", whole.get("content") == _V089_PAGE)
+        missing = server_mod.gauss_read_doc("zzsolve.rst", section="Outputs", docs_root=root)
+        check("37: an unknown section names the headings", missing.get("error") == "unknown_section"
+              and "Remarks" in missing.get("available_sections", []))
+        bare = server_mod.gauss_read_doc("sub/zzinclude.rst", docs_root=root)
+        check("37: a page with no heading has an empty outline", bare.get("sections") == [] and bare.get("title") is None)
+        check("37: and reads with '*'", server_mod.gauss_read_doc("sub/zzinclude.rst", section="*", docs_root=root).get("content")
+              == "No heading at all, like an include page.\n")
+
+
+def test_38_v089_read_doc_is_bounded_and_pages_exactly() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v089_docs_root(tmp)
+        expected = "Remarks\n-------\n" + ("abcdefghij" * 2000) + "\n"
+        pieces, offset, calls = [], 0, 0
+        while True:
+            resp = server_mod.gauss_read_doc("zzlong.rst", section="Remarks", offset=offset, docs_root=root)
+            calls += 1
+            check("38: never more than the bound", len(resp.get("content", "")) <= 8000)
+            check("38: total size reported", resp.get("chars_total") == len(expected))
+            pieces.append(resp.get("content", ""))
+            if resp.get("next_offset") is None or calls > 10:
+                break
+            offset = resp["next_offset"]
+        check("38: three calls for 20,017 characters", calls == 3)
+        check("38: the pieces reassemble the section exactly", "".join(pieces) == expected)
+        bad = server_mod.gauss_read_doc("zzlong.rst", section="Remarks", offset=len(expected) + 1, docs_root=root)
+        check("38: an offset past the end is refused", bad.get("error") == "offset_out_of_range")
+        check("38: a negative offset is refused", server_mod.gauss_read_doc(
+            "zzlong.rst", section="Remarks", offset=-1, docs_root=root).get("error") == "offset_out_of_range")
+
+
+def test_39_v089_read_doc_refuses_paths_outside_the_docs() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v089_docs_root(tmp)
+        (Path(tmp) / "secret.rst").write_text("outside\n", encoding="utf-8")
+        for page in ("../secret.rst", str(Path(tmp) / "secret.rst"), "sub\\..\\..\\secret.rst", "C:/x.rst",
+                     "notes.txt", "missing.rst", "sub/../zzsolve.rst", ""):
+            resp = server_mod.gauss_read_doc(page, docs_root=root)
+            check(f"39: refused {page!r}", resp.get("error") == "page_refused" and "content" not in resp
+                  and "sections" not in resp)
+        link = Path(root) / "link.rst"
+        try:
+            os.symlink(Path(tmp) / "secret.rst", link)
+        except (OSError, NotImplementedError):
+            link = None  # Creating symlinks needs a privilege on Windows; CI's Linux and macOS runs check this.
+        if link is not None:
+            check("39: a symlink out of the root is refused",
+                  server_mod.gauss_read_doc("link.rst", section="*", docs_root=root).get("error") == "page_refused")
+        no_root = server_mod.gauss_read_doc("zzsolve.rst", docs_root=str(Path(tmp) / "nowhere"))
+        check("39: a missing docs root is refused", no_root.get("error") == "page_refused")
+
+
+def test_40_v089_session_docs_root_and_read_hint() -> None:
+    """§2.6 side finding: search ignored the session's docs_root."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v089_docs_root(tmp)
+        sid = server_mod.gauss_session_start(runner="fake", docs_root=root, workspace_parent=tmp)["session_id"]
+        resp = server_mod.gauss_search_docs("zzsolve", session_id=sid)
+        check("40: search uses the session's docs root", resp["docs_root_configured"]
+              and [s["citation"] for s in resp["sources"]] == ["zzsolve.rst"])
+        check("40: a doc source carries the read hint", resp["sources"][0].get("read_hint") == server_mod.READ_DOC_HINT)
+        check("40: and its docs.aptech.com page (§9.3)",
+              resp["sources"][0].get("docs_url") == "https://docs.aptech.com/gauss/zzsolve.html")
+        explicit = server_mod.gauss_search_docs("zzsolve", docs_root=root)
+        check("40: otherwise identical to an explicit docs_root", explicit == resp)
+        catalog = server_mod.gauss_search_docs("G0025", docs_root=root)
+        check("40: an error-catalog source has no read hint or page link", catalog["sources"] and all(
+            "read_hint" not in s and "docs_url" not in s for s in catalog["sources"]))
+        read = server_mod.gauss_read_doc("zzsolve.rst", section="Source", session_id=sid)
+        check("40: read uses the session's docs root", "zzsolve.src" in read.get("content", ""))
+        check("40: an unknown session_id is an error", server_mod.gauss_search_docs("zzsolve", session_id="nope")
+              == {"error": "unknown_session"})
+
+
+def test_41_v089_idle_and_lru_eviction() -> None:
+    real_clock, real_cap = server_mod._monotonic, server_mod.MAX_SESSIONS
+    now = [real_clock()]
+    server_mod._monotonic = lambda: now[0]
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            sid = _start(tmp)
+            validation = server_mod.gauss_validate_code(sid, CANDIDATE_CODE)
+            prepared = server_mod.gauss_execution_prepare(sid, validation["validation_id"])
+            check("41: a prompt is pending", "request_id" in prepared)
+            now[0] += server_mod.SESSION_IDLE_SECONDS - 1
+            check("41: just under the bound, still alive", "error" not in server_mod.gauss_validate_code(sid, "x = 1;"))
+            now[0] += server_mod.SESSION_IDLE_SECONDS + 1
+            decided = server_mod.gauss_execution_decide(sid, "yes", request_id=prepared["request_id"])
+            check("41: an idle session expires, and its pending prompt approves nothing",
+                  decided.get("error") == "session_expired" and "outcome" not in decided and sid not in server_mod._sessions)
+            check("41: any later call says expired", server_mod.gauss_validate_code(sid, "x = 1;").get("error") == "session_expired")
+
+            repair = server_mod.gauss_repair_start(runner="fake", workspace_parent=tmp)
+            rsid = repair["session_id"]
+            closed = []
+            adapter = server_mod._repair_sessions[rsid].adapter
+            original_close = adapter.close
+            adapter.close = lambda: (closed.append(rsid), original_close())
+            now[0] += server_mod.SESSION_IDLE_SECONDS + 1
+            server_mod.gauss_session_start(runner="fake", docs_root=_fixture_docs_root(tmp), workspace_parent=tmp)
+            check("41: an idle repair session is closed through its own close path", closed == [rsid]
+                  and rsid not in server_mod._repair_sessions)
+            check("41: and reports expired", server_mod.gauss_repair_command(rsid, "help").get("error") == "session_expired")
+
+            server_mod.MAX_SESSIONS = 3
+            ids = []
+            for _ in range(4):
+                now[0] += 1
+                ids.append(server_mod.gauss_session_start(
+                    runner="fake", docs_root=_fixture_docs_root(tmp), workspace_parent=tmp)["session_id"])
+            server_mod._sweep_sessions()
+            check("41: the cap closes the least recently used", ids[0] not in server_mod._sessions
+                  and all(i in server_mod._sessions for i in ids[1:]))
+            # Every call pins docs_root, so this machine's own config never decides the result.
+            reused = server_mod.gauss_session_start(
+                runner="fake", docs_root=_fixture_docs_root(tmp), workspace_parent=tmp, session_id=sid)["session_id"]
+            check("41: an expired id may be started again", reused == sid and sid in server_mod._sessions
+                  and "error" not in server_mod.gauss_validate_code(sid, "x = 1;"))
+    finally:
+        server_mod._monotonic, server_mod.MAX_SESSIONS = real_clock, real_cap
+
+
+def test_42_v089_server_version_and_annotations() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        resp = server_mod.gauss_session_start(runner="fake", docs_root=_fixture_docs_root(tmp), workspace_parent=tmp)
+        check("42: server_version", resp.get("server_version") == server_mod.__version__)
+    tools = {t.name: t.annotations for t in asyncio.run(server_mod.server.list_tools())}
+    read_only = {"gauss_session_start", "gauss_session_close", "gauss_search_docs", "gauss_read_doc",
+                 "gauss_validate_code", "gauss_execution_prepare"}
+    for name in read_only:
+        check(f"42: {name} is read-only", tools[name] is not None and tools[name].read_only_hint is True
+              and tools[name].open_world_hint is False)
+    for name in ("gauss_execution_decide", "gauss_repair_start", "gauss_repair_command", "gauss_repair_close"):
+        check(f"42: {name} is not read-only", tools[name] is not None and tools[name].read_only_hint is False)
+    check("42: decide is marked destructive", tools["gauss_execution_decide"].destructive_hint is True)
+    fresh = MCPServer("probe")
+    server_mod._register_chat_tools(fresh)
+    chat = {t.name: t.annotations for t in asyncio.run(fresh.list_tools())}
+    check("42: chat_ask may reach a model provider", chat["gauss_chat_ask"].open_world_hint is True)
+    check("42: chat_reset is read-only", chat["gauss_chat_reset"].read_only_hint is True)
+    check("42: the read tool is named in the instructions", "gauss_read_doc" in (server_mod.server.instructions or ""))
 
 
 def _run_all() -> int:

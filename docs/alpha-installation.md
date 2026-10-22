@@ -7,12 +7,12 @@ This guide covers installing and configuring the productized `gauss-ai` CLI (`v0
 ## Prerequisites
 
 - **Python 3.10 or newer.** Verified on Python 3.12; the codebase uses no syntax requiring a newer version, but only 3.10+ has been exercised.
-- **A clone of this repository.** `gauss-ai` is not published to a package index; installation is always from a local checkout (`pip install -e .` or `pip install .`).
+- **The package, or a clone of this repository.** Since `v0.89.0` the package is built for PyPI (`pip install "gauss-ai[mcp]"`; see the README's Quickstart). This guide covers installing from a local checkout (`pip install -e .` or `pip install .`), which contributors and testers of unreleased versions use.
 - **GAUSS, optional.** Fake-mode testing (the default) requires no GAUSS installation at all. Real-mode testing requires a local, terminal (non-interactive) GAUSS installation — see "GAUSS Requirements" below.
 
 ## Supported Operating System
 
-**Windows** is the only environment this repository's real-GAUSS execution path has been verified against (GAUSS 26.1.1, confirmed non-interactive batch invocation via `tgauss.exe -b`; see `planning/v0.28.0-real-gauss-invocation-research.md`). Fake-mode testing (packaging, CLI, the full guided workflow, doctor, init, config) has no OS-specific dependency and should work on any platform Python 3.10+ supports, but only Windows has been used to verify this milestone's own packaging and CLI behavior. Do not assume macOS/Linux real-GAUSS execution is supported — it is not yet verified.
+**Windows** is the only environment this repository's real-GAUSS execution path has been verified against (GAUSS 26.1.x, non-interactive batch invocation via `tgauss.exe -b`; see `planning/v0.28.0-real-gauss-invocation-research.md`). Since `v0.89.0`, CI runs the whole test suite on Windows, Linux and macOS with Python 3.10-3.12, so search, validation, the MCP server, fake mode and packaging are tested on all three (planning v0.89 §3.2). On Linux and macOS the `tgauss` launch path and executable discovery are implemented but unverified, since no real GAUSS run has happened there.
 
 ## GAUSS Requirements
 
@@ -32,7 +32,7 @@ This is an **editable install** — the installed `gauss-ai` command continues t
 pip install .
 ```
 
-Both install a single console-script entry point, `gauss-ai`, plus every existing `scripts/gauss_*.py` module as a directly importable top-level module (no dotted package namespace — this mirrors how the modules already import each other internally). No repository files are moved or restructured by installation.
+Both install two console-script entry points, `gauss-ai` and `gauss-ai-mcp`, plus every product module in `scripts/` as a directly importable top-level module (no dotted package namespace — this mirrors how the modules already import each other internally). Since `v0.89.0` the developer tools (`check_release_readiness`, `validate_all_evidence`, the differential harness, ...) are not installed; run them from the checkout (`python scripts/<name>.py`). No repository files are moved or restructured by installation.
 
 **Using a virtual environment is recommended** but not required:
 

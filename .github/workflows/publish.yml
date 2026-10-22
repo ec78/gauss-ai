@@ -1,0 +1,71 @@
+name: Publish to PyPI
+
+# v0.89.0 (planning v0.89 §3.1, decision 2): inert until the maintainer acts.
+# It runs only when started by hand from the Actions tab, and uploads only
+# after the PyPI (or TestPyPI) project has a trusted publisher for this
+# repository, this workflow and the matching environment. Trusted
+# Publishing (OIDC) means no API token is stored anywhere. Publish to
+# TestPyPI first.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Where to upload"
+        required: true
+        default: testpypi
+        type: choice
+        options:
+          - testpypi
+          - pypi
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run the packaging tests
+        run: python scripts/test_gauss_ai_packaging.py
+
+      - name: Build the sdist and wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      - name: Keep the distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  upload:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target }}
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Fetch the distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Upload to TestPyPI
+        if: inputs.target == 'testpypi'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+      - name: Upload to PyPI
+        if: inputs.target == 'pypi'
+        uses: pypa/gh-action-pypi-publish@release/v1

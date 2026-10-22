@@ -2857,6 +2857,36 @@ def test_183_v087_existing_checkers_unchanged() -> None:
         check(f"{label}: {expected}", got == [expected])
 
 
+def test_184_v089_for_counter_after_a_top_level_call() -> None:
+    """79.x finding 2 (planning v0.89 §3.7). Real `tgauss.exe -b` (GAUSS
+    26.1.4, 2026-10-21, fs1-fs6): the counter is local to the loop, so after
+    `endfor` `T` is 200 again; inside the loop `T` is the counter (fs3)."""
+    after = "T = 200;\ne = rndn(T, 1);\nfor t (1, 3, 1);\nendfor;"
+    check("a header after a depth-0 call no longer refuses (fs1)",
+          validation_mod._governing_assignment("T", code=after, line_number=2, column=5) == "200")
+    check("threadfor after behaves the same", validation_mod._governing_assignment(
+        "T", code="T = 200;\ne = rndn(T, 1);\nthreadfor t (1, 3, 1);\nthreadendfor;", line_number=2, column=5) == "200")
+    refusals = {
+        "header before the call (fs2, fs4: left refusing on purpose)": ("for t (1, 3, 1);\nendfor;\nT = 200;\ne = rndn(T, 1);", 4),
+        "call inside the loop (fs3)": ("T = 200;\nfor t (1, 3, 1);\ne = rndn(T, 1);\nendfor;", 3),
+        "call in a block, header after it": ("T = 200;\ndo while 0;\ne = rndn(T, 1);\nfor t (1, 3, 1);\nendfor;\nendo;", 3),
+        "end-of-code target": ("T = 200;\nfor t (1, 3, 1);\nendfor;", None),
+    }
+    for label, (code, line) in refusals.items():
+        check(f"still refuses: {label}",
+              validation_mod._governing_assignment("T", code=code, line_number=line, column=5 if line else None) is None)
+    check("other unmodelled writes after the call still refuse (decision 9a, not 9b)",
+          validation_mod._governing_assignment("T", code="T = 200;\ne = rndn(T, 1);\nclear T;", line_number=2, column=5) is None)
+    precondition = "a = {2 1, 1 2};\nxi = invpd(a);\nfor A (1, 3, 1);\nendfor;"
+    calls = [c for c in validation_mod.extract_generated_calls(precondition) if c.symbol == "invpd"]
+    check("the precondition tracer follows the same rule",
+          [p.status for c in calls for p in validation_mod.check_preconditions(c, code=precondition)] == ["satisfied"])
+    before = "for A (1, 3, 1);\nendfor;\na = {2 1, 1 2};\nxi = invpd(a);"
+    calls = [c for c in validation_mod.extract_generated_calls(before) if c.symbol == "invpd"]
+    check("and still refuses a header before the call",
+          [p.status for c in calls for p in validation_mod.check_preconditions(c, code=before)] == ["unverified"])
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

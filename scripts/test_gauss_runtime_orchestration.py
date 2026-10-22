@@ -1355,7 +1355,15 @@ def _real_shaped_output_created_result() -> dict[str, Any]:
         ),
         "output_files": [
             {
-                "path": "C:\\example\\work\\gauss_output.txt",
+                # v0.89.0 (planning v0.89 §2.3, §3.2): the observed run was on
+                # Windows, so its path is a Windows path. On POSIX,
+                # `Path(...).name` does not split on a backslash, so this
+                # fixture failed under Linux although the product is right
+                # there: a real Linux GAUSS reports POSIX paths. Off Windows
+                # the fixture now uses a POSIX path; on Windows it is the
+                # same string as before.
+                "path": "C:\\example\\work\\gauss_output.txt" if sys.platform.startswith("win")
+                else "/example/work/gauss_output.txt",
                 "size_bytes": 19,
                 "file_type": "text/plain",
                 "created_by_execution": "unknown",
@@ -1492,7 +1500,10 @@ def test_76_output_file_metadata_fields_retained_exactly() -> None:
     inst.invoke(lambda _: _real_shaped_output_created_result())
     assert inst.record.execution_result_reference is not None
     meta = inst.record.execution_result_reference.output_files[0]
-    check("path preserved exactly", meta.path == "C:\\example\\work\\gauss_output.txt")
+    # v0.89.0: compared with the fixture's own path, which is a POSIX path
+    # off Windows (see `_real_shaped_output_created_result`); on Windows it is
+    # the same literal as before.
+    check("path preserved exactly", meta.path == _real_shaped_output_created_result()["output_files"][0]["path"])
     check("size_bytes preserved exactly (19, matching the real file's actual size)", meta.size_bytes == 19)
     check("file_type preserved exactly", meta.file_type == "text/plain")
     check("created_by_execution preserved exactly", meta.created_by_execution == "unknown")

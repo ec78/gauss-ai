@@ -59,10 +59,14 @@ COMMON_LOCATION_TEMPLATES: dict[str, list[str]] = {
         r"C:\Program Files\GAUSS\tgauss.exe",
         r"C:\gauss{version}\tgauss.exe",
     ],
-    "macos": [
-        "/Applications/GAUSS{version}.app/Contents/MacOS/tgauss",
-        "/Applications/GAUSS.app/Contents/MacOS/tgauss",
-    ],
+    # v0.89.0 (planning v0.89 §9.3): Aptech's developers advise calling the
+    # `tgauss` script in the user's GAUSS home folder on macOS, not the binary
+    # inside the app bundle, because the script sets up the environment. The
+    # earlier guesses (`/Applications/GAUSS{version}.app/Contents/MacOS/tgauss`)
+    # pointed at exactly that binary, and the home folder's location is the
+    # user's choice, so macOS now offers no guessed location: PATH lookup and
+    # the `gauss-executable` setting are the only sources.
+    "macos": [],
     "linux": [
         "/opt/gauss{version}/tgauss",
         "/usr/local/gauss{version}/tgauss",

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.ec78/gauss-ai",
+  "title": "GAUSS AI",
+  "description": "GAUSS docs search, deterministic GAUSS code validation, and human-approved execution.",
+  "repository": {
+    "url": "https://github.com/ec78/gauss-ai",
+    "source": "github"
+  },
+  "version": "0.89.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "gauss-ai",
+      "version": "0.89.0",
+      "runtimeHint": "uvx",
+      "runtimeArguments": [
+        {
+          "type": "named",
+          "name": "--from",
+          "value": "gauss-ai[mcp]==0.89.0"
+        }
+      ],
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ],
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "GAUSS_AI_MCP_ALLOW_REAL_GAUSS",
+          "description": "Optional operator opt-in. Set to 1 only if you want this server to run approved code in your own GAUSS installation (each run still needs your explicit yes). Leave unset for search and validation only.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}

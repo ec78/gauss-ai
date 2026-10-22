@@ -29,7 +29,7 @@
 ## Environment
 
 - **Real GAUSS execution verified on Windows with GAUSS 26.1.1 only.** Other GAUSS 24/25/26 installations are supported by the discovery/execution logic but have not been independently verified by this repository's own testing. macOS/Linux real-GAUSS execution is not claimed or supported.
-- **Fake-mode testing (packaging, CLI, guided workflow, doctor, init, config) has no OS-specific dependency**, but has only been exercised on Windows so far.
+- **Search, validation, the MCP server and fake mode are tested on Windows, Linux and macOS** (CI, since `v0.89.0`). Real GAUSS execution on Linux and macOS is implemented but has never been run.
 - **Python 3.10+ required.**
 
 ## Product behavior

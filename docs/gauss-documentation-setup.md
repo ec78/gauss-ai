@@ -17,7 +17,7 @@ This downloads the source of every page published at [docs.aptech.com/gauss](htt
 - **It never overrides your own choice.** If `docs-root` already points somewhere else (for example, your own clone), it is left alone, and the command prints how to switch.
 - **Refreshing:** run it again any time. `gauss-ai docs status` shows which docs are in use and when they were fetched.
 
-You download the documentation directly from Aptech's public site for your own local use. `gauss-ai` does not ship a copy.
+You download the documentation directly from Aptech's public site for your own local use. `gauss-ai` never bundles, mirrors or redistributes it: the published package contains no documentation (a packaging test checks this), searches run locally, and excerpts and page sections go only to your own MCP client. The `aptech/docs` repository declares no license, so the documentation stays Aptech's; gauss-ai only automates the download each user would otherwise do by hand. Each request identifies itself as `gauss-ai/<version>`.
 
 ## Alternative: point at a copy you already have
 

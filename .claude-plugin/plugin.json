@@ -1,6 +1,6 @@
 {
   "name": "gauss-ai-mcp",
-  "version": "0.82.0",
+  "version": "0.89.0",
   "description": "GAUSS programming assistant as a local MCP server: official-docs search, deterministic validation of GAUSS code, a controlled execution handoff, and the guided repair pipeline.",
   "author": { "name": "Eric Clower" },
   "license": "MIT",

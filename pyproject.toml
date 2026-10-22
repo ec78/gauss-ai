@@ -1,27 +1,35 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "gauss-ai"
-version = "0.88.0"
-description = "GAUSS Code Assistant -- alpha CLI for a governed, human-in-the-loop GAUSS repair workflow."
-readme = "README.md"
+version = "0.89.0"
+description = "GAUSS programming assistant: official-docs search, deterministic code validation and a human-approved execution handoff, as an MCP server and CLI."
+readme = "docs/pypi-readme.md"
 requires-python = ">=3.10"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Eric Clower" }]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
 ]
 
 [project.urls]
 Homepage = "https://github.com/ec78/gauss-ai"
 Repository = "https://github.com/ec78/gauss-ai"
+Documentation = "https://github.com/ec78/gauss-ai#readme"
+Issues = "https://github.com/ec78/gauss-ai/issues"
 
 [project.optional-dependencies]
 # Only required to run the local MCP server (`gauss-ai mcp` / `gauss-ai-mcp`);
@@ -34,10 +42,13 @@ gauss-ai-mcp = "gauss_mcp_server:main"
 
 [tool.setuptools]
 package-dir = { "" = "scripts" }
+# v0.89.0 (planning v0.89 §2.1, §3.1, decision 13): product modules only.
+# The developer tools (build_differential_corpus, check_evaluation_tracking,
+# check_release_readiness, gauss_differential_harness,
+# gauss_syntax_mutations, validate_all_evidence, validate_lookup_evidence)
+# stay in scripts/ and run from a checkout; installing them put generic
+# top-level names such as `check_release_readiness` into site-packages.
 py-modules = [
-    "build_differential_corpus",
-    "check_evaluation_tracking",
-    "check_release_readiness",
     "command_doc_lookup",
     "gauss_ai_chat",
     "gauss_ai_cli",
@@ -51,8 +62,8 @@ py-modules = [
     "gauss_code_assistant_workflow",
     "gauss_code_execution",
     "gauss_conversation_engine",
-    "gauss_differential_harness",
     "gauss_doc_concept_index",
+    "gauss_doc_reader",
     "gauss_docs_fetch",
     "gauss_environment_check",
     "gauss_error_catalog",
@@ -76,11 +87,8 @@ py-modules = [
     "gauss_repair_planner",
     "gauss_repair_session_summary",
     "gauss_runtime_orchestration",
-    "gauss_syntax_mutations",
     "gauss_verification_execution",
     "gauss_verification_review",
     "gauss_workspace",
     "gauss_workspace_file_reader",
-    "validate_all_evidence",
-    "validate_lookup_evidence",
 ]
