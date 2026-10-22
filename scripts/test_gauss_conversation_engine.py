@@ -3468,6 +3468,23 @@ def test_170_v088_a_blocked_question_never_reaches_the_provider() -> None:
               not any("candidate" in f for f in engine_mod.GroundingBundle.__dataclass_fields__))
 
 
+def test_171_v089_a_mixed_case_lookup_cites_the_on_disk_page() -> None:
+    """First macOS CI run (planning v0.89 §9.8): on a case-insensitive disk
+    `gmmFit.rst` "exists" for `gmmfit.rst`, and macOS's `Path.resolve()`
+    keeps the query's spelling, so the citation (and docs.aptech.com link,
+    which is case-sensitive) was `gmmFit.rst`. Holds on every platform; the
+    macOS and Windows CI runners exercise the case-insensitive branch."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v088_docs_root(tmp, {"gmmfit.rst": _v088_function_page("gmmFit", "A page.", "y = gmmFit(x)")})
+        found = doc_lookup_mod.lookup("gmmFit", Path(root), 3)
+        check("lookup cites the on-disk name", (found.get("best_match") or {}).get("file_path") == "gmmfit.rst")
+        bundle, _gate = _v088_gate("gmmFit", root)
+        check("so does grounding", [s.citation for s in bundle.sources] == ["gmmfit.rst"])
+        exact = _v088_docs_root(tmp + "/exact", {"meanc.rst": _V088_RST["meanc.rst"]})
+        check("an exact-case page is unchanged", (doc_lookup_mod.lookup("meanc", Path(exact), 3).get("best_match") or {})
+              .get("file_path") == "meanc.rst")
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

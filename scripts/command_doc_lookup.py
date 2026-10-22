@@ -480,6 +480,19 @@ def lookup(command_name: str, docs_root: Path, max_results: int, keywords: list[
     exact_paths = []
     direct_path = docs_root / exact_name
     if direct_path.exists():
+        # v0.89.0 (first macOS CI run; planning v0.89 §9.8): on a
+        # case-insensitive filesystem `gmmFit.rst` "exists" when the file is
+        # `gmmfit.rst`, and the citation kept the query's spelling. Windows
+        # hid this, because `Path.resolve()` there returns the on-disk case;
+        # macOS's does not, so its citations (and docs.aptech.com links,
+        # which are case-sensitive) came out wrong. Use the entry's on-disk
+        # name. On a case-sensitive filesystem the exact name is that entry,
+        # so Linux and Windows results are unchanged.
+        if not any(entry.name == exact_name for entry in docs_root.iterdir()):
+            direct_path = next(
+                (entry for entry in docs_root.iterdir() if entry.name.casefold() == exact_name.casefold()),
+                direct_path,
+            )
         exact_paths.append(direct_path)
     else:
         exact_paths = [path for path in docs_root.rglob(exact_name)]
