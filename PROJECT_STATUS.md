@@ -4,7 +4,7 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 
 ## Current Objective
 
-**v0.89.0 "Release Readiness" was implemented on 2026-10-21** (not yet pushed or published). Plan and record: `planning/v0.89-release-readiness.md` (§1-§8 approved with every recommendation; decision 10, the run path, and 7(b), a `robots.txt` check in `docs fetch`, stay open; §9 deviations, Aptech's reply and diffs; §10 testing). Baseline: a `git archive` of `f9f0f07`.
+**v0.89.0 "Release Readiness" was implemented, committed and tagged on 2026-10-21, and pushed on 2026-10-22** (not published to PyPI). Plan and record: `planning/v0.89-release-readiness.md` (§1-§8 approved with every recommendation; decision 10, the run path, and 7(b), a `robots.txt` check in `docs fetch`, stay open; §9 deviations, Aptech's reply and diffs; §10 testing). Baseline: a `git archive` of `f9f0f07`.
 - Done:
   - `gauss_read_doc` (new module `gauss_doc_reader.py`): outline, raw sections, `*`, 8,000 characters per call with `next_offset`, path refusals; never a grounding input (79.x finding 1);
   - `_governing_assignment`: a `for`/`threadfor` header after a depth-0 call no longer refuses (79.x finding 2; spot checks fs1-fs6);
@@ -16,7 +16,8 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 - Diffs: gate identical on 927 questions; 3 of 378 verdicts change (all `for t`-after-use; two reach handoff_candidate and run correctly in GAUSS); AST as planned; all 1,826 pages partition and page exactly.
 - Tests: MCP 37-42, pre-exec 184, packaging 02-03 (all fail on `f9f0f07`); MCP 01 and `test_74`/`test_76` updated with comments. 48 files pass on Windows; 47 on Linux (WSL lacks `ensurepip` for the packaging test). macOS and Python 3.10/3.11 run first in CI.
 - **Aptech (Jason) replied** (plan §9.3): docs use, excerpts, full sections, the rate and the name are fine; asked for the unofficial/trademark line and links back (both done); `searchindex.js`/`_sources` may change; offered the Aptech GitHub org, help testing, and pointed to `aptech/gauss-llm-reference`; wants to see the blocklist; asked for a demo.
-- **Open for the user:** the Aptech org offer (settle before any PyPI upload: it changes the registry name and URLs); whether to cite Aptech's OK publicly; sharing the blocklist; filing the `dotor` issue on aptech/docs; the demo; making the repo public (needed for PyPI links and any directory).
+- **Decided 2026-10-22:** push `main` and the tag (done, commit and tag `v0.89.0`); the project stays on the user's account (`ec78`); make the repo public (pending: the commit author email question, see below).
+- **Open for the user:** whether to cite Aptech's OK publicly; sharing the blocklist; filing the `dotor` issue on aptech/docs; the demo; the commit author email (`eric@aptech.com` on all commits) before the repo goes public; decision 10 and 7(b).
 - **Next:** live evaluation 80.x (plan §7, clean-install walkthrough, run in an empty folder outside the repo); then PyPI (decision 2) after it passes.
 
 **v0.88.0 "Search and Grounding Recall" was committed, tagged and pushed on 2026-10-21** (tag `v0.88.0`, commit `be3df16`; `main` pushed). GitHub release: https://github.com/ec78/gauss-ai/releases/tag/v0.88.0 (published 22:57 UTC). Plan and record: `planning/v0.88-search-and-grounding-recall.md` (§1-§8 approved with every recommendation: 1A, 2 yes, 3a, 4-8 yes, 9a, 10 defer, 11-12 yes; §9 deviations and diffs; §10 testing). The full gate diff is `planning/v0.88-gate-diff.md`. Baseline for every comparison: a `git archive` of `cf4434c`.
