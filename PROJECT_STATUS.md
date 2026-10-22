@@ -16,8 +16,8 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 - Diffs: gate identical on 927 questions; 3 of 378 verdicts change (all `for t`-after-use; two reach handoff_candidate and run correctly in GAUSS); AST as planned; all 1,826 pages partition and page exactly.
 - Tests: MCP 37-42, pre-exec 184, packaging 02-03 (all fail on `f9f0f07`); MCP 01 and `test_74`/`test_76` updated with comments. 48 files pass on Windows; 47 on Linux (WSL lacks `ensurepip` for the packaging test). macOS and Python 3.10/3.11 run first in CI.
 - **Aptech (Jason) replied** (plan §9.3): docs use, excerpts, full sections, the rate and the name are fine; asked for the unofficial/trademark line and links back (both done); `searchindex.js`/`_sources` may change; offered the Aptech GitHub org, help testing, and pointed to `aptech/gauss-llm-reference`; wants to see the blocklist; asked for a demo.
-- **Decided 2026-10-22:** push `main` and the tag (done, commit and tag `v0.89.0`); the project stays on the user's account (`ec78`); make the repo public (pending: the commit author email question, see below).
-- **Open for the user:** whether to cite Aptech's OK publicly; sharing the blocklist; filing the `dotor` issue on aptech/docs; the demo; the commit author email (`eric@aptech.com` on all commits) before the repo goes public; decision 10 and 7(b).
+- **Decided 2026-10-22:** push `main` and the tag (done, commit and tag `v0.89.0`); the project stays on the user's account (`ec78`); make the repo public, history unchanged (the author email is the user's GitHub address; local paths stay); **decision 10 = B** (later milestones); **7(b) = yes**, implemented on `main` after the tag (`docs fetch` refuses on `Content-Signal: ai-input=no`).
+- **Open for the user:** whether to cite Aptech's OK publicly; sharing the blocklist; filing the `dotor` issue on aptech/docs; the demo; whether to tag the post-tag fixes (7b, CI test fixes) as `v0.89.1` before 80.x.
 - **Next:** live evaluation 80.x (plan §7, clean-install walkthrough, run in an empty folder outside the repo); then PyPI (decision 2) after it passes.
 
 **v0.88.0 "Search and Grounding Recall" was committed, tagged and pushed on 2026-10-21** (tag `v0.88.0`, commit `be3df16`; `main` pushed). GitHub release: https://github.com/ec78/gauss-ai/releases/tag/v0.88.0 (published 22:57 UTC). Plan and record: `planning/v0.88-search-and-grounding-recall.md` (§1-§8 approved with every recommendation: 1A, 2 yes, 3a, 4-8 yes, 9a, 10 defer, 11-12 yes; §9 deviations and diffs; §10 testing). The full gate diff is `planning/v0.88-gate-diff.md`. Baseline for every comparison: a `git archive` of `cf4434c`.
@@ -213,7 +213,7 @@ Full detail is in CHANGELOG and the planning docs (`planning/v0.86-*.md`, `plann
 3. v0.89.0: release readiness (the decisions below, README quickstart, PyPI packaging, platform decision);
 4. a round with one or two outside GAUSS testers on a clean install, then a public-alpha / v1.0 decision.
 
-Open product question (needs the user's sign-off, since it touches a project-wide constraint): the run path is narrow. In 77.x only 6 of 22 snippets reached a run prompt, because expressions are never evaluated. The choice is to pitch the MVP as validation-first, or to widen what can run.
+Run path (decided 2026-10-22, v0.89 decision 10 = **B**): widen deterministic coverage within the existing constraint, so more code reaches `handoff_candidate` (for example, expression shape inference, modelled simple `for` bodies instead of a blanket `control_flow_block`), one rule family per milestone, each with `tgauss.exe -b` provenance and a verdict diff. The `HANDOFF_CANDIDATE`-only rule in `CLAUDE.md` is unchanged. In 77.x 6 of 22 snippets reached a run prompt; in 79.x 2 of 9.
 
 **Public release readiness** (the user's longer-term goal: a publicly available MCP). This is mostly a list of decisions:
 - drop "Private Alpha"?

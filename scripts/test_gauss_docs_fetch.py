@@ -119,7 +119,10 @@ def test_06_unsafe_name_in_index_aborts_before_any_download() -> None:
             check("unsafe index rejected", False)
         except fetch_mod.DocsFetchError:
             check("unsafe index rejected", True)
-        check("only the index was requested", requested == [BASE + fetch_mod.SEARCH_INDEX_NAME])
+        # v0.89.0 (decision 7b): the site's robots.txt is read first, so it is
+        # the one request before the index; still no page is downloaded.
+        check("only robots.txt and the index were requested",
+              requested == [fetch_mod.robots_url(BASE), BASE + fetch_mod.SEARCH_INDEX_NAME])
         check("nothing escaped", not (Path(tmp).parent / "escape.rst").exists())
 
 
@@ -208,6 +211,44 @@ def test_11_rate_limit_403_is_retried_with_backoff_but_404_is_not() -> None:
         except fetch_mod.DocsFetchError as exc:
             check("404 fails", "HTTP 404" in str(exc))
     check("404 is never retried", sleeps == [])
+
+
+def test_12_v089_content_signal_ai_input_no_refuses_the_fetch() -> None:
+    """Decision 7b (planning v0.89): honor `Content-Signal: ai-input=no`."""
+    cloudflare_preamble = "# As a condition of accessing this website ...\n# ai-input: inputting content into AI models\n"
+    cases = {
+        "no robots.txt": (None, True),
+        "the real docs.aptech.com shape (preamble only, no directives)": (cloudflare_preamble, True),
+        "ai-input=yes": ("User-agent: *\nContent-Signal: search=yes, ai-input=yes, ai-train=no\nAllow: /\n", True),
+        "only ai-train=no": ("User-agent: *\nContent-Signal: ai-train=no\n", True),
+        "ai-input=no for everyone": ("User-agent: *\nContent-Signal: search=yes, ai-input=no\nAllow: /\n", False),
+        "ungrouped ai-input=no": ("Content-Signal: ai-input=no\nUser-agent: *\nAllow: /\n", False),
+        "case and spacing": ("user-agent: *\ncontent-signal:  AI-Input = No \n", False),
+        "ai-input=no for another crawler only": ("User-agent: SomeBot\nContent-Signal: ai-input=no\n\nUser-agent: *\nAllow: /\n", True),
+        "a group named after a word in our URL is not ours": ("User-agent: github\nContent-Signal: ai-input=no\n\nUser-agent: *\nAllow: /\n", True),
+        "a gauss-ai group wins over *": ("User-agent: gauss-ai\nContent-Signal: ai-input=yes\n\nUser-agent: *\nContent-Signal: ai-input=no\n", True),
+        "and can refuse when * allows": ("User-agent: gauss-ai\nContent-Signal: ai-input=no\n\nUser-agent: *\nContent-Signal: ai-input=yes\n", False),
+    }
+    for label, (robots, allowed) in cases.items():
+        with tempfile.TemporaryDirectory() as tmp:
+            site, requested = _site({"meanc.rst": b"x"}, index_names=["meanc.rst"])
+
+            def transport(request, site=site, robots=robots):
+                if request.full_url == fetch_mod.robots_url(BASE):
+                    return (404, b"") if robots is None else (200, robots.encode("utf-8"))
+                return site(request)
+
+            cache = Path(tmp) / "docs"
+            try:
+                fetch_mod.fetch_docs(sleep_fn=_no_sleep, cache_dir=cache, transport=transport, base_url=BASE)
+                ok = True
+            except fetch_mod.DocsFetchError as exc:
+                ok = False
+                check(f"{label}: the refusal names the signal", "ai-input=no" in str(exc))
+            check(f"{label}: {'fetched' if allowed else 'refused'}", ok == allowed)
+            if not allowed:
+                check(f"{label}: nothing else was requested", requested == [] and not cache.exists())
+    check("robots.txt is the site root's", fetch_mod.robots_url("https://docs.aptech.com/gauss/") == "https://docs.aptech.com/robots.txt")
 
 
 def _run_all() -> int:

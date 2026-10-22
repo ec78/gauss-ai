@@ -148,7 +148,14 @@ def test_04_guided_repair_writes_only_inside_the_workspace_it_creates() -> None:
         if new_entries:
             new_dir = next(iter(new_entries))
             check("the new entry is the workspace registry's own directory, not a stray file", new_dir.is_dir())
-            check("the new entry is exactly the active workspace's own root", str(new_dir) == adapter.registry.get_workspace(adapter.active_workspace_id).root_path)
+            # v0.89.0 (first CI run on macOS and the Windows runners): the
+            # registry stores a resolved root, while `tmp` can be an alias of
+            # the same directory -- macOS's `/var` is a symlink to
+            # `/private/var`, and the Windows runner's temp directory is an
+            # 8.3 short name (`RUNNER~1`). Same directory, two spellings, so
+            # both sides are resolved before comparing.
+            check("the new entry is exactly the active workspace's own root",
+                  new_dir.resolve() == Path(adapter.registry.get_workspace(adapter.active_workspace_id).root_path).resolve())
         adapter.close()
 
 

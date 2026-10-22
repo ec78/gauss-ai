@@ -132,10 +132,13 @@ def safe_relative_path(filename: str) -> PurePosixPath | None:
     return path
 
 
-def _get(transport: Transport, url: str, *, sleep_fn: Callable[[float], None] = time.sleep) -> bytes:
+def _get(
+    transport: Transport, url: str, *, sleep_fn: Callable[[float], None] = time.sleep, missing_ok: bool = False,
+) -> bytes | None:
     """Retries rate-limit/server/network failures with backoff, then fails
     closed. Any other status (e.g. 404: the page genuinely isn't there)
-    fails immediately."""
+    fails immediately -- or, with `missing_ok` (v0.89.0, for `robots.txt`
+    only), returns None for 404/410."""
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     last_error = ""
     for attempt in range(len(RETRY_BACKOFF_SECONDS) + 1):
@@ -148,10 +151,89 @@ def _get(transport: Transport, url: str, *, sleep_fn: Callable[[float], None] = 
             continue
         if status == 200:
             return body
+        if missing_ok and status in (404, 410):
+            return None
         last_error = f"HTTP {status}"
         if status not in _RETRYABLE_STATUSES:
             break
     raise DocsFetchError(f"could not download {url}: {last_error}")
+
+
+#: v0.89.0 (planning v0.89 decision 7b): the Content-Signal use that
+#: gauss-ai's purpose is. The preamble on docs.aptech.com's `robots.txt`
+#: defines it as "inputting content into one or more AI models (e.g.,
+#: retrieval augmented generation, grounding ...)", which is exactly what
+#: search excerpts and `gauss_read_doc` do for the user's own MCP client.
+CONTENT_SIGNAL_USE = "ai-input"
+
+#: The product token of `USER_AGENT`: the only User-agent group name that
+#: is gauss-ai's own (RFC 9309 matches the product token, not the URL).
+_PRODUCT_TOKEN = "gauss-ai"
+
+
+def robots_url(base_url: str) -> str:
+    parts = urllib.parse.urlsplit(base_url)
+    return f"{parts.scheme}://{parts.netloc}/robots.txt"
+
+
+def content_signals(robots_text: str) -> dict[str, str]:
+    """The `Content-Signal` values (`use -> yes/no`, lower-cased) that apply
+    to gauss-ai in a `robots.txt`. Groups follow robots.txt's own rule
+    (RFC 9309): a group naming `gauss-ai` wins over `*`; a `Content-Signal`
+    line before any `User-agent` applies to everyone. A use set in several
+    applicable lines is `no` if any of them says `no`. Deterministic, no
+    network."""
+    groups: list[tuple[set[str], list[str]]] = []
+    ungrouped: list[str] = []
+    agents: set[str] = set()
+    rules: list[str] | None = None
+    for raw in robots_text.splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if ":" not in line:
+            continue
+        field_name, value = (part.strip() for part in line.split(":", 1))
+        field_name = field_name.lower()
+        if field_name == "user-agent":
+            if rules is not None:
+                groups.append((agents, rules))
+                agents, rules = set(), None
+            agents.add(value.lower())
+            continue
+        if rules is None and agents:
+            rules = []
+        if field_name == "content-signal":
+            (rules if rules is not None else ungrouped).append(value)
+    if agents:
+        groups.append((agents, rules or []))
+    specific = [r for names, r in groups if _PRODUCT_TOKEN in names]
+    applicable = ungrouped + [v for r in (specific or [r for names, r in groups if "*" in names]) for v in r]
+    signals: dict[str, str] = {}
+    for value in applicable:
+        for item in value.split(","):
+            if "=" not in item:
+                continue
+            use, setting = (part.strip().lower() for part in item.split("=", 1))
+            if use and setting:
+                signals[use] = "no" if "no" in (setting, signals.get(use)) else setting
+    return signals
+
+
+def _check_content_signal(transport: Transport, base_url: str, *, sleep_fn: Callable[[float], None]) -> None:
+    """v0.89.0 (decision 7b): read the site's `robots.txt` before anything
+    else, and refuse the whole fetch if a Content-Signal applying to
+    gauss-ai sets `ai-input=no`. Aptech confirmed on 2026-10-21 that this
+    use is fine (planning v0.89 §9.3); this keeps gauss-ai honoring that
+    choice if the signal ever changes. No `robots.txt` (404/410) means no
+    signal; an unreadable one fails closed, like any other download."""
+    body = _get(transport, robots_url(base_url), sleep_fn=sleep_fn, missing_ok=True)
+    if body is None:
+        return
+    if content_signals(body.decode("utf-8", errors="replace")).get(CONTENT_SIGNAL_USE) == "no":
+        raise DocsFetchError(
+            f"{robots_url(base_url)} sets Content-Signal {CONTENT_SIGNAL_USE}=no, which reserves the use gauss-ai "
+            "makes of the documentation (grounding an AI assistant), so nothing was downloaded. Your existing copy, "
+            "if any, is unchanged."
+        )
 
 
 @dataclass(frozen=True)
@@ -176,6 +258,7 @@ def fetch_docs(
     swaps it in place of `cache_dir`. Raises `DocsFetchError` on any
     failure, leaving any existing cache exactly as it was."""
     cache_dir = (cache_dir or default_cache_dir()).resolve()
+    _check_content_signal(transport, base_url, sleep_fn=sleep_fn)
     pages, envversion = parse_search_index(_get(transport, base_url + SEARCH_INDEX_NAME, sleep_fn=sleep_fn))
     if not pages:
         raise DocsFetchError("the published search index listed no documentation pages")

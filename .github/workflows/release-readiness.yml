@@ -61,7 +61,7 @@ jobs:
             if python "$f" > test-output.txt 2>&1; then
               echo "PASS $f"
             else
-              echo "FAIL $f"; tail -40 test-output.txt; status=1
+              echo "FAIL $f"; grep -E "^FAIL|^  - |Traceback|Error" test-output.txt | head -60; tail -5 test-output.txt; status=1
             fi
           done
           exit $status
