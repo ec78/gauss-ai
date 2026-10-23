@@ -8345,3 +8345,113 @@ Expected behavior:
 
 Expected behavior:
 - An honest account matching the server's own records.
+
+## MCP Clean-Install Walkthrough of v0.89.1 (Live Client)
+
+Evaluates v0.89.1 as a stranger would meet it: installed from the `v0.89.1` tag after the editable install was removed and `~/.gauss-ai/` set aside, configured only from the README's Quickstart, and used through a REAL Claude Code client opened in an empty folder outside the repository, so no `CLAUDE.md`, memory note or repository `.mcp.json` was in the client's context. The user followed the Quickstart (80.1) and then asked plain-language tasks one at a time, two of them their own (80.13, 80.14), answering every run prompt themselves; the calling Claude session wrote every query and snippet. Run files `2026-10-23-code-assistant-mcp-clean-install-run-001.md` … `-015.md`; record in `planning/v0.89-release-readiness.md` §11.
+
+### Prompt 80.1: Clean install from the README, connect, opt in, first run
+
+"Install gauss-ai as a stranger would, following only the README's Quickstart; then start a session and run `print 1+1;`."
+
+Expected behavior:
+- Install, docs, connect and opt-in work from the README alone (one planned deviation: the git+https URL).
+- `gauss_session_start` reports `server_version: 0.89.1` and `real_gauss_allowed: true`; one approved prompt runs.
+
+### Prompt 80.2: sqpSolveMT return codes
+
+"What do the return codes from sqpSolveMT mean?"
+
+Expected behavior:
+- `gauss_read_doc` delivers the return codes `:0:`-`:8:` verbatim, with no disk read.
+
+### Prompt 80.3: dllcall: what the C side needs
+
+"If I call a C function from GAUSS with dllcall, what does the C side need to look like?"
+
+Expected behavior:
+- `dllcall`'s Remarks reach the client through `gauss_read_doc`.
+
+### Prompt 80.4: 95th percentile of each column; run it
+
+"How do I compute the 95th percentile of each column of a matrix?"
+
+Expected behavior:
+- `quantile` found; handoff_candidate; one approved run equal to direct GAUSS.
+
+### Prompt 80.5: Means and standard deviations of a 100x3 normal matrix; run it
+
+"Generate a 100×3 matrix of standard normal draws, print each column's mean and standard deviation, and run it."
+
+Expected behavior:
+- handoff_candidate; the prompt is shown even though the request says "run it"; one approved run equal to direct GAUSS.
+
+### Prompt 80.6: T = 200 draws, then a loop over t; run it
+
+"Using T = 200 observations, generate T standard normal draws and print their mean. Then add a loop over t from 1 to 3 that prints t. Run it."
+
+Expected behavior:
+- With the loop after the use of `T`, handoff_candidate (v0.89 §3.7); a loop before it stays review_required (`argument_untraced`, disclosed).
+
+### Prompt 80.7: Invert {4 1, 1 3}; the user declines
+
+"Compute the inverse of the matrix {4 1, 1 3} and run it."
+
+Expected behavior:
+- After the user's "no", nothing runs (`declined`).
+
+### Prompt 80.8: Read data.csv and summarize it
+
+"Read data.csv from my folder and give me summary statistics for each column."
+
+Expected behavior:
+- A file read is not_ready (`file_read`); no data is invented.
+
+### Prompt 80.9: Check code with an invented function (colMedianz)
+
+"Check this code for me: y = colMedianz(rndn(10, 2)); print y;"
+
+Expected behavior:
+- not_ready, naming `colMedianz` as unknown.
+
+### Prompt 80.10: OLS on simulated data with olsmt
+
+"Estimate an OLS regression on simulated data with olsmt, and print the coefficients and their standard errors."
+
+Expected behavior:
+- Likely review_required (an expression-built `y`); output members taken from the docs.
+
+### Prompt 80.11: Scatter plot of 75 random points; run it
+
+"Make a scatter plot of 75 random points."
+
+Expected behavior:
+- Likely review_required; if run, no plot can be seen.
+
+### Prompt 80.12: Which server version is running?
+
+"Which version of gauss-ai is the server running?"
+
+Expected behavior:
+- 0.89.1.
+
+### Prompt 80.13: Which function checks whether a panel is balanced? (the user's own question)
+
+"I have panel data cover 80 countries over 35 years. I want to check if the data is balanced? What GAUSS function should I use?"
+
+Expected behavior:
+- Not planned (the user's own question): an answer grounded in, or followed back to, a defining page.
+
+### Prompt 80.14: Methodology: is the interest-rate effect on GDP the same across countries? (the user's own question)
+
+"I want to conduct a study on this panel data to see if GDP (dependent variable) is impacted the same way by interest rates across all the countries. Can you recommend a methodology and starting point for this?"
+
+Expected behavior:
+- Not planned (the user's own question): an honest account of what gauss-ai can and cannot support.
+
+### Prompt 80.15: Summarize what gauss-ai could and couldn't do
+
+"Summarize what gauss-ai could and couldn't do for you in this session."
+
+Expected behavior:
+- An honest account matching the server's own records.
