@@ -2887,6 +2887,55 @@ def test_184_v089_for_counter_after_a_top_level_call() -> None:
           [p.status for c in calls for p in validation_mod.check_preconditions(c, code=before)] == ["unverified"])
 
 
+def test_185_v0893_dataset_arguments_that_read_a_file() -> None:
+    """Planning v0.90 §2.6, decision 7b: `olsmt("C:/data/auto2.dat", ...)`
+    and `dstatmt("C:/data/f.dat")` reached HANDOFF_CANDIDATE in v0.89.2."""
+    rndn = validation_mod.DocumentedSignature(
+        symbol="rndn", arg_ranges=((2, 2),), parameter_names=("r", "c"), source="rndn.rst",
+        extraction_status=validation_mod.SIGNATURE_EXTRACTED, return_categories=("matrix",),
+    )
+    sigs = {"rndn": rndn}
+    reads = {
+        "a quoted file name": 'out = olsmt("C:/data/auto2.dat", "mpg ~ weight");',
+        "a string variable": 'f = "C:/data/auto2.dat";\nout = olsmt(f, "mpg ~ weight");',
+        "a string operator": 'out = olsmt(__FILE_DIR $+ "auto2.dat", "mpg ~ weight");',
+        "an undocumented call": 'f = getGAUSSHome("examples/auto2.dat");\nout = olsmt(f, "mpg ~ weight");',
+        "an untraced name": 'out = glm(somedata, "admit ~ gre", "binomial");',
+        "dstatmt": 'call dstatmt("C:/data/f.dat");',
+        "header's second argument": 'call header("t", "C:/data/f.dat", 1);',
+    }
+    for label, code in reads.items():
+        findings = validation_mod.check_dataset_arguments(code, signatures=sigs)
+        check(f"file read: {label}", len(findings) == 1 and findings[0].category == "file_read"
+              and "reads the dataset file named by its" in findings[0].detail)
+    in_memory = {
+        "the null string": 'out = olsmt("", y, x);',
+        "zero": "call dstat(0, x);",
+        "a variable holding the null string": 'd = "";\nout = olsmt(d, y, x);',
+        "a matrix literal": "out = glm({1, 0, 1}, x, fam);",
+        "a documented matrix return": "y = rndn(5, 1);\nout = glm(y, x, fam);",
+        "a numeric expression of documented calls": "y = rndn(5, 1) .> 0;\nout = glm(y, x, fam);",
+        "a numeric expression": "y = 1 + x * b + e;\nout = glm(y, x, fam);",
+        "a call inside a string": 'print "olsmt(\\"C:/a.dat\\", f)";',
+        "a call inside a comment": '// out = olsmt("C:/a.dat", f);\nx = 1;',
+        "header's first argument": 'call header("C:/not/a/dataset", "", 1);',
+    }
+    for label, code in in_memory.items():
+        check(f"in memory: {label}", validation_mod.check_dataset_arguments(code, signatures=sigs) == ())
+    names = {rule.name for rule in validation_mod._SYSTEM_STATEMENT_REGISTRY}
+    for rule in validation_mod._DATASET_ARGUMENT_REGISTRY:
+        check(f"{rule.name} cites its page and evidence", rule.doc_page.endswith(".rst") and rule.evidence
+              and rule.name == rule.name.lower() and rule.name not in names)
+    check("37 functions", len(validation_mod._DATASET_ARGUMENT_REGISTRY) == 37)
+    reasons = validation_mod.compute_handoff_readiness(
+        eligibility=validation_mod.ExecutionEligibility.ELIGIBLE_FOR_VALIDATION.value, unresolved_issues=(),
+        syntax=None, call_validations=(), preconditions=(), evidence_profile="broad",
+        system_statements=validation_mod.check_dataset_arguments('out = olsmt("C:/a.dat", f);'),
+    )
+    check("the verdict is not_ready, naming the argument", reasons.state == "not_ready"
+          and '`olsmt` reads the dataset file named by its `data` argument (`"C:/a.dat"`) (file_read)' in reasons.reasons[0])
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

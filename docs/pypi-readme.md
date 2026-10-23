@@ -82,7 +82,7 @@ Close your MCP client (on Windows a running server locks its files), run `pip in
 ## What it will and won't do
 
 - Code from the assistant is **never run** unless gauss-ai's own checks rate it `handoff_candidate` and you approve that exact code. One approval runs it once, in a temporary directory that is deleted afterwards.
-- Code that reaches outside GAUSS is **always blocked** from running: OS commands, other programs, `run`/`#include`, directory changes, any file read, write or delete, web data APIs and databases.
+- Code that reaches outside GAUSS is **always blocked** from running: OS commands, other programs, `run`/`#include`, directory changes, any file read, write or delete (including an estimator or statistics function told to load a dataset file, such as `olsmt("mydata.dat", ...)`), web data APIs and databases.
 - A verdict is **evidence, not a guarantee** of correct results. Much real code is `review_required` (for example, most loops, or an argument computed by an expression, since expressions are never evaluated), and gauss-ai says exactly what it could not check.
 - No telemetry. The only network access is `gauss-ai docs fetch`, run by you, and a model provider you explicitly enable for the optional built-in chat.
 

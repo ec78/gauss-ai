@@ -74,6 +74,7 @@ In addition, **any system-touching statement always makes code `not_ready`**:
 - other source files: `run`, `#include`
 - directory changes: `chdir`, `changedir`
 - any file read, write or delete: `load`/`loadd`, `save`/`saved`, `fopen`, `csvReadM`, `xlsWriteM`, `deleteFile`, `output file=`, ...
+- since `v0.89.3`, a dataset file named as an argument: 37 estimator and statistics functions (`ols`, `olsmt`, `glm`, `dstat`, `dstatmt`, `ttest`, `tabulate`, `quantileFit`, the `garch*` and `tsmt` estimators, ...) read a file when their `dataset`/`data`/`filename` argument names one. Such a call runs only when that argument is the documented null string `""` or `0`, or in-memory data (a matrix literal, a matrix or dataframe from a documented call, or a numeric expression); anything else, including an untraced name, is a file read
 
 The handoff is for self-contained snippets that compute in memory. Work with real files belongs in the guided repair pipeline.
 

@@ -3485,6 +3485,31 @@ def test_171_v089_a_mixed_case_lookup_cites_the_on_disk_page() -> None:
               .get("file_path") == "meanc.rst")
 
 
+#: v0.89.3 (planning v0.90 §2.6): `olsmt.rst`'s first form and its `data` text.
+_V0893_OLSMT_RST = (
+    "olsmt\n=====\n\nPurpose\n-------\n\nComputes a least squares regression.\n\nFormat\n------\n"
+    ".. function:: out = olsmt(data, formula[, ctl])\n\n"
+    "    :param data: name of dataset, dataframe in memory, or an empty string.\n    :type data: string or dataframe\n\n"
+    "    :param formula: formula string of the model.\n    :type formula: string\n\n"
+    "    :return out: an olsmtOut structure.\n    :rtype out: struct\n"
+)
+
+
+def test_172_v0893_a_dataset_file_argument_is_not_ready() -> None:
+    """Decision 7b: `olsmt("C:/data/auto2.dat", "mpg ~ weight")` was
+    HANDOFF_CANDIDATE in v0.89.2 although it reads the file."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v088_docs_root(tmp, {"olsmt.rst": _V0893_OLSMT_RST})
+        result = engine_mod.validate_code('out = olsmt("C:/data/auto2.dat", "mpg ~ weight");', docs_root=root)
+        check("a file name is not_ready", result.handoff_readiness.state == "not_ready")
+        check("as a file read of the data argument", any(
+            "reads the dataset file named by its `data` argument" in r for r in result.handoff_readiness.reasons))
+        check("listed as a system statement", [(f.name, f.category) for f in result.pre_execution.system_statements]
+              == [("olsmt", "file_read")])
+        in_memory = engine_mod.validate_code('f = "y ~ x";\nout = olsmt("", f);', docs_root=root)
+        check("the null string is no system statement", in_memory.pre_execution.system_statements == ())
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

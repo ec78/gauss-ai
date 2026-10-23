@@ -2159,6 +2159,12 @@ def validate_generated_code(
     )
     system_statements = tuple(
         finding for block in cleaned_generated_code for finding in validation_mod.check_system_statements(block)
+    ) + tuple(
+        # v0.89.3 (planning v0.90 §2.6, decision 7b): an estimator or
+        # statistics function whose dataset argument names a file reads it --
+        # `olsmt("C:/data/auto2.dat", ...)` reached HANDOFF_CANDIDATE in v0.89.2.
+        finding for block in cleaned_generated_code
+        for finding in validation_mod.check_dataset_arguments(block, signatures=documented_signatures)
     )
 
     companion_hints: list[tuple[str, str]] = []

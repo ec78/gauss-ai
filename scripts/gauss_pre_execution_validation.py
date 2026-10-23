@@ -4383,6 +4383,10 @@ class SystemStatementFinding:
     category: str
     line_number: int
     doc_page: str
+    #: v0.89.3: set only for an argument-dependent finding
+    #: (`check_dataset_arguments(...)`), saying which argument reaches
+    #: outside memory; `""` for a statement matched by name.
+    detail: str = ""
 
 
 def check_system_statements(code: str) -> tuple[SystemStatementFinding, ...]:
@@ -4415,6 +4419,156 @@ def check_system_statements(code: str) -> tuple[SystemStatementFinding, ...]:
             findings.append(SystemStatementFinding(
                 name=name, category=rule.category, line_number=line_no, doc_page=rule.doc_page,
             ))
+    return tuple(findings)
+
+
+@dataclass(frozen=True)
+class DatasetArgumentRule:
+    """v0.89.3 (planning v0.90 §2.6, decision 7b): a documented function that
+    READS A FILE when one of its arguments names a dataset or data file, and
+    computes in memory otherwise. `position` is that argument's 0-based
+    position (the same in every documented form of the function); `evidence`
+    quotes the page's own `:param` text."""
+
+    name: str
+    position: int
+    parameter: str
+    doc_page: str
+    evidence: str
+
+
+#: v0.89.3 (planning v0.90 §2.6, decision 7b): the system-statement registry
+#: matches by NAME, so it could not see that these functions load a dataset
+#: from disk when their `dataset`/`data`/`filename` argument is a file name:
+#: `olsmt("C:/data/auto2.dat", "mpg ~ weight")` and `dstatmt("C:/data/f.dat")`
+#: reached HANDOFF_CANDIDATE in v0.89.2, contrary to the project's "any file
+#: read is NOT_READY" rule, and correct call-form alignment (v0.90.0) would
+#: have let `glm`, `ttest`, `tabulate`, `quantileFit` … through too. Built by
+#: scanning every published page's `:param`/`:type` lines for a `string`
+#: parameter named or described as a dataset or data file (40 parameters in
+#: 39 functions outside the registry, 2026-10-23), then dropping the three
+#: that are not files (`dfaddcol`'s column `data`, `getpath`'s path string,
+#: `headermt`'s format letters). Each position was read from the page's own
+#: documented forms.
+_DATASET_ARGUMENT_REGISTRY: tuple[DatasetArgumentRule, ...] = tuple(DatasetArgumentRule(*row) for row in (
+    ("autoregfit", 0, "dataset", "tsmt/autoregfit.rst", "name of data set or null string."),
+    ("clusterse", 0, "dataset", "clusterse.rst", "name of dataset."),
+    ("cmlmtkerneldensity", 0, "dataset", "cmlmt/cmlmtkerneldensity.rst", "Name of the GAUSS dataset."),
+    ("contingency", 0, "filename", "contingency.rst", "name of dataset."),
+    ("dstat", 0, "dataset", "dstat.rst", "name of dataset. If *dataset* is null or 0, *vars* will be assumed …"),
+    ("dstatmt", 0, "data", "dstatmt.rst", "A dataframe or the name of dataset. If *data* is an empty string or 0, …"),
+    ("ecmfit", 0, "dataset", "tsmt/ecmfit.rst", "name of data set or null string."),
+    ("garchfit", 0, "dataset", "tsmt/garchfit.rst", "name of data set or null string."),
+    ("garchgjrfit", 0, "dataset", "tsmt/garchgjrfit.rst", "name of data set or null string."),
+    ("garchmfit", 0, "dataset", "tsmt/garchmfit.rst", "name of data set or null string."),
+    ("glm", 0, "dataset_name", "glm.rst", 'the name of dataset or dataframe. E.g. "credit.dat", "example.fmt" …'),
+    ("gmmfitiv", 0, "dataset", "gmmfitiv.rst", "name of dataset."),
+    ("hacse", 0, "dataset", "hacse.rst", "name of dataset."),
+    ("header", 1, "dataset", "header.rst", "name of dataset."),
+    ("headermt", 1, "dataset", "headermt.rst", "name of dataset."),
+    ("igarchfit", 0, "dataset", "tsmt/igarchfit.rst", "name of data set or null string."),
+    ("indices", 0, "dataset", "indices.rst", "the name of the dataset."),
+    ("indicesfn", 0, "dataset", "indicesfn.rst", "name of the dataset."),
+    ("kerneldensity", 0, "dataset", "kerneldensity.rst", "Name of datafile, dataframe, or data matrix."),
+    ("linearmdcevfit", 0, "fname", "bhatlib/linearmdecvfit.rst", "Path to the dataset."),
+    ("loadwind", 0, "namestr", "loadwind.rst", "name of file to be loaded."),
+    ("lsdvfit", 0, "dataset", "tsmt/lsdvfit.rst", "name of data set or null string."),
+    ("maxlikmtkerneldensity", 0, "dataset", "mlmt/maxlikmtkerneldensity.rst", "Name of the GAUSS dataset."),
+    ("mnpfit", 0, "fname", "bhatlib/mnpfit.rst", "Name of dataset in CSV format containing the data for estimation."),
+    ("morpatefit", 0, "fname", "bhatlib/morpatefit.rst", "Name of the dataset file to load."),
+    ("morpfit", 0, "fname", "bhatlib/morpfit.rst", "Name of the dataset file to load."),
+    ("mvntest", 0, "filename", "mvntest.rst", "name of dataset."),
+    ("ols", 0, "dataset", "ols.rst", "name of dataset or null string."),
+    ("olsmt", 0, "data", "olsmt.rst", "name of dataset, dataframe in memory, or an empty string."),
+    ("quantilefit", 0, "dataset", "quantilefit.rst", "name of dataset."),
+    ("quantilefitloc", 0, "dataset", "quantilefitloc.rst", "name of dataset."),
+    ("robustse", 0, "dataset", "robustse.rst", "name of dataset."),
+    ("switchfit", 0, "dataset", "tsmt/switchfit.rst", "name of data set or null string."),
+    ("tabulate", 0, "filename", "tabulate.rst", "Name of file storing variables specifiec in *formula*."),
+    ("tscsfit", 0, "dataset", "tsmt/tscsfit.rst", "name of data set or null string."),
+    ("ttest", 0, "filename", "ttest.rst", "name of dataset."),
+    ("varmafit", 0, "dataset", "tsmt/varmafit.rst", "name of data set or null string."),
+))
+_DATASET_RULES_BY_NAME: dict[str, DatasetArgumentRule] = {rule.name: rule for rule in _DATASET_ARGUMENT_REGISTRY}
+
+#: GAUSS's string operators (`$+` concatenation, `$|`/`$~` string-array
+#: concatenation): an expression using one builds a string.
+_STRING_OPERATOR_RE = re.compile(r"\$[+|~]")
+#: A call inside an expression: `getGAUSSHome("x")`, `__FILE_DIR $+ …`.
+_CALL_IN_TEXT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\s*\(")
+#: The documented "no dataset" values: the empty (null) string and 0.
+_NO_DATASET_VALUES = frozenset({'""', "0"})
+
+
+def _computes_in_memory(argument: str, *, code: str, call: GeneratedCall,
+                        signatures: "dict[str, DocumentedSignature] | None") -> bool:
+    """True only when the dataset argument provably names no file: the
+    documented null string `""` or `0`; a value traced to a non-string
+    category (a numeric literal, a matrix, or a dataframe from a documented
+    call); or a variable assigned from an expression with no string literal,
+    string operator or call (`y = 1 + x * b + e`). Everything else -- a quoted
+    file name, a string variable, `getGAUSSHome(...)`, an untraced name --
+    is treated as a file read: fail closed, as the name registry does."""
+    text = argument.strip()
+    if text in _NO_DATASET_VALUES:
+        return True
+    if '"' in text or _STRING_OPERATOR_RE.search(text):
+        return False
+    if _SIMPLE_IDENTIFIER_RE.fullmatch(text):
+        governing = _governing_assignment(
+            text.rstrip("'"), code=code, line_number=call.line_number, column=call.column,
+        )
+        if governing is not None and governing.strip() in _NO_DATASET_VALUES:
+            return True
+    categories, _origin, _cause, rhs = resolve_argument_category_with_cause(
+        text, code=code, line_number=call.line_number, column=call.column, signatures=signatures,
+    )
+    if TypeClass.UNKNOWN.value not in categories:
+        return TypeClass.STRING.value not in categories
+    if rhs is not None:
+        return _numeric_expression(rhs, signatures=signatures)
+    return False
+
+
+def _numeric_expression(text: str, *, signatures: "dict[str, DocumentedSignature] | None") -> bool:
+    """An expression that cannot be a string: no string literal, no string
+    operator, and every call in it documented to return a non-string
+    category (`rndu(50, 1) .> 0.5`). An undocumented call, or one whose
+    return type is unknown or a string (`getGAUSSHome(...)`), fails closed."""
+    if '"' in text or _STRING_OPERATOR_RE.search(text):
+        return False
+    for match in _CALL_IN_TEXT_RE.finditer(text):
+        name = match.group(0).rstrip("( \t").lower()
+        returned = (signatures or {}).get(name)
+        categories = returned.return_categories if returned is not None else ()
+        if not categories or TypeClass.STRING.value in categories or TypeClass.UNKNOWN.value in categories:
+            return False
+    return True
+
+
+def check_dataset_arguments(
+    code: str, *, signatures: "dict[str, DocumentedSignature] | None" = None,
+) -> tuple[SystemStatementFinding, ...]:
+    """v0.89.3 (planning v0.90 §2.6, decision 7b): a `FILE_READ` finding for
+    each call to a `_DATASET_ARGUMENT_REGISTRY` function whose dataset
+    argument does not provably compute in memory (`_computes_in_memory(...)`).
+    Deterministic, no I/O. Reads calls through `extract_generated_calls(...)`
+    (the shared lexer's masked view), so a call inside a string or comment
+    never matches. `olsmt("", y, x)` (the documented in-memory form) passes;
+    `olsmt("C:/data/auto2.dat", "mpg ~ weight")` is a file read."""
+    findings: list[SystemStatementFinding] = []
+    for call in extract_generated_calls(code):
+        rule = _DATASET_RULES_BY_NAME.get(call.symbol.lower())
+        if rule is None or rule.position >= len(call.raw_arguments):
+            continue
+        argument = call.raw_arguments[rule.position]
+        if _computes_in_memory(argument, code=code, call=call, signatures=signatures):
+            continue
+        findings.append(SystemStatementFinding(
+            name=rule.name, category=SystemStatementCategory.FILE_READ.value, line_number=call.line_number,
+            doc_page=rule.doc_page,
+            detail=f"reads the dataset file named by its `{rule.parameter}` argument (`{argument.strip()}`)",
+        ))
     return tuple(findings)
 
 
@@ -4598,8 +4752,9 @@ def compute_handoff_readiness(
     """
     if system_statements:
         reasons = tuple(
-            f"line {f.line_number}: `{f.name}` is a system-touching statement ({f.category}) -- controlled "
-            "execution only runs self-contained snippets that compute in memory"
+            f"line {f.line_number}: `{f.name}` "
+            + (f.detail if f.detail else "is a system-touching statement")
+            + f" ({f.category}) -- controlled execution only runs self-contained snippets that compute in memory"
             for f in system_statements
         )
         return ReadinessResult(HandoffReadiness.NOT_READY.value, reasons)

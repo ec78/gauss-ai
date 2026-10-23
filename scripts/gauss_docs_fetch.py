@@ -47,7 +47,7 @@ from typing import Any, Callable
 
 import gauss_ai_config as config_mod
 
-__version__ = "0.89.2"
+__version__ = "0.89.3"
 
 DOCS_BASE_URL = "https://docs.aptech.com/gauss/"
 SEARCH_INDEX_NAME = "searchindex.js"
