@@ -183,6 +183,16 @@ def test_03_v089_versions_and_opt_in_declarations_agree() -> None:
     readme = (_REPO_ROOT / "docs" / "pypi-readme.md").read_text(encoding="utf-8")
     check("the PyPI README carries the registry name", f"mcp-name: {registry['name']}" in readme)
     check("the PyPI README links absolutely", "](docs/" not in readme and "](../" not in readme)
+    # v0.89.2 (live finding 80.x-1): `claude mcp add ... -e VAR gauss-ai -- cmd` fails, because `-e`
+    # takes several values and consumes the server name ("missing required argument 'commandOrUrl'").
+    # Every printed `claude mcp add` with `-e` must name the server before `-e`.
+    import re as _re
+    for name, text in (("PyPI README", readme), ("README", (_REPO_ROOT / "README.md").read_text(encoding="utf-8"))):
+        adds = [line for line in text.splitlines() if "claude mcp add" in line and " -e " in line]
+        check(f"the {name} prints the real-GAUSS command", bool(adds))
+        check(f"the {name} names the server before -e", all(
+            _re.search(r"claude mcp add\b.*\bgauss-ai -e GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1 -- gauss-ai-mcp", line)
+            for line in adds))
     # Aptech's request (planning v0.89 §9.3): unofficial, unaffiliated, and GAUSS is their trademark.
     disclaimer = "not affiliated with or endorsed by Aptech Systems, Inc. GAUSS is a trademark of Aptech Systems, Inc."
     for name, text in (("PyPI README", readme), ("README", (_REPO_ROOT / "README.md").read_text(encoding="utf-8"))):

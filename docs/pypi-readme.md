@@ -12,7 +12,7 @@ Status: **alpha**. gauss-ai is an unofficial, independent project, not affiliate
 
 ## Quickstart
 
-You need Python 3.10 or newer. GAUSS itself is optional; without it, search and validation still work.
+You need Python 3.10 or newer. GAUSS itself is optional; without it, search and validation still work. Run every command below in one terminal (PowerShell or Command Prompt on Windows, Terminal on macOS or Linux), from any folder: the `pip` there must belong to the Python you want gauss-ai installed in, and the `claude mcp` commands register the server for your user account, not for a folder.
 
 **1. Install**
 
@@ -30,7 +30,7 @@ gauss-ai docs fetch
 gauss-ai doctor
 ```
 
-This downloads the published GAUSS documentation (about 8 MB) from docs.aptech.com into `~/.gauss-ai/docs/` and configures it. It runs only when you run it.
+This downloads the published GAUSS documentation (about 8 MB) from docs.aptech.com into `~/.gauss-ai/docs/` and configures it. It runs only when you run it. It takes a few minutes; let it finish, since an interrupted download starts over (it never leaves a partial copy). `gauss-ai doctor` should end with `Overall: PASS` or `Overall: WARN`. A warning that no workspace parent is configured is expected and harmless: only `gauss-ai repair` uses one.
 
 **3. Connect your MCP client**
 
@@ -67,12 +67,13 @@ gauss-ai config set default-runner gauss
 Then give the server process your opt-in, `GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1`. Only whoever starts the server can set it, and every run still needs your own "yes":
 
 - Claude Code: `claude mcp remove gauss-ai --scope user`, then
-  `claude mcp add --transport stdio --scope user -e GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1 gauss-ai -- gauss-ai-mcp`
+  `claude mcp add --transport stdio --scope user gauss-ai -e GAUSS_AI_MCP_ALLOW_REAL_GAUSS=1 -- gauss-ai-mcp`
+  (the server name must come before `-e`, which takes several values)
 - Claude Desktop: add `"env": { "GAUSS_AI_MCP_ALLOW_REAL_GAUSS": "1" }` to the entry above, and restart.
 
 Set it for yourself only. Never put it in a project's shared `.mcp.json`, where it would turn real execution on for everyone who clones the project.
 
-To check: in a new conversation, a new session must report `real_gauss_allowed: true`. That confirms the opt-in, not that GAUSS starts; the first approved run shows that.
+To check: in a new conversation, a new session must report `real_gauss_allowed: true`. That confirms the opt-in, not that GAUSS starts; the first approved run shows that. For a first run, ask the assistant to validate and run `x = { 1, 1 }; print sumc(x);`, and answer the prompt yourself. Code must call at least one documented function to be eligible, so `print 1+1;` is refused, by design.
 
 **5. Upgrading**
 
