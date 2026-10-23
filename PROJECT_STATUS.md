@@ -26,7 +26,8 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
   - First-run friction: `print 1+1;` is not_ready (no documented call); the workspace-parent WARN is unexplained; where to install was confusing; an interrupted fetch restarts.
   - Client errors (disclosed): it claimed `T` ends at 3 after `for t` (false: fs1/fs6), and it invented an FLI docs URL (404).
 - **v0.89.2** (2026-10-23, docs only; plan §11.9): the README's real-GAUSS command fixed (server name before `-e`; checked as printed in PowerShell) and the first-run friction from 80.x addressed; packaging test 03 checks the command form.
-- **Next:** PyPI (decision 2: TestPyPI first; the user creates the accounts and the trusted publisher). The call-form fix (finding 2) leads the next validator milestone under decision 10 = B. The analysis-workspace milestone is the path to the end-to-end analytics goal. Restore the dev setup (the walkthrough's last block) when convenient.
+- **Published to PyPI on 2026-10-23:** `gauss-ai` 0.89.2 (https://pypi.org/project/gauss-ai/), through `publish.yml` with Trusted Publishing: TestPyPI run `39959308516`, then PyPI run `39959771861`, approved at the `pypi` environment gate. Clean-venv installs from both indexes verified (plan §11.10). Status is now "Alpha".
+- **Next:** the outside-tester round (path step 4), pitched as the copilot. The call-form fix (finding 2) leads the next validator milestone under decision 10 = B. The analysis-workspace milestone is the path to the end-to-end analytics goal. The dev setup was restored after 80.x (editable install, config and docs checked).
 
 **v0.88.0 "Search and Grounding Recall" was committed, tagged and pushed on 2026-10-21** (tag `v0.88.0`, commit `be3df16`; `main` pushed). GitHub release: https://github.com/ec78/gauss-ai/releases/tag/v0.88.0 (published 22:57 UTC). Plan and record: `planning/v0.88-search-and-grounding-recall.md` (§1-§8 approved with every recommendation: 1A, 2 yes, 3a, 4-8 yes, 9a, 10 defer, 11-12 yes; §9 deviations and diffs; §10 testing). The full gate diff is `planning/v0.88-gate-diff.md`. Baseline for every comparison: a `git archive` of `cf4434c`.
 - Done:
@@ -218,7 +219,7 @@ Full detail is in CHANGELOG and the planning docs (`planning/v0.86-*.md`, `plann
 **Path to MVP (agreed with the user 2026-10-20).** The MVP is a publicly available MCP that a stranger can install, connect and use safely. The path:
 1. v0.87.0: handoff binding plus small handoff/registry items (released 2026-10-20; 78.x: 16 pass);
 2. v0.88.0: search/grounding recall (`planning/v0.88-search-and-grounding-recall.md`; released 2026-10-21; 79.x: 13 pass);
-3. v0.89.0: release readiness (the decisions below, README quickstart, PyPI packaging, platform decision);
+3. v0.89.0: release readiness (the decisions below, README quickstart, PyPI packaging, platform decision; released, 80.x: 12 pass, 3 fail; `gauss-ai` 0.89.2 on PyPI 2026-10-23);
 4. a round with one or two outside GAUSS testers on a clean install, then a public-alpha / v1.0 decision.
 
 Run path (decided 2026-10-22, v0.89 decision 10 = **B**): widen deterministic coverage within the existing constraint, so more code reaches `handoff_candidate` (for example, expression shape inference, modelled simple `for` bodies instead of a blanket `control_flow_block`), one rule family per milestone, each with `tgauss.exe -b` provenance and a verdict diff. The `HANDOFF_CANDIDATE`-only rule in `CLAUDE.md` is unchanged. In 77.x 6 of 22 snippets reached a run prompt; in 79.x 2 of 9.

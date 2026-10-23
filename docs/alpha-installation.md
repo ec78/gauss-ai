@@ -7,7 +7,7 @@ This guide covers installing and configuring the productized `gauss-ai` CLI (`v0
 ## Prerequisites
 
 - **Python 3.10 or newer.** Verified on Python 3.12; the codebase uses no syntax requiring a newer version, but only 3.10+ has been exercised.
-- **The package, or a clone of this repository.** Since `v0.89.0` the package is built for PyPI (`pip install "gauss-ai[mcp]"`; see the README's Quickstart). This guide covers installing from a local checkout (`pip install -e .` or `pip install .`), which contributors and testers of unreleased versions use.
+- **The package, or a clone of this repository.** Since `0.89.2` (2026-10-23) the package is on PyPI (`pip install "gauss-ai[mcp]"`; see the README's Quickstart). This guide covers installing from a local checkout (`pip install -e .` or `pip install .`), which contributors and testers of unreleased versions use.
 - **GAUSS, optional.** Fake-mode testing (the default) requires no GAUSS installation at all. Real-mode testing requires a local, terminal (non-interactive) GAUSS installation — see "GAUSS Requirements" below.
 
 ## Supported Operating System

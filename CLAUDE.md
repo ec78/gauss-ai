@@ -6,7 +6,7 @@ Durable, project-wide guidance for Claude Code sessions in this repository. For 
 
 ## Project Purpose
 
-**GAUSS AI** / **GAUSS Code Assistant**: a governed, human-in-the-loop CLI (`gauss-ai`) that helps diagnose and repair GAUSS-language code one file at a time, plus a conversational assistant (`gauss-ai`, no subcommand) that answers GAUSS questions and generates GAUSS code. Every safety-relevant decision (execution, file writes, repair application, generation gating, intent classification) is deterministic/rule-based — never inferred by a model. Currently in **Private Alpha**.
+**GAUSS AI** / **GAUSS Code Assistant**: a governed, human-in-the-loop CLI (`gauss-ai`) that helps diagnose and repair GAUSS-language code one file at a time, plus a conversational assistant (`gauss-ai`, no subcommand) that answers GAUSS questions and generates GAUSS code. Every safety-relevant decision (execution, file writes, repair application, generation gating, intent classification) is deterministic/rule-based — never inferred by a model. Currently in **Alpha**: public on PyPI as `gauss-ai` since 0.89.2 (2026-10-23).
 
 ## Architecture
 
