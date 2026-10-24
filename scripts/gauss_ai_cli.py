@@ -46,7 +46,7 @@ import gauss_code_assistant_cli as cli_mod  # noqa: E402
 import gauss_docs_fetch as docs_fetch_mod  # noqa: E402
 import gauss_environment_check as environment_check_mod  # noqa: E402
 
-__version__ = "0.89.3"
+__version__ = "0.90.0"
 
 
 def _cmd_version(args: list[str]) -> int:

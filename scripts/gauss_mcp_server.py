@@ -90,7 +90,7 @@ import gauss_conversation_engine as engine_mod
 import gauss_doc_reader as doc_reader_mod
 import gauss_execution_handoff as handoff_mod
 
-__version__ = "0.89.3"
+__version__ = "0.90.0"
 
 #: Set by the server OPERATOR in the process's own environment before
 #: launch -- never read from a tool-call argument. See module docstring.

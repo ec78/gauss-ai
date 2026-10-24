@@ -179,8 +179,9 @@ import bisect
 import dataclasses
 import enum
 import functools
+import itertools
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable
 
 #: See module docstring's final paragraph for why this is duplicated rather
@@ -788,6 +789,115 @@ def _extract_documented_return_categories(outputs_section: str | None) -> tuple[
     return categories
 
 
+#: v0.90.0 (planning v0.90 §3.1): one documented call form's slot kinds.
+SLOT_REQUIRED = "required"
+SLOT_OPTIONAL = "optional"
+
+
+@dataclass(frozen=True)
+class CallForm:
+    """v0.90.0 (live finding 80.x-2; planning v0.90 §3.1): ONE documented
+    call form, kept as the documentation writes it instead of being merged
+    with the others. `text` is the argument list as written
+    (`"[myPlot, ]x, y"`). `slots` is the ordered sequence of
+    `(SLOT_REQUIRED, (name,))` and `(SLOT_OPTIONAL, (name, ...))` entries:
+    an optional group is wherever its brackets are -- leading, middle or
+    trailing -- and its members (nested groups flattened in order) may be
+    passed as any prefix, the same "trailing arguments may be omitted"
+    reading the flattened parser always gave a trailing group. A documented
+    `...` is the name `"..."` in either kind of slot.
+
+    Before v0.90.0 only the merged `parameter_names` survived, so
+    `olsmt("", y, x, ctl)` was checked against `formula` (the first form's
+    second parameter) and `plotScatter(x, y)` against the optional leading
+    `myPlot`; and a leading group made every parameter optional, so
+    `plotScatter();` was count-compatible (planning v0.90 §2.2-§2.3)."""
+
+    text: str
+    slots: tuple[tuple[str, tuple[str, ...]], ...]
+    min_args: int
+    max_args: int
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        return tuple(name for _kind, names in self.slots for name in names)
+
+    @property
+    def has_inner_optional(self) -> bool:
+        """True when an optional group is followed by a required slot: the
+        shape the flattened parser could not represent."""
+        seen_optional = False
+        for kind, _names in self.slots:
+            if kind == SLOT_OPTIONAL:
+                seen_optional = True
+            elif seen_optional:
+                return True
+        return False
+
+
+def _parse_call_form(raw_args: str) -> CallForm:
+    """v0.90.0: reads one documented argument list's bracket structure as
+    written: `[` opens an optional group and its matching `]` closes it,
+    groups nest (flattened into their outer group, in order), and a comma
+    just inside a group (`[, ctl]`, `[myPlot, ]`) is a separator, never a
+    parameter. Splitting and name normalization are the existing
+    `_split_top_level_args(...)` / `_normalize_parameter_name(...)`, so a
+    trailing group gives exactly `_parse_signature_occurrence(...)`'s
+    ranges and names (the all-pages diff of planning v0.90 §6.2 checks
+    this). Unbalanced brackets fall back to that function's own reading,
+    never a guess."""
+    text = " ".join(raw_args.split())
+    slots: list[tuple[str, tuple[str, ...]]] = []
+    buffer: list[str] = []
+    depth = 0
+    in_string = False
+
+    def names_of(piece: str) -> tuple[str, ...]:
+        return tuple(
+            name for name in (_normalize_parameter_name(n) for n in _split_top_level_args(piece)) if name
+        )
+
+    for ch in text:
+        if ch == '"':
+            in_string = not in_string
+        if not in_string and ch == "[":
+            if depth == 0:
+                slots.extend((SLOT_REQUIRED, (name,)) for name in names_of("".join(buffer)))
+                buffer = []
+            else:
+                buffer.append(" ")
+            depth += 1
+            continue
+        if not in_string and ch == "]" and depth == 0:
+            # A stray close with no open group (`xlsWrite(data, file[, range[,
+            # sheet[, vls]]]])`, `plotSetFonts(... [, font_size, font_color]])`:
+            # one `]` too many in the published page) is ignored, as the
+            # flattened parser always ignored it -- never read as a parameter.
+            continue
+        if not in_string and ch == "]" and depth > 0:
+            depth -= 1
+            if depth == 0:
+                group = names_of("".join(buffer))
+                if group:
+                    slots.append((SLOT_OPTIONAL, group))
+                buffer = []
+            else:
+                buffer.append(" ")
+            continue
+        buffer.append(ch)
+    if depth != 0:
+        _old_min, _old_max, old_names = _parse_signature_occurrence(raw_args)
+        required_names = names_of(raw_args[: raw_args.find("[")])
+        slots = [(SLOT_REQUIRED, (name,)) for name in required_names]
+        if old_names[len(required_names):]:
+            slots.append((SLOT_OPTIONAL, tuple(old_names[len(required_names):])))
+    else:
+        slots.extend((SLOT_REQUIRED, (name,)) for name in names_of("".join(buffer)))
+    all_names = tuple(name for _kind, names in slots for name in names)
+    min_args = sum(1 for kind, names in slots if kind == SLOT_REQUIRED and names[0] != "...")
+    return CallForm(text=text, slots=tuple(slots), min_args=min_args, max_args=_bounded_max(all_names))
+
+
 @dataclass(frozen=True)
 class DocumentedSignature:
     """`arg_ranges` holds one `(min_args, max_args)` pair per documented
@@ -818,6 +928,14 @@ class DocumentedSignature:
     #: by `resolve_argument_category(...)` to trace a variable to the call
     #: that produced it, never to claim anything about the call itself.
     return_categories: tuple[str, ...] = ()
+    #: v0.90.0 (planning v0.90 §3.1): every distinct documented form, in
+    #: document order. `arg_ranges` is derived from these; the merged
+    #: `parameter_names`/`parameters` above are kept for listing only and no
+    #: longer drive the role check when forms are known.
+    forms: tuple[CallForm, ...] = ()
+    #: v0.90.0: each documented parameter's metadata by name (the same
+    #: `:type`-derived values as `parameters`), shared by every form.
+    parameters_by_name: "dict[str, DocumentedParameter]" = field(default_factory=dict, compare=False, hash=False)
 
 
 #: v0.82.0: a documented `...` (`fred_load(formula[, ...])`, `gmmFit(&fct, y,
@@ -875,12 +993,20 @@ def extract_documented_signature(symbol: str, best_match: dict) -> DocumentedSig
     call_re = re.compile(rf"\b{re.escape(symbol)}\s*\(([^()]*)\)", re.IGNORECASE)
     ranges: list[tuple[int, int]] = []
     names: list[str] = []
+    forms: list[CallForm] = []
     for block in best_match.get("syntax_blocks") or ():
         for match in call_re.finditer(block):
-            min_a, max_a, arg_names = _parse_signature_occurrence(match.group(1))
-            if (min_a, max_a) not in ranges:
-                ranges.append((min_a, max_a))
-            for name in arg_names:
+            # v0.90.0 (planning v0.90 §3.1): each form keeps its own bracket
+            # structure, and the ranges come from it. For a trailing group this
+            # is exactly `_parse_signature_occurrence(...)`'s reading; a leading
+            # or middle group (`[myPlot, ]x, y`) no longer makes every parameter
+            # optional.
+            form = _parse_call_form(match.group(1))
+            if all(existing.text != form.text for existing in forms):
+                forms.append(form)
+            if (form.min_args, form.max_args) not in ranges:
+                ranges.append((form.min_args, form.max_args))
+            for name in form.names:
                 if name and name not in names:
                     names.append(name)
 
@@ -910,6 +1036,8 @@ def extract_documented_signature(symbol: str, best_match: dict) -> DocumentedSig
         source=best_match.get("file_path"), extraction_status=SIGNATURE_EXTRACTED,
         parameters=parameters,
         return_categories=_extract_documented_return_categories(best_match.get("outputs_section")),
+        forms=tuple(forms),
+        parameters_by_name={parameter.name: parameter for parameter in parameters},
     )
 
 
@@ -1167,6 +1295,14 @@ class RoleUnknownCause(str, enum.Enum):
     #: A documented return category disagrees with the parameter; a documented
     #: return type is not precise enough to call that a mismatch.
     RETURN_TYPE_IMPRECISE = "return_type_imprecise"
+    #: v0.90.0: two documented forms (or two placements of an optional group)
+    #: fit the call's argument count, they put a different parameter at this
+    #: position, and no form fits every argument (`plotScatter(x, y)` with
+    #: untraced `x`, `y`: `x, y` or `df, formula`).
+    CALL_FORM_AMBIGUOUS = "call_form_ambiguous"
+    #: v0.90.0: more than `MAX_CALL_ALIGNMENTS` ways to fit the call to its
+    #: documented forms; none is checked rather than one guessed.
+    CALL_FORM_UNRESOLVED = "call_form_unresolved"
 
 
 _ROLE_UNKNOWN_CAUSE_TEXT: dict[str, str] = {
@@ -1185,6 +1321,13 @@ _ROLE_UNKNOWN_CAUSE_TEXT: dict[str, str] = {
     ),
     RoleUnknownCause.RETURN_TYPE_UNDOCUMENTED.value: (
         "`{argument}` is assigned from `{rhs}`, whose documentation gives no checkable return type"
+    ),
+    RoleUnknownCause.CALL_FORM_AMBIGUOUS.value: (
+        "`{argument}` is parameter {parameters} in different documented forms of this call, and the evidence "
+        "does not decide which form it is"
+    ),
+    RoleUnknownCause.CALL_FORM_UNRESOLVED.value: (
+        "this call fits its documented forms in too many ways to check one without guessing"
     ),
 }
 
@@ -1316,11 +1459,11 @@ def resolve_argument_category_with_cause(
     return categories, origin, None, None
 
 
-def check_parameter_roles(
-    call: GeneratedCall, *, signature: DocumentedSignature | None, code: str | None = None,
+def _positional_role_checks(
+    call: GeneratedCall, parameters: tuple[DocumentedParameter, ...], *, code: str | None = None,
     signatures: "dict[str, DocumentedSignature] | None" = None,
 ) -> tuple[ParameterRoleCheck, ...]:
-    """Positional: argument `i` is compared against `signature.parameters[i]`
+    """Positional: argument `i` is compared against `parameters[i]`
     (v0.83.0: except around a documented `...` -- see the comment below).
     An extra argument beyond the documented parameter list is skipped here
     (argument-COUNT mismatches are already `validate_call(...)`'s own job,
@@ -1339,7 +1482,7 @@ def check_parameter_roles(
     never MISMATCH: a documented "matrix" return may be 1x1 at run time
     (e.g. `sumc` of a column vector), so disagreement there is a gap, not a
     known violation."""
-    if signature is None or not signature.parameters:
+    if not parameters:
         return ()
     # v0.83.0: alignment with a documented `...`. Purely positional matching
     # compared, e.g., the 4th argument of `eqSolvemt(&fct, par, ..., c)` with
@@ -1350,7 +1493,7 @@ def check_parameter_roles(
     # that other parameters follow makes every argument from its position on
     # UNKNOWN (`variadic_position`) -- right-aligning would be a guess, since
     # the flattened `required` flags after a `...` do not line up.
-    names = [p.name for p in signature.parameters]
+    names = [p.name for p in parameters]
     variadic_at = names.index("...") if "..." in names else None
     variadic_last = variadic_at is not None and variadic_at == len(names) - 1
     checks: list[ParameterRoleCheck] = []
@@ -1365,11 +1508,11 @@ def check_parameter_roles(
             ))
             continue
         if variadic_last and position >= variadic_at:
-            param = signature.parameters[variadic_at]
-        elif position >= len(signature.parameters):
+            param = parameters[variadic_at]
+        elif position >= len(parameters):
             break
         else:
-            param = signature.parameters[position]
+            param = parameters[position]
         inferred, origin, argument_cause, rhs = resolve_argument_category_with_cause(
             argument, code=code, line_number=call.line_number, column=call.column, signatures=signatures,
         )
@@ -1420,6 +1563,160 @@ def check_parameter_roles(
             status=status, explanation=explanation, origin=origin, unknown_cause=unknown_cause,
         ))
     return tuple(checks)
+
+
+#: v0.90.0 (planning v0.90 §3.2, decision 4): the most ways one call may be
+#: fitted to its documented forms before the role check gives up
+#: (`call_form_unresolved`) instead of choosing one. No published form comes
+#: near it (planning v0.90 §2.2).
+MAX_CALL_ALIGNMENTS = 64
+
+#: v0.90.0: a bound on one form's raw optional-group combinations, checked
+#: before they are enumerated.
+_MAX_FORM_COMBINATIONS = 4096
+
+
+def call_alignments(signature: DocumentedSignature, argument_count: int) -> tuple[tuple[CallForm, tuple[str, ...]], ...] | None:
+    """v0.90.0 (planning v0.90 §3.2): every way `argument_count` arguments
+    fit `signature`'s documented forms, as `(form, names)` pairs. `names` is
+    the form's parameter list with each optional group cut to the prefix
+    this alignment includes; a documented `...` stays one entry and absorbs
+    the remaining arguments (the positional check already reads it that
+    way). Deterministic order: forms in document order, then fewer included
+    optional parameters first. Returns `None` when there are more than
+    `MAX_CALL_ALIGNMENTS` (never a guessed subset), and `()` when no form
+    fits the count."""
+    found: list[tuple[CallForm, tuple[str, ...]]] = []
+    for form in signature.forms:
+        groups = [i for i, (kind, _names) in enumerate(form.slots) if kind == SLOT_OPTIONAL]
+        sizes = [len(form.slots[i][1]) + 1 for i in groups]
+        total = 1
+        for size in sizes:
+            total *= size
+        if total > _MAX_FORM_COMBINATIONS:
+            return None
+        for combo in sorted(itertools.product(*(range(size) for size in sizes)), key=lambda c: (sum(c), c)):
+            take = dict(zip(groups, combo))
+            names: list[str] = []
+            for i, (kind, slot_names) in enumerate(form.slots):
+                names.extend(slot_names if kind == SLOT_REQUIRED else slot_names[: take[i]])
+            variadics = names.count("...")
+            fixed = len(names) - variadics
+            fits = argument_count == fixed if variadics == 0 else (variadics == 1 and argument_count >= fixed)
+            if fits and (form, tuple(names)) not in found:
+                found.append((form, tuple(names)))
+                if len(found) > MAX_CALL_ALIGNMENTS:
+                    return None
+    return tuple(found)
+
+
+def _parameters_for(signature: DocumentedSignature, names: tuple[str, ...]) -> tuple[DocumentedParameter, ...]:
+    return tuple(
+        dataclasses.replace(signature.parameters_by_name[name], position=position)
+        for position, name in enumerate(names)
+    )
+
+
+def _name_the_form(checks: tuple[ParameterRoleCheck, ...], call: GeneratedCall, form: CallForm,
+                   *, others: bool) -> tuple[ParameterRoleCheck, ...]:
+    """A mismatch's explanation names the documented form it was checked
+    against, and whether other forms were tried too."""
+    suffix = f" in `{call.symbol}({form.text})`" + (", or any other documented form" if others else "")
+    return tuple(
+        dataclasses.replace(check, explanation=check.explanation + suffix)
+        if check.status == ParameterRoleStatus.MISMATCH.value else check
+        for check in checks
+    )
+
+
+def check_parameter_roles(
+    call: GeneratedCall, *, signature: DocumentedSignature | None, code: str | None = None,
+    signatures: "dict[str, DocumentedSignature] | None" = None,
+) -> tuple[ParameterRoleCheck, ...]:
+    """v0.90.0 (live finding 80.x-2; planning v0.90 §3.4, decision 1a): each
+    argument is checked against the documented form the call can be, never
+    against a list merged from several. Every alignment
+    (`call_alignments(...)`) is checked with the unchanged positional rules
+    (`_positional_role_checks(...)`), and then:
+
+    1. if some alignment matches at every position, it is reported;
+    2. otherwise, if EVERY alignment has a `MISMATCH`, the first is reported
+       (MISMATCH: no documented form can fit), its reason naming the form;
+    3. otherwise the first alignment with no mismatch is reported, and a
+       position where the viable alignments put different parameters is
+       `UNKNOWN` (`call_form_ambiguous`).
+
+    So a mismatch blocks only if no documented form fits, and a match counts
+    only if one form fits completely; before v0.90.0 a single misaligned
+    slot decided both (`olsmt("", y, x, ctl)` checked `y` against `formula`,
+    a false NOT_READY that real GAUSS runs, planning v0.90 §2.3).
+
+    A symbol with one form and only trailing optional parameters has exactly
+    one alignment for any compatible count, and its parameter list is the
+    one the merged list always gave, so its checks are unchanged. A call no
+    form fits by count keeps the pre-v0.90.0 reading of the merged list
+    (its count is already `validate_call(...)`'s INCOMPATIBLE). Returns `()`
+    when `signature` is `None` or has no extracted parameter metadata."""
+    if signature is None or not signature.parameters:
+        return ()
+    if not signature.forms:
+        return _positional_role_checks(call, signature.parameters, code=code, signatures=signatures)
+    alignments = call_alignments(signature, call.argument_count)
+    if alignments is None:
+        cause = RoleUnknownCause.CALL_FORM_UNRESOLVED.value
+        return tuple(
+            ParameterRoleCheck(
+                symbol=call.symbol, position=position, parameter_name=None,
+                documented_category=(TypeClass.UNKNOWN.value,), inferred_category=TypeClass.UNKNOWN.value,
+                status=ParameterRoleStatus.UNKNOWN.value, explanation=_ROLE_UNKNOWN_CAUSE_TEXT[cause],
+                origin=ArgumentOrigin.UNRESOLVED.value, unknown_cause=cause,
+            )
+            for position in range(call.argument_count)
+        )
+    if not alignments:
+        return _positional_role_checks(call, signature.parameters, code=code, signatures=signatures)
+    candidates: list[tuple[CallForm, tuple[ParameterRoleCheck, ...]]] = []
+    for form, names in alignments:
+        # A documented `...` that other parameters follow (`sqpSolveMT(&fct,
+        # par1[, ...], [ctl])`) keeps v0.83.0's rule -- every position from it
+        # on is `variadic_position` -- which reads the FORM's own list: the
+        # alignment's trimmed list would make that `...` last in some
+        # alignments and not in others.
+        form_names = form.names
+        if "..." in form_names and form_names.index("...") != len(form_names) - 1:
+            names = form_names
+        checks = _positional_role_checks(call, _parameters_for(signature, names), code=code, signatures=signatures)
+        if all(checks != existing for _form, existing in candidates):
+            candidates.append((form, checks))
+    several_forms = len(signature.forms) > 1 or any(form.has_inner_optional for form in signature.forms)
+    if len(candidates) == 1:
+        form, checks = candidates[0]
+        return _name_the_form(checks, call, form, others=False) if several_forms else checks
+    for _form, checks in candidates:
+        if checks and all(check.status == ParameterRoleStatus.MATCH.value for check in checks):
+            return checks
+    viable = [
+        checks for _form, checks in candidates
+        if not any(check.status == ParameterRoleStatus.MISMATCH.value for check in checks)
+    ]
+    if not viable:
+        form, checks = candidates[0]
+        return _name_the_form(checks, call, form, others=True)
+    chosen = list(viable[0])
+    for position, check in enumerate(chosen):
+        names_here = {other[position].parameter_name for other in viable if position < len(other)}
+        if len(names_here) > 1:
+            cause = RoleUnknownCause.CALL_FORM_AMBIGUOUS.value
+            listed = " or ".join(repr(name) for name in sorted(n for n in names_here if n is not None))
+            chosen[position] = dataclasses.replace(
+                check, parameter_name=None, status=ParameterRoleStatus.UNKNOWN.value, unknown_cause=cause,
+                documented_category=(TypeClass.UNKNOWN.value,),
+                explanation=_ROLE_UNKNOWN_CAUSE_TEXT[cause].format(
+                    argument=call.raw_arguments[position].strip() if position < len(call.raw_arguments) else "",
+                    parameters=listed,
+                ),
+            )
+    return tuple(chosen)
 
 
 # ---------------------------------------------------------------------------

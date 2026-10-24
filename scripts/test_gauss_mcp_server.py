@@ -985,6 +985,33 @@ def test_42_v089_server_version_and_annotations() -> None:
     check("42: the read tool is named in the instructions", "gauss_read_doc" in (server_mod.server.instructions or ""))
 
 
+#: v0.90.0 (80.10; planning v0.90 §2.3): `olsmt.rst`'s two forms.
+_V090_OLSMT_RST = (
+    "olsmt\n=====\n\nPurpose\n-------\n\nComputes a least squares regression.\n\nFormat\n------\n"
+    ".. function:: out = olsmt(data, formula[, ctl])\n              out = olsmt(data, depvar, indvars[, ctl])\n\n"
+    "    :param data: name of dataset, or an empty string.\n    :type data: string or dataframe\n\n"
+    "    :param formula: formula string of the model.\n    :type formula: string\n\n"
+    "    :param depvar: dependent variable.\n\n"
+    "    :param indvars: independent variables.\n    :type indvars: Kx1 vector or NxK matrix\n\n"
+    "    :param ctl: Optional input. an olsmtControl structure.\n    :type ctl: struct\n\n"
+    "    :return out: an olsmtOut structure.\n    :rtype out: struct\n"
+)
+
+
+def test_43_v090_gaps_name_the_parameter_of_the_call_form() -> None:
+    """80.10: the four-argument `olsmt` call was checked against `formula`
+    and `ctl` (the first form) instead of `depvar` and `indvars`."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "docs90"
+        root.mkdir()
+        (root / "olsmt.rst").write_text(_V090_OLSMT_RST, encoding="utf-8")
+        sid = server_mod.gauss_session_start(runner="fake", docs_root=str(root), workspace_parent=tmp)["session_id"]
+        resp = server_mod.gauss_validate_code(sid, 'y = {2, 3, 1};\nx = {1 3, 2 3, 7 1};\nout = olsmt("", y, x);')
+        params = [(g["argument"], g["parameter"]) for g in resp.get("coverage_gaps", [])]
+        check("43: the gap names depvar (no documented type), not formula", params == [(2, "depvar")])
+        check("43: review_required for that gap only", resp["handoff_readiness"]["state"] == "review_required")
+
+
 def _run_all() -> int:
     test_fns = [obj for name, obj in sorted(globals().items()) if name.startswith("test_") and callable(obj)]
     for fn in test_fns:

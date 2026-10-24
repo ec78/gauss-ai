@@ -101,6 +101,12 @@ See [docs/gauss-syntax-validation.md](gauss-syntax-validation.md) and [docs/exec
 2. **Validation coverage hardened into an evidence-breadth category** (`MINIMAL`/`PARTIAL`/`BROAD`), still never a numeric score.
 3. **A new `HandoffReadiness` verdict** (`NOT_READY`/`REVIEW_REQUIRED`/`HANDOFF_CANDIDATE`), computed purely from this module's own deterministic evidence, answering whether there is enough evidence for a **future**, still-unimplemented, user-approved execution-handoff workflow to even consider this code. It is strictly downstream of, and distinct from, `ExecutionEligibility`.
 
+## What's new in `v0.90.0`: call forms
+
+Many GAUSS functions document several call forms (`olsmt(data, formula[, ctl])` and `olsmt(data, depvar, indvars[, ctl])`), or an optional argument that comes first (`plotScatter([myPlot, ]x, y)`). Since `v0.90.0` the checker keeps each form as the documentation writes it:
+- **Argument count:** a call is compatible only if some documented form accepts that many arguments, wherever the optional brackets are. `plotScatter();` is `NOT_READY` ("accept 2-3 argument(s); this call passed 0"); before, a leading optional made every argument optional.
+- **Argument roles:** every way the call can fit a form is checked. A known type mismatch blocks only if **no** documented form fits, and its reason names the form; a match counts only if one form fits completely. Where two forms fit the count and the evidence cannot decide which one the call is, the role is unknown (`call_form_ambiguous`), so the code stays `REVIEW_REQUIRED`.
+
 ## Known limitations
 
 - **Signature/parameter-role checking remains conservative and partial.** Only a documented `:type` line in the `.. function::` directive style is parsed; a symbol documented in the older plain Format-heading style still gets argument-count-only checking. Parameter-role checking only compares LITERAL arguments — any runtime variable is `UNKNOWN`, by design.

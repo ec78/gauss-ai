@@ -3510,6 +3510,35 @@ def test_172_v0893_a_dataset_file_argument_is_not_ready() -> None:
         check("the null string is no system statement", in_memory.pre_execution.system_statements == ())
 
 
+#: v0.90.0 (planning v0.90 §2.3): the published `plotscatter.rst` shape --
+#: two forms, each with a leading optional `myPlot`.
+_V090_PLOTSCATTER_RST = (
+    "plotScatter\n===========\n\nPurpose\n-------\n\nPlots a scatter plot.\n\nFormat\n------\n"
+    ".. function:: plotScatter([myPlot, ]x, y)\n              plotScatter([myPlot, ]df, formula)\n\n"
+    "    :param myPlot: Optional argument, a plotControl structure.\n    :type myPlot: struct\n\n"
+    "    :param x: X values.\n    :type x: Nx1 or NxM matrix\n\n"
+    "    :param y: Y values.\n    :type y: Nx1 or NxM matrix\n\n"
+    "    :param df: a dataframe.\n    :type df: dataframe\n\n"
+    "    :param formula: formula string.\n    :type formula: string\n"
+)
+
+
+def test_173_v090_validate_code_follows_the_call_form() -> None:
+    """Classes A and B end to end (cf01, cf03): `plotScatter();` was
+    HANDOFF_CANDIDATE (GAUSS: G0159) and a literal `plotScatter(x, y)` a false
+    NOT_READY against `myPlot` (GAUSS runs it)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _v088_docs_root(tmp, {"plotscatter.rst": _V090_PLOTSCATTER_RST})
+        zero = engine_mod.validate_code("plotScatter();", docs_root=root)
+        check("zero arguments are not_ready", zero.handoff_readiness.state == "not_ready")
+        check("for the count", any("accept 2-3 argument(s); this call passed 0" in r for r in zero.handoff_readiness.reasons))
+        literal = engine_mod.validate_code("x = {1, 2, 3};\ny = {4, 5, 6};\nplotScatter(x, y);", docs_root=root)
+        check("literal x, y reach handoff_candidate", literal.handoff_readiness.state == "handoff_candidate")
+        strings = engine_mod.validate_code('plotScatter("a", "b", "c");', docs_root=root)
+        check("a call no form fits is not_ready", strings.handoff_readiness.state == "not_ready")
+        check("naming the form", any("plotScatter([myPlot, ]x, y)" in r for r in strings.handoff_readiness.reasons))
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

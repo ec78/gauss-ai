@@ -2936,6 +2936,141 @@ def test_185_v0893_dataset_arguments_that_read_a_file() -> None:
           and '`olsmt` reads the dataset file named by its `data` argument (`"C:/a.dat"`) (file_read)' in reasons.reasons[0])
 
 
+# ---------------------------------------------------------------------------
+# v0.90.0: call-form alignment (live finding 80.x-2; planning v0.90)
+# ---------------------------------------------------------------------------
+
+#: `plotScatter.rst`'s two forms and types (a leading optional `myPlot`).
+_V090_PLOTSCATTER = {
+    "syntax_blocks": [".. function:: plotScatter([myPlot, ]x, y)", "plotScatter([myPlot, ]df, formula)"],
+    "inputs_section": (":param myPlot: Optional argument, a plotControl structure.\n:type myPlot: struct\n"
+                       ":param x: X values\n:type x: Nx1 or NxM matrix\n:param y: Y values\n:type y: Nx1 or NxM matrix\n"
+                       ":param df: a dataframe\n:type df: dataframe\n:param formula: formula string\n:type formula: string"),
+    "related_links": (), "file_path": "plotscatter.rst",
+}
+#: `olsmt.rst`'s two forms (types as on the page, with `depvar` given one).
+_V090_OLSMT = {
+    "syntax_blocks": [".. function:: out = olsmt(data, formula[, ctl])", "out = olsmt(data, depvar, indvars[, ctl])"],
+    "inputs_section": (":param data: name of dataset\n:type data: string or dataframe\n:param formula: formula\n"
+                       ":type formula: string\n:param depvar: dependent variable\n:type depvar: Nx1 vector\n"
+                       ":param indvars: regressors\n:type indvars: Kx1 vector or NxK matrix\n:param ctl: control\n:type ctl: struct"),
+    "related_links": (), "file_path": "olsmt.rst",
+}
+
+
+def _v090_call(code: str, symbol: str):
+    return [c for c in validation_mod.extract_generated_calls(code) if c.symbol == symbol][0]
+
+
+def test_186_v090_call_forms_are_parsed_as_written() -> None:
+    rows = {
+        "a, b[, c]": ((2, 3), (("required", ("a",)), ("required", ("b",)), ("optional", ("c",)))),
+        "filename[, size[, units[, dpi]]]": ((1, 4), (("required", ("filename",)), ("optional", ("size", "units", "dpi")))),
+        "[myPlot, ]x, y": ((2, 3), (("optional", ("myPlot",)), ("required", ("x",)), ("required", ("y",)))),
+        "y[, x], num_states, num_lags, swc": ((4, 5), None),
+        "&fct, par1[, ...], [ctl]": ((2, validation_mod.VARIADIC_MAX_ARGS), None),
+        "&fct, x0, ..., ctl": ((3, validation_mod.VARIADIC_MAX_ARGS), None),
+        "data, file[, range[, sheet[, vls]]]]": ((2, 5), None),  # a stray `]` (published xlswrite.rst)
+        "a, b[, c": ((2, 3), None),  # unbalanced: the flattened reading
+    }
+    for raw, ((lo, hi), slots) in rows.items():
+        form = validation_mod._parse_call_form(raw)
+        check(f"range of {raw!r}", (form.min_args, form.max_args) == (lo, hi))
+        if slots is not None:
+            check(f"slots of {raw!r}", form.slots == slots)
+        old = validation_mod._parse_signature_occurrence(raw)
+        check(f"names of {raw!r} equal the flattened reading", form.names == old[2])
+    check("a leading group sets an inner optional", validation_mod._parse_call_form("[myPlot, ]x, y").has_inner_optional)
+    check("a trailing group does not", not validation_mod._parse_call_form("a, b[, c]").has_inner_optional)
+    for raw in ("x", "a, b[, c]", "a[, b[, c]]", "x, ...", "formula[, ...]", "&fct, par1[, ...], [ctl]"):
+        old = validation_mod._parse_signature_occurrence(raw)
+        new = validation_mod._parse_call_form(raw)
+        check(f"trailing-only {raw!r} keeps the flattened range", (new.min_args, new.max_args) == old[:2])
+
+
+def test_187_v090_too_few_arguments_for_a_leading_group() -> None:
+    """Class B: `plotScatter();` was count-compatible (min 0) and reached
+    HANDOFF_CANDIDATE; GAUSS: G0159 (cf01)."""
+    sig = validation_mod.extract_documented_signature("plotScatter", _V090_PLOTSCATTER)
+    check("range (2, 3)", sig.arg_ranges == ((2, 3),))
+    symbols = frozenset({"plotscatter"})
+    for code, status in (("plotScatter();", "incompatible"), ("plotScatter(a);", "incompatible"),
+                         ("plotScatter(a, b);", "compatible"), ("plotScatter(p, a, b);", "compatible"),
+                         ("plotScatter(p, a, b, c);", "incompatible")):
+        result = validation_mod.validate_call(_v090_call(code, "plotScatter"),
+                                              documented_signatures={"plotscatter": sig}, documented_symbols=symbols)
+        check(f"{code} is {status}", result.argument_count_status == status)
+
+
+def test_188_v090_roles_follow_the_form_the_call_can_be() -> None:
+    """Class A (80.10, 80.11; cf03, cf05 run in GAUSS)."""
+    ols = validation_mod.extract_documented_signature("olsmt", _V090_OLSMT)
+    code = 'y = {2, 3, 1};\nx = {1 3, 2 3, 7 1};\nout = olsmt("", y, x, ctl);'
+    checks = validation_mod.check_parameter_roles(_v090_call(code, "olsmt"), signature=ols, code=code)
+    check("olsmt's 4 arguments are the second form", [c.parameter_name for c in checks] == ["data", "depvar", "indvars", "ctl"])
+    check("y matches depvar, x matches indvars", [c.status for c in checks[1:3]] == ["match", "match"])
+    ps = validation_mod.extract_documented_signature("plotScatter", _V090_PLOTSCATTER)
+    code = "x = {1, 2, 3};\ny = {4, 5, 6};\nplotScatter(x, y);"
+    checks = validation_mod.check_parameter_roles(_v090_call(code, "plotScatter"), signature=ps, code=code)
+    check("literal x, y fit the first form completely", [(c.parameter_name, c.status) for c in checks]
+          == [("x", "match"), ("y", "match")])
+    code = 'f = "y ~ x";\nplotScatter(myPlot, df, f);'
+    checks = validation_mod.check_parameter_roles(_v090_call(code, "plotScatter"), signature=ps, code=code)
+    check("three arguments include the leading myPlot", checks[0].parameter_name == "myPlot")
+
+
+def test_189_v090_mismatch_only_when_no_form_fits() -> None:
+    ps = validation_mod.extract_documented_signature("plotScatter", _V090_PLOTSCATTER)
+    code = 'plotScatter("a", "b", "c");'
+    checks = validation_mod.check_parameter_roles(_v090_call(code, "plotScatter"), signature=ps, code=code)
+    mismatches = [c for c in checks if c.status == "mismatch"]
+    check("a call no form fits is a mismatch", bool(mismatches))
+    check("the reason names the form and the others", "`plotScatter([myPlot, ]x, y)`, or any other documented form"
+          in mismatches[0].explanation)
+    code = "x = rndn(3, 1);\ny = untraced;\nplotScatter(x, y);"
+    checks = validation_mod.check_parameter_roles(_v090_call(code, "plotScatter"), signature=ps, code=code)
+    check("an untraced argument stays unknown, never a mismatch", all(c.status != "mismatch" for c in checks))
+    check("where the forms disagree it is call_form_ambiguous",
+          any(c.unknown_cause == "call_form_ambiguous" for c in checks))
+    check("the ambiguity names both parameters", any("'x' or" in c.explanation or "'df'" in c.explanation for c in checks))
+
+
+def test_190_v090_alignment_bound() -> None:
+    many = "[" + "], [".join(f"o{i}" for i in range(8)) + "], x"
+    sig = validation_mod.extract_documented_signature("manyOpt", {"syntax_blocks": [f".. function:: manyOpt({many})"],
+                                                                  "related_links": (), "file_path": "manyopt.rst"})
+    check("70 ways to place 4 of 8 groups exceed the bound", validation_mod.call_alignments(sig, 5) is None)
+    code = "manyOpt(a, b, c, d, e);"
+    checks = validation_mod.check_parameter_roles(_v090_call(code, "manyOpt"), signature=sig, code=code)
+    check("past the bound every role is call_form_unresolved", checks and all(c.unknown_cause == "call_form_unresolved"
+                                                                              for c in checks))
+    check("within the bound alignments are listed", len(validation_mod.call_alignments(sig, 2)) == 8)
+    check("the first alignment includes the fewest optionals", validation_mod.call_alignments(sig, 1)[0][1] == ("x",))
+
+
+def test_191_v090_single_form_symbols_are_unchanged() -> None:
+    """Invariance: one form with only trailing optionals has one alignment,
+    whose list is the merged list's prefix, so its checks equal the
+    pre-v0.90.0 positional reading."""
+    best = {"syntax_blocks": [".. function:: y = f(x, n[, ctl])"], "related_links": (), "file_path": "f.rst",
+            "inputs_section": ":param x: data\n:type x: NxK matrix\n:param n: count\n:type n: scalar\n:param ctl: c\n:type ctl: struct"}
+    sig = validation_mod.extract_documented_signature("f", best)
+    for code in ("x = {1 2};\ny = f(x, 3);", "y = f({1 2}, {1 2});", "y = f(q, 3, c);", "y = f(1);", "y = f(1, 2, 3, 4);"):
+        call = _v090_call(code, "f")
+        check(f"unchanged for {code!r}", validation_mod.check_parameter_roles(call, signature=sig, code=code)
+              == validation_mod._positional_role_checks(call, sig.parameters, code=code))
+    # A `...` that another parameter follows (published sqpsolvemt.rst): v0.83.0's
+    # `variadic_position` from the `...` on, never `call_form_ambiguous`.
+    best = {"syntax_blocks": [".. function:: out = sqpSolveMT(&fct, par1[, ...], [ctl])"], "related_links": (),
+            "file_path": "sqpsolvemt.rst", "inputs_section": ":param par1: p\n:type par1: struct\n:param ctl: c\n:type ctl: struct"}
+    sig = validation_mod.extract_documented_signature("sqpSolveMT", best)
+    for code in ("out = sqpSolveMT(&f, p, d1);", "out = sqpSolveMT(&f, p, d1, c);", "out = sqpSolveMT(&f, p, d1, d2, c);"):
+        call = _v090_call(code, "sqpSolveMT")
+        got = validation_mod.check_parameter_roles(call, signature=sig, code=code)
+        check(f"variadic unchanged for {code!r}", got == validation_mod._positional_role_checks(call, sig.parameters, code=code)
+              and all(c.unknown_cause == "variadic_position" for c in got[2:]))
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)
