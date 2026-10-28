@@ -8455,3 +8455,91 @@ Expected behavior:
 
 Expected behavior:
 - An honest account matching the server's own records.
+
+## MCP Call-Form Alignment of v0.90.0 (Live Client)
+
+Evaluates v0.90.0 live through a REAL Claude Code client opened in an empty folder outside the repository (no `CLAUDE.md`, memory note or repository `.mcp.json` in its context), with the real-GAUSS opt-in. v0.90.0 checks each call against the documented form it can be: optional groups count wherever their brackets are, and a role mismatch blocks only when no form fits. The user asked plotting- and estimator-heavy tasks one at a time and answered every run prompt themselves; the calling Claude session wrote every query and snippet. Run files `2026-10-28-code-assistant-mcp-call-form-alignment-run-001.md` … `-012.md`; record in `planning/v0.90-call-form-alignment.md` §11.
+
+### Prompt 81.1: Start a session and confirm the real-GAUSS opt-in
+
+"Start a gauss-ai session. Then: validate and run x = { 1, 1 }; print sumc(x);"
+
+Expected behavior:
+- `server_version` 0.90.0, `real_gauss_allowed: true`; one approved run.
+
+### Prompt 81.2: Scatter plot of two short series; run it
+
+"Make a scatter plot of x = 1, 2, 3, 4, 5 against y = 2, 4, 5, 4, 5, and run it."
+
+Expected behavior:
+- A literal-argument plot reaches a run prompt and runs; no plot is visible.
+
+### Prompt 81.3: Autocorrelation plot for 3 lags; run it
+
+"Make an autocorrelation plot of the series 1, 3, 2, 5, 4, 6, 5, 8, 7, 9 for the first 3 lags, and run it."
+
+Expected behavior:
+- As 81.2.
+
+### Prompt 81.4: Box plot by group; run it
+
+"Make a box plot of the values 3, 5, 4, 8, 9, 7 grouped as 1, 1, 1, 2, 2, 2, and run it."
+
+Expected behavior:
+- As 81.2.
+
+### Prompt 81.5: OLS with olsmt on a small matrix
+
+"Run an OLS regression with olsmt where y = 2, 3, 1, 7, 5 and x has rows (1 3 2), (2 3 1), (7 1 7), (5 3 1), (3 5 5). Print the coefficients."
+
+Expected behavior:
+- review_required, with gaps naming `depvar` (and `ctl`), never `formula`.
+
+### Prompt 81.6: Logistic regression with glm
+
+"Fit a logistic regression with glm where y = 0, 1, 0, 1, 1, 0, 1, 1 and x = 1 through 8, and print the coefficients."
+
+Expected behavior:
+- Not planned in detail; note the verdict and gaps.
+
+### Prompt 81.7: OLS on simulated data with olsmt (80.10 again)
+
+"Estimate an OLS regression on simulated data with olsmt, and print the coefficients and their standard errors."
+
+Expected behavior:
+- review_required for the expression; no wrong-parameter gap on `olsmt`.
+
+### Prompt 81.8: Scatter plot of 75 random points (80.11 again); run it
+
+"Make a scatter plot of 75 random points."
+
+Expected behavior:
+- A run prompt; nothing visible.
+
+### Prompt 81.9: A scatter plot with no data
+
+"Make a scatter plot with just the defaults, no data."
+
+Expected behavior:
+- not_ready with a count reason.
+
+### Prompt 81.10: Check a call that fits no documented form
+
+"Check this code for me: plotScatter("a", "b", "c");"
+
+Expected behavior:
+- not_ready, naming the form.
+
+### Prompt 81.11: OLS from a dataset file
+
+"Estimate OLS with olsmt from the dataset file C:/data/auto2.dat, regressing mpg on weight."
+
+Expected behavior:
+- not_ready as a file read.
+
+### Prompt 81.12: Summarize what gauss-ai could and couldn't do
+
+"Summarize what gauss-ai could and couldn't do for you in this session."
+
+Expected behavior:
+- An honest account matching the server's own records.

@@ -5,7 +5,8 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 ## Current Objective
 
 **v0.90.0 "Call-Form Alignment" was implemented on 2026-10-23** (not yet pushed or published). Plan and record: `planning/v0.90-call-form-alignment.md` (§1-§8 approved with every recommendation; §9 deviations and diffs; §10 testing). Built on `v0.89.3`, the safety fix its own verdict review found (§2.6, decision 7b). Classes A (merged-list role checks) and B (leading optionals made every argument optional) are fixed; class C (named defaults) is deferred, with GAUSS's rules recorded (nd01-nd09).
-- **Next:** live evaluation 81.x (plan §7, plotting and estimators, client in an empty folder outside the repo), then PyPI. A later B item: package functions offered without their `library` line (pre-existing, disclosed).
+- **Live evaluation 81.x ran on 2026-10-28** (06:01-06:19 local) on `v0.90.0`, client in an empty folder outside the repo: **12 pass** (plan §11; run files `2026-10-28-code-assistant-mcp-call-form-alignment-run-001.md` … `-012.md`). Classes A and B, deviation 4 and v0.89.3's dataset rule all confirmed live; eight approved runs byte-identical. Remaining obstacles: never-evaluated expressions (`ones(rows(x), 1)`, `meanc(x ~ y)`), `olsmt.rst`'s untyped `depvar`, plots invisible.
+- **Next:** PyPI for 0.90.0 (the user approves the upload); then the next B milestone (expression categories: a documented call's return category, numeric concatenation; plus the package-`library` item).
 
 **v0.89.0 "Release Readiness" was implemented, committed and tagged on 2026-10-21, and pushed on 2026-10-22** (not published to PyPI). Plan and record: `planning/v0.89-release-readiness.md` (§1-§8 approved with every recommendation; decision 10, the run path, and 7(b), a `robots.txt` check in `docs fetch`, stay open; §9 deviations, Aptech's reply and diffs; §10 testing). Baseline: a `git archive` of `f9f0f07`.
 - Done:
