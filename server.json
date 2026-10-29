@@ -7,18 +7,18 @@
     "url": "https://github.com/ec78/gauss-ai",
     "source": "github"
   },
-  "version": "0.90.0",
+  "version": "0.91.0",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "gauss-ai",
-      "version": "0.90.0",
+      "version": "0.91.0",
       "runtimeHint": "uvx",
       "runtimeArguments": [
         {
           "type": "named",
           "name": "--from",
-          "value": "gauss-ai[mcp]==0.90.0"
+          "value": "gauss-ai[mcp]==0.91.0"
         }
       ],
       "packageArguments": [

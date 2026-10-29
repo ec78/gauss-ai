@@ -2206,12 +2206,18 @@ def test_135_v083_partial_verdicts_name_their_cause() -> None:
     coverage is partial" wrong twice."""
     with tempfile.TemporaryDirectory() as tmp:
         root = _typed_v082_docs_root(tmp)
-        result = engine_mod.validate_code("v = 1 ./ rndu(10, 1);\nmu = meanc(v);", docs_root=root)
+        # v0.91.0 (planning v0.91 §3.1): superseded. 72.3's own `v = 1 ./
+        # rndu(10, 1);` now has an expression category (every operand
+        # numeric), so `meanc(v)` confirms (a candidate in test_174). The
+        # cause-naming behavior this test is about keeps an untraced operand,
+        # `w`, which still stops the inference.
+        result = engine_mod.validate_code("v = rndu(10, 1) ./ w;\nmu = meanc(v);", docs_root=root)
         reasons = result.handoff_readiness.reasons
-        check("72.3 shape still review_required", result.handoff_readiness.state == "review_required")
+        check("72.3 shape with an untraced operand: review_required",
+              result.handoff_readiness.state == "review_required")
         check("names the dimension", any("(incomplete: parameter roles partial)" in r for r in reasons))
         check("names symbol, argument, parameter and cause", any(
-            "`meanc` argument 1 (parameter `x`): `v` is assigned from an expression (`1 ./ rndu(10, 1)`)" in r
+            "`meanc` argument 1 (parameter `x`): `v` is assigned from an expression (`rndu(10, 1) ./ w`)" in r
             for r in reasons
         ))
         gaps = result.pre_execution.coverage_gaps
@@ -2970,7 +2976,11 @@ def test_152_v086_word_operators_are_not_calls() -> None:
         result = engine_mod.validate_code(code, docs_root=root)
         check("or is not called", "or" not in result.called_symbols)
         check("or is not unknown", "or" not in result.pre_execution.unknown_symbols)
-        check("review_required (meanc's argument is an expression)", result.handoff_readiness.state == "review_required")
+        # v0.91.0 (planning v0.91 §3.1): superseded. `e` is an expression of
+        # traced numeric operands, so `meanc(e)` confirms and the 75.19
+        # program is a candidate (it was review_required only for this).
+        check("handoff_candidate (meanc's argument has an expression category)",
+              result.handoff_readiness.state == "handoff_candidate")
         anded = engine_mod.validate_code(code.replace(".or", ".and"), docs_root=root)
         check("and is not called", "and" not in anded.called_symbols)
         check("logical-and is not cited", not any(
@@ -3537,6 +3547,50 @@ def test_173_v090_validate_code_follows_the_call_form() -> None:
         strings = engine_mod.validate_code('plotScatter("a", "b", "c");', docs_root=root)
         check("a call no form fits is not_ready", strings.handoff_readiness.state == "not_ready")
         check("naming the form", any("plotScatter([myPlot, ]x, y)" in r for r in strings.handoff_readiness.reasons))
+
+
+# ---------------------------------------------------------------------------
+# v0.91.0: expression categories end to end (planning v0.91 §6.1)
+# ---------------------------------------------------------------------------
+
+_TYPED_V091_RST = dict(_TYPED_V082_RST, **{
+    "ones.rst": "ones\n====\n\n.. function:: y = ones(r, c)\n\n    :param r: rows\n    :type r: scalar\n\n"
+                "    :param c: columns\n    :type c: scalar\n\n    :return y: ones\n    :rtype y: RxC matrix\n",
+    "rndn.rst": "rndn\n====\n\n.. function:: y = rndn(r, c)\n\n    :param r: rows\n    :type r: scalar\n\n"
+                "    :param c: columns\n    :type c: scalar\n\n    :return y: normal random numbers\n"
+                "    :rtype y: RxC matrix\n",
+})
+
+
+def test_174_v091_expression_arguments_reach_candidate() -> None:
+    """Live evaluation 81.x (81.5, 81.8): valid code with an expression
+    argument stayed review_required, and the client rewrote it with
+    literals. Each candidate below was review_required at v0.90.0."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "docs"
+        root.mkdir()
+        for name, text in _TYPED_V091_RST.items():
+            (root / name).write_text(text, encoding="utf-8")
+        candidates = {
+            "OLS by matrix division": "x = rndn(20, 2);\ny = rndn(20, 1);\nX = ones(rows(x), 1) ~ x;\nb = y / X;\nprint b;",
+            "72.3's reciprocal": "v = 1 ./ rndu(10, 1);\nmu = meanc(v);",
+            "z-scores": "x = rndn(20, 3);\nz = (x - meanc(x)') ./ stdc(x)';\nm = meanc(z);\nprint m;",
+            "element-wise filter count": "x = rndu(50, 1);\nk = meanc((x .< 0.2) .or (x .> 0.8));\nprint k;",
+            "an expression argument directly": "x = rndn(20, 2);\nm = meanc(x[., 2] ~ x[., 1]);",
+        }
+        for name, code in candidates.items():
+            result = engine_mod.validate_code(code, docs_root=str(root))
+            check(f"{name}: handoff_candidate", result.handoff_readiness.state == "handoff_candidate")
+            check(f"{name}: no gaps", result.pre_execution.coverage_gaps == ())
+        xi = engine_mod.validate_code("x = rndn(20, 2);\nxi = invpd(x'x);", docs_root=str(root))
+        check("invpd(x'x): review_required", xi.handoff_readiness.state == "review_required")
+        check("...for the precondition only", [g.cause for g in xi.pre_execution.coverage_gaps] == ["runtime_dependent"])
+        scalar = engine_mod.validate_code("n = 5;\nr = ones(n - 1, 1);", docs_root=str(root))
+        check("n - 1 for a scalar: review_required", scalar.handoff_readiness.state == "review_required")
+        check("...as expression_category_imprecise",
+              [g.cause for g in scalar.pre_execution.coverage_gaps] == ["expression_category_imprecise"])
+        io = engine_mod.validate_code("x = rndn(20, 2);\nm = meanc(x ~ x);\ndos dir;", docs_root=str(root))
+        check("an OS command still decides", io.handoff_readiness.state == "not_ready")
 
 
 def run_tests() -> int:

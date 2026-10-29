@@ -2,6 +2,14 @@
 
 See also [docs/known-alpha-limitations.md](docs/known-alpha-limitations.md) for a shorter, tester-facing summary of current-phase limitations.
 
+`v0.91.0` gives an argument expression a category (a numeric `matrix`) when every operand and operator is numeric, so it can confirm a parameter documented as `matrix` (planning v0.91). What it accepts:
+- **A category is not a shape.** `ones(n, 1) ~ x1 ~ x2` is "a numeric matrix", not "an n×3 matrix", so a dimension error is still found only by GAUSS.
+- **Only `matrix`-accepting parameters are confirmed by an expression.** A parameter documented as `scalar` given `n - 1` stays unknown (`expression_category_imprecise`), because "numeric" is not "scalar" (decision 1c, deferred).
+- **Preconditions still need literals.** `invpd(x'x)` stays unverified, so OLS written with `invpd` stays `review_required`.
+- **Tracing stops after 3 assignments.** A full OLS-with-standard-errors program (`s2 → e → b → X`) shows one `argument_expression` gap for this bound, beside the `invpd` precondition (planning v0.91 §9.1, finding 1).
+- **Structures are still not modelled.** An expression can now confirm a structure function's matrix argument, as in `pvPack(par1, 1 | 2, "b")`. Code that skips the structure's declaration then reaches `handoff_candidate` and fails in GAUSS 26.1.4 (`G0181`; planning v0.91 §9.1, finding 2).
+- **Unmodelled operators make an expression unknown:** `^` as string dereference, `&`, `:` outside an index, `!`, `.*.`, member access (`s.x`), any `$` string operator, and `x' x` with a space.
+
 `v0.90.0` checks each call against the documented form it can be (planning v0.90): an optional group counts wherever its brackets are, so `plotScatter();` is not_ready instead of handoff_candidate; and a role mismatch blocks only when no documented form fits, so the docs' own `olsmt("", y, x, ctl)` matrix example and a literal `plotScatter(x, y)` are no longer false not_ready (live finding 80.x-2). What it accepts (planning v0.90 §5, §9):
 - **A form is chosen only from the evidence the validator has.** Where two forms accept the count and the arguments' categories cannot decide between them, the role is `call_form_ambiguous` and the code stays review_required.
 - **A match under one form says the arguments fit that documented form,** not which form GAUSS will choose at run time. GAUSS decides by the same count and, for a leading `[myPlot, ]`, by the first argument's type.

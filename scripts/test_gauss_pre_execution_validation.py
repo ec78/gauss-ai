@@ -1606,8 +1606,15 @@ def test_130_variable_traced_to_documented_return_type() -> None:
     check("matrix return -> scalar param is a gap, never a mismatch", _role_status(
         _scalar_param_signature(), "x", code=code, line=2, signatures=signatures,
     ) == validation_mod.ParameterRoleStatus.UNKNOWN.value)
-    check("trailing operator after the call is not traced", _role_status(
+    # v0.91.0 (planning v0.91 §3.1): superseded. A trailing operator still
+    # stops the DOCUMENTED_RETURN trace, but `rndu(100, 4)'` is now an
+    # expression of a numeric operand, so it confirms a `matrix` parameter
+    # through EXPRESSION_CATEGORY -- and stays a gap against a `scalar` one.
+    check("trailing operator after the call: an expression category, matching a matrix", _role_status(
         _matrix_param_signature(), "x", code="x = rndu(100, 4)';\ny = f(x);", line=2, signatures=signatures,
+    ) == validation_mod.ParameterRoleStatus.MATCH.value)
+    check("...and a gap, never a mismatch, against a scalar", _role_status(
+        _scalar_param_signature(), "x", code="x = rndu(100, 4)';\ny = f(x);", line=2, signatures=signatures,
     ) == validation_mod.ParameterRoleStatus.UNKNOWN.value)
     no_rtype = {"rndu": dataclasses.replace(rndu, return_categories=())}
     check("no documented rtype -> unknown", _role_status(
@@ -1627,9 +1634,13 @@ def test_131_untraceable_writes_make_the_variable_unresolved() -> None:
         "multi-target": "x = {1 2};\n{x, z} = g(1);\ny = f(x);",
         "loop variable": "x = 1;\nfor x(1, 3, 1);\nendfor;\ny = f(x);",
         "cleared": "x = {1 2};\nclear x;\ny = f(x);",
-        "expression rhs": "x = {1 2} * 2;\ny = f(x);",
+        # v0.91.0 (planning v0.91 §3.1): `x = {1 2} * 2;` and `f(x'x)` with
+        # a traced `x` now have an expression category (numeric operands
+        # only) and MATCH a matrix parameter (see test_192). The unresolved
+        # forms these cases stand for keep an untraced operand `q`.
+        "expression rhs with an untraced operand": "x = {1 2} * q;\ny = f(x);",
         "assigned only after the call": "y = f(x);\nx = {1 2};",
-        "x'x expression argument": "x = {1 2};\ny = f(x'x);",
+        "x'x expression argument with an untraced x": "y = f(x'x);",
     }
     for name, code in cases.items():
         argument = "x'x" if "x'x" in name else "x"
@@ -3069,6 +3080,185 @@ def test_191_v090_single_form_symbols_are_unchanged() -> None:
         got = validation_mod.check_parameter_roles(call, signature=sig, code=code)
         check(f"variadic unchanged for {code!r}", got == validation_mod._positional_role_checks(call, sig.parameters, code=code)
               and all(c.unknown_cause == "variadic_position" for c in got[2:]))
+
+
+# ---------------------------------------------------------------------------
+# v0.91.0: expression categories (planning/v0.91-expression-categories.md).
+# Every test below fails at v0.90.0 except the ones marked "Invariance".
+# ---------------------------------------------------------------------------
+
+def _v091_signatures() -> dict:
+    """Synthetic typed signatures modelled on the real pages' `:type` and
+    `:rtype` lines (`rows.rst`: scalar; `meanc.rst`: Kx1 matrix; `ftos.rst`:
+    string), never a real docs checkout."""
+    return {
+        "rows": _signature("rows", ".. function:: y = rows(x)", ":type x: NxK matrix", ":rtype y: scalar"),
+        "ones": _signature("ones", ".. function:: y = ones(r, c)", ":type r: scalar\n:type c: scalar", ":rtype y: RxC matrix"),
+        "meanc": _signature("meanc", ".. function:: y = meanc(x)", ":type x: NxK matrix", ":rtype y: Kx1 matrix"),
+        "stdc": _signature("stdc", ".. function:: y = stdc(x)", ":type x: NxK matrix", ":rtype y: Kx1 matrix"),
+        "rndn": _signature("rndn", ".. function:: y = rndn(r, c)", ":type r: scalar\n:type c: scalar", ":rtype y: RxC matrix"),
+        "ftos": _signature("ftos", ".. function:: y = ftos(x)", ":type x: scalar", ":rtype y: string"),
+        "nortype": _signature("nortype", ".. function:: y = nortype(x)", ":type x: NxK matrix"),
+    }
+
+
+_V091_CODE = 'x = rndn(10, 2);\ny = rndn(10, 1);\nn = 5;\ns = "abc";\n'
+
+
+def _v091_infer(text: str, code: str = _V091_CODE):
+    return validation_mod.infer_expression_category(text, code=code, signatures=_v091_signatures())
+
+
+def test_192_v091_expression_category_operator_families() -> None:
+    """Planning v0.91 §2.2's shapes, each built from traced operands: every
+    one is a numeric `matrix` of the new origin, never evaluated."""
+    expressions = (
+        "n - 1", "x * 2", "x / 2", "x ^ 2", "x % 2", "1 ./ x", "x .* y", "x .^ 2", "x.^2", "2.*x",  # arithmetic
+        "ones(n, 1) ~ x ~ y", "0.25 | 0.75", "0|0", "{1 2} | {3 4}",                             # concatenation
+        "(x .< 2) .or (x .> 8)", "x .== 1", "x != y", "x >= 1", "not x", "x .and y", "x xor y",   # comparisons, logic
+        "x'x", "x'y", "x' * y", "x.'", "x'.*y",                                                   # transpose, product
+        "x[., 2]", "y[2:rows(y)]", "x[1].*2",                                                     # indexing
+        "-x", "-(x + 1)", "(x)", "((x ~ y))",                                                     # unary, nesting
+        "(x - meanc(x)') ./ stdc(x)'",                                                            # 82.x z-scores
+    )
+    for text in expressions:
+        result = _v091_infer(text)
+        check(f"{text!r}: matrix", result.categories == ("matrix",))
+        check(f"{text!r}: expression_category origin", result.origin == "expression_category")
+
+
+def test_193_v091_a_single_documented_call_keeps_its_exact_category() -> None:
+    """`rows(x)` is `DOCUMENTED_RETURN` with its own documented category, as
+    a variable traced to the same call is (plan §3.1), so `ones(rows(x), 1)`
+    confirms a documented scalar."""
+    single = _v091_infer("rows(x)")
+    check("rows(x): scalar", single.categories == ("scalar",) and single.origin == "documented_return")
+    check("ftos(n): its documented string", _v091_infer("ftos(n)").categories == ("string",))
+    check("a sign makes it an expression", _v091_infer("-rows(x)").origin == "expression_category")
+    code = _V091_CODE + "z = ones(rows(x), 1);"
+    call = [c for c in validation_mod.extract_generated_calls(code) if c.symbol == "ones"][0]
+    checks = validation_mod.check_parameter_roles(call, signature=_v091_signatures()["ones"], code=code,
+                                                  signatures=_v091_signatures())
+    check("ones(rows(x), 1): both scalars confirmed", [c.status for c in checks] == ["match", "match"])
+    check("...the first through the documented return", checks[0].origin == "documented_return"
+          and "a call whose documented return type is scalar" in checks[0].explanation)
+
+
+def test_194_v091_every_unknown_path_names_its_reason() -> None:
+    sixty_five = " + ".join(["x"] * 33)  # 33 operands, 32 operators: 65 tokens
+    cases = {
+        "x ~ s": "category (string) is not numeric",          # a string-typed traced operand
+        'x ~ "a"': "contains a string",                        # a string literal
+        's $+ "a"': "string operator",                         # `$+`
+        "x $| y": "string operator",
+        "q + 1": "operand `q` has no single traceable assignment",
+        "undocumented(x) + 1": "`undocumented` has no documented signature",
+        "nortype(x) + 1": "`nortype` has no documented return type",
+        "ftos(n) ~ x": "category (string) is not numeric",     # a string-returning call
+        "^s": "is not a modelled",                             # string dereference, not unary power
+        "&x": "is not a modelled",                             # address-of
+        "1:3": "is not a modelled",                            # range outside an index
+        "x.b": "is not a modelled",                            # member access
+        "x[1][2]": "is not a modelled",
+        "x .*. y": "is not a modelled",                        # Kronecker: not in the plan's list
+        "x' x": "is not a modelled",                           # implicit product needs no space
+        'x[., "a"]': "indexes with a string",
+        "x +": "ends with an operator",
+        "()": "empty part",
+        sixty_five: "longer than 64 tokens",
+    }
+    for text, reason in cases.items():
+        result = _v091_infer(text)
+        check(f"{text[:30]!r}: unknown", result.categories is None and result.origin == "unresolved")
+        check(f"{text[:30]!r}: reason {reason!r}", reason in (result.reason or ""))
+    # A unary minus, 32 operands and 31 operators: exactly 64 tokens.
+    check("64 tokens is still within the bound", _v091_infer("-" + " + ".join(["x"] * 32)).categories == ("matrix",))
+    deep = "x = rndn(3, 1);\na = x + 1;\nb = a + 1;\nc = b + 1;\nd = c + 1;\n"
+    check("three assignments deep: traced", _v091_infer("c * 2", deep).categories == ("matrix",))
+    check("four assignments deep: unknown", "more than 3 assignments" in (_v091_infer("d * 2", deep).reason or ""))
+    check("no code: an operand cannot be traced",
+          validation_mod.infer_expression_category("x + 1", signatures=_v091_signatures()).categories is None)
+    check("no code: literals and documented calls still classify",
+          validation_mod.infer_expression_category("rows(x) + 1", signatures=_v091_signatures()).categories == ("matrix",))
+
+
+def test_195_v091_strings_and_comments_never_contribute_operands() -> None:
+    """The lexical-discipline rule (`CLAUDE.md`): the reader reads the
+    masked view, so a name inside a comment is never an operand, and an
+    assignment inside a string never traces one."""
+    check("a comment holding an untraced name is blank",
+          _v091_infer("x /* q */ ~ y @ q @").categories == ("matrix",))
+    check("a comment holding a string operator is blank", _v091_infer("x ~ y /* $+ */").categories == ("matrix",))
+    code = 'print "q = 1;";\n'
+    check("`q = 1;` inside a string never traces q", _v091_infer("q + 1", code).categories is None)
+    check("a call name inside a string is never a call", "contains a string" in (_v091_infer('x ~ "rows(x)"').reason or ""))
+
+
+def test_196_v091_roles_match_matrix_never_mismatch() -> None:
+    """Decision 1a: an expression category MATCHes a documented `matrix`,
+    is `expression_category_imprecise` against anything narrower or
+    non-numeric, and is never a MISMATCH."""
+    signatures = _v091_signatures()
+    string_param = _signature_with_params(validation_mod.DocumentedParameter(
+        name="s", required=True, position=0, category=("string",), shape="unknown", source="string"))
+    vector_param = _signature_with_params(validation_mod.DocumentedParameter(
+        name="v", required=True, position=0, category=("vector",), shape="unknown", source="Nx1 vector"))
+    for text in ("x ~ y", "n - 1", "x'x", "(x .> 1) .and (x .< 9)", "-x"):
+        code = _V091_CODE + f"m = f({text});"
+        line = code.count("\n") + 1
+        status = lambda sig: _role_status(sig, text, code=code, line=line, signatures=signatures)  # noqa: E731
+        check(f"{text!r}: matches a matrix parameter", status(_matrix_param_signature()) == "match")
+        for name, sig in (("scalar", _scalar_param_signature()), ("vector", vector_param), ("string", string_param)):
+            call = validation_mod.GeneratedCall(symbol="f", argument_count=1, raw_arguments=(text,), line_number=line)
+            got = validation_mod.check_parameter_roles(call, signature=sig, code=code, signatures=signatures)[0]
+            check(f"{text!r} vs {name}: a gap, never a mismatch",
+                  got.status == "unknown" and got.unknown_cause == "expression_category_imprecise")
+    traced = _V091_CODE + "z = x ~ y;\nm = f(z);"
+    call = validation_mod.GeneratedCall(symbol="f", argument_count=1, raw_arguments=("z",), line_number=6)
+    got = validation_mod.check_parameter_roles(call, signature=_matrix_param_signature(), code=traced,
+                                               signatures=signatures)[0]
+    check("a variable assigned from an expression matches too", got.status == "match" and got.origin == "expression_category")
+    check("...and says it was traced", "traced to `z = ...`, an expression whose every operand is numeric" in got.explanation)
+    unknown = validation_mod.GeneratedCall(symbol="f", argument_count=1, raw_arguments=("q ~ x",), line_number=6)
+    got = validation_mod.check_parameter_roles(unknown, signature=_matrix_param_signature(), code=traced,
+                                               signatures=signatures)[0]
+    check("an untraced operand: argument_expression, naming the operand",
+          got.unknown_cause == "argument_expression" and "operand `q` has no single traceable assignment" in got.explanation)
+
+
+def test_197_v091_operands_are_traced_at_their_own_statement() -> None:
+    """A variable's expression is read where it was assigned, not at the
+    call: `a = "s"; x = a ~ 2; a = 1;` builds `x` from the STRING."""
+    signatures = _v091_signatures()
+
+    def status(code: str) -> str:
+        call = validation_mod.extract_generated_calls(code)[-1]
+        return validation_mod.check_parameter_roles(call, signature=signatures["meanc"], code=code,
+                                                    signatures=signatures)[0].status
+    check("string before, number after: unknown", status('a = "s";\nx = a ~ 2;\na = 1;\nm = meanc(x);') == "unknown")
+    check("number before, string after: match", status('a = 1;\nx = a ~ 2;\na = "s";\nm = meanc(x);') == "match")
+    check("self-reference reads the earlier value", status("x = rndn(3, 1);\nx = x ~ 1;\nm = meanc(x);") == "match")
+    check("same line, assignment before the call", status("v = rndn(3, 1); w = v * 2; m = meanc(w);") == "match")
+    check("a block write still refuses", status("x = 1;\nif 1;\n  x = 2;\nendif;\nz = x ~ 1;\nm = meanc(z);") == "unknown")
+
+
+def test_198_v091_registries_and_preconditions_ignore_expression_categories() -> None:
+    """Invariance (plan §3.1 "What it changes"): the dataset-argument
+    registry and the precondition tracer read the unchanged resolver, so an
+    expression dataset argument is still a file read and `invpd(x'x)` still
+    unverified. These checks pass at v0.90.0 too."""
+    olsmt = _signature("olsmt", ".. function:: out = olsmt(data, y, x)",
+                       ":type data: string\n:type y: Nx1 matrix\n:type x: NxK matrix", ":rtype out: struct")
+    signatures = dict(_v091_signatures(), olsmt=olsmt)
+    code = _V091_CODE + "out = olsmt(x ~ y, y, x);"
+    findings = validation_mod.check_dataset_arguments(code, signatures=signatures)
+    check("an expression dataset argument is still a file read", [f.name for f in findings] == ["olsmt"])
+    check("the unchanged resolver still calls it an expression", validation_mod.resolve_argument_category_with_cause(
+        "x ~ y", code=code, signatures=signatures)[2] == "argument_expression")
+    pre = "x = rndn(10, 2);\nxi = invpd(x'x);"
+    call = validation_mod.extract_generated_calls(pre)[-1]
+    check("invpd(x'x): still unverified", [c.status for c in validation_mod.check_preconditions(call, code=pre)]
+          == ["unverified"])
 
 
 def run_tests() -> int:

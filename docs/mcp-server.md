@@ -76,6 +76,8 @@ In addition, **any system-touching statement always makes code `not_ready`**:
 - any file read, write or delete: `load`/`loadd`, `save`/`saved`, `fopen`, `csvReadM`, `xlsWriteM`, `deleteFile`, `output file=`, ...
 - since `v0.89.3`, a dataset file named as an argument: 37 estimator and statistics functions (`ols`, `olsmt`, `glm`, `dstat`, `dstatmt`, `ttest`, `tabulate`, `quantileFit`, the `garch*` and `tsmt` estimators, ...) read a file when their `dataset`/`data`/`filename` argument names one. Such a call runs only when that argument is the documented null string `""` or `0`, or in-memory data (a matrix literal, a matrix or dataframe from a documented call, or a numeric expression); anything else, including an untraced name, is a file read
 
+Since `v0.91.0` an argument expression can confirm a parameter role through its category (a numeric matrix), so more in-memory code reaches `handoff_candidate`. That category is never read by either list above: an expression passed as a dataset argument is still judged by the `v0.89.3` rule exactly as before, and a system-touching statement still makes the whole snippet `not_ready`.
+
 The handoff is for self-contained snippets that compute in memory. Work with real files belongs in the guided repair pipeline.
 
 ## Real GAUSS needs an extra opt-in

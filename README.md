@@ -11,7 +11,7 @@
 
 ## Status
 
-**Alpha.** Current milestone: `v0.90.0` - Call-Form Alignment. gauss-ai is an unofficial, independent project, not affiliated with or endorsed by Aptech Systems, Inc. GAUSS is a trademark of Aptech Systems, Inc. The milestone history is in [docs/development-history.md](docs/development-history.md).
+**Alpha.** Current milestone: `v0.91.0` - Expression Categories. gauss-ai is an unofficial, independent project, not affiliated with or endorsed by Aptech Systems, Inc. GAUSS is a trademark of Aptech Systems, Inc. The milestone history is in [docs/development-history.md](docs/development-history.md).
 
 ## Quickstart
 
@@ -86,7 +86,7 @@ Close your MCP client (on Windows a running server locks its files), run `pip in
 
 - Code from the assistant is **never run** unless gauss-ai's own checks rate it `handoff_candidate` and you approve that exact code. One approval runs it once, in a temporary directory that is deleted afterwards.
 - Code that reaches outside GAUSS is **always blocked** from running: OS commands, other programs, `run`/`#include`, directory changes, any file read, write or delete (including an estimator or statistics function told to load a dataset file, such as `olsmt("mydata.dat", ...)`), web data APIs and databases.
-- A verdict is **evidence, not a guarantee** of correct results. Much real code is `review_required` (for example, most loops, or an argument computed by an expression, since expressions are never evaluated), and gauss-ai says exactly what it could not check.
+- A verdict is **evidence, not a guarantee** of correct results. Much real code is `review_required` (for example, most loops, an untraced variable, or a value whose documented requirement such as positive definiteness depends on run-time data, since values are never evaluated), and gauss-ai says exactly what it could not check.
 - No telemetry. The only network access is `gauss-ai docs fetch`, run by you, and a model provider you explicitly enable for the optional built-in chat.
 
 ## Platforms
@@ -186,7 +186,7 @@ See [docs/reporting-bugs.md](docs/reporting-bugs.md) for the process and [docs/a
 
 ## Known Limitations
 
-See [docs/known-alpha-limitations.md](docs/known-alpha-limitations.md) for a tester-facing summary, or [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) for the complete, per-milestone record. In short: much real code stops at `review_required`, since expressions are never evaluated; single-file repair only, no autonomous repair, no rerun/rollback beyond the one mandatory backup; no durable sessions; no telemetry; and real execution verified on Windows (GAUSS 26.1) only.
+See [docs/known-alpha-limitations.md](docs/known-alpha-limitations.md) for a tester-facing summary, or [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) for the complete, per-milestone record. In short: much real code stops at `review_required`, since values are never evaluated; single-file repair only, no autonomous repair, no rerun/rollback beyond the one mandatory backup; no durable sessions; no telemetry; and real execution verified on Windows (GAUSS 26.1) only.
 
 ## Working on gauss-ai
 

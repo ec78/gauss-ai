@@ -1303,6 +1303,12 @@ class RoleUnknownCause(str, enum.Enum):
     #: v0.90.0: more than `MAX_CALL_ALIGNMENTS` ways to fit the call to its
     #: documented forms; none is checked rather than one guessed.
     CALL_FORM_UNRESOLVED = "call_form_unresolved"
+    #: v0.91.0 (planning v0.91 §3.1): an expression of numeric operands is
+    #: known to be numeric, but the documented parameter accepts only a
+    #: narrower category (`scalar`, `vector`) or a non-numeric one (`string`,
+    #: `control`). "Numeric" is not "scalar", so this is a gap, never a
+    #: mismatch (`ones(n - 1, 1)`: `n - 1` may well be a scalar).
+    EXPRESSION_CATEGORY_IMPRECISE = "expression_category_imprecise"
 
 
 _ROLE_UNKNOWN_CAUSE_TEXT: dict[str, str] = {
@@ -1312,12 +1318,18 @@ _ROLE_UNKNOWN_CAUSE_TEXT: dict[str, str] = {
         "the argument falls at or after the documented `...`, which other parameters follow, so which "
         "parameter it fills cannot be determined"
     ),
-    RoleUnknownCause.ARGUMENT_EXPRESSION.value: "`{argument}` is an expression, and expressions are never evaluated",
+    # v0.91.0: an expression is still never evaluated, but its CATEGORY is
+    # now inferred from its operands (`infer_expression_category(...)`), so
+    # these two texts name the operand or construct that stopped it
+    # (`{reason}`) instead of saying that expressions are never looked at.
+    RoleUnknownCause.ARGUMENT_EXPRESSION.value: (
+        "`{argument}` is an expression whose category could not be determined{reason}"
+    ),
     RoleUnknownCause.ARGUMENT_UNTRACED.value: (
         "`{argument}` has no single traceable assignment earlier in this code"
     ),
     RoleUnknownCause.ARGUMENT_ASSIGNED_FROM_EXPRESSION.value: (
-        "`{argument}` is assigned from an expression (`{rhs}`), which is never evaluated"
+        "`{argument}` is assigned from an expression (`{rhs}`) whose category could not be determined{reason}"
     ),
     RoleUnknownCause.RETURN_TYPE_UNDOCUMENTED.value: (
         "`{argument}` is assigned from `{rhs}`, whose documentation gives no checkable return type"
@@ -1363,6 +1375,13 @@ class ArgumentOrigin(str, enum.Enum):
     LITERAL = "literal"
     TRACED_LITERAL = "traced_literal"
     DOCUMENTED_RETURN = "documented_return"
+    #: v0.91.0 (planning v0.91 §3.1, decision 1a): an expression (or a
+    #: variable assigned from one) whose every operand is numeric, combined
+    #: only by numeric operators -- see `infer_expression_category(...)`. Its
+    #: category is always `matrix`, the most general numeric category, since
+    #: no shape is ever computed. Like `DOCUMENTED_RETURN` it can confirm a
+    #: role (MATCH) but never refute one (MISMATCH).
+    EXPRESSION_CATEGORY = "expression_category"
     UNRESOLVED = "unresolved"
 
 
@@ -1459,6 +1478,457 @@ def resolve_argument_category_with_cause(
     return categories, origin, None, None
 
 
+# ---------------------------------------------------------------------------
+# v0.91.0: expression categories (planning/v0.91-expression-categories.md)
+# ---------------------------------------------------------------------------
+#
+# Live evaluation 81.x (planning v0.90 §11.4, finding 2): the thing that most
+# often kept valid code from running was that an argument written as an
+# expression (`ones(rows(x), 1)`, `meanc(x ~ y)`) left its role UNKNOWN, and
+# the client rewrote working code with literals to get a run (81.5, 81.8).
+# Measured at v0.90.0 (planning v0.91 §2.1): 89 expression gaps in 79
+# review_required programs, 19 of which had no other gap.
+#
+# An expression does not need to be EVALUATED to know its CATEGORY: every
+# GAUSS numeric operator takes numeric operands to a numeric result
+# (`operators.rst`, `cc/operators.rst`: arithmetic, element-wise,
+# concatenation, comparison -- "a matrix of 1's and 0's" or "a scalar 1" --
+# and the logical words). So an expression whose every operand is numeric is
+# a numeric matrix of SOME shape. That is all this section claims, and the
+# role check uses it only in the direction that cannot add a block:
+# `EXPRESSION_CATEGORY` can MATCH a parameter that accepts any numeric matrix,
+# and is `expression_category_imprecise` -- a gap, never a MISMATCH --
+# against anything narrower (decision 1a). Preconditions, syntax, symbols,
+# and both I/O registries (system statements, dataset arguments) never read
+# it: `_computes_in_memory(...)` still calls the unchanged
+# `resolve_argument_category_with_cause(...)`.
+#
+# Deliberately NOT accepted (each makes the expression UNKNOWN):
+# - anything string-typed: a string literal, any `$` operator (`$+`, `$|`,
+#   `$~`, `$==`), or an operand traced to a string;
+# - `^` as a PREFIX (it is GAUSS's string dereference, `^varname`, per
+#   `operators.rst`), `&` (address-of), `:` outside an index (range), `!`
+#   (factorial), `.*.` (Kronecker) and every other construct not listed in
+#   the plan -- a missing operator only costs coverage;
+# - member access (`s.x`), a call to an undocumented or user-defined
+#   procedure, a documented call with no classifiable `:rtype`, and any name
+#   with no single traceable assignment.
+
+#: v0.91.0 (planning v0.91 §3.1): the bounds on one argument's inference.
+#: Past either one the expression is UNKNOWN, never partially read. A
+#: parenthesized group's tokens count; a call's argument list, an index
+#: `[...]` and a `{...}` literal each count as one token, because their
+#: contents never decide the category.
+MAX_EXPRESSION_TOKENS = 64
+#: How many assignments may be followed from the argument to an operand's
+#: own expression (`x = a ~ b; y = x * 2; f(y)` follows two).
+MAX_EXPRESSION_TRACE_DEPTH = 3
+
+#: Binary operators, longest first so `.==` is never read as `.` then `==`.
+#: All numeric in, numeric out (`operators.rst`). `-` is also unary.
+_EXPRESSION_BINARY_OPERATORS: tuple[str, ...] = (
+    ".==", ".!=", ".>=", ".<=", ".*", "./", ".^", ".<", ".>",
+    "==", "!=", ">=", "<=", "<", ">", "+", "-", "*", "/", "^", "%", "~", "|",
+)
+#: Postfix transposes: `.'` (bookkeeping) and `'`.
+_EXPRESSION_POSTFIX_OPERATORS: tuple[str, ...] = (".'", "'")
+#: A numeric constant at the start of the remaining text (`2`, `1.5`, `.5`,
+#: `1e5`). Its category is `scalar`; the value is never used.
+_EXPRESSION_NUMBER_RE = re.compile(r"(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
+_EXPRESSION_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+#: A dotted word operator (`.and`, `.not`, `.lt`): `.` and a whole word.
+_EXPRESSION_DOTTED_WORD_RE = re.compile(r"\.([A-Za-z]+)(?![A-Za-z0-9_])")
+
+
+@dataclass(frozen=True)
+class ExpressionCategory:
+    """v0.91.0: `infer_expression_category(...)`'s answer. `categories` is
+    `None` when the category could not be determined; `reason` then names
+    the operand or construct that stopped it, as a clause the role check
+    appends to its explanation (`operand `q` has no single traceable
+    assignment ...`). `origin` is an `ArgumentOrigin` value: `EXPRESSION_
+    CATEGORY` for an expression of numeric operands, `DOCUMENTED_RETURN` for
+    an argument that is exactly one documented call (`rows(x)`), whose exact
+    documented category is kept -- as for a variable traced to that call."""
+
+    categories: tuple[str, ...] | None
+    origin: str
+    reason: str | None = None
+
+
+class _ExpressionRefused(Exception):
+    """Internal: stops the expression reader with the clause it reports."""
+
+
+def _operand_reason(name: str, cause: str | None, reason: str | None) -> str:
+    """The clause naming why one operand stopped the inference."""
+    if reason:
+        return reason
+    if cause == RoleUnknownCause.RETURN_TYPE_UNDOCUMENTED.value:
+        return f"operand `{name}` is assigned from a call with no documented return type"
+    if cause == RoleUnknownCause.ARGUMENT_ASSIGNED_FROM_EXPRESSION.value:
+        return f"operand `{name}` is assigned from an expression whose category could not be determined"
+    return f"operand `{name}` has no single traceable assignment earlier in this code"
+
+
+class _ExpressionReader:
+    """v0.91.0: one bounded left-to-right pass over an expression's MASKED
+    text (`lex_gauss_source(...)`: comments blanked, every string token
+    `#`), so text inside a string or comment can never become an operand or
+    an operator (the lexical-discipline rule in `CLAUDE.md`). It is not a
+    parser in the precedence sense and needs not be: whatever the grouping,
+    numeric operators over numeric operands give a numeric result, so the
+    reader checks only that the text is a well-formed sequence `operand
+    (operator operand)*` -- with unary minus and `not`, postfix transposes
+    and indexes -- and classifies each operand. Never evaluates anything."""
+
+    def __init__(self, text: str, *, code: str | None, line_number: int | None, column: int | None,
+                 signatures: "dict[str, DocumentedSignature] | None", depth: int) -> None:
+        lexed = lex_gauss_source(text)
+        self.masked = lexed.masked_view
+        self.view = lexed.code_view
+        self.code = code
+        self.line_number = line_number
+        self.column = column
+        self.signatures = signatures or {}
+        self.depth = depth
+        self.tokens = 0
+
+    def _count(self) -> None:
+        self.tokens += 1
+        if self.tokens > MAX_EXPRESSION_TOKENS:
+            raise _ExpressionRefused(f"it is longer than {MAX_EXPRESSION_TOKENS} tokens")
+
+    def _skip_space(self, i: int, end: int) -> int:
+        while i < end and self.masked[i].isspace():
+            i += 1
+        return i
+
+    def read(self, start: int, end: int) -> tuple[tuple[str, ...], bool]:
+        """Reads `masked[start:end]` as one expression. Returns `(categories,
+        single_call)`: `single_call` is True when the whole span is exactly
+        one call with no operator, sign or postfix, so the caller may keep
+        its exact documented category; otherwise `categories` is the
+        operands' categories (all numeric, or this raises)."""
+        masked = self.masked
+        operands: list[tuple[str, ...]] = []
+        operators = 0
+        single_call = False
+        i = self._skip_space(start, end)
+        if i >= end:
+            raise _ExpressionRefused("it has an empty part")
+        while True:
+            # Operand position: any number of prefix `-` / `not` / `.not`.
+            while True:
+                if masked.startswith("-", i):
+                    self._count()
+                    operators += 1
+                    i = self._skip_space(i + 1, end)
+                    continue
+                word = self._word_operator_at(i, end)
+                if word is not None and word[0] == "not":
+                    self._count()
+                    operators += 1
+                    i = self._skip_space(word[1], end)
+                    continue
+                break
+            if i >= end:
+                raise _ExpressionRefused("it ends with an operator")
+            categories, i, was_call, postfixed = self._operand(i, end)
+            operands.append(categories)
+            single_call = was_call and not postfixed and operators == 0 and len(operands) == 1
+            # Operator position.
+            after_transpose = postfixed == "transpose"
+            j = self._skip_space(i, end)
+            if j >= end:
+                break
+            if after_transpose and j == i and (masked[j].isalnum() or masked[j] in "_({"):
+                # `x'x` is GAUSS's implicit product `x'*x` (`transpose.rst`,
+                # the OLS idiom `invpd(x'x)`); only with no space between.
+                self._count()
+                operators += 1
+                single_call = False
+                i = j
+                continue
+            operator = self._binary_operator_at(j, end)
+            if operator is None:
+                raise _ExpressionRefused(self._unmodelled(j, end))
+            self._count()
+            operators += 1
+            single_call = False
+            i = self._skip_space(j + operator, end)
+            if i >= end:
+                raise _ExpressionRefused("it ends with an operator")
+        if single_call:
+            return operands[0], True
+        for categories in operands:
+            if not categories or not all(c in _NUMERIC_CATEGORIES for c in categories):
+                raise _ExpressionRefused(
+                    f"an operand's category ({'/'.join(categories) or 'none'}) is not numeric"
+                )
+        return (TypeClass.MATRIX.value,), False
+
+    def _unmodelled(self, i: int, end: int) -> str:
+        if self.masked[i] == "#":
+            return "it contains a string"
+        if self.masked[i] == "$":
+            return "it uses a string operator (`$`)"
+        # `masked[i]` is never a space here, so the split is never empty.
+        snippet = self.view[i:end].split()[0][:12]
+        return f"`{snippet}` is not a modelled numeric operator or operand"
+
+    def _word_operator_at(self, i: int, end: int) -> tuple[str, int] | None:
+        """`(word, end_offset)` for a word operator (`and`, `.or`, ...) at
+        `i`, read as a whole word, or None."""
+        masked = self.masked
+        if i > 0 and (masked[i - 1].isalnum() or masked[i - 1] == "_") and masked[i] != ".":
+            return None
+        dotted = _EXPRESSION_DOTTED_WORD_RE.match(masked, i, end)
+        match = dotted or _EXPRESSION_NAME_RE.match(masked, i, end)
+        if match is None:
+            return None
+        word = (dotted.group(1) if dotted else match.group(0)).lower()
+        return (word, match.end()) if word in _WORD_OPERATORS else None
+
+    def _binary_operator_at(self, i: int, end: int) -> int | None:
+        """The length of the binary operator at `i`, or None. A `$` anywhere
+        (`$+`, `$|`, `$~`, `$==`) is never one: string operators build
+        strings."""
+        masked = self.masked
+        if masked[i] == "$":
+            return None
+        word = self._word_operator_at(i, end)
+        if word is not None:
+            return None if word[0] == "not" else word[1] - i
+        for operator in _EXPRESSION_BINARY_OPERATORS:
+            if masked.startswith(operator, i) and i + len(operator) <= end:
+                return len(operator)
+        return None
+
+    def _operand(self, i: int, end: int) -> tuple[tuple[str, ...], int, bool, str | None]:
+        """Reads one operand and its postfixes at `i`. Returns `(categories,
+        next_offset, was_call, postfix)`, `postfix` being `"transpose"` when
+        the operand ended with `'`/`.'`, `"index"` for `[...]`, else None."""
+        masked = self.masked
+        self._count()
+        ch = masked[i]
+        was_call = False
+        if ch == "(":
+            close = _find_matching_paren(masked, i)
+            if close is None or close >= end:
+                raise _ExpressionRefused("its parentheses do not match")
+            categories, _single = self.read(i + 1, close)
+            if not all(c in _NUMERIC_CATEGORIES for c in categories):
+                raise _ExpressionRefused(
+                    f"a parenthesized operand's category ({'/'.join(categories)}) is not numeric"
+                )
+            i = close + 1
+        elif ch == "{":
+            close = _find_matching_brace(masked, i)
+            if close is None or close >= end:
+                raise _ExpressionRefused("its braces do not match")
+            if "#" in masked[i:close]:
+                raise _ExpressionRefused("it contains a string")
+            literal, _shape = infer_literal_category(self.view[i:close + 1])
+            if literal not in _NUMERIC_CATEGORIES:
+                raise _ExpressionRefused(f"the literal `{self.view[i:close + 1]}` is not a numeric matrix literal")
+            categories, i = (literal,), close + 1
+        elif ch.isdigit() or (ch == "." and i + 1 < end and masked[i + 1].isdigit()):
+            number = _EXPRESSION_NUMBER_RE.match(masked, i, end)
+            categories, i = (TypeClass.SCALAR.value,), number.end()
+        elif ch.isalpha() or ch == "_":
+            name_match = _EXPRESSION_NAME_RE.match(masked, i, end)
+            name = name_match.group(0)
+            if name.lower() in _WORD_OPERATORS or name.lower() in _LANGUAGE_CONSTRUCT_KEYWORDS:
+                raise _ExpressionRefused(f"`{name}` is not an operand")
+            j = self._skip_space(name_match.end(), end)
+            if j < end and masked[j] == "(":
+                categories, i = self._call(name, j, end)
+                was_call = True
+            else:
+                categories = self._traced(name)
+                i = name_match.end()
+                if i < end and masked[i] == "[":
+                    # `x[., 2]`, `y[2:rows(y)]`: indexing a numeric operand
+                    # gives a numeric operand. The index itself never decides
+                    # the category (it is not read), except that one holding
+                    # a string (`df[., "col"]`, a dataframe by name) refuses.
+                    close = _find_matching_bracket(masked, i)
+                    if close is None or close >= end:
+                        raise _ExpressionRefused("its brackets do not match")
+                    if "#" in masked[i:close]:
+                        raise _ExpressionRefused("it indexes with a string")
+                    if not all(c in _NUMERIC_CATEGORIES for c in categories):
+                        raise _ExpressionRefused(f"operand `{name}` is not numeric, so its index is not modelled")
+                    # A second index (`x[1][2]`) or a member after one
+                    # (`x[1].b`) is no operator, so the operator position
+                    # refuses it.
+                    return self._postfix(categories, close + 1, end, "index")
+        else:
+            raise _ExpressionRefused(self._unmodelled(i, end))
+        return self._postfix(categories, i, end, None, was_call=was_call)
+
+    def _postfix(self, categories: tuple[str, ...], i: int, end: int, postfix: str | None,
+                 *, was_call: bool = False) -> tuple[tuple[str, ...], int, bool, str | None]:
+        while i < end:
+            operator = next((op for op in _EXPRESSION_POSTFIX_OPERATORS if self.masked.startswith(op, i)), None)
+            if operator is None:
+                break
+            self._count()
+            postfix = "transpose"
+            i += len(operator)
+        return categories, i, was_call, postfix
+
+    def _call(self, name: str, open_idx: int, end: int) -> tuple[tuple[str, ...], int]:
+        """A documented call's categories are its documented `:rtype`'s, as
+        for a variable assigned from it. Its arguments never decide them and
+        are not read here (each call is checked on its own). Returns
+        `(categories, offset after the closing parenthesis)`."""
+        close = _find_matching_paren(self.masked, open_idx)
+        if close is None or close >= end:
+            raise _ExpressionRefused(f"the call `{name}(` is not closed")
+        signature = self.signatures.get(name.lower())
+        if signature is None:
+            raise _ExpressionRefused(f"`{name}` has no documented signature")
+        if not signature.return_categories:
+            raise _ExpressionRefused(f"`{name}` has no documented return type")
+        return signature.return_categories, close + 1
+
+    def _traced(self, name: str) -> tuple[str, ...]:
+        if self.code is None:
+            raise _ExpressionRefused(f"operand `{name}` cannot be traced without the surrounding code")
+        categories, _origin, cause, _rhs, reason = resolve_role_argument_category(
+            name, code=self.code, line_number=self.line_number, column=self.column,
+            signatures=self.signatures, _depth=self.depth,
+        )
+        if TypeClass.UNKNOWN.value in categories:
+            raise _ExpressionRefused(_operand_reason(name, cause, reason))
+        return categories
+
+
+def infer_expression_category(
+    text: str, *, code: str | None = None, line_number: int | None = None, column: int | None = None,
+    signatures: "dict[str, DocumentedSignature] | None" = None, _depth: int = 0,
+) -> ExpressionCategory:
+    """v0.91.0 (planning v0.91 §3.1, decision 1a): the CATEGORY of an
+    argument expression (or of a variable's governing right-hand side),
+    never its value or shape.
+
+    Operands: a numeric literal or `{...}` literal (its literal category); a
+    name traced to its governing assignment at `(line_number, column)` --
+    the existing tracing, plus, for a name assigned from an expression, that
+    expression read recursively at its own statement (at most
+    `MAX_EXPRESSION_TRACE_DEPTH` assignments); a documented call (its
+    documented `:rtype`); a parenthesized expression; and an indexed name of
+    a numeric operand (`x[., 2]`). Operators: `+ - * / ^ %`, `.* ./ .^`,
+    `'` and `.'` (including the implicit product `x'x`), `~ |`, the
+    comparisons with or without `.`, the word operators (`_WORD_OPERATORS`)
+    with or without `.`, and unary minus and `not`.
+
+    Result: exactly one documented call and nothing else (`rows(x)`) keeps
+    that call's documented categories (origin `DOCUMENTED_RETURN`, as a
+    traced variable would). Otherwise, if every operand is numeric, the
+    category is `matrix` (origin `EXPRESSION_CATEGORY`). Anything else -- a
+    string, a `$` operator, an untraced name, an undocumented call, an
+    unmodelled construct, or a bound exceeded -- is `categories=None` with
+    the reason. Deterministic; reads only `text`, `code` and `signatures`."""
+    if _depth > MAX_EXPRESSION_TRACE_DEPTH:
+        return ExpressionCategory(
+            None, ArgumentOrigin.UNRESOLVED.value,
+            f"it is traced through more than {MAX_EXPRESSION_TRACE_DEPTH} assignments",
+        )
+    reader = _ExpressionReader(
+        text, code=code, line_number=line_number, column=column, signatures=signatures, depth=_depth,
+    )
+    try:
+        categories, single_call = reader.read(0, len(reader.masked))
+    except _ExpressionRefused as refused:
+        return ExpressionCategory(None, ArgumentOrigin.UNRESOLVED.value, str(refused))
+    except RecursionError:
+        # Parenthesis nesting is bounded by MAX_EXPRESSION_TOKENS long before
+        # Python's own limit; this is a backstop, never a pass.
+        return ExpressionCategory(None, ArgumentOrigin.UNRESOLVED.value, "it is nested too deeply")
+    origin = ArgumentOrigin.DOCUMENTED_RETURN.value if single_call else ArgumentOrigin.EXPRESSION_CATEGORY.value
+    return ExpressionCategory(categories, origin)
+
+
+def _governing_statement_start(
+    name: str, rhs: str, *, code: str, line_number: int | None, column: int | None,
+) -> tuple[int, int] | None:
+    """v0.91.0: `(line, column)` where the statement `_governing_assignment(
+    ...)` chose for `name` starts, so the operands of its right-hand side
+    are traced at THAT statement (`a = "s"; x = a ~ 2; a = 1; f(x);` must
+    read `a` as the string). `_governing_assignment(...)` returns only text
+    and is shared with the precondition tracer, so it is left unchanged and
+    this only LOCATES its answer: whenever it returns a right-hand side, that
+    is the right-hand side of the latest plain `name = ...;` statement ending
+    before the call (any plain write in a block refuses there instead). The
+    located text must equal `rhs`; otherwise None, never a guess."""
+    target = (
+        line_number if line_number is not None else float("inf"),
+        column if column is not None else float("inf"),
+    )
+    plain_re = re.compile(rf"^\s*(?:let\s+)?{re.escape(name)}\s*=(?!=)", re.IGNORECASE)
+    found: SourceStatement | None = None
+    found_rhs: str | None = None
+    for statement in source_statements(code):
+        if (statement.end_line, statement.end_column) >= target:
+            break
+        plain = plain_re.search(statement.masked)
+        if plain is not None:
+            found, found_rhs = statement, statement.text[plain.end():].strip()
+    if found is None or found_rhs != rhs:
+        return None
+    return found.line, found.column
+
+
+def resolve_role_argument_category(
+    argument: str, *, code: str | None = None, line_number: int | None = None, column: int | None = None,
+    signatures: "dict[str, DocumentedSignature] | None" = None, _depth: int = 0,
+) -> tuple[tuple[str, ...], str, str | None, str | None, str | None]:
+    """v0.91.0: the ROLE CHECK's argument category --
+    `resolve_argument_category_with_cause(...)`, unchanged, and then, where
+    it stopped at an expression, `infer_expression_category(...)`:
+
+    - an argument that is an expression (`argument_expression`) is read
+      directly, its operands traced at the call;
+    - a variable assigned from an expression (`argument_assigned_from_
+      expression`) has that right-hand side read at its own statement
+      (`_governing_statement_start(...)`), one level deeper.
+
+    Returns `(categories, origin, cause, rhs, reason)`; `reason` is the
+    expression reader's clause when it could not decide. Only the role check
+    calls this. The dataset-argument registry (`_computes_in_memory(...)`)
+    keeps calling `resolve_argument_category_with_cause(...)` itself, so no
+    I/O decision reads an expression category."""
+    categories, origin, cause, rhs = resolve_argument_category_with_cause(
+        argument, code=code, line_number=line_number, column=column, signatures=signatures,
+    )
+    if cause == RoleUnknownCause.ARGUMENT_EXPRESSION.value:
+        inferred = infer_expression_category(
+            argument, code=code, line_number=line_number, column=column, signatures=signatures, _depth=_depth,
+        )
+        if inferred.categories is not None:
+            return inferred.categories, inferred.origin, None, None, None
+        return categories, origin, cause, rhs, inferred.reason
+    if cause == RoleUnknownCause.ARGUMENT_ASSIGNED_FROM_EXPRESSION.value and rhs is not None and code is not None:
+        name = argument.strip().rstrip("'")
+        start = _governing_statement_start(name, rhs, code=code, line_number=line_number, column=column)
+        if start is None:
+            return categories, origin, cause, rhs, None
+        inferred = infer_expression_category(
+            rhs, code=code, line_number=start[0], column=start[1], signatures=signatures, _depth=_depth + 1,
+        )
+        # A right-hand side reaching here is never a lone call (the
+        # unchanged resolver classified those), so a category found is the
+        # numeric `matrix`; requiring it keeps v0.82.0's rule that a variable
+        # traced past indexed writes must be numeric.
+        if inferred.categories is not None and all(c in _NUMERIC_CATEGORIES for c in inferred.categories):
+            return inferred.categories, ArgumentOrigin.EXPRESSION_CATEGORY.value, None, None, None
+        return categories, origin, cause, rhs, inferred.reason
+    return categories, origin, cause, rhs, None
+
+
 def _positional_role_checks(
     call: GeneratedCall, parameters: tuple[DocumentedParameter, ...], *, code: str | None = None,
     signatures: "dict[str, DocumentedSignature] | None" = None,
@@ -1513,15 +1983,24 @@ def _positional_role_checks(
             break
         else:
             param = parameters[position]
-        inferred, origin, argument_cause, rhs = resolve_argument_category_with_cause(
+        # v0.91.0: `resolve_role_argument_category(...)` adds expression
+        # categories to the unchanged resolver (planning v0.91 §3.1).
+        inferred, origin, argument_cause, rhs, reason = resolve_role_argument_category(
             argument, code=code, line_number=call.line_number, column=call.column, signatures=signatures,
         )
         inferred_label = "/".join(inferred)
         documented = param.category
+        is_name = bool(_SIMPLE_IDENTIFIER_RE.fullmatch(argument.strip()))
         traced = {
             ArgumentOrigin.TRACED_LITERAL.value: f" (traced to its literal assignment `{argument.strip()} = ...`)",
             ArgumentOrigin.DOCUMENTED_RETURN.value: (
                 f" (traced to `{argument.strip()} = ...`, a call whose documented return type is {inferred_label})"
+                if is_name else f" (a call whose documented return type is {inferred_label})"
+            ),
+            ArgumentOrigin.EXPRESSION_CATEGORY.value: (
+                f" (traced to `{argument.strip()} = ...`, an expression whose every operand is numeric; "
+                "its shape is not computed)"
+                if is_name else " (an expression whose every operand is numeric; its shape is not computed)"
             ),
         }.get(origin, "")
         unknown_cause: str | None = None
@@ -1540,6 +2019,7 @@ def _positional_role_checks(
                 # v0.84.0: a traced right-hand side may now span lines; quote
                 # it on one line.
                 argument=argument.strip(), rhs=" ".join((rhs or "").split()), source=param.source or "",
+                reason=f": {reason}" if reason else "",
             )
         elif all(_category_accepted(c, documented) for c in inferred):
             status = ParameterRoleStatus.MATCH.value
@@ -1550,6 +2030,17 @@ def _positional_role_checks(
             explanation = (
                 f"the argument{traced} may not fit the documented type for parameter {param.name!r} "
                 f"({'/'.join(documented)}); a documented return type is not precise enough to call this a mismatch"
+            )
+        elif origin == ArgumentOrigin.EXPRESSION_CATEGORY.value:
+            # v0.91.0 (decision 1a): the same never-MISMATCH guard as a
+            # documented return. "Some numeric matrix" may be the 1x1 the
+            # parameter wants (`n - 1` for a scalar), so this is a gap.
+            status = ParameterRoleStatus.UNKNOWN.value
+            unknown_cause = RoleUnknownCause.EXPRESSION_CATEGORY_IMPRECISE.value
+            explanation = (
+                f"the argument{traced} is numeric, but the documented type for parameter {param.name!r} "
+                f"({'/'.join(documented)}) does not accept every numeric matrix; an expression's category is "
+                "not precise enough to confirm or refute it"
             )
         else:
             status = ParameterRoleStatus.MISMATCH.value

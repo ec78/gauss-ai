@@ -4,6 +4,10 @@ Current, temporary project state. For durable repo-wide facts and rules, see `CL
 
 ## Current Objective
 
+**v0.91.0 "Expression Categories" was implemented, committed and tagged on 2026-10-29** (not pushed, not published; `37acfd2`, the 0.90.0 publication record, is also still local only). Plan and record: `planning/v0.91-expression-categories.md` (decisions 1a and 2 approved; §9 deviations, findings and diffs; §10 testing; §11 recommendation). Gate identical (951 questions); 43 rows move to `handoff_candidate`, none down; 42 of 43 run in GAUSS (p436: undeclared `PV` structure, `G0181`).
+- **Next:** live evaluation 82.x (plan §7, with §9.1 finding 1's correction), run by the user in an empty folder outside the repository. Then v0.92.0 "Installed Libraries" (below), not started.
+- **Waiting on the user:** pushing `main` and the `v0.91.0` tag, and any PyPI publication.
+
 **v0.90.0 "Call-Form Alignment" was implemented on 2026-10-23** (not yet pushed or published). Plan and record: `planning/v0.90-call-form-alignment.md` (§1-§8 approved with every recommendation; §9 deviations and diffs; §10 testing). Built on `v0.89.3`, the safety fix its own verdict review found (§2.6, decision 7b). Classes A (merged-list role checks) and B (leading optionals made every argument optional) are fixed; class C (named defaults) is deferred, with GAUSS's rules recorded (nd01-nd09).
 - **Live evaluation 81.x ran on 2026-10-28** (06:01-06:19 local) on `v0.90.0`, client in an empty folder outside the repo: **12 pass** (plan §11; run files `2026-10-28-code-assistant-mcp-call-form-alignment-run-001.md` … `-012.md`). Classes A and B, deviation 4 and v0.89.3's dataset rule all confirmed live; eight approved runs byte-identical. Remaining obstacles: never-evaluated expressions (`ones(rows(x), 1)`, `meanc(x ~ y)`), `olsmt.rst`'s untyped `depvar`, plots invisible.
 - **v0.90.0 published to PyPI on 2026-10-29** (run `40680932568`, approved by the maintainer); a clean `pip install "gauss-ai[mcp]==0.90.0"` makes `plotScatter();` `not_ready` by argument count.
