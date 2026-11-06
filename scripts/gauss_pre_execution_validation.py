@@ -1522,7 +1522,16 @@ def resolve_argument_category_with_cause(
 MAX_EXPRESSION_TOKENS = 64
 #: How many assignments may be followed from the argument to an operand's
 #: own expression (`x = a ~ b; y = x * 2; f(y)` follows two).
-MAX_EXPRESSION_TRACE_DEPTH = 3
+#:
+#: v0.91.1 (planning v0.91 §13): 3 -> 7. At 3, live evaluation 82.2's
+#: standard-errors program (`vcv -> s2 -> u -> b_hat -> Xty -> y -> X`)
+#: stayed unknown, and the client rewrote `sqrt(...)` as `(...) .^ 0.5` --
+#: whose operands are never role-checked -- to get past it. 7 is the
+#: smallest bound that leaves no row of the 626-program verdict corpus at
+#: the bound (10 gives identical verdicts). The bound is safe to raise only
+#: because `_memo` (see `resolve_role_argument_category`) makes the trace
+#: polynomial; without it the work grew by the operand count per level.
+MAX_EXPRESSION_TRACE_DEPTH = 7
 
 #: Binary operators, longest first so `.==` is never read as `.` then `==`.
 #: All numeric in, numeric out (`operators.rst`). `-` is also unary.
@@ -1583,7 +1592,8 @@ class _ExpressionReader:
     and indexes -- and classifies each operand. Never evaluates anything."""
 
     def __init__(self, text: str, *, code: str | None, line_number: int | None, column: int | None,
-                 signatures: "dict[str, DocumentedSignature] | None", depth: int) -> None:
+                 signatures: "dict[str, DocumentedSignature] | None", depth: int,
+                 memo: "dict | None" = None) -> None:
         lexed = lex_gauss_source(text)
         self.masked = lexed.masked_view
         self.view = lexed.code_view
@@ -1592,6 +1602,7 @@ class _ExpressionReader:
         self.column = column
         self.signatures = signatures or {}
         self.depth = depth
+        self.memo = memo
         self.tokens = 0
 
     def _count(self) -> None:
@@ -1799,7 +1810,7 @@ class _ExpressionReader:
             raise _ExpressionRefused(f"operand `{name}` cannot be traced without the surrounding code")
         categories, _origin, cause, _rhs, reason = resolve_role_argument_category(
             name, code=self.code, line_number=self.line_number, column=self.column,
-            signatures=self.signatures, _depth=self.depth,
+            signatures=self.signatures, _depth=self.depth, _memo=self.memo,
         )
         if TypeClass.UNKNOWN.value in categories:
             raise _ExpressionRefused(_operand_reason(name, cause, reason))
@@ -1809,6 +1820,7 @@ class _ExpressionReader:
 def infer_expression_category(
     text: str, *, code: str | None = None, line_number: int | None = None, column: int | None = None,
     signatures: "dict[str, DocumentedSignature] | None" = None, _depth: int = 0,
+    _memo: "dict | None" = None,
 ) -> ExpressionCategory:
     """v0.91.0 (planning v0.91 §3.1, decision 1a): the CATEGORY of an
     argument expression (or of a variable's governing right-hand side),
@@ -1832,6 +1844,8 @@ def infer_expression_category(
     string, a `$` operator, an untraced name, an undocumented call, an
     unmodelled construct, or a bound exceeded -- is `categories=None` with
     the reason. Deterministic; reads only `text`, `code` and `signatures`."""
+    if _memo is None:
+        _memo = {}  # v0.91.1: shared by every operand traced below (see `resolve_role_argument_category`)
     if _depth > MAX_EXPRESSION_TRACE_DEPTH:
         return ExpressionCategory(
             None, ArgumentOrigin.UNRESOLVED.value,
@@ -1839,6 +1853,7 @@ def infer_expression_category(
         )
     reader = _ExpressionReader(
         text, code=code, line_number=line_number, column=column, signatures=signatures, depth=_depth,
+        memo=_memo,
     )
     try:
         categories, single_call = reader.read(0, len(reader.masked))
@@ -1885,6 +1900,7 @@ def _governing_statement_start(
 def resolve_role_argument_category(
     argument: str, *, code: str | None = None, line_number: int | None = None, column: int | None = None,
     signatures: "dict[str, DocumentedSignature] | None" = None, _depth: int = 0,
+    _memo: "dict | None" = None,
 ) -> tuple[tuple[str, ...], str, str | None, str | None, str | None]:
     """v0.91.0: the ROLE CHECK's argument category --
     `resolve_argument_category_with_cause(...)`, unchanged, and then, where
@@ -1900,13 +1916,24 @@ def resolve_role_argument_category(
     expression reader's clause when it could not decide. Only the role check
     calls this. The dataset-argument registry (`_computes_in_memory(...)`)
     keeps calling `resolve_argument_category_with_cause(...)` itself, so no
-    I/O decision reads an expression category."""
+    I/O decision reads an expression category.
+
+    v0.91.1: `_memo` makes the trace polynomial. One argument's inference
+    creates it; every right-hand side read below shares it, keyed by its
+    governing statement's start and the depth it is read at. Without it,
+    each traced operand re-read its whole chain, so the work grew by the
+    operand count at every level: harmless at the old bound of 3, but at 7
+    a chain of `x{i} = x{i-1} + x{i-1} + ...` took seconds (planning v0.91
+    §13). Same inputs, same answer, so caching changes no verdict."""
+    if _memo is None:
+        _memo = {}
     categories, origin, cause, rhs = resolve_argument_category_with_cause(
         argument, code=code, line_number=line_number, column=column, signatures=signatures,
     )
     if cause == RoleUnknownCause.ARGUMENT_EXPRESSION.value:
         inferred = infer_expression_category(
             argument, code=code, line_number=line_number, column=column, signatures=signatures, _depth=_depth,
+            _memo=_memo,
         )
         if inferred.categories is not None:
             return inferred.categories, inferred.origin, None, None, None
@@ -1916,9 +1943,14 @@ def resolve_role_argument_category(
         start = _governing_statement_start(name, rhs, code=code, line_number=line_number, column=column)
         if start is None:
             return categories, origin, cause, rhs, None
-        inferred = infer_expression_category(
-            rhs, code=code, line_number=start[0], column=start[1], signatures=signatures, _depth=_depth + 1,
-        )
+        key = (start, rhs, _depth + 1)
+        inferred = _memo.get(key)
+        if inferred is None:
+            inferred = infer_expression_category(
+                rhs, code=code, line_number=start[0], column=start[1], signatures=signatures, _depth=_depth + 1,
+                _memo=_memo,
+            )
+            _memo[key] = inferred
         # A right-hand side reaching here is never a lone call (the
         # unchanged resolver classified those), so a category found is the
         # numeric `matrix`; requiring it keeps v0.82.0's rule that a variable

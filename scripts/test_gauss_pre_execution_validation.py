@@ -3173,9 +3173,12 @@ def test_194_v091_every_unknown_path_names_its_reason() -> None:
         check(f"{text[:30]!r}: reason {reason!r}", reason in (result.reason or ""))
     # A unary minus, 32 operands and 31 operators: exactly 64 tokens.
     check("64 tokens is still within the bound", _v091_infer("-" + " + ".join(["x"] * 32)).categories == ("matrix",))
-    deep = "x = rndn(3, 1);\na = x + 1;\nb = a + 1;\nc = b + 1;\nd = c + 1;\n"
-    check("three assignments deep: traced", _v091_infer("c * 2", deep).categories == ("matrix",))
-    check("four assignments deep: unknown", "more than 3 assignments" in (_v091_infer("d * 2", deep).reason or ""))
+    # v0.91.1 superseded the 3-assignment bound with 7 (planning v0.91 §13:
+    # live 82.2's standard-errors chain needs 7). The old checks were "three
+    # deep traced, four deep unknown"; the same pair now sits at seven/eight.
+    deep = "x = rndn(3, 1);\na = x + 1;\nb = a + 1;\nc = b + 1;\nd = c + 1;\nf = d + 1;\ng = f + 1;\nh = g + 1;\nk = h + 1;\n"
+    check("seven assignments deep: traced", _v091_infer("h * 2", deep).categories == ("matrix",))
+    check("eight assignments deep: unknown", "more than 7 assignments" in (_v091_infer("k * 2", deep).reason or ""))
     check("no code: an operand cannot be traced",
           validation_mod.infer_expression_category("x + 1", signatures=_v091_signatures()).categories is None)
     check("no code: literals and documented calls still classify",
@@ -3259,6 +3262,57 @@ def test_198_v091_registries_and_preconditions_ignore_expression_categories() ->
     call = validation_mod.extract_generated_calls(pre)[-1]
     check("invpd(x'x): still unverified", [c.status for c in validation_mod.check_preconditions(call, code=pre)]
           == ["unverified"])
+
+
+def test_199_v0911_the_trace_reads_each_assignment_once() -> None:
+    """v0.91.1 (planning v0.91 §13): the expression trace is memoized per
+    (governing statement, depth), so a chain whose every assignment uses the
+    previous name eight times costs one read per statement and depth, not
+    8**depth. Counted by wrapping the module's own entry point, which every
+    recursive read goes through. Measured on the 3-deep chain below: 74
+    reads at v0.91.0 (1 + 8 + 64, plus the entry), 4 with the memo (one per
+    statement)."""
+    code = "x0 = rndn(3, 1);\n" + "".join(
+        f"x{i} = " + " + ".join([f"x{i - 1}"] * 8) + ";\n" for i in range(1, 4)
+    )
+    original = validation_mod.infer_expression_category
+    calls = []
+
+    def counting(*args, **kwargs):
+        calls.append(1)
+        return original(*args, **kwargs)
+
+    validation_mod.infer_expression_category = counting
+    try:
+        result = validation_mod.infer_expression_category("x3 * 2", code=code, signatures=_v091_signatures())
+    finally:
+        validation_mod.infer_expression_category = original
+    check("199: the branching chain is still a numeric matrix", result.categories == ("matrix",))
+    check(f"199: each assignment is read once ({len(calls)} reads)", len(calls) <= 8)
+
+
+def test_200_v0911_live_822_standard_errors_chain_is_traced() -> None:
+    """Live evaluation 82.2's first standard-errors draft, with synthetic
+    signatures: `vcv`'s chain is `vcv -> s2 -> u -> b_hat -> Xty -> y -> X`,
+    seven assignments, so the client's `sqrt(diag(vcv))` argument was
+    unknown at v0.91.0's bound of 3 (and it rewrote `sqrt` as `.^ 0.5`). It
+    is a numeric matrix now; one more assignment is still past the bound."""
+    code = (
+        "n = 100;\n"
+        "X = ones(n, 1) ~ rndn(n, 2);\n"
+        "y = X * 2 + rndn(n, 1);\n"
+        "XtX = X'X;\n"
+        "Xty = X'y;\n"
+        "b_hat = Xty / XtX;\n"
+        "u = y - X * b_hat;\n"
+        "s2 = (u'u) / (n - 3);\n"
+        "vcv = s2 * (ones(3, 3) / XtX);\n"
+        "w = vcv * 2;\n"
+    )
+    check("200: `vcv * 1` (seven deep) is a numeric matrix",
+          _v091_infer("vcv * 1", code).categories == ("matrix",))
+    check("200: `w * 1` (eight deep) is past the bound",
+          "more than 7 assignments" in (_v091_infer("w * 1", code).reason or ""))
 
 
 def run_tests() -> int:
