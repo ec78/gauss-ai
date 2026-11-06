@@ -8543,3 +8543,104 @@ Expected behavior:
 
 Expected behavior:
 - An honest account matching the server's own records.
+
+## MCP Expression Categories of v0.91.0 (Live Client)
+Evaluates v0.91.0 live through a REAL Claude Code client opened in an empty folder outside the repository (no `CLAUDE.md`, memory note or repository `.mcp.json` in its context), with the real-GAUSS opt-in. v0.91.0 gives an argument expression a category (a numeric matrix) when every operand and operator is numeric, so it can confirm a parameter documented as `matrix`. The user asked tasks one at a time in plain words that never mention expressions or the validator, and answered every run prompt themselves; the calling Claude session wrote every query and snippet. 82.1-82.9 were proposed by the recording session, 82.10-82.14 were the user's own. Run files `2026-11-06-code-assistant-mcp-expression-categories-run-001.md` … `-014.md`; plan v0.91 §12.
+
+### Prompt 82.1: OLS by matrix algebra on simulated data; run it
+
+"Simulate 100 observations with two regressors and a constant, generate y from known coefficients plus noise, and estimate the OLS coefficients using matrix algebra. Print them."
+
+Expected behavior:
+- The constant column built by concatenation is accepted; a matrix-algebra solve reaches handoff_candidate; the run equals direct GAUSS.
+
+### Prompt 82.2: The same OLS with standard errors; run it
+
+"Now do the same regression but also compute and print the standard errors of the coefficients."
+
+Expected behavior:
+- With `invpd(x'x)`: review_required for the `invpd` precondition, plus one `argument_expression` gap for the 3-assignment trace bound (plan v0.91 §9.1, finding 1).
+
+### Prompt 82.3: Count values outside a range; decline the run
+
+"Generate 50 random numbers between 0 and 10 and count how many are less than 2 or greater than 8. Print the count."
+
+Expected behavior:
+- The element-wise condition is accepted when its operands are traced; the declined run executes nothing.
+
+### Prompt 82.4: Keep values inside a range; run it
+
+"From those same kinds of numbers, keep only the values between 3 and 7 and print them."
+
+Expected behavior:
+- The element-wise filter reaches handoff_candidate when its operands are traced.
+
+### Prompt 82.5: Column z-scores; run it
+
+"Standardize each column of a 20×3 random matrix into z-scores and print the result."
+
+Expected behavior:
+- `(x - meanc(x)') ./ stdc(x)'` reaches handoff_candidate; the run equals direct GAUSS.
+
+### Prompt 82.6: OLS with olsmt on a small matrix (81.5 again)
+
+"Run an OLS regression with olsmt where y = 2, 3, 1, 7, 5 and x has rows (1 3 2), (2 3 1), (7 1 7), (5 3 1), (3 5 5). Print the coefficients."
+
+Expected behavior:
+- review_required for `depvar`'s missing `:type` (81.x finding 1).
+
+### Prompt 82.7: OLS on simulated data with olsmt (81.7 again)
+
+"Estimate an OLS regression on simulated data with olsmt, and print the coefficients and their standard errors."
+
+Expected behavior:
+- review_required for `depvar` (81.x finding 1).
+
+### Prompt 82.8: Column means of two matrices side by side; run it
+
+"Compute the mean of each column of a matrix made by putting two random 10×2 matrices side by side."
+
+Expected behavior:
+- A concatenation passed to `meanc` reaches handoff_candidate (81.8's `meanc(x ~ y)` class).
+
+### Prompt 82.9: Column means from a dataset file (control)
+
+"Read the data from C:/data/auto2.dat and compute the column means."
+
+Expected behavior:
+- A file read is not_ready; nothing runs.
+
+### Prompt 82.10: Scatter plot, saved and displayed (user's own)
+
+"Generate two series of random normal data with 150 observations and create a scatter plot of the data using default formatting. Save the plot and display it here."
+
+Expected behavior:
+- `plotSave` is a file write: not_ready.
+
+### Prompt 82.11: GMM procedures (user's own)
+
+"What GAUSS procedures are available for estimating and GMM model?"
+
+Expected behavior:
+- An accurate, grounded answer.
+
+### Prompt 82.12: Machine-learning models (user's own)
+
+"Does GAUSS have any pre-built machine learning models that I can use? If so what models are supported?"
+
+Expected behavior:
+- An accurate, grounded answer.
+
+### Prompt 82.13: A worked lasso example (user's own)
+
+"Yes please write a worked example for running a lasso model"
+
+Expected behavior:
+- `library` is source inclusion: not_ready.
+
+### Prompt 82.14: Installed GAUSS versions (user's own)
+
+"Can you tell what version(s) of GAUSS i have installed?"
+
+Expected behavior:
+- Outside gauss-ai's scope; an honest answer.
