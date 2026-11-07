@@ -2937,7 +2937,10 @@ def test_185_v0893_dataset_arguments_that_read_a_file() -> None:
     for rule in validation_mod._DATASET_ARGUMENT_REGISTRY:
         check(f"{rule.name} cites its page and evidence", rule.doc_page.endswith(".rst") and rule.evidence
               and rule.name == rule.name.lower() and rule.name not in names)
-    check("37 functions", len(validation_mod._DATASET_ARGUMENT_REGISTRY) == 37)
+    # v0.92.0 (planning v0.92 §3.3): 37 -> 38. `library tsmt;` can now reach
+    # a handoff, so `arimaFit`'s documented dataset argument
+    # (`tsmt/arimafit.rst`: "name of data set or null string") joins the rest.
+    check("38 functions", len(validation_mod._DATASET_ARGUMENT_REGISTRY) == 38)
     reasons = validation_mod.compute_handoff_readiness(
         eligibility=validation_mod.ExecutionEligibility.ELIGIBLE_FOR_VALIDATION.value, unresolved_issues=(),
         syntax=None, call_validations=(), preconditions=(), evidence_profile="broad",

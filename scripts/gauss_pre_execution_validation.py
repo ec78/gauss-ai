@@ -184,6 +184,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Callable
 
+import gauss_installed_libraries as libraries_mod
+
 #: See module docstring's final paragraph for why this is duplicated rather
 #: than imported.
 _LANGUAGE_CONSTRUCT_KEYWORDS = frozenset({
@@ -4544,6 +4546,10 @@ class PreExecutionValidationResult:
     readiness: "ReadinessResult | None" = None
     #: v0.80.0: any system-touching statement found (forces NOT_READY).
     system_statements: "tuple[SystemStatementFinding, ...]" = ()
+    #: v0.92.0: the libraries an allowed `library` statement makes active,
+    #: each `(name, index path, index SHA-256)`; bound at prepare and shown
+    #: in the prompt (planning v0.92 §3.5).
+    libraries: "tuple[tuple[str, str, str], ...]" = ()
     #: v0.83.0: every evidence gap (see `compute_coverage_gaps(...)`), so a
     #: client can see why a verdict is not a handoff candidate.
     coverage_gaps: "tuple[CoverageGap, ...]" = ()
@@ -5026,6 +5032,11 @@ class SystemStatementCategory(str, enum.Enum):
     #: GAUSS process (`dlibrary`, `dllcall`) -- further outside GAUSS's own
     #: memory than source inclusion (planning v0.85 §2.4, decision 4).
     NATIVE_CODE = "native_code"
+    #: v0.92.0 (planning v0.92 §3.3, decision 2): a call to a package
+    #: function whose library this code does not load. Not system-touching
+    #: -- GAUSS simply stops with G0025 -- but just as certainly not
+    #: runnable, so it shares the NOT_READY path with its own wording.
+    LIBRARY_REQUIRED = "library_required"
 
 
 @dataclass(frozen=True)
@@ -5271,6 +5282,11 @@ class DatasetArgumentRule:
 #: `headermt`'s format letters). Each position was read from the page's own
 #: documented forms.
 _DATASET_ARGUMENT_REGISTRY: tuple[DatasetArgumentRule, ...] = tuple(DatasetArgumentRule(*row) for row in (
+    # v0.92.0 (planning v0.92 §3.3): `library tsmt;` can now reach a
+    # handoff, and `tsmt/arimafit.rst` documents a leading dataset name. The
+    # installed procedure (`timeseries`'s keyword form) takes data first, so
+    # a file name there is blocked and an in-memory `y` is unaffected.
+    ("arimafit", 0, "data", "tsmt/arimafit.rst", "name of data set or null string."),
     ("autoregfit", 0, "dataset", "tsmt/autoregfit.rst", "name of data set or null string."),
     ("clusterse", 0, "dataset", "clusterse.rst", "name of dataset."),
     ("cmlmtkerneldensity", 0, "dataset", "cmlmt/cmlmtkerneldensity.rst", "Name of the GAUSS dataset."),
@@ -5391,6 +5407,185 @@ def check_dataset_arguments(
         ))
     return tuple(findings)
 
+
+
+
+# ---------------------------------------------------------------------------
+# v0.92.0: installed libraries (planning/v0.92-installed-libraries.md)
+# ---------------------------------------------------------------------------
+
+_LIBRARY_NAMES_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*$")
+
+
+@dataclass(frozen=True)
+class LibraryAnalysis:
+    """What the `library` statements of one snippet do against one
+    installation. `allowed_lines` are the lines of `library` statements that
+    are NOT system-touching (their generic `source_inclusion` finding is
+    dropped); `findings` replace them where a statement is refused, and add
+    one `library_required` finding per package call whose library is not
+    active. `active` is what the snippet's LAST `library` statement loads
+    (lb16: a later statement replaces an earlier one); `review_reasons` is
+    set only without an installation (planning v0.92 §3.4)."""
+
+    allowed_lines: frozenset[int] = frozenset()
+    findings: tuple[SystemStatementFinding, ...] = ()
+    active: "tuple[libraries_mod.LibraryIndex, ...]" = ()
+    review_reasons: tuple[str, ...] = ()
+
+
+def _library_finding(line: int, name: str, detail: str, category: str) -> SystemStatementFinding:
+    return SystemStatementFinding(name=name, category=category, line_number=line, doc_page="library.rst", detail=detail)
+
+
+def analyze_libraries(
+    code: str, *, installation: "libraries_mod.Installation | None",
+    attribution: "libraries_mod.DocsAttribution", user_defined: "frozenset[str] | set[str]" = frozenset(),
+) -> LibraryAnalysis:
+    """Deterministic; reads `code`, the installation's `.lcg` files and the
+    docs attribution, and nothing else. Never launches GAUSS.
+
+    `library` statements (planning v0.92 §3.3): only a top-level `library
+    a[, b ...];` of bare names, each resolving to an index that lists
+    symbols and is documented (§8.1), stops being `source_inclusion`. Inside
+    a procedure or block, with a quoted or path argument, without an
+    installation, or naming anything else, it stays NOT_READY with a reason
+    saying which -- GAUSS continues past a missing library (lb14: G0290,
+    then the program runs), so a missing one must block.
+
+    Calls (decision 2): a called symbol that is not user-defined and whose
+    docs pages are all attributed to a package must be listed by an active
+    index or by the always-loaded `gauss.lcg`/`user.lcg`; otherwise
+    `library_required` (GAUSS: G0025), naming the installed library that
+    lists it when there is one. Without an installation such a call is a
+    review reason instead."""
+    findings: list[SystemStatementFinding] = []
+    allowed_lines: set[int] = set()
+    last_active: "tuple[libraries_mod.LibraryIndex, ...]" = ()
+    depth = 0
+    for statement in source_statements(code):
+        word = _leading_word(statement.masked)
+        if word in _BLOCK_CLOSE_KEYWORDS:
+            depth = max(0, depth - 1)
+            continue
+        if word == "library":
+            outcome = _library_statement_outcome(
+                statement, depth=depth, installation=installation, attribution=attribution,
+            )
+            if isinstance(outcome, str):
+                findings.append(_library_finding(
+                    statement.line, "library", outcome, SystemStatementCategory.SOURCE_INCLUSION.value,
+                ))
+                last_active = ()
+            else:
+                allowed_lines.add(statement.line)
+                last_active = outcome
+        if word in _BLOCK_OPEN_KEYWORDS:
+            depth += 1
+
+    loaded = last_active + (installation.always_loaded() if installation is not None else ())
+    review: list[str] = []
+    seen: set[str] = set()
+    for call in extract_generated_calls(code):
+        symbol = call.symbol.lower()
+        if symbol in seen or symbol in user_defined:
+            continue
+        seen.add(symbol)
+        owners = attribution.libraries_for(symbol)
+        if not owners:
+            continue
+        owner_text = ", ".join(f"`{o}`" for o in sorted(owners))
+        if installation is None:
+            review.append(
+                f"`{call.symbol}` is documented as part of the {owner_text} package; whether it is callable "
+                "cannot be confirmed without the configured GAUSS installation"
+            )
+            continue
+        if any(symbol in index.symbols for index in loaded):
+            continue
+        provider, usable = _installed_provider(symbol, owners, installation, attribution)
+        if provider is not None and usable:
+            detail = (
+                f"is defined by the installed library `{provider}`, which this code does not load "
+                f"(add `library {provider};`) -- GAUSS would stop with G0025 (undefined symbol)"
+            )
+        elif provider is not None:
+            detail = (
+                f"is defined by the installed library `{provider}`, which controlled execution does not load "
+                "(see `installed_libraries.not_allowed`) -- without it GAUSS would stop with G0025 (undefined symbol)"
+            )
+        else:
+            detail = (
+                f"is documented as part of the {owner_text} package, but no installed index of that package "
+                "lists it in the configured GAUSS -- GAUSS would stop with G0025 (undefined symbol)"
+            )
+        findings.append(_library_finding(
+            call.line_number, call.symbol, detail, SystemStatementCategory.LIBRARY_REQUIRED.value,
+        ))
+    return LibraryAnalysis(
+        allowed_lines=frozenset(allowed_lines), findings=tuple(findings), active=last_active,
+        review_reasons=tuple(review),
+    )
+
+
+def _library_statement_outcome(
+    statement: SourceStatement, *, depth: int, installation: "libraries_mod.Installation | None",
+    attribution: "libraries_mod.DocsAttribution",
+) -> "str | tuple[libraries_mod.LibraryIndex, ...]":
+    """The reason a `library` statement stays NOT_READY, or the indexes it
+    loads when it is allowed."""
+    if depth > 0:
+        return ("is inside a procedure or block; only a top-level `library` statement is modelled "
+                "(GAUSS applies it at compile time, lb15)")
+    rest = statement.masked.strip()[len("library"):].strip()
+    if not _LIBRARY_NAMES_RE.match(rest):
+        return "names something other than bare library names (`library gml;`, `library gml, tspdlib;`)"
+    if installation is None:
+        return "cannot be confirmed: no GAUSS installation is configured (`gauss-ai config set gauss-executable`)"
+    loaded: "list[libraries_mod.LibraryIndex]" = []
+    for name in (part.strip() for part in rest.split(",")):
+        index = installation.resolve(name)
+        if index is None:
+            return f"names `{name}`, which is not installed in the configured GAUSS (GAUSS: G0290 library not found)"
+        if not index.lists_symbols:
+            return (f"names `{name}`, whose index ({index.path}) lists no symbols, so it defines nothing in "
+                    "GAUSS 26.1.4 (planning v0.92 §2.2)")
+        if index.package_dir is None:
+            return (f"names `{name}`, whose index ({index.path}) is not an installed package; GAUSS's legacy "
+                    "graphics (`pgraph`) write `graphic.tkf` files (planning v0.92 §9)")
+        if not libraries_mod.library_is_documented(index, attribution):
+            return (f"names `{name}`, which has no pages of its own in the fetched GAUSS documentation, so its "
+                    "functions cannot be checked (planning v0.92 §8.1)")
+        loaded.append(index)
+    return tuple(loaded)
+
+
+def _installed_provider(
+    symbol: str, owners: "frozenset[str]", installation: "libraries_mod.Installation",
+    attribution: "libraries_mod.DocsAttribution",
+) -> tuple[str | None, bool]:
+    """`(name, usable)`: the first library on the search path whose index
+    lists `symbol` AND that the symbol's docs pages belong to (`owners`, by
+    library name or the index's package directory), preferring one that
+    `library` may name in a handoff candidate (`library_is_usable`);
+    `(None, False)` when none does. The owner condition came from the v0.92.0
+    verdict diff (planning v0.92 §9): `cdTest` is documented for `tsmt`,
+    which this machine's alias index lacks, and `dccelib` defines an
+    unrelated `cdtest`; naming `dccelib` would have pointed the user at the
+    wrong package."""
+    fallback: str | None = None
+    for name in installation.reachable_library_names():
+        if name in ("gauss", "user"):
+            continue
+        index = installation.resolve(name)
+        if index is None or symbol not in index.symbols:
+            continue
+        if not ({index.name} | ({index.package_dir} if index.package_dir else set())) & owners:
+            continue
+        if libraries_mod.library_is_usable(index, attribution):
+            return name, True
+        fallback = fallback or name
+    return fallback, False
 
 # ---------------------------------------------------------------------------
 # Phase 9/10/11/16 (v0.76.0): future execution-handoff readiness
@@ -5536,6 +5731,7 @@ def compute_handoff_readiness(
     call_validations: tuple[CallValidationResult, ...], preconditions: tuple[PreconditionCheck, ...],
     evidence_profile: str, system_statements: tuple[SystemStatementFinding, ...] = (),
     coverage: ValidationCoverage | None = None, parameter_role_checks: tuple[ParameterRoleCheck, ...] = (),
+    library_review_reasons: tuple[str, ...] = (),
 ) -> ReadinessResult:
     """Deterministic, provider-independent: reads only its own arguments,
     calls no model, performs no I/O -- the model can never influence this
@@ -5572,6 +5768,10 @@ def compute_handoff_readiness(
     """
     if system_statements:
         reasons = tuple(
+            # v0.92.0: a missing library is not a system statement; its
+            # detail says what GAUSS would do (planning v0.92 §3.3).
+            f"line {f.line_number}: `{f.name}` {f.detail}"
+            if f.category == SystemStatementCategory.LIBRARY_REQUIRED.value else
             f"line {f.line_number}: `{f.name}` "
             + (f.detail if f.detail else "is a system-touching statement")
             + f" ({f.category}) -- controlled execution only runs self-contained snippets that compute in memory"
@@ -5625,6 +5825,9 @@ def compute_handoff_readiness(
             "handoff candidacy"
         )
         review_reasons.extend(_role_gap_reasons(parameter_role_checks))
+    # v0.92.0 (planning v0.92 §3.4): a package function with no installation
+    # to confirm it against. Never set when an installation is known.
+    review_reasons.extend(library_review_reasons)
 
     if review_reasons:
         return ReadinessResult(HandoffReadiness.REVIEW_REQUIRED.value, tuple(review_reasons))

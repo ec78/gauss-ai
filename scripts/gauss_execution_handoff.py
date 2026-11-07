@@ -125,6 +125,7 @@ def _canonical_digest_payload(
     timeout_seconds: float,
     workspace_parent: str | None,
     readiness_state: str,
+    libraries: tuple[tuple[str, str, str], ...] = (),
 ) -> dict[str, Any]:
     """Exact textual code binding -- deliberately NO newline/whitespace
     normalization of `code` (unlike gauss_runtime_orchestration._normalize_
@@ -141,7 +142,14 @@ def _canonical_digest_payload(
         "workspace_parent": workspace_parent,
         "readiness_state": readiness_state,
     }
-    return {name: values[name] for name in _DIGEST_FIELD_ORDER}
+    payload = {name: values[name] for name in _DIGEST_FIELD_ORDER}
+    # v0.92.0 (planning v0.92 §3.5): the active libraries, each `(name,
+    # index path, index SHA-256)`, are bound too -- but only when there are
+    # any, so a request without libraries has exactly the pre-v0.92 payload
+    # and digest (every existing digest test is unchanged).
+    if libraries:
+        payload["libraries"] = [list(entry) for entry in libraries]
+    return payload
 
 
 def compute_execution_handoff_digest(
@@ -153,6 +161,7 @@ def compute_execution_handoff_digest(
     timeout_seconds: float,
     workspace_parent: str | None,
     readiness_state: str,
+    libraries: tuple[tuple[str, str, str], ...] = (),
 ) -> str:
     """Deterministic SHA-256 fingerprint over exactly the seven
     execution-affecting fields, in fixed field order. Same inputs always
@@ -162,6 +171,7 @@ def compute_execution_handoff_digest(
     canonical = _canonical_digest_payload(
         code=code, runner=runner, executable_path=executable_path, gauss_version=gauss_version,
         timeout_seconds=timeout_seconds, workspace_parent=workspace_parent, readiness_state=readiness_state,
+        libraries=libraries,
     )
     serialized = json.dumps(canonical, sort_keys=False, ensure_ascii=True, separators=(",", ":"))
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
@@ -184,6 +194,9 @@ class ExecutionHandoffRequest:
     workspace_parent: str | None
     created_at: str
     digest: str
+    #: v0.92.0: the libraries the validated code loads (see
+    #: `_canonical_digest_payload`); empty for code without `library`.
+    libraries: tuple[tuple[str, str, str], ...] = ()
 
     def recompute_digest(self) -> str:
         """Recomputes the digest fresh from this request's own current field
@@ -196,6 +209,7 @@ class ExecutionHandoffRequest:
             code=self.code, runner=self.runner, executable_path=self.executable_path,
             gauss_version=self.gauss_version, timeout_seconds=self.timeout_seconds,
             workspace_parent=self.workspace_parent, readiness_state=self.readiness_state,
+            libraries=self.libraries,
         )
 
 
@@ -210,6 +224,7 @@ def create_execution_handoff_request(
     gauss_version: str | None = None,
     timeout_seconds: float = 30.0,
     workspace_parent: str | None = None,
+    libraries: tuple[tuple[str, str, str], ...] = (),
 ) -> ExecutionHandoffRequest:
     """The ONE pure builder for `ExecutionHandoffRequest`. No execution, no
     file write, no model call. Requires `readiness_state ==
@@ -236,11 +251,12 @@ def create_execution_handoff_request(
     digest = compute_execution_handoff_digest(
         code=code, runner=runner, executable_path=executable_path, gauss_version=gauss_version,
         timeout_seconds=timeout_seconds, workspace_parent=workspace_parent, readiness_state=readiness_state,
+        libraries=tuple(libraries),
     )
     return ExecutionHandoffRequest(
         request_id=request_id, code=code, readiness_state=readiness_state, runner=runner,
         executable_path=executable_path, gauss_version=gauss_version, timeout_seconds=timeout_seconds,
-        workspace_parent=workspace_parent, created_at=created_at, digest=digest,
+        workspace_parent=workspace_parent, created_at=created_at, digest=digest, libraries=tuple(libraries),
     )
 
 
@@ -688,6 +704,11 @@ def render_execution_handoff_prompt(request: ExecutionHandoffRequest) -> str:
     # really runs; `workspace_parent` is never printed, and both callers stop
     # setting it (the field and its digest position are unchanged).
     lines.append(f"Runs in: {HANDOFF_WORKING_DIRECTORY_DESCRIPTION}")
+    # v0.92.0 (planning v0.92 §3.5): the installed package code the run
+    # will load, by the index GAUSS resolves. Absent without `library`, so
+    # every pre-v0.92 prompt is unchanged.
+    for name, path, _sha in request.libraries:
+        lines.append(f"Library: {name} ({path})")
     lines.append(f"Request digest: {request.digest}")
     lines.extend([
         "",

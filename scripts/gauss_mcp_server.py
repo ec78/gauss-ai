@@ -89,8 +89,9 @@ import gauss_code_assistant_cli as cli_mod
 import gauss_conversation_engine as engine_mod
 import gauss_doc_reader as doc_reader_mod
 import gauss_execution_handoff as handoff_mod
+import gauss_installed_libraries as libraries_mod
 
-__version__ = "0.91.1"
+__version__ = "0.92.0"
 
 #: Set by the server OPERATOR in the process's own environment before
 #: launch -- never read from a tool-call argument. See module docstring.
@@ -174,6 +175,10 @@ class ValidatedCode:
     code: str
     readiness_state: str
     docs_root: str | None
+    #: v0.92.0 (planning v0.92 §3.5): the active libraries at validation,
+    #: each `(name, index path, index SHA-256)`. Prepare re-resolves them and
+    #: refuses (`validation_stale`) if any index changed.
+    libraries: tuple[tuple[str, str, str], ...] = ()
 
 
 @dataclass
@@ -184,6 +189,9 @@ class Session:
     workspace_parent: str | None
     timeout_seconds: float
     docs_root: str | None
+    #: v0.92.0: the configured GAUSS installation's library search, read from
+    #: the executable's `gauss.cfg` at session start; `None` without one.
+    installation: "libraries_mod.Installation | None" = None
     #: Built lazily by the first `gauss_chat_ask` (strict mode only).
     engine: "engine_mod.ConversationEngine | None" = None
     #: The last chat answer's single code block and readiness state, if it
@@ -394,6 +402,8 @@ def _validation_to_dict(result: "engine_mod.CodeValidationResult") -> dict[str, 
             for c in (pre.preconditions if pre else ())
         ],
         "system_statements": [dataclasses.asdict(f) for f in (pre.system_statements if pre else ())],
+        # v0.92.0: the libraries the code loads, by the index GAUSS resolves.
+        "libraries": [{"name": n, "index": p} for n, p, _sha in (pre.libraries if pre else ())],
         "companion_hints": [list(pair) for pair in (pre.companion_hints if pre else ())],
         "notes": list(result.notes),
         # v0.83.0: what evidence was obtained, and every gap that kept it
@@ -460,6 +470,7 @@ def gauss_session_start(
         timeout_seconds=config_mod.resolve_default_timeout_seconds(cli_value=timeout_seconds, config=config, env=env).value,
         docs_root=resolved_docs_root,
     )
+    _sessions[sid].installation = libraries_mod.load_installation(_sessions[sid].executable_path)
     response: dict[str, Any] = {
         "session_id": sid,
         # v0.89.0 (planning v0.89 §2.7, §3.9): some clients keep a tool's old
@@ -476,6 +487,15 @@ def gauss_session_start(
         # capability, and it says nothing about whether the executable runs.
         "real_gauss_allowed": _real_gauss_allowed(),
     }
+    # v0.92.0 (planning v0.92 §3.6, live finding 82.12): which installed
+    # libraries `library` may name in a handoff candidate, so a client never
+    # has to look on disk. `None` when no installation is known.
+    report = libraries_mod.report_installed_libraries(
+        _sessions[sid].installation, libraries_mod.docs_attribution(resolved_docs_root),
+    )
+    response["installed_libraries"] = (
+        None if report is None else {"allowed": list(report.allowed), "not_allowed": list(report.not_allowed)}
+    )
     if _sessions[sid].runner == "gauss" and not response["real_gauss_allowed"]:
         response["execution_hint"] = _REAL_GAUSS_NOT_ALLOWED_DETAIL
     if resolved_docs_root is None:
@@ -588,7 +608,7 @@ def gauss_validate_code(session_id: str, code: str) -> dict[str, Any]:
     session, error = _use_session(session_id)
     if session is None:
         return error
-    result = engine_mod.validate_code(code, docs_root=session.docs_root)
+    result = engine_mod.validate_code(code, docs_root=session.docs_root, installation=session.installation)
     if result.rejected_reason is not None:
         response: dict[str, Any] = {
             "error": result.rejected_reason,
@@ -604,6 +624,7 @@ def gauss_validate_code(session_id: str, code: str) -> dict[str, Any]:
         validation_id = _new_id()
         session.validated[validation_id] = ValidatedCode(
             code=code, readiness_state=result.handoff_readiness.state, docs_root=session.docs_root,
+            libraries=result.pre_execution.libraries if result.pre_execution else (),
         )
         while len(session.validated) > MAX_VALIDATIONS_PER_SESSION:
             session.validated.popitem(last=False)
@@ -648,14 +669,25 @@ def gauss_execution_prepare(session_id: str, validation_id: str | None = None) -
             return {"error": "unknown_or_used_validation_id"}
         # The docs may have changed since validation (e.g. a `gauss-ai docs
         # fetch` in between) -- re-validate rather than trust a stale verdict.
-        recheck = engine_mod.validate_code(entry.code, docs_root=entry.docs_root)
+        # v0.92.0 (planning v0.92 §3.5): and the installation, read afresh --
+        # a package updated in between must not run under the old verdict.
+        installation = libraries_mod.load_installation(session.executable_path)
+        recheck = engine_mod.validate_code(entry.code, docs_root=entry.docs_root, installation=installation)
         if not chat_mod._execution_offer_eligible(recheck):
             return {"error": "validation_stale", "handoff_readiness": _readiness_dict(recheck.handoff_readiness)}
+        rechecked_libraries = recheck.pre_execution.libraries if recheck.pre_execution else ()
+        if rechecked_libraries != entry.libraries:
+            return {
+                "error": "validation_stale",
+                "detail": "a library index this code loads changed since it was validated; validate it again",
+            }
         code, readiness_state, source = entry.code, recheck.handoff_readiness.state, "validated"
+        libraries = rechecked_libraries
     else:
         if session.pending_code is None or session.pending_readiness_state is None:
             return {"error": "no_pending_handoff_candidate"}
         code, readiness_state, source = session.pending_code, session.pending_readiness_state, "chat"
+        libraries = ()
 
     try:
         # v0.87.0 (live finding 77.x f3): no `workspace_parent`. The handoff
@@ -667,7 +699,7 @@ def gauss_execution_prepare(session_id: str, validation_id: str | None = None) -
         request = handoff_mod.create_execution_handoff_request(
             code=code, readiness_state=readiness_state, request_id=str(uuid.uuid4()), created_at=_clock(),
             runner=session.runner, executable_path=session.executable_path,
-            timeout_seconds=session.timeout_seconds,
+            timeout_seconds=session.timeout_seconds, libraries=libraries,
         )
     except (handoff_mod.HandoffNotEligibleError, handoff_mod.HandoffRequestValidationError) as exc:
         return {"error": "request_rejected", "detail": str(exc)}

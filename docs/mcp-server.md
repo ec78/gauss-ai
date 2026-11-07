@@ -71,10 +71,12 @@ In addition, **any system-touching statement always makes code `not_ready`**:
 
 - OS commands: `dos`, `shell`
 - programs or process control: `exec`, `execbg`, `system`
-- other source files: `run`, `#include`
+- other source files: `run`, `#include`, and `library` except as below
 - directory changes: `chdir`, `changedir`
 - any file read, write or delete: `load`/`loadd`, `save`/`saved`, `fopen`, `csvReadM`, `xlsWriteM`, `deleteFile`, `output file=`, ...
 - since `v0.89.3`, a dataset file named as an argument: 37 estimator and statistics functions (`ols`, `olsmt`, `glm`, `dstat`, `dstatmt`, `ttest`, `tabulate`, `quantileFit`, the `garch*` and `tsmt` estimators, ...) read a file when their `dataset`/`data`/`filename` argument names one. Such a call runs only when that argument is the documented null string `""` or `0`, or in-memory data (a matrix literal, a matrix or dataframe from a documented call, or a numeric expression); anything else, including an untraced name, is a file read
+
+Since `v0.92.0`, `library <name>;` may reach `handoff_candidate` for an installed package (planning v0.92): the name must resolve, by the configured GAUSS's own `gauss.cfg` search order, to an index that lists symbols and has documentation pages of its own in the fetched docs. `gauss_session_start` lists those as `installed_libraries.allowed`. Only a top-level `library` statement of bare names counts, and only the last one (GAUSS replaces earlier ones). A call to a package function whose library the code does not load is `not_ready` (GAUSS: `G0025`); without a configured installation such a call is `review_required`. The validation records each loaded index and its SHA-256, the run prompt names it (`Library: gml (...)`), and prepare refuses with `validation_stale` if an index changed. Package code itself is trusted like a built-in function: it may call Aptech's native libraries internally, and gauss-ai does not check it; your own arguments are still checked, dataset-file arguments included.
 
 Since `v0.91.0` an argument expression can confirm a parameter role through its category (a numeric matrix), so more in-memory code reaches `handoff_candidate`. That category is never read by either list above: an expression passed as a dataset argument is still judged by the `v0.89.3` rule exactly as before, and a system-touching statement still makes the whole snippet `not_ready`.
 

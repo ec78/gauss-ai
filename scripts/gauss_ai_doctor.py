@@ -217,6 +217,32 @@ def _check_docs_root(*, config: "config_mod.GaussAiConfig", env: dict[str, str])
     return DoctorCheckResult("docs_root", PASS, f"{root} (source: {resolved.source})")
 
 
+def _check_installed_libraries(
+    *, cli_value: str | None, config: "config_mod.GaussAiConfig", env: dict[str, str]
+) -> DoctorCheckResult:
+    """v0.92.0 (planning v0.92 §3.6): which installed libraries `library`
+    may name in code that reaches the execution handoff. Reads the
+    executable's `gauss.cfg` and `.lcg` files only; never launches GAUSS."""
+    import gauss_installed_libraries as libraries_mod
+
+    executable = config_mod.resolve_gauss_executable(cli_value=cli_value, config=config, env=env).value
+    if executable is None:
+        return DoctorCheckResult("installed_libraries", WARN, "skipped -- no GAUSS executable is configured")
+    installation = libraries_mod.load_installation(str(executable))
+    if installation is None:
+        return DoctorCheckResult(
+            "installed_libraries", WARN,
+            f"no usable gauss.cfg beside {executable}; code that uses `library` stays not_ready",
+        )
+    docs_root = config_mod.resolve_docs_root(config=config, env=env).value
+    report = libraries_mod.report_installed_libraries(installation, libraries_mod.docs_attribution(docs_root))
+    allowed = ", ".join(report.allowed) if report.allowed else "none"
+    other = ", ".join(report.not_allowed) if report.not_allowed else "none"
+    return DoctorCheckResult(
+        "installed_libraries", PASS, f"usable with `library`: {allowed}; installed but not usable: {other}",
+    )
+
+
 def _check_ollama_service(
     *,
     config: "config_mod.GaussAiConfig",
@@ -311,6 +337,7 @@ def run_doctor(
         _check_gauss_executable_valid(cli_value=cli_gauss_executable, config=resolved_config, env=env),
         _check_chat_provider(config=resolved_config, env=env),
         _check_docs_root(config=resolved_config, env=env),
+        _check_installed_libraries(cli_value=cli_gauss_executable, config=resolved_config, env=env),
         _check_config_file_validity(config_path),
         _check_package_version(),
     ]

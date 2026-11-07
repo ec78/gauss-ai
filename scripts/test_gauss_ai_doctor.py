@@ -220,6 +220,11 @@ def test_17_overall_status_pass_when_fully_configured() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         p = Path(tmp) / "tgauss.exe"
         p.write_bytes(b"")
+        # v0.92.0: "fully configured" now also includes the installation's
+        # library search (the new installed_libraries check WARNs without a
+        # gauss.cfg beside the executable, which every real GAUSS install
+        # has), so the fake install gets a minimal one.
+        (Path(tmp) / "gauss.cfg").write_text("lib_path = $(GAUSSDIR)\\lib\n", encoding="utf-8")
         docs = Path(tmp) / "docs"
         docs.mkdir()
         (docs / "meanc.rst").write_text("meanc\n=====\n", encoding="utf-8")

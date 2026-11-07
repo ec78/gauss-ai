@@ -14,11 +14,11 @@ Five searches (machine learning / random forest; lasso, ridge, k-means …; `las
 
 Expected behavior: (the user's own task) an accurate, grounded answer.
 
-Observed behavior: accurate as far as checked: the listed functions exist in the docs, and the client said that `decForestRFit`, `decForestCFit` and `plotVariableImportance` appeared only as candidate names, without their argument details. It used the shell to confirm GML is installed, which gauss-ai cannot do (v0.92.0 "Installed Libraries" would). The plain-words query's failure to ground is the known prose-recall limit (v0.88.0).
+Observed behavior: accurate as far as checked, with one exception found later (correction, 2026-11-06, planning v0.92 §9.5): the client said `trainTestSplit` "also accepts a file name and formula", but `traintestsplit.rst` documents only `trainTestSplit(y, X, train_pct [, shuffle])` and mentions no file. Otherwise: the listed functions exist in the docs, and the client said that `decForestRFit`, `decForestCFit` and `plotVariableImportance` appeared only as candidate names, without their argument details. It used the shell to confirm GML is installed, which gauss-ai cannot do (v0.92.0 "Installed Libraries" would). The plain-words query's failure to ground is the known prose-recall limit (v0.88.0).
 
 Pass/fail: Pass
 Defect severity: None
 Remediation: None
 
-Overall Score: 3.8
+Overall Score: 3.6
 Decision: Pass

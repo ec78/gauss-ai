@@ -3593,6 +3593,107 @@ def test_174_v091_expression_arguments_reach_candidate() -> None:
         check("an OS command still decides", io.handoff_readiness.state == "not_ready")
 
 
+# ---------------------------------------------------------------------------
+# v0.92.0: installed libraries end to end (planning v0.92 §6.1)
+# ---------------------------------------------------------------------------
+
+_PFIT_RST = (
+    "pfit\n====\n\n.. function:: b = pfit(y, x)\n\n    :param y: dependent variable\n    :type y: NxK matrix\n\n"
+    "    :param x: regressors\n    :type x: NxK matrix\n\n    :return b: estimates\n    :rtype b: Kx1 matrix\n\n"
+    "Examples\n--------\n\n::\n\n    library alpha;\n    b = pfit(y, x);\n"
+)
+
+
+def _v092_fixture(tmp: Path) -> tuple[Path, Path]:
+    """A docs folder (v0.91's typed pages plus one package page, attributed
+    by its own `library alpha;` example, like GML's) and a fake GAUSS tree:
+    `alpha` lists `pfit`; `delta` lists a symbol but has no pages; `gamma`
+    is paths-only. Never a real install or docs checkout."""
+    root = tmp / "docs"
+    root.mkdir()
+    # `qfit` is documented for `alpha` but only `delta` (unrelated) lists a
+    # procedure of that name, like `cdTest`/`dccelib` (planning v0.92 §9).
+    qfit = _PFIT_RST.replace("pfit", "qfit")
+    for name, text in dict(_TYPED_V091_RST, **{"pfit.rst": _PFIT_RST, "qfit.rst": qfit}).items():
+        (root / name).write_text(text, encoding="utf-8")
+    gauss = tmp / "gauss"
+    (gauss / "lib").mkdir(parents=True)
+    (gauss / "tgauss.exe").write_bytes(b"")
+    (gauss / "gauss.cfg").write_text(
+        "PACKAGEDIR = $(GAUSSDIR)\\pkgs\nlib_path = $(GAUSSDIR)\\lib\nextra_lib_path = $(PACKAGEDIR)\\*\\lib\n",
+        encoding="utf-8",
+    )
+    (gauss / "lib" / "gauss.lcg").write_text("src/x.src\n    gcore : proc : 1\n", encoding="utf-8")
+    for package, text in {"alpha": "src/a.src\n    pfit : proc : 10\n", "delta": "src/d.src\n    dfit : proc : 1\n    qfit : proc : 2\n",
+                          "gamma": "C:/gauss/pkgs/gamma/src/g.src\n"}.items():
+        (gauss / "pkgs" / package / "lib").mkdir(parents=True)
+        (gauss / "pkgs" / package / "lib" / f"{package}.lcg").write_text(text, encoding="utf-8")
+    return root, gauss / "tgauss.exe"
+
+
+def test_175_v092_library_statements_and_package_calls() -> None:
+    import gauss_installed_libraries as libraries_mod
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root, exe = _v092_fixture(Path(tmp))
+        installation = libraries_mod.load_installation(str(exe))
+        body = "y = rndn(20, 1);\nx = rndn(20, 2);\nb = pfit(y, x);\nprint b;"
+
+        loaded = engine_mod.validate_code("library alpha;\n" + body, docs_root=str(root), installation=installation)
+        check("175: `library alpha;` + pfit: handoff_candidate", loaded.handoff_readiness.state == "handoff_candidate")
+        check("175: ...binding alpha's index",
+              [name for name, _path, _sha in loaded.pre_execution.libraries] == ["alpha"])
+
+        missing = engine_mod.validate_code(body, docs_root=str(root), installation=installation)
+        check("175: pfit without its library: not_ready", missing.handoff_readiness.state == "not_ready")
+        check("175: ...naming `library alpha;`", any("add `library alpha;`" in r for r in missing.handoff_readiness.reasons))
+        check("175: ...as library_required",
+              [f.category for f in missing.pre_execution.system_statements] == ["library_required"])
+
+        unknown = engine_mod.validate_code(body, docs_root=str(root), installation=None)
+        check("175: no installation: review_required", unknown.handoff_readiness.state == "review_required")
+        check("175: ...saying why", any("cannot be confirmed without the configured GAUSS installation" in r
+                                       for r in unknown.handoff_readiness.reasons))
+        no_install_library = engine_mod.validate_code("library alpha;\n" + body, docs_root=str(root))
+        check("175: `library` without an installation stays not_ready",
+              no_install_library.handoff_readiness.state == "not_ready")
+
+        refusals = {
+            "library delta;\n": "has no pages of its own",
+            "library gamma;\n": "lists no symbols",
+            "library nosuch;\n": "G0290",
+            'library "alpha";\n': "bare library names",
+            "proc (0) = f();\nlibrary alpha;\nendp;\n": "inside a procedure or block",
+        }
+        for prefix, reason in refusals.items():
+            result = engine_mod.validate_code(prefix + body, docs_root=str(root), installation=installation)
+            check(f"175: {prefix.strip()!r}: not_ready", result.handoff_readiness.state == "not_ready")
+            check(f"175: {prefix.strip()!r}: reason {reason!r}",
+                  any(reason in r for r in result.handoff_readiness.reasons))
+
+        replaced = engine_mod.validate_code("library alpha;\nlibrary delta;\n" + body, docs_root=str(root),
+                                            installation=installation)
+        check("175: a later refused statement still blocks", replaced.handoff_readiness.state == "not_ready")
+
+        own = engine_mod.validate_code(
+            "proc (1) = pfit(y, x);\n    retp(y);\nendp;\n" + body, docs_root=str(root), installation=installation,
+        )
+        check("175: a user-defined pfit needs no library",
+              not any(f.category == "library_required" for f in own.pre_execution.system_statements))
+
+        core = engine_mod.validate_code("x = rndn(20, 2);\nprint meanc(x);", docs_root=str(root),
+                                        installation=installation)
+        check("175: core code is unaffected", core.handoff_readiness.state == "handoff_candidate")
+        io = engine_mod.validate_code("library alpha;\n" + body + "\ndos dir;", docs_root=str(root),
+                                      installation=installation)
+        check("175: an OS command still decides", io.handoff_readiness.state == "not_ready")
+        unrelated = engine_mod.validate_code(body.replace("pfit", "qfit"), docs_root=str(root),
+                                             installation=installation)
+        reasons = " ".join(unrelated.handoff_readiness.reasons)
+        check("175: qfit (alpha's, only in unrelated delta): not_ready", unrelated.handoff_readiness.state == "not_ready")
+        check("175: ...never pointing at delta", "delta" not in reasons and "no installed index of that package" in reasons)
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

@@ -159,6 +159,7 @@ import command_doc_lookup as doc_lookup_mod
 import gauss_chat_provider as provider_mod
 import gauss_doc_concept_index as concept_index_mod
 import gauss_error_catalog as catalog
+import gauss_installed_libraries as libraries_mod
 import gauss_pre_execution_validation as validation_mod
 
 #: A conservative bound on retained turns (user+assistant combined, so 20
@@ -1998,7 +1999,7 @@ class ConversationEngine:
 def validate_generated_code(
     generated_code: tuple[str, ...], *, bundle: "GroundingBundle", gate: "GenerationGateResult",
     docs_root_str: str | None, recent_topics: tuple[str, ...], answer_text: str,
-    no_evidence_issue: str | None = None,
+    no_evidence_issue: str | None = None, installation: "libraries_mod.Installation | None" = None,
 ) -> "validation_mod.PreExecutionValidationResult":
     """The ONE implementation of the post-generation validation chain
     (v0.80.0: formerly `ConversationEngine._validate_pre_execution`, plus
@@ -2157,8 +2158,29 @@ def validate_generated_code(
     syntax = validation_mod.merge_syntax_results(
         tuple(validation_mod.validate_syntax(block) for block in generated_code)
     )
+    # v0.92.0 (planning v0.92 §3.3): per block, what its `library`
+    # statements do against the configured installation. An allowed
+    # statement's generic `source_inclusion` finding is dropped; a refused
+    # one is replaced by a finding saying why; a package call whose library
+    # is not loaded adds a `library_required` finding.
+    attribution = libraries_mod.docs_attribution(docs_root_str)
+    library_analyses = tuple(
+        validation_mod.analyze_libraries(
+            block, installation=installation, attribution=attribution,
+            user_defined=frozenset(validation_mod.collect_user_defined_symbols(block)),
+        )
+        for block in cleaned_generated_code
+    )
     system_statements = tuple(
-        finding for block in cleaned_generated_code for finding in validation_mod.check_system_statements(block)
+        finding
+        for block, analysis in zip(cleaned_generated_code, library_analyses)
+        for finding in validation_mod.check_system_statements(block)
+        if not (finding.name == "library" and (
+            finding.line_number in analysis.allowed_lines
+            or any(f.name == "library" and f.line_number == finding.line_number for f in analysis.findings)
+        ))
+    ) + tuple(
+        finding for analysis in library_analyses for finding in analysis.findings
     ) + tuple(
         # v0.89.3 (planning v0.90 §2.6, decision 7b): an estimator or
         # statistics function whose dataset argument names a file reads it --
@@ -2206,6 +2228,7 @@ def validate_generated_code(
         preconditions=tuple(precondition_checks), evidence_profile=evidence_profile,
         system_statements=system_statements, coverage=coverage,
         parameter_role_checks=tuple(parameter_role_checks),
+        library_review_reasons=tuple(reason for analysis in library_analyses for reason in analysis.review_reasons),
     )
     return validation_mod.PreExecutionValidationResult(
         generation_policy=gate.policy, unknown_symbols=unknown_symbols,
@@ -2213,6 +2236,9 @@ def validate_generated_code(
         preconditions=tuple(precondition_checks), unresolved_issues=issues, eligibility=eligibility,
         parameter_role_checks=tuple(parameter_role_checks), predicted_output=predicted_output,
         coverage=coverage, syntax=syntax, readiness=readiness, system_statements=system_statements,
+        libraries=tuple(
+            (index.name, index.path, index.sha256) for analysis in library_analyses for index in analysis.active
+        ),
         coverage_gaps=validation_mod.compute_coverage_gaps(
             call_validations=call_validations, parameter_role_checks=tuple(parameter_role_checks),
             preconditions=tuple(precondition_checks), syntax=syntax,
@@ -2286,7 +2312,9 @@ def _rejected(code: str, reason: str, message: str) -> CodeValidationResult:
     )
 
 
-def validate_code(code: str, *, docs_root: str | None) -> CodeValidationResult:
+def validate_code(
+    code: str, *, docs_root: str | None, installation: "libraries_mod.Installation | None" = None,
+) -> CodeValidationResult:
     """Deterministic validation of client-authored GAUSS code: no model
     call, no provider argument, no execution. Never raises for bad input --
     a rejection is a NOT_READY result with `rejected_reason` set."""
@@ -2352,7 +2380,7 @@ def validate_code(code: str, *, docs_root: str | None) -> CodeValidationResult:
     gate = compute_generation_gate(bundle)
     pre_execution = validate_generated_code(
         (code,), bundle=bundle, gate=gate, docs_root_str=docs_root, recent_topics=(), answer_text="",
-        no_evidence_issue=NO_DOCUMENTED_CALLS_ISSUE,
+        no_evidence_issue=NO_DOCUMENTED_CALLS_ISSUE, installation=installation,
     )
     return CodeValidationResult(
         code=code, generated_code=(code,), called_symbols=tuple(called),

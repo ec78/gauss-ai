@@ -618,6 +618,29 @@ def test_46_v087_prompt_never_shows_workspace_parent_and_says_where_code_runs() 
     check("the description says the directory is temporary and deleted",
           handoff.HANDOFF_WORKING_DIRECTORY_DESCRIPTION == "a new temporary directory, deleted after the run")
 
+
+def test_47_v092_libraries_are_bound_and_shown_only_when_present() -> None:
+    """v0.92.0 (planning v0.92 §3.5): the active libraries enter the digest
+    and the prompt, but only when there are any -- so every request without
+    `library` keeps its pre-v0.92 digest and prompt exactly."""
+    plain = _make_request()
+    legacy_digest = handoff.compute_execution_handoff_digest(
+        code=plain.code, runner=plain.runner, executable_path=plain.executable_path,
+        gauss_version=plain.gauss_version, timeout_seconds=plain.timeout_seconds,
+        workspace_parent=plain.workspace_parent, readiness_state=plain.readiness_state,
+    )
+    check("47: no libraries: the pre-v0.92 digest", plain.digest == legacy_digest)
+    check("47: no libraries: no Library line", "Library:" not in handoff.render_execution_handoff_prompt(plain))
+    entry = ("gml", "C:/gauss/pkgs/gml/lib/gml.lcg", "a" * 64)
+    with_library = _make_request(libraries=(entry,))
+    check("47: a library changes the digest", with_library.digest != plain.digest)
+    check("47: ...and recomputes to itself", with_library.recompute_digest() == with_library.digest)
+    changed = _make_request(libraries=((entry[0], entry[1], "b" * 64),))
+    check("47: a changed index hash changes the digest", changed.digest != with_library.digest)
+    check("47: the prompt names the library and its index",
+          "Library: gml (C:/gauss/pkgs/gml/lib/gml.lcg)" in handoff.render_execution_handoff_prompt(with_library))
+
+
 def _run_all() -> int:
     test_fns = [obj for name, obj in sorted(globals().items()) if name.startswith("test_") and callable(obj)]
     for fn in test_fns:

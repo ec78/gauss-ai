@@ -34,6 +34,17 @@ except ImportError as exc:
     raise SystemExit(0)
 
 import gauss_ai_config as config_mod  # noqa: E402
+
+# v0.92.0: a session now READS the configured executable's installation
+# (`gauss.cfg`, `.lcg` files). Before, a test that left `gauss_executable`
+# out only carried the machine's own path around; now it would read a real
+# GAUSS install, which no test may do (CLAUDE.md). So the server sees an
+# empty user config and no executable environment variable here; a test
+# that wants an installation passes a synthetic one explicitly (test 44).
+server_mod._config = config_mod.GaussAiConfig()
+import os as _os  # noqa: E402
+_os.environ.pop(config_mod.ENV_GAUSS_EXECUTABLE, None)
+
 import gauss_chat_provider as provider_mod  # noqa: E402
 import gauss_conversation_engine as engine_mod  # noqa: E402
 import gauss_execution_handoff as handoff_mod  # noqa: E402
@@ -1010,6 +1021,49 @@ def test_43_v090_gaps_name_the_parameter_of_the_call_form() -> None:
         params = [(g["argument"], g["parameter"]) for g in resp.get("coverage_gaps", [])]
         check("43: the gap names depvar (no documented type), not formula", params == [(2, "depvar")])
         check("43: review_required for that gap only", resp["handoff_readiness"]["state"] == "review_required")
+
+
+def test_44_v092_installed_libraries_reported_bound_and_rechecked() -> None:
+    """v0.92.0 (planning v0.92 §3.5-§3.6): the session reports which
+    installed libraries `library` may name (live finding 82.12: the client
+    had to look on disk); a candidate's prompt names the library and its
+    index; and an index changed between validation and prepare makes the
+    prepare `validation_stale`. The fixture is test 175's fake install."""
+    import test_gauss_conversation_engine as engine_tests
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root, exe = engine_tests._v092_fixture(Path(tmp))
+        start = server_mod.gauss_session_start(
+            runner="fake", docs_root=str(root), workspace_parent=tmp, gauss_executable=str(exe),
+        )
+        sid = start["session_id"]
+        check("44: installed_libraries reported", start.get("installed_libraries") == {
+            "allowed": ["alpha"], "not_allowed": ["delta", "gamma"],
+        })
+        code = "library alpha;\ny = rndn(20, 1);\nx = rndn(20, 2);\nb = pfit(y, x);\nprint b;"
+        validation = server_mod.gauss_validate_code(sid, code)
+        check("44: a candidate", validation["handoff_readiness"]["state"] == "handoff_candidate")
+        check("44: naming its library", [lib["name"] for lib in validation.get("libraries", [])] == ["alpha"])
+        prepared = server_mod.gauss_execution_prepare(sid, validation["validation_id"])
+        check("44: the prompt names the library", "Library: alpha (" in prepared.get("rendered_prompt", ""))
+
+        again = server_mod.gauss_validate_code(sid, code)
+        index = Path(tmp) / "gauss" / "pkgs" / "alpha" / "lib" / "alpha.lcg"
+        index.write_text(index.read_text(encoding="utf-8") + "    pnew : proc : 99\n", encoding="utf-8")
+        stale = server_mod.gauss_execution_prepare(sid, again["validation_id"])
+        check("44: a changed index is validation_stale", stale.get("error") == "validation_stale")
+        check("44: ...and the id is not spent", "rendered_prompt" not in stale)
+
+        # An executable with no gauss.cfg beside it (never the machine's own
+        # configured GAUSS, which a test must not read).
+        bare = Path(tmp) / "bare"
+        bare.mkdir()
+        (bare / "tgauss.exe").write_bytes(b"")
+        none_start = server_mod.gauss_session_start(
+            runner="fake", docs_root=str(root), workspace_parent=tmp, gauss_executable=str(bare / "tgauss.exe"),
+        )
+        check("44: no installation evidence: installed_libraries is null",
+              "installed_libraries" in none_start and none_start["installed_libraries"] is None)
 
 
 def _run_all() -> int:
