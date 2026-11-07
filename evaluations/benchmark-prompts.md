@@ -8644,3 +8644,84 @@ Expected behavior:
 
 Expected behavior:
 - Outside gauss-ai's scope; an honest answer.
+
+## MCP Installed Libraries of v0.92.0 (Live Client)
+
+Evaluates v0.92.0 live through a REAL Claude Code client opened in an empty folder outside the repository (no `CLAUDE.md`, memory note or repository `.mcp.json` in its context), with the real-GAUSS opt-in. v0.92.0 lets `library <name>;` reach a handoff for an installed package with documentation pages of its own, resolved as GAUSS resolves it, and makes a package call without its library `not_ready`. The user asked each task in plain words and answered every run prompt themselves. Run files `2026-11-06-code-assistant-mcp-installed-libraries-run-001.md` … `-011.md`; plan v0.92 §12.
+
+### Prompt 83.1: Start a session, confirm the opt-in and installed libraries; run it
+
+"Start a gauss-ai session, then check and run: x = { 1, 1 }; print sumc(x);"
+
+Expected behavior:
+- `server_version` 0.92.0, `real_gauss_allowed: true`, `installed_libraries`; one approved run.
+
+### Prompt 83.2: Which installed packages are usable
+
+"Which GAUSS packages do I have installed that I can use here?"
+
+Expected behavior:
+- An answer from `installed_libraries`, not the disk.
+
+### Prompt 83.3: Train/test split with GML
+
+"Split 200 rows of simulated data into training and test sets, 70/30, and print how many rows are in each"
+
+Expected behavior:
+- `library gml;` passes the library rule.
+
+### Prompt 83.4: Lasso with GML
+
+"Fit a lasso regression on simulated data where only 3 of 10 predictors matter, and print the coefficients."
+
+Expected behavior:
+- `library gml;` passes the library rule.
+
+### Prompt 83.5: K-means with GML
+
+"Cluster 150 random 2-D points into 3 groups with k-means and print how many points are in each group."
+
+Expected behavior:
+- `library gml;` passes the library rule.
+
+### Prompt 83.6: Unit-root test with one break (tspdlib); run it
+
+"Test a simulated random walk that has a level shift for a unit root, allowing for one structural break."
+
+Expected behavior:
+- A `tspdlib` test with `library tspdlib;` reaches a prompt and runs.
+
+### Prompt 83.7: GARCH(1,1) through tsmt; run it
+
+"Estimate a GARCH(1,1) model on simulated returns and print the parameters."
+
+Expected behavior:
+- `garchFit` through `library tsmt;`; may fail inside the incomplete `timeseries` code.
+
+### Prompt 83.8: Classification metrics with GML; run it (planned decline)
+
+"Compute classification metrics for actual labels 1 0 1 1 0 1 0 0 and predicted labels 1 0 0 1 0 1 1 0."
+
+Expected behavior:
+- A GML call reaches a prompt; the user declines.
+
+### Prompt 83.9: Re-prepare a declined validation_id
+
+"Call gauss_execution_prepare again with the validation_id from the run I just declined, and show me the raw response."
+
+Expected behavior:
+- A declined, spent `validation_id` is refused (77.10).
+
+### Prompt 83.10: Quantile ARDL with an undocumented package (qardl)
+
+"Estimate a quantile ARDL model with the qardl package on simulated data."
+
+Expected behavior:
+- not_ready: no pages of its own.
+
+### Prompt 83.11: Legacy xy plot (pgraph)
+
+"Draw an old-style xy line plot of sin(x) for x from 0.1 to 10."
+
+Expected behavior:
+- not_ready: `library pgraph;` and `pgraph` calls.
