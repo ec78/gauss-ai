@@ -11,6 +11,8 @@ This file records notable changes to the GAUSS AI framework.
 - **Diffs:** 1,399 programs against `v0.91.1`. With this machine's installation, 27 move up (20 to `handoff_candidate`: GML, `tspdlib`, the library probes), all in-memory, all run in GAUSS with no file created (two fail inside the package: a missing GML DLL function, a `tspdlib` internal error); 39 move down, every one a docs example with its `library` line removed. No corpus program moves down. Without an installation, 16 move to `review_required` and none up.
 - **Corrected:** the 82.12 record (a `trainTestSplit` file form the client claimed is not documented).
 
+- **Published `v0.92.0` to PyPI (2026-11-06, run `42319052456`).**
+
 - **`v0.91.1`: the expression trace bound is 7 assignments, not 3** (planning v0.91 §13). Live evaluation 82.2's standard-errors program (`vcv -> s2 -> u -> b_hat -> Xty -> y -> X`) stayed unknown at 3, and the client rewrote `sqrt(...)` as `(...) .^ 0.5` to get past it. The trace is now memoized per (governing statement, depth), so its cost is polynomial; at 7 without it, a branching chain took seconds and could grow without limit. **Diffs:** over 626 programs (v0.91's 581, its 24 probes and 82.x's 21 snippets) the memoized trace at 3 equals `v0.91.0` in every field; at 7, two rows move to `handoff_candidate` (82.2's two drafts, both run in GAUSS with no error) and none moves down; 14 others keep their verdict and lose only the bound gap.
 
 - **Published `v0.91.1` to PyPI (2026-11-06, run `42310197052`).**
