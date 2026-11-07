@@ -3624,7 +3624,14 @@ def _v092_fixture(tmp: Path) -> tuple[Path, Path]:
         encoding="utf-8",
     )
     (gauss / "lib" / "gauss.lcg").write_text("src/x.src\n    gcore : proc : 1\n", encoding="utf-8")
-    for package, text in {"alpha": "src/a.src\n    pfit : proc : 10\n", "delta": "src/d.src\n    dfit : proc : 1\n    qfit : proc : 2\n",
+    # `beta` is shadowed by `aardvark`'s alias (like `tsmt`); only the shadowed
+    # index defines `struct oldOut` (like `garchEstimation`, live 83.7).
+    for package, name, text in (("aardvark", "beta", "src/b.src\n    bnew : proc : 1\n"),
+                                ("beta", "beta", "src/b.src\n    struct oldOut : definition : 3\n")):
+        (gauss / "pkgs" / package / "lib").mkdir(parents=True)
+        (gauss / "pkgs" / package / "lib" / f"{name}.lcg").write_text(text, encoding="utf-8")
+    for package, text in {"alpha": "src/a.src\n    pfit : proc : 10\n    struct pModel : definition : 3\n",
+                          "delta": "src/d.src\n    dfit : proc : 1\n    qfit : proc : 2\n",
                           "gamma": "C:/gauss/pkgs/gamma/src/g.src\n"}.items():
         (gauss / "pkgs" / package / "lib").mkdir(parents=True)
         (gauss / "pkgs" / package / "lib" / f"{package}.lcg").write_text(text, encoding="utf-8")
@@ -3692,6 +3699,45 @@ def test_175_v092_library_statements_and_package_calls() -> None:
         reasons = " ".join(unrelated.handoff_readiness.reasons)
         check("175: qfit (alpha's, only in unrelated delta): not_ready", unrelated.handoff_readiness.state == "not_ready")
         check("175: ...never pointing at delta", "delta" not in reasons and "no installed index of that package" in reasons)
+
+
+def test_176_v0921_package_structure_types() -> None:
+    """v0.92.1 (live finding 83.7): `struct garchEstimation gOut;` after
+    `library tsmt;` was handoff_candidate, but only the shadowed legacy
+    index defines it and GAUSS stops with G0507. A declared type the code
+    neither defines nor loads is now not_ready when some index defines it."""
+    import gauss_installed_libraries as libraries_mod
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root, exe = _v092_fixture(Path(tmp))
+        installation = libraries_mod.load_installation(str(exe))
+        body = "y = rndn(20, 1);\nx = rndn(20, 2);\nb = pfit(y, x);\nprint b;"
+
+        loaded = engine_mod.validate_code("library alpha;\nstruct pModel m;\n" + body, docs_root=str(root),
+                                          installation=installation)
+        check("176: a structure of the loaded library: still a candidate",
+              loaded.handoff_readiness.state == "handoff_candidate")
+        missing = engine_mod.validate_code("struct pModel m;\nx = rndn(20, 2);\nprint meanc(x);", docs_root=str(root),
+                                           installation=installation)
+        check("176: the same structure without its library: not_ready", missing.handoff_readiness.state == "not_ready")
+        check("176: ...naming the library and G0507",
+              any("add `library alpha;`" in r and "G0507" in r for r in missing.handoff_readiness.reasons))
+        shadowed = engine_mod.validate_code("library alpha;\nstruct oldOut o;\n" + body, docs_root=str(root),
+                                            installation=installation)
+        check("176: a type only the shadowed index defines: not_ready",
+              shadowed.handoff_readiness.state == "not_ready")
+        check("176: ...naming that index", any("defined only by" in r and "G0507" in r
+                                              for r in shadowed.handoff_readiness.reasons))
+        own = engine_mod.validate_code(
+            "library alpha;\nstruct oldOut { matrix v; };\nstruct oldOut o;\n" + body, docs_root=str(root),
+            installation=installation,
+        )
+        check("176: a type the code defines itself is never flagged",
+              not any(f.name.lower() == "oldout" for f in own.pre_execution.system_statements))
+        unknown = engine_mod.validate_code("library alpha;\nstruct nowhereType n;\n" + body, docs_root=str(root),
+                                           installation=installation)
+        check("176: a type no index defines is left as before",
+              not any(f.name.lower() == "nowheretype" for f in unknown.pre_execution.system_statements))
 
 
 def run_tests() -> int:

@@ -110,6 +110,26 @@ class Installation:
         named library (lb19)."""
         return tuple(index for index in (self.resolve("user"), self.resolve("gauss")) if index is not None)
 
+    def all_indexes(self) -> tuple[LibraryIndex, ...]:
+        """v0.92.1: EVERY `.lcg` file on the search path, shadowed ones
+        included, in search order. `library tsmt;` never loads
+        `pkgs\\tsmt\\lib\\tsmt.lcg` here, but that file is the only one
+        defining `struct garchEstimation` -- live evaluation 83.7 declared it
+        and GAUSS stopped with G0507 (planning v0.92 §13)."""
+        found: list[LibraryIndex] = []
+        for directory in self.search_path:
+            try:
+                entries = sorted(os.listdir(directory), key=str.lower)
+            except OSError:
+                continue
+            for entry in entries:
+                stem, ext = os.path.splitext(entry)
+                if ext.lower() == ".lcg":
+                    index = _read_index(stem.lower(), os.path.join(directory, entry), self.package_dir)
+                    if index is not None:
+                        found.append(index)
+        return tuple(found)
+
     def reachable_library_names(self) -> tuple[str, ...]:
         """Every distinct `<name>` with a `<name>.lcg` on the search path, in
         first-found order -- what `library <name>;` could load here."""

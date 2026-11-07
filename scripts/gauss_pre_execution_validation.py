@@ -5414,6 +5414,14 @@ def check_dataset_arguments(
 # v0.92.0: installed libraries (planning/v0.92-installed-libraries.md)
 # ---------------------------------------------------------------------------
 
+#: v0.92.1: a structure declaration `struct T name[, ...];` (not a
+#: definition `struct T {`, which `_NAMED_STRUCT_DEFINITION_RE` reads), on the
+#: masked statement.
+_STRUCT_DECLARATION_RE = re.compile(r"^\s*struct\s+([A-Za-z_][A-Za-z0-9_]*)\s+[A-Za-z_]", re.IGNORECASE)
+#: Not `_STRUCT_DEFINITION_RE` (v0.86.0, also anonymous `struct {`): a
+#: second binding of that name replaced it and broke test 178 (d39).
+_NAMED_STRUCT_DEFINITION_RE = re.compile(r"^\s*struct\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{", re.IGNORECASE)
+
 _LIBRARY_NAMES_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*$")
 
 
@@ -5462,8 +5470,17 @@ def analyze_libraries(
     findings: list[SystemStatementFinding] = []
     allowed_lines: set[int] = set()
     last_active: "tuple[libraries_mod.LibraryIndex, ...]" = ()
+    declared_structs: list[tuple[str, int]] = []
+    defined_structs: set[str] = set()
     depth = 0
     for statement in source_statements(code):
+        definition = _NAMED_STRUCT_DEFINITION_RE.match(statement.masked)
+        if definition:
+            defined_structs.add(definition.group(1).lower())
+        else:
+            declaration = _STRUCT_DECLARATION_RE.match(statement.masked)
+            if declaration:
+                declared_structs.append((declaration.group(1), statement.line))
         word = _leading_word(statement.masked)
         if word in _BLOCK_CLOSE_KEYWORDS:
             depth = max(0, depth - 1)
@@ -5522,6 +5539,43 @@ def analyze_libraries(
         findings.append(_library_finding(
             call.line_number, call.symbol, detail, SystemStatementCategory.LIBRARY_REQUIRED.value,
         ))
+    # v0.92.1 (planning v0.92 §13; live finding 83.7): a structure type the
+    # code declares but neither defines nor loads. `struct garchEstimation
+    # gOut;` after `library tsmt;` was handoff_candidate; only the shadowed
+    # legacy `pkgs\tsmt\lib\tsmt.lcg` defines it, and GAUSS 26.1.4 stops
+    # with G0507. Flagged only when SOME index on the search path defines the
+    # type (core structures -- `DS`, `PV`, `olsmtControl` -- are in the
+    # always-loaded `gauss.lcg`); a type no index lists is left as before.
+    if installation is not None and declared_structs:
+        every_index = installation.all_indexes()
+        seen_types: set[str] = set()
+        for type_name, line in declared_structs:
+            key = type_name.lower()
+            if key in seen_types or key in defined_structs or any(key in i.symbols for i in loaded):
+                continue
+            seen_types.add(key)
+            definers = [i for i in every_index if key in i.symbols]
+            if not definers:
+                continue
+            usable = [
+                i for i in definers
+                if installation.resolve(i.name) is not None
+                and installation.resolve(i.name).path == i.path
+                and libraries_mod.library_is_usable(i, attribution)
+            ]
+            if usable:
+                detail = (
+                    f"is a structure type defined by the installed library `{usable[0].name}`, which this code "
+                    f"does not load (add `library {usable[0].name};`) -- GAUSS would stop with G0507 "
+                    "(undefined structure)"
+                )
+            else:
+                detail = (
+                    f"is a structure type defined only by {definers[0].path}, which no `library` statement here "
+                    "loads (GAUSS resolves that library name to another index, or it cannot be used in a handoff) "
+                    "-- GAUSS would stop with G0507 (undefined structure)"
+                )
+            findings.append(_library_finding(line, type_name, detail, SystemStatementCategory.LIBRARY_REQUIRED.value))
     return LibraryAnalysis(
         allowed_lines=frozenset(allowed_lines), findings=tuple(findings), active=last_active,
         review_reasons=tuple(review),
@@ -5551,8 +5605,10 @@ def _library_statement_outcome(
             return (f"names `{name}`, whose index ({index.path}) lists no symbols, so it defines nothing in "
                     "GAUSS 26.1.4 (planning v0.92 §2.2)")
         if index.package_dir is None:
-            return (f"names `{name}`, whose index ({index.path}) is not an installed package; GAUSS's legacy "
-                    "graphics (`pgraph`) write `graphic.tkf` files (planning v0.92 §9)")
+            # v0.92.1 (live finding 83.11): "not an installed package" read
+            # as a contradiction beside "the installed library `pgraph`".
+            return (f"names `{name}`, which is installed with GAUSS itself ({index.path}) but is not a package; "
+                    "GAUSS's legacy graphics (`pgraph`) write `graphic.tkf` files (planning v0.92 §9)")
         if not libraries_mod.library_is_documented(index, attribution):
             return (f"names `{name}`, which has no pages of its own in the fetched GAUSS documentation, so its "
                     "functions cannot be checked (planning v0.92 §8.1)")

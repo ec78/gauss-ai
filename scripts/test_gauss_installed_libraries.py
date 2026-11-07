@@ -215,6 +215,17 @@ def test_10_the_index_is_read_fresh_every_time() -> None:
         check("10: and the digest changes", after.sha256 != before.sha256)
 
 
+def test_12_v0921_all_indexes_include_shadowed_ones() -> None:
+    """v0.92.1 (live finding 83.7): the shadowed index is the only one that
+    defines some structure types, so it must be visible to the check."""
+    with tempfile.TemporaryDirectory() as tmp:
+        installation = libraries_mod.load_installation(str(build_fake_gauss(Path(tmp))))
+        paths = [Path(i.path).parent.parent.name + "/" + Path(i.path).name for i in installation.all_indexes()]
+        check("12: both beta indexes are listed, the alias first", paths.index("aardvark/beta.lcg") < paths.index("beta/beta.lcg"))
+        check("12: the shadowed one lists its own symbols",
+              any("legacyonly" in i.symbols for i in installation.all_indexes()))
+
+
 def test_11_module_reads_only() -> None:
     """The module never launches anything, writes anything or opens a
     network connection."""

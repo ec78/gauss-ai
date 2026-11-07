@@ -1038,7 +1038,8 @@ def test_44_v092_installed_libraries_reported_bound_and_rechecked() -> None:
         )
         sid = start["session_id"]
         check("44: installed_libraries reported", start.get("installed_libraries") == {
-            "allowed": ["alpha"], "not_allowed": ["delta", "gamma"],
+            # v0.92.1: the fixture gained a shadowed `beta` with no pages.
+            "allowed": ["alpha"], "not_allowed": ["beta", "delta", "gamma"],
         })
         code = "library alpha;\ny = rndn(20, 1);\nx = rndn(20, 2);\nb = pfit(y, x);\nprint b;"
         validation = server_mod.gauss_validate_code(sid, code)
