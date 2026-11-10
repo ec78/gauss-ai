@@ -319,6 +319,105 @@ def extract_function_directive_details(lines: list[str]) -> dict[str, list[str]]
     }
 
 
+#: v0.93.0 (planning v0.93 §3.2-§3.3): one `:rtype <name>: <text>` line, read
+#: from the RAW page (`outputs_section` is compacted to 900 characters a
+#: block, so a later output's `:rtype` or a member table can be cut off).
+_RAW_RTYPE_RE = re.compile(r"^\s*:rtype\s+&?([A-Za-z_][A-Za-z0-9_]*)\s*:[ \t]*(.*)$")
+_RAW_RETURN_RE = re.compile(r"^(\s*):return\s+&?([A-Za-z_][A-Za-z0-9_]*)\s*:")
+#: A `csv-table` member row: `"mdl.assignments","Nx1 matrix, ..."`.
+_CSV_MEMBER_ROW_RE = re.compile(r'^\s*"([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)"\s*,\s*"([^"]*)"')
+#: A `list-table` member row's first cell: `* - gout.aic` (its type is the
+#: next non-blank line, `- scalar, ...`).
+_LIST_MEMBER_CELL_RE = re.compile(r"^\s*\*\s+-\s+([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*$")
+_LIST_SECOND_CELL_RE = re.compile(r"^\s*-\s+(.+)$")
+_INCLUDE_RE = re.compile(r"^\s*\.\.\s+include::\s+(\S+)\s*$")
+
+
+def _member_rows(lines: list[str], structure: str) -> dict[str, str]:
+    """`{member (lowercase): type text}` for every member row of `structure`
+    (matched case-insensitively: `tsmt/include/garchestimation.rst` writes
+    `gout.aic` for `garchFit.rst`'s `gOut`) in `lines`. Rows naming another
+    structure (an input `ctl.*` table on the same page) are never read. The
+    first row for a member wins."""
+    rows: dict[str, str] = {}
+    wanted = structure.lower()
+    for idx, line in enumerate(lines):
+        csv = _CSV_MEMBER_ROW_RE.match(line)
+        if csv and csv.group(1).lower() == wanted:
+            rows.setdefault(csv.group(2).lower(), csv.group(3).strip())
+            continue
+        cell = _LIST_MEMBER_CELL_RE.match(line)
+        if cell and cell.group(1).lower() == wanted:
+            following = next((later for later in lines[idx + 1:] if later.strip()), "")
+            second = _LIST_SECOND_CELL_RE.match(following)
+            if second:
+                rows.setdefault(cell.group(2).lower(), second.group(1).strip())
+    return rows
+
+
+def extract_output_evidence(lines: list[str], path: Path, docs_root: Path) -> dict[str, Any]:
+    """v0.93.0 (planning v0.93 §3.2-§3.3): what a page documents about its
+    OUTPUTS, read from the raw page rather than the compacted sections.
+
+    - `output_types`: `{output name (lowercase): :rtype text}` for every
+      `:rtype` line in a `.. function::` block (an empty text stays empty:
+      `trainTestSplit.rst`'s `:rtype y_train:` names no type).
+    - `result_members`: `{structure name (lowercase): {member: type text}}`
+      for each `:return <name>:` whose own block (the lines indented deeper
+      than it) holds a member table, inline (`csv-table` or `list-table`) or
+      through an `.. include:: <file>` resolved next to the page. An include
+      that resolves outside `docs_root` is never read.
+
+    Text only: nothing here is classified or trusted; the validator decides
+    what a type text means (`classify_documented_type`)."""
+    output_types: dict[str, str] = {}
+    result_members: dict[str, dict[str, str]] = {}
+    try:
+        root = docs_root.resolve()
+    except OSError:
+        root = docs_root
+    in_function = False
+    for idx, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith(".. function::"):
+            in_function = True
+            continue
+        if in_function and stripped and not line.startswith((" ", "\t")):
+            in_function = False
+        if not in_function:
+            continue
+        rtype = _RAW_RTYPE_RE.match(line)
+        if rtype:
+            output_types.setdefault(rtype.group(1).lower(), rtype.group(2).strip())
+            continue
+        returned = _RAW_RETURN_RE.match(line)
+        if not returned:
+            continue
+        indent = len(returned.group(1).expandtabs())
+        block: list[str] = []
+        for later in lines[idx + 1:]:
+            if later.strip() and len(later) - len(later.lstrip()) <= indent:
+                break
+            block.append(later)
+        name = returned.group(2)
+        members = _member_rows(block, name)
+        for block_line in block:
+            include = _INCLUDE_RE.match(block_line)
+            if not include:
+                continue
+            try:
+                target = (path.parent / include.group(1)).resolve()
+                target.relative_to(root)
+                included = target.read_text(encoding="utf-8", errors="replace").splitlines()
+            except (OSError, ValueError):
+                continue
+            for member, text in _member_rows(included, name).items():
+                members.setdefault(member, text)
+        if members:
+            result_members.setdefault(name.lower(), members)
+    return {"output_types": output_types, "result_members": result_members}
+
+
 def find_param_block(param_blocks: list[str], name: str) -> str | None:
     prefix = f":param {name}:"
     for block in param_blocks:
@@ -452,6 +551,9 @@ def extract_match(
         "raw_section_headings": raw_section_headings(lines),
         "keyword_hits": keyword_result,
         "extraction_warnings": extraction_warnings,
+        # v0.93.0: read by `extract_documented_signature(...)` only; never
+        # mapped into the evidence schema or shown to a client.
+        "output_evidence": extract_output_evidence(lines, path, docs_root),
         "confidence": min(score / 200, 1.0),
         "unresolved_questions": unresolved,
     }

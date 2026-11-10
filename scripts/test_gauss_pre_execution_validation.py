@@ -3161,7 +3161,10 @@ def test_194_v091_every_unknown_path_names_its_reason() -> None:
         "^s": "is not a modelled",                             # string dereference, not unary power
         "&x": "is not a modelled",                             # address-of
         "1:3": "is not a modelled",                            # range outside an index
-        "x.b": "is not a modelled",                            # member access
+        # v0.93.0 superseded "is not a modelled": member access is now an
+        # operand when the member is documented (planning v0.93 §3.2); `x`
+        # here is `rndn(...)`'s result, which documents no members.
+        "x.b": "is not a documented member",
         "x[1][2]": "is not a modelled",
         "x .*. y": "is not a modelled",                        # Kronecker: not in the plan's list
         "x' x": "is not a modelled",                           # implicit product needs no space
@@ -3180,7 +3183,10 @@ def test_194_v091_every_unknown_path_names_its_reason() -> None:
     # live 82.2's standard-errors chain needs 7). The old checks were "three
     # deep traced, four deep unknown"; the same pair now sits at seven/eight.
     deep = "x = rndn(3, 1);\na = x + 1;\nb = a + 1;\nc = b + 1;\nd = c + 1;\nf = d + 1;\ng = f + 1;\nh = g + 1;\nk = h + 1;\n"
-    check("seven assignments deep: traced", _v091_infer("h * 2", deep).categories == ("matrix",))
+    # v0.93.0: `rndn(3, 1)` is now a vector (a literal 1 for its documented
+    # `C`), and `+ 1`, `* 2` keep it one (planning v0.93 §3.1); the bound
+    # under test is unchanged.
+    check("seven assignments deep: traced", _v091_infer("h * 2", deep).categories == ("vector",))
     check("eight assignments deep: unknown", "more than 7 assignments" in (_v091_infer("k * 2", deep).reason or ""))
     check("no code: an operand cannot be traced",
           validation_mod.infer_expression_category("x + 1", signatures=_v091_signatures()).categories is None)
@@ -3290,7 +3296,9 @@ def test_199_v0911_the_trace_reads_each_assignment_once() -> None:
         result = validation_mod.infer_expression_category("x3 * 2", code=code, signatures=_v091_signatures())
     finally:
         validation_mod.infer_expression_category = original
-    check("199: the branching chain is still a numeric matrix", result.categories == ("matrix",))
+    # v0.93.0: `x0 = rndn(3, 1)` is a vector and `+` keeps it one
+    # (planning v0.93 §3.1); the read count under test is unchanged.
+    check("199: the branching chain is still a numeric vector", result.categories == ("vector",))
     check(f"199: each assignment is read once ({len(calls)} reads)", len(calls) <= 8)
 
 
@@ -3316,6 +3324,389 @@ def test_200_v0911_live_822_standard_errors_chain_is_traced() -> None:
           _v091_infer("vcv * 1", code).categories == ("matrix",))
     check("200: `w * 1` (eight deep) is past the bound",
           "more than 7 assignments" in (_v091_infer("w * 1", code).reason or ""))
+
+
+# ---------------------------------------------------------------------------
+# v0.93.0: Result Shapes and Members (planning/v0.93-result-shapes-and-members.md)
+# ---------------------------------------------------------------------------
+
+import tempfile  # noqa: E402
+
+import command_doc_lookup as doc_lookup_mod  # noqa: E402
+
+
+def _v093_page_signature(symbol: str, page: str, *, extra_files: dict | None = None):
+    """A signature built the way the engine builds one: `extract_match(...)`
+    over a synthetic page in a temporary docs root (never a real checkout),
+    so the raw-page `output_evidence` is read exactly as in production."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "docs"
+        root.mkdir()
+        (root / f"{symbol.lower()}.rst").write_text(page, encoding="utf-8")
+        for rel, text in (extra_files or {}).items():
+            target = Path(tmp) / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text, encoding="utf-8")
+        match = doc_lookup_mod.extract_match(root / f"{symbol.lower()}.rst", root, symbol, 200, [])
+        return validation_mod.extract_documented_signature(symbol, match), match
+
+
+#: Modelled on `kmeansFit.rst`'s layout (a csv-table member table under the
+#: `:return mdl:` line; an input `ctl.*` list-table that must not be read).
+_V093_KFIT_PAGE = """kfit
+==============================================
+
+Format
+----------------------
+.. function:: mdl = kfit(X, clusters[, ctl])
+
+    :param X: The training features.
+    :type X: NxP matrix
+
+    :param clusters: The number of clusters.
+    :type clusters: Scalar
+
+    :param ctl: Optional input, an instance of a :class:`kfitControl` structure.
+
+        .. list-table::
+            :widths: auto
+
+            * - ctl.maxIters
+              - Scalar, the maximum number of iterations.
+
+    :return mdl: An instance of a :class:`kfitModel` structure.
+
+        .. csv-table::
+            :widths: auto
+
+                    "mdl.centroids","kxP matrix, containing the centroids."
+                    "mdl.assignments","Nx1 matrix, containing the centroid assignment."
+                    "mdl.clusterSS","Scalar, sum of squared differences."
+                    "mdl.labels","String array, the labels."
+                    "mdl.notes","See the remarks."
+                    "mdl.par","an instance of a PV structure, placed in the member matrix mdl.par."
+
+    :rtype mdl: struct
+
+Examples
+----------------
+::
+
+    mdl = kfit(X, 3);
+"""
+
+#: Modelled on `rndn.rst` (two forms; the second returns a state) and on
+#: `trainTestSplit.rst` (outputs named, no types).
+_V093_RNDN_PAGE = """rndn
+==============================================
+
+Format
+----------------
+.. function:: y = rndn(r, c)
+              { y, newstate } = rndn(r, c, state)
+
+    :param r: row dimension.
+    :type r: scalar
+
+    :param c: column dimension.
+    :type c: scalar
+
+    :param state: Optional argument.
+    :type state: scalar
+
+    :return y: standard normal random numbers.
+    :rtype y: RxC matrix
+
+    :return newstate: the updated state.
+    :rtype newstate: Opaque vector
+"""
+
+_V093_SPLIT_PAGE = """tsplit
+==============================================
+
+Format
+--------------------
+.. function::  { y_train, y_test } = tsplit(y, train_pct)
+
+    :param y:   The dependent variables.
+    :type y:   Nx1 vector, or NxK matrix.
+
+    :param train_pct:  The percentage.
+    :type train_pct: Scalar
+
+    :return y_train:  The training observations.
+    :rtype y_train:
+
+    :return y_test:  The remaining observations.
+"""
+
+
+def _v093_signatures() -> dict:
+    rndn, _ = _v093_page_signature("rndn", _V093_RNDN_PAGE)
+    kfit, _ = _v093_page_signature("kfit", _V093_KFIT_PAGE)
+    tsplit, _ = _v093_page_signature("tsplit", _V093_SPLIT_PAGE)
+    return {
+        "rndn": rndn, "kfit": kfit, "tsplit": tsplit,
+        "zeros": _signature("zeros", ".. function:: y = zeros(r, c)", ":type r: scalar\n:type c: scalar",
+                            ":rtype y: RxC matrix"),
+        # `selif.rst`'s `e` is an `Nx1 vector`; `strlen`'s argument a string.
+        "selif": _signature("selif", ".. function:: y = selif(x, e)", ":type x: NxK matrix\n:type e: Nx1 vector",
+                            ":rtype y: MxK matrix"),
+        "sumc": _signature("sumc", ".. function:: y = sumc(x)", ":type x: NxK matrix", ":rtype y: Kx1 matrix"),
+        "strlen": _signature("strlen", ".. function:: y = strlen(x)", ":type x: string", ":rtype y: scalar"),
+        "seqa": _signature("seqa", ".. function:: y = seqa(start, inc, n)",
+                           ":type start: scalar\n:type inc: scalar\n:type n: scalar", ":rtype y: Nx1 vector"),
+    }
+
+
+def _v093_role(argument: str, code: str):
+    return validation_mod.resolve_role_argument_category(argument, code=code, signatures=_v093_signatures())
+
+
+def test_201_v093_documented_dimensions_are_read_from_type_text() -> None:
+    """Planning v0.93 §3.1: the two dimension tokens a documented type
+    starts with, in every layout the published pages use."""
+    dims = validation_mod.documented_dimensions
+    check("201: RxC", dims("RxC matrix") == ("R", "C"))
+    check("201: r x c", dims("r x c matrix") == ("r", "c"))
+    check("201: rows x cols", dims("rows x cols matrix") == ("rows", "cols"))
+    check("201: Nx1", dims("Nx1 matrix") == ("N", "1"))
+    check("201: GML member markup", dims("(*P x nlambdas matrix*)") == ("P", "nlambdas"))
+    check("201: a compact multi-letter form is never split", dims("ncolorsx1 string array") is None)
+    check("201: no dimensions", dims("scalar") is None and dims("") is None and dims(None) is None)
+    refine = validation_mod.refine_by_dimensions
+    check("201: one 1 makes a vector", refine(("matrix",), (False, True)) == ("vector",))
+    check("201: two make a scalar", refine(("matrix",), (True, True)) == ("scalar",))
+    check("201: none decides nothing", refine(("matrix",), (False, False)) == ("matrix",))
+    check("201: only a plain matrix is refined", refine(("string", "matrix"), (True, True)) == ("string", "matrix"))
+    check("201: GML member type text", validation_mod.member_type_text("(*1 x nlambdas vector*) The value.")
+          == "1 x nlambdas vector")
+    check("201: csv member type text", validation_mod.member_type_text("Nx1 matrix, containing it.") == "Nx1 matrix")
+
+
+def test_202_v093_a_literal_one_dimension_makes_a_traced_call_a_vector() -> None:
+    """Planning v0.93 §3.1 (GAUSS 26.1.4 spot checks ve1, sp93): `rndn(20,
+    1)` is 20x1 and `rndn(1, 1)` is 1x1, as `RxC` with `c` = 1 says."""
+    cases = {
+        "x = rndn(20, 1);\n": ("vector",),
+        "x = rndn(1, 1);\n": ("scalar",),
+        "x = zeros(1, 4);\n": ("vector",),
+        "k = 1;\nx = rndn(5, k);\n": ("vector",),          # a name traced to the literal 1
+        "n = 9;\nx = rndn(n, 3);\n": ("matrix",),          # no dimension is 1
+        "k = 1.0;\nx = rndn(5, k);\n": ("vector",),
+        "k = 2 - 1;\nx = rndn(5, k);\n": ("matrix",),      # an expression is never evaluated
+    }
+    for code, expected in cases.items():
+        categories, origin, _cause, _rhs, _reason = _v093_role("x", code)
+        check(f"202: {code.strip()!r} -> {expected}", categories == expected and origin == "documented_return")
+    # A reassignment AFTER the producer is not read: `k` is traced at the
+    # producer's own statement.
+    categories, *_ = _v093_role("x", "k = 1;\nx = rndn(5, k);\nk = 7;\n")
+    check("202: the dimension is read where `x` is assigned", categories == ("vector",))
+    categories, *_ = _v093_role("x", "k = 7;\nx = rndn(5, k);\nk = 1;\n")
+    check("202: a later `k = 1` is not read", categories == ("matrix",))
+    # A dimension that is also an input's documented dimension is that
+    # input's shape, not a count (`powerm.rst`: `NxN` for `A: NxN` and a
+    # power `n`; `powerm(eye(3), 1)` is 3x3 in GAUSS 26.1.4).
+    powerm = _signature("powerm", ".. function:: B = powerm(A, n)", ":type A: NxN square matrix\n:type n: Scalar",
+                        ":rtype B: NxN square matrix")
+    check("202: powerm(A, 1) stays a matrix", validation_mod.refined_call_categories(
+        "powerm", ["A", "1"], ("matrix",), signatures={"powerm": powerm}, code=None, line_number=None, column=None,
+    ) == ("matrix",))
+    # The refinement is the role check's only: the unchanged resolver (read
+    # by the dataset registry and the precondition tracer) still says matrix.
+    base = validation_mod.resolve_argument_category_with_cause(
+        "x", code="x = rndn(20, 1);\n", signatures=_v093_signatures(),
+    )
+    check("202: the base resolver is unchanged", base[0] == ("matrix",))
+
+
+def test_203_v093_element_wise_expressions_of_one_vector_stay_vectors() -> None:
+    """Planning v0.93 §3.1 (decision 3), each shape spot-checked in GAUSS
+    26.1.4 (ve1, sp93): with a 5x1 `x`, these stay 5x1; `x .> x'` is 5x5."""
+    code = "x = rndn(20, 1);\ny = rndn(20, 1);\nm = rndn(20, 3);\nn = 4;\n"
+    sig = _v093_signatures()
+
+    def infer(text):
+        return validation_mod.infer_expression_category(text, code=code, signatures=sig)
+
+    for text in ("x .> 0", "(x .>= 0) .and (x .< 1)", "2 * x - 1", "2 / x", "x % 3", "x ^ 2", ".not (x .> 3)",
+                 "-x", "x .* x", "x - (2 * x)", "x + n", "(x .> 3) .and (x .< 4) .or (x .== 0)"):
+        result = infer(text)
+        check(f"203: {text!r} is a vector", result.categories == ("vector",) and result.origin == "expression_category")
+    for text in ("x .> x'", "x + y", "x ~ x", "x | 1", "x * x", "x / x", "x > 0", "x and 1", "x[1:3] .> 0",
+                 "x' .> 0", "m .> 0", "x .> m", "x'x", "not x", "x .* rndn(20, 1)",
+                 # Conservative: `*` or `/` anywhere with two non-scalar operands gives no
+                 # key, although GAUSS gives 5x1 here (sp93 "mix").
+                 "3 * x .* x - x / 4"):
+        result = infer(text)
+        check(f"203: {text!r} stays a matrix", result.categories == ("matrix",))
+    check("203: a scalar-only expression is unchanged", infer("n - 1").categories == ("matrix",))
+
+
+def test_204_v093_vector_categories_match_and_never_mismatch() -> None:
+    """A derived `vector` confirms a documented `vector` parameter
+    (`selif.rst`'s `e`); against a narrower parameter it stays a gap."""
+    sig = _v093_signatures()
+    code = "x = rndn(20, 1);\nm = rndn(20, 3);\n"
+
+    def roles(call_text, symbol, args):
+        call = validation_mod.GeneratedCall(symbol=symbol, argument_count=len(args), raw_arguments=args,
+                                            line_number=3)
+        return validation_mod.check_parameter_roles(call, signature=sig[symbol], code=code, signatures=sig)
+
+    checks = roles("selif(x, x .> 0)", "selif", ("x", "x .> 0"))
+    check("204: selif's x matches", checks[0].status == "match")
+    check("204: selif's e matches through an element-wise expression",
+          checks[1].status == "match" and "element-wise expression of one vector" in checks[1].explanation)
+    checks = roles("selif(m, m .> 0)", "selif", ("m", "m .> 0"))
+    check("204: a matrix comparison is still a gap, never a mismatch",
+          checks[1].status == "unknown" and checks[1].unknown_cause == "expression_category_imprecise")
+    checks = roles("seqa(1, 1, x)", "seqa", ("1", "1", "x"))
+    check("204: a vector call return against a scalar is imprecise, never a mismatch",
+          checks[2].status == "unknown" and checks[2].unknown_cause == "return_type_imprecise")
+    check("204: the wording names the documented shape",
+          "documented to return a `RxC` matrix, with a dimension of 1 here" in checks[2].explanation)
+    checks = roles("strlen(x .> 0)", "strlen", ("x .> 0",))
+    check("204: a vector expression against a string is a gap, never a mismatch",
+          checks[0].status == "unknown" and checks[0].unknown_cause == "expression_category_imprecise")
+
+
+def test_205_v093_output_evidence_is_read_from_the_raw_page() -> None:
+    """`command_doc_lookup.extract_output_evidence(...)`: every `:rtype`
+    (an empty one stays empty), the first output's member table in both
+    layouts, an include resolved next to the page, never one outside the
+    docs root, and never an input structure's rows."""
+    _sig, match = _v093_page_signature("kfit", _V093_KFIT_PAGE)
+    evidence = match["output_evidence"]
+    check("205: output types", evidence["output_types"] == {"mdl": "struct"})
+    members = evidence["result_members"]["mdl"]
+    check("205: csv rows", members["assignments"] == "Nx1 matrix, containing the centroid assignment."
+          and members["clusterss"] == "Scalar, sum of squared differences.")
+    check("205: an input structure's rows are never read", "maxiters" not in members)
+    _sig, match = _v093_page_signature("tsplit", _V093_SPLIT_PAGE)
+    check("205: an untyped output is kept empty", match["output_evidence"]["output_types"] == {"y_train": ""})
+    include_page = (
+        "gfit\n=====\n\nFormat\n------\n.. function:: gOut = gfit(y)\n\n"
+        "    :param y: data.\n    :type y: Nx1 vector\n\n"
+        "    :return gOut: structure containing the following members:\n\n"
+        "        .. include:: include/gest.rst\n\n"
+        "        .. include:: ../outside.rst\n\n"
+        "    :rtype gOut: struct\n"
+    )
+    include_text = "\n.. list-table::\n   :widths: auto\n\n   * - gout.aic\n     - scalar, Akaike.\n" \
+                   "   * - other.x\n     - matrix, another structure.\n"
+    outside_text = '"gOut.secret","scalar, outside the docs root."\n'
+    _sig, match = _v093_page_signature("gfit", include_page, extra_files={
+        "docs/include/gest.rst": include_text, "outside.rst": outside_text,
+    })
+    members = match["output_evidence"]["result_members"].get("gout", {})
+    check("205: an include's list-table rows, matched case-insensitively", members.get("aic") == "scalar, Akaike.")
+    check("205: another structure's rows in the include are not read", "x" not in members)
+    check("205: an include outside the docs root is never read", "secret" not in members)
+    check("205: the evidence is never mapped into the client schema",
+          "output_evidence" not in doc_lookup_mod.map_match_to_schema(match, "gfit"))
+
+
+def test_206_v093_documented_members_are_operands() -> None:
+    """Planning v0.93 §3.2 (GAUSS 26.1.4 km1: `mdl.assignments` is Nx1)."""
+    sig = _v093_signatures()
+    code = "X = rndn(50, 2);\nmdl = kfit(X, 3);\n"
+
+    def infer(text, at_code=code):
+        return validation_mod.infer_expression_category(text, code=at_code, signatures=sig)
+
+    lone = infer("mdl.assignments")
+    check("206: a lone member keeps its documented category (Nx1 -> vector)",
+          lone.categories == ("vector",) and lone.origin == "documented_member")
+    check("206: a scalar member", infer("mdl.clusterSS").categories == ("scalar",))
+    check("206: a member in an element-wise expression keeps the vector",
+          infer("mdl.assignments .== 2").categories == ("vector",))
+    check("206: an indexed member is a numeric operand", infer("mdl.centroids[., 1] * 2").categories == ("matrix",))
+    for text, reason in (
+        ("mdl.nothere", "not a documented member of `kfit`'s result"),
+        ("mdl.notes", "documented without a checkable type"),
+        # `sqpSolveMT.rst`'s `out.par` layout: the word "matrix" in the prose
+        # never makes a structure-valued member a matrix.
+        ("mdl.par", "is documented as a structure"),
+        ("X.b", "not a documented member of `rndn`'s result"),
+        ("q.b", "is not assigned from exactly one documented call"),
+        ("mdl.clusterSS.b", "is not a modelled"),
+    ):
+        result = infer(text)
+        check(f"206: {text!r} refuses ({reason})", result.categories is None and reason in (result.reason or ""))
+    written = code + "mdl.clusterSS = 0;\n"
+    check("206: a member write refuses, as before", infer("mdl.clusterSS", written).categories is None)
+    in_block = "X = rndn(50, 2);\nif 1;\nmdl = kfit(X, 3);\nendif;\n"
+    check("206: a producer inside a block refuses", infer("mdl.clusterSS", in_block).categories is None)
+    # Roles: a member MATCHes; against a narrower or other parameter it is a
+    # gap, never a MISMATCH; a name assigned from a member keeps the origin.
+    call_code = code + "a = mdl.clusterSS;\n"
+    for symbol, args, expected_status, expected_cause in (
+        ("sumc", ("mdl.assignments .== 1",), "match", None),
+        ("selif", ("X", "mdl.assignments .== 1"), "match", None),
+        ("seqa", ("1", "1", "a"), "match", None),
+        ("strlen", ("mdl.labels",), "unknown", "return_type_imprecise"),
+        ("strlen", ("mdl.clusterSS",), "unknown", "return_type_imprecise"),
+    ):
+        call = validation_mod.GeneratedCall(symbol=symbol, argument_count=len(args), raw_arguments=args, line_number=4)
+        checks = validation_mod.check_parameter_roles(call, signature=sig[symbol], code=call_code, signatures=sig)
+        last = checks[-1]
+        check(f"206: {symbol}{args} -> {expected_status}",
+              last.status == expected_status and last.unknown_cause == expected_cause)
+    categories, origin, *_ = validation_mod.resolve_role_argument_category("a", code=call_code, signatures=sig)
+    check("206: `a = mdl.clusterSS;` keeps the member origin", categories == ("scalar",) and origin == "documented_member")
+
+
+def test_207_v093_multiple_returns_take_their_documented_output_type() -> None:
+    """Planning v0.93 §3.3, decision 1(a): an output's own `:rtype`, by
+    position in a documented form of that length; an untyped output (the
+    split functions) is named as undocumented, never given a registry
+    type."""
+    cases = {
+        "{ y, st } = rndn(5, 1, 13);\n": (("vector",), "documented_return", None),
+        "{ y, st } = rndn(5, 3, 13);\n": (("matrix",), "documented_return", None),
+    }
+    for code, (expected, origin, cause) in cases.items():
+        result = _v093_role("y", code)
+        check(f"207: {code.strip()!r}", result[0] == expected and result[1] == origin and result[2] == cause)
+    st = _v093_role("st", "{ y, st } = rndn(5, 1, 13);\n")
+    check("207: the second output takes its own type", st[0] == ("vector",))
+    for code in (
+        "{ y, st, z } = rndn(5, 1, 13);\n",                  # no documented form has three outputs
+        "if 1;\n{ y, st } = rndn(5, 1, 13);\nendif;\n",     # inside a block
+        "{ y, y } = rndn(5, 1, 13);\n",                      # listed twice
+        "{ y, st } = undocumented(5);\n",                    # no signature
+        "// { y, st } = rndn(5, 1, 13);\n",                  # a comment is never code
+        's = "{ y, st } = rndn(5, 1, 13)";\n',               # nor is a string
+    ):
+        result = _v093_role("y", code)
+        check(f"207: {code.strip()!r} stays untraced", result[2] == "argument_untraced")
+    split = _v093_role("y_train", "y = rndn(9, 1);\n{ y_train, y_test } = tsplit(y, 0.7);\n")
+    check("207: an untyped output is return_type_undocumented, naming the call",
+          split[2] == "return_type_undocumented" and split[3] == "tsplit(y, 0.7)")
+    earlier = _v093_role("y", "y = \"s\";\n{ y, st } = rndn(5, 1, 13);\n")
+    check("207: the multiple target governs after an earlier plain write", earlier[0] == ("vector",))
+    # A plain write AFTER it is not followed: the unchanged base resolver
+    # refuses any name with a multiple-target write, and the new path only
+    # adds a trace when the multiple target is the governing write.
+    later = _v093_role("y", "{ y, st } = rndn(5, 1, 13);\ny = \"s\";\n")
+    check("207: a later plain write still refuses, as before", later[2] == "argument_untraced")
+    # The precondition tracer and the dataset registry still refuse: the
+    # default `_governing_assignment(...)` is unchanged.
+    check("207: the default governing assignment still refuses a multiple target",
+          validation_mod._governing_assignment("y", code="{ y, st } = rndn(5, 1, 13);\n") is None)
+
+
+def test_208_v093_lexical_discipline_for_members_and_targets() -> None:
+    """Members and target lists are read from the masked view only."""
+    sig = _v093_signatures()
+    code = "X = rndn(50, 2);\nmdl = kfit(X, 3);\n"
+    result = validation_mod.infer_expression_category('"mdl.assignments" $+ "x"', code=code, signatures=sig)
+    check("208: a member inside a string is never an operand", result.categories is None)
+    commented = "X = rndn(50, 2);\n/* mdl = kfit(X, 3); */\nmdl = rndn(5, 1);\n"
+    result = validation_mod.infer_expression_category("mdl.assignments", code=commented, signatures=sig)
+    check("208: a producer inside a comment is never read", result.categories is None)
 
 
 def run_tests() -> int:

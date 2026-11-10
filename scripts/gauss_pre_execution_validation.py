@@ -791,6 +791,90 @@ def _extract_documented_return_categories(outputs_section: str | None) -> tuple[
     return categories
 
 
+# ---------------------------------------------------------------------------
+# v0.93.0: documented dimensions, outputs and members
+# (planning/v0.93-result-shapes-and-members.md §3)
+# ---------------------------------------------------------------------------
+#
+# Live evaluation 83.x (finding 3) and 82.x (finding 2): GML code was held at
+# review_required because a `vector` parameter could never be confirmed
+# (`y = rndn(500, 1)` was only "a matrix"), a result member was never an
+# operand (`mdl.assignments`), and a name from `{ a, b } = f(...)` was never
+# traced. Each rule below reads only documented text or a literal, and every
+# category it gives can MATCH a parameter but never MISMATCH one. All of it is
+# used by the ROLE CHECK only (`resolve_role_argument_category(...)` and the
+# expression reader): the precondition tracer and the dataset-argument
+# registry keep calling the unchanged `resolve_argument_category_with_cause`.
+
+#: A documented shape's two dimensions, spaced (`rows x cols`, `r x c`,
+#: `P x nlambdas`, `1 x nlambdas`) or compact with one-letter or numeric
+#: dimensions (`RxC`, `Nx1`, `KxN`). A compact multi-letter form
+#: (`ncolorsx1`) is never split: which `x` separates is a guess.
+_DIMENSIONS_SPACED_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*|\d+)\s+x\s+([A-Za-z_][A-Za-z0-9_]*|\d+)\b")
+_DIMENSIONS_COMPACT_RE = re.compile(r"^\s*([A-Za-z]|\d+)[xX]([A-Za-z]|\d+)\b")
+#: The literal `1` (`1`, `1.`, `1.0`, `+1`): the only value ever read.
+_LITERAL_ONE_RE = re.compile(r"^\+?1(?:\.0*)?$")
+
+
+def documented_dimensions(type_text: str | None) -> tuple[str, str] | None:
+    """v0.93.0 (planning v0.93 §3.1): the two dimension tokens a documented
+    type text starts with (`rndn.rst`'s `RxC matrix` -> `("R", "C")`,
+    `kmeansFit.rst`'s member `Nx1 matrix` -> `("N", "1")`), or None. Read
+    from the type text alone, after the markup a member table uses
+    (`(*P x nlambdas matrix*)`)."""
+    if not type_text:
+        return None
+    text = type_text.replace("*", "").strip().lstrip("(").strip()
+    match = _DIMENSIONS_SPACED_RE.match(text) or _DIMENSIONS_COMPACT_RE.match(text)
+    return (match.group(1), match.group(2)) if match else None
+
+
+def refine_by_dimensions(categories: tuple[str, ...], ones: tuple[bool, bool]) -> tuple[str, ...]:
+    """v0.93.0: a documented `matrix` one of whose dimensions is known to be
+    1 is a `vector` (both: a `scalar`). Only exactly `("matrix",)` is
+    refined; a dimension not known to be 1 decides nothing. Shapes are never
+    otherwise computed."""
+    if categories != (TypeClass.MATRIX.value,):
+        return categories
+    if ones[0] and ones[1]:
+        return (TypeClass.SCALAR.value,)
+    if ones[0] or ones[1]:
+        return (TypeClass.VECTOR.value,)
+    return categories
+
+
+def member_type_text(description: str) -> str:
+    """v0.93.0: the type part of a member-table description: the leading
+    parenthesis of the GML layout (`(*1 x nlambdas vector*) The ...` ->
+    `1 x nlambdas vector`), otherwise the text before the first comma or
+    sentence end (`Nx1 matrix, containing ...` -> `Nx1 matrix`)."""
+    text = description.replace("*", "").strip()
+    if text.startswith("("):
+        close = text.find(")")
+        return text[1:close].strip() if close > 0 else text[1:].strip()
+    return re.split(r",|\.\s", text, maxsplit=1)[0].strip()
+
+
+#: v0.93.0 (planning v0.93 §3.3): one documented multiple-return form's
+#: output list, `{ y, newstate } = rndn(...)` -> `("y", "newstate")`.
+def _documented_output_forms(symbol: str, syntax_blocks) -> tuple[tuple[str, ...], ...]:
+    form_re = re.compile(rf"\{{([^{{}}]*)\}}\s*=\s*{re.escape(symbol)}\s*\(", re.IGNORECASE)
+    forms: list[tuple[str, ...]] = []
+    for block in syntax_blocks or ():
+        for match in form_re.finditer(block):
+            names = tuple(n.strip().lstrip("&").lower() for n in match.group(1).split(","))
+            # An optional output (`{ a [, b] }`) or anything but plain names
+            # is not a form this reads.
+            if not names or not all(_SIMPLE_NAME_RE.fullmatch(n) for n in names):
+                continue
+            if names not in forms:
+                forms.append(names)
+    return tuple(forms)
+
+
+_SIMPLE_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
 #: v0.90.0 (planning v0.90 §3.1): one documented call form's slot kinds.
 SLOT_REQUIRED = "required"
 SLOT_OPTIONAL = "optional"
@@ -938,6 +1022,18 @@ class DocumentedSignature:
     #: v0.90.0: each documented parameter's metadata by name (the same
     #: `:type`-derived values as `parameters`), shared by every form.
     parameters_by_name: "dict[str, DocumentedParameter]" = field(default_factory=dict, compare=False, hash=False)
+    #: v0.93.0 (planning v0.93 §3.1): the first `:rtype`'s two dimension
+    #: tokens (`rndn.rst`: `("R", "C")`), or None. A token that names one of
+    #: the function's own parameters is 1 when the call passes a literal 1.
+    return_dimensions: tuple[str, str] | None = None
+    #: v0.93.0 (§3.3): every documented `{ ... } = f(...)` form's outputs.
+    output_forms: tuple[tuple[str, ...], ...] = ()
+    #: v0.93.0 (§3.3): `{output name: :rtype text}` from the raw page; an
+    #: empty text means the page names the output but gives no type.
+    output_types: "dict[str, str]" = field(default_factory=dict, compare=False, hash=False)
+    #: v0.93.0 (§3.2): the member table of the FIRST output (the value
+    #: `mdl = f(...)` receives): `{member: type text}`.
+    result_members: "dict[str, str]" = field(default_factory=dict, compare=False, hash=False)
 
 
 #: v0.82.0: a documented `...` (`fred_load(formula[, ...])`, `gmmFit(&fct, y,
@@ -1040,7 +1136,27 @@ def extract_documented_signature(symbol: str, best_match: dict) -> DocumentedSig
         return_categories=_extract_documented_return_categories(best_match.get("outputs_section")),
         forms=tuple(forms),
         parameters_by_name={parameter.name: parameter for parameter in parameters},
+        **_output_evidence_fields(symbol, best_match),
     )
+
+
+def _output_evidence_fields(symbol: str, best_match: dict) -> dict:
+    """v0.93.0: the four output-evidence fields of a `DocumentedSignature`.
+    The first output's dimensions come from the same `:rtype` line
+    `return_categories` reads (`outputs_section`); output types and members
+    come from `command_doc_lookup.extract_output_evidence(...)`'s raw read
+    (absent from a hand-built `best_match`: then empty, never guessed)."""
+    match = _RETURN_TYPE_LINE_RE.search(best_match.get("outputs_section") or "")
+    evidence = best_match.get("output_evidence") or {}
+    output_types = dict(evidence.get("output_types") or {})
+    first_output = next(iter(output_types), None)
+    members = (evidence.get("result_members") or {}).get(first_output, {}) if first_output else {}
+    return {
+        "return_dimensions": documented_dimensions(match.group(2).strip()) if match else None,
+        "output_forms": _documented_output_forms(symbol, best_match.get("syntax_blocks")),
+        "output_types": output_types,
+        "result_members": dict(members),
+    }
 
 
 def _count_compatible(count: int, ranges: tuple[tuple[int, int], ...]) -> bool:
@@ -1384,6 +1500,12 @@ class ArgumentOrigin(str, enum.Enum):
     #: no shape is ever computed. Like `DOCUMENTED_RETURN` it can confirm a
     #: role (MATCH) but never refute one (MISMATCH).
     EXPRESSION_CATEGORY = "expression_category"
+    #: v0.93.0 (planning v0.93 §3.2): an argument that is exactly one result
+    #: member (`mdl.assignments`), or a name assigned from one, whose
+    #: category is the documented member table's. MATCH-never-MISMATCH, as
+    #: `DOCUMENTED_RETURN`: a documentation table is not proof of a run-time
+    #: shape.
+    DOCUMENTED_MEMBER = "documented_member"
     UNRESOLVED = "unresolved"
 
 
@@ -1606,6 +1728,8 @@ class _ExpressionReader:
         self.depth = depth
         self.memo = memo
         self.tokens = 0
+        self.shape_key: object = None
+        self.member_operand = False
 
     def _count(self) -> None:
         self.tokens += 1
@@ -1617,16 +1741,33 @@ class _ExpressionReader:
             i += 1
         return i
 
-    def read(self, start: int, end: int) -> tuple[tuple[str, ...], bool]:
+    def read(self, start: int, end: int) -> tuple[tuple[str, ...], str | None]:
         """Reads `masked[start:end]` as one expression. Returns `(categories,
-        single_call)`: `single_call` is True when the whole span is exactly
-        one call with no operator, sign or postfix, so the caller may keep
-        its exact documented category; otherwise `categories` is the
-        operands' categories (all numeric, or this raises)."""
+        exact)`: `exact` is `"call"` when the whole span is exactly one call
+        with no operator, sign or postfix, and `"member"` when it is exactly
+        one result member (v0.93.0), so the caller may keep the exact
+        documented category; otherwise None, and `categories` is the
+        expression's (all operands numeric, or this raises).
+
+        v0.93.0 (planning v0.93 §3.1, decision 3): `self.shape_key` is left
+        holding the span's SHAPE KEY: `"scalar"` when every operand is a
+        scalar and every operator keeps it one, `("vec", id)` when every
+        non-scalar operand is the same untransposed, unindexed vector `id`
+        (a traced name or a member) and every operator is element-wise, so
+        the result has that vector's shape, else None. Real `tgauss.exe -b`
+        (GAUSS 26.1.4, 2026-11-09, §2.2 ve1): with a 5x1 `x`, `(x .>= 0)
+        .and (x .< 1)` and `2 * x - 1` are 5x1, but `x .> x'` is 5x5, so two
+        different vectors (whose orientations may differ) never keep one.
+        The non-dotted comparisons and logical words give a scalar for a
+        matrix (`operators.rst`), `~`/`|` concatenate, and `*`/`/` between
+        two non-scalars is a matrix product or solve: each gives no key. The
+        result category is `vector` exactly when the key is a vector's."""
         masked = self.masked
         operands: list[tuple[str, ...]] = []
+        keys: list[object] = []
+        used: list[str] = []
         operators = 0
-        single_call = False
+        exact: str | None = None
         i = self._skip_space(start, end)
         if i >= end:
             raise _ExpressionRefused("it has an empty part")
@@ -1636,12 +1777,14 @@ class _ExpressionReader:
                 if masked.startswith("-", i):
                     self._count()
                     operators += 1
+                    used.append("-")
                     i = self._skip_space(i + 1, end)
                     continue
                 word = self._word_operator_at(i, end)
                 if word is not None and word[0] == "not":
                     self._count()
                     operators += 1
+                    used.append(".not" if masked[i] == "." else "not")
                     i = self._skip_space(word[1], end)
                     continue
                 break
@@ -1649,7 +1792,12 @@ class _ExpressionReader:
                 raise _ExpressionRefused("it ends with an operator")
             categories, i, was_call, postfixed = self._operand(i, end)
             operands.append(categories)
-            single_call = was_call and not postfixed and operators == 0 and len(operands) == 1
+            key = self.shape_key
+            if postfixed == "index" or (postfixed == "transpose" and key != "scalar"):
+                key = None
+            keys.append(key)
+            first_alone = operators == 0 and len(operands) == 1 and not postfixed
+            exact = "call" if was_call and first_alone else ("member" if self.member_operand and first_alone else None)
             # Operator position.
             after_transpose = postfixed == "transpose"
             j = self._skip_space(i, end)
@@ -1660,7 +1808,8 @@ class _ExpressionReader:
                 # the OLS idiom `invpd(x'x)`); only with no space between.
                 self._count()
                 operators += 1
-                single_call = False
+                used.append("implicit product")
+                exact = None
                 i = j
                 continue
             operator = self._binary_operator_at(j, end)
@@ -1668,18 +1817,23 @@ class _ExpressionReader:
                 raise _ExpressionRefused(self._unmodelled(j, end))
             self._count()
             operators += 1
-            single_call = False
+            used.append(masked[j:j + operator].lower())
+            exact = None
             i = self._skip_space(j + operator, end)
             if i >= end:
                 raise _ExpressionRefused("it ends with an operator")
-        if single_call:
-            return operands[0], True
+        if exact is not None:
+            self.shape_key = keys[0]
+            return operands[0], exact
         for categories in operands:
             if not categories or not all(c in _NUMERIC_CATEGORIES for c in categories):
                 raise _ExpressionRefused(
                     f"an operand's category ({'/'.join(categories) or 'none'}) is not numeric"
                 )
-        return (TypeClass.MATRIX.value,), False
+        self.shape_key = _expression_shape_key(keys, used)
+        if isinstance(self.shape_key, tuple):
+            return (TypeClass.VECTOR.value,), None
+        return (TypeClass.MATRIX.value,), None
 
     def _unmodelled(self, i: int, end: int) -> str:
         if self.masked[i] == "#":
@@ -1721,22 +1875,28 @@ class _ExpressionReader:
     def _operand(self, i: int, end: int) -> tuple[tuple[str, ...], int, bool, str | None]:
         """Reads one operand and its postfixes at `i`. Returns `(categories,
         next_offset, was_call, postfix)`, `postfix` being `"transpose"` when
-        the operand ended with `'`/`.'`, `"index"` for `[...]`, else None."""
+        the operand ended with `'`/`.'`, `"index"` for `[...]`, else None.
+        v0.93.0: also sets `self.shape_key` (see `read`) and
+        `self.member_operand` for the operand read."""
         masked = self.masked
         self._count()
         ch = masked[i]
         was_call = False
+        self.member_operand = False
         if ch == "(":
             close = _find_matching_paren(masked, i)
             if close is None or close >= end:
                 raise _ExpressionRefused("its parentheses do not match")
-            categories, _single = self.read(i + 1, close)
+            categories, _exact = self.read(i + 1, close)
             if not all(c in _NUMERIC_CATEGORIES for c in categories):
                 raise _ExpressionRefused(
                     f"a parenthesized operand's category ({'/'.join(categories)}) is not numeric"
                 )
+            # `self.shape_key` is the group's own, left by `read`.
+            self.member_operand = False
             i = close + 1
-        elif ch == "{":
+            return self._postfix(categories, i, end, None)
+        if ch == "{":
             close = _find_matching_brace(masked, i)
             if close is None or close >= end:
                 raise _ExpressionRefused("its braces do not match")
@@ -1746,9 +1906,11 @@ class _ExpressionReader:
             if literal not in _NUMERIC_CATEGORIES:
                 raise _ExpressionRefused(f"the literal `{self.view[i:close + 1]}` is not a numeric matrix literal")
             categories, i = (literal,), close + 1
+            self.shape_key = "scalar" if literal == TypeClass.SCALAR.value else None
         elif ch.isdigit() or (ch == "." and i + 1 < end and masked[i + 1].isdigit()):
             number = _EXPRESSION_NUMBER_RE.match(masked, i, end)
             categories, i = (TypeClass.SCALAR.value,), number.end()
+            self.shape_key = "scalar"
         elif ch.isalpha() or ch == "_":
             name_match = _EXPRESSION_NAME_RE.match(masked, i, end)
             name = name_match.group(0)
@@ -1758,9 +1920,31 @@ class _ExpressionReader:
             if j < end and masked[j] == "(":
                 categories, i = self._call(name, j, end)
                 was_call = True
+                self.shape_key = "scalar" if categories == (TypeClass.SCALAR.value,) else None
             else:
-                categories = self._traced(name)
                 i = name_match.end()
+                identity = name.lower()
+                if (
+                    i + 1 < end and masked[i] == "." and (masked[i + 1].isalpha() or masked[i + 1] == "_")
+                    and self._word_operator_at(i, end) is None
+                ):
+                    # v0.93.0 (planning v0.93 §3.2): `mdl.assignments`, a
+                    # documented result member. A second member
+                    # (`a.b.c`) is no operator, so the operator position
+                    # refuses it.
+                    member = _EXPRESSION_NAME_RE.match(masked, i + 1, end)
+                    categories = self._member(name, member.group(0))
+                    identity = f"{name.lower()}.{member.group(0).lower()}"
+                    self.member_operand = True
+                    i = member.end()
+                else:
+                    categories = self._traced(name)
+                if categories == (TypeClass.SCALAR.value,):
+                    self.shape_key = "scalar"
+                elif categories == (TypeClass.VECTOR.value,):
+                    self.shape_key = ("vec", identity)
+                else:
+                    self.shape_key = None
                 if i < end and masked[i] == "[":
                     # `x[., 2]`, `y[2:rows(y)]`: indexing a numeric operand
                     # gives a numeric operand. The index itself never decides
@@ -1775,7 +1959,8 @@ class _ExpressionReader:
                         raise _ExpressionRefused(f"operand `{name}` is not numeric, so its index is not modelled")
                     # A second index (`x[1][2]`) or a member after one
                     # (`x[1].b`) is no operator, so the operator position
-                    # refuses it.
+                    # refuses it. An indexed operand has no shape key.
+                    self.shape_key = None
                     return self._postfix(categories, close + 1, end, "index")
         else:
             raise _ExpressionRefused(self._unmodelled(i, end))
@@ -1794,9 +1979,11 @@ class _ExpressionReader:
 
     def _call(self, name: str, open_idx: int, end: int) -> tuple[tuple[str, ...], int]:
         """A documented call's categories are its documented `:rtype`'s, as
-        for a variable assigned from it. Its arguments never decide them and
-        are not read here (each call is checked on its own). Returns
-        `(categories, offset after the closing parenthesis)`."""
+        for a variable assigned from it. Its arguments never decide them,
+        except (v0.93.0, §3.1) that a literal 1 for a documented dimension
+        refines a `matrix` (`rndn(5, 1)` is a vector). Each call's own
+        arguments are checked on their own. Returns `(categories, offset
+        after the closing parenthesis)`."""
         close = _find_matching_paren(self.masked, open_idx)
         if close is None or close >= end:
             raise _ExpressionRefused(f"the call `{name}(` is not closed")
@@ -1805,7 +1992,24 @@ class _ExpressionReader:
             raise _ExpressionRefused(f"`{name}` has no documented signature")
         if not signature.return_categories:
             raise _ExpressionRefused(f"`{name}` has no documented return type")
-        return signature.return_categories, close + 1
+        inner = self.view[open_idx + 1:close]
+        arguments = _split_top_level_args(inner) if inner.strip() else []
+        categories = refined_call_categories(
+            name, arguments, signature.return_categories, signatures=self.signatures, code=self.code,
+            line_number=self.line_number, column=self.column,
+        )
+        return categories, close + 1
+
+    def _member(self, name: str, member: str) -> tuple[str, ...]:
+        """v0.93.0 (planning v0.93 §3.2): a documented result member's
+        category (`documented_member_categories`), or a refusal naming why."""
+        categories, reason = documented_member_categories(
+            name, member, code=self.code, line_number=self.line_number, column=self.column,
+            signatures=self.signatures,
+        )
+        if categories is None:
+            raise _ExpressionRefused(reason)
+        return categories
 
     def _traced(self, name: str) -> tuple[str, ...]:
         if self.code is None:
@@ -1817,6 +2021,30 @@ class _ExpressionReader:
         if TypeClass.UNKNOWN.value in categories:
             raise _ExpressionRefused(_operand_reason(name, cause, reason))
         return categories
+
+
+#: v0.93.0: the operators after which an operand's shape is the result's
+#: (element-wise arithmetic, element-wise comparisons and logical words,
+#: unary minus and `.not`); `*` and `/` only with at most one non-scalar.
+_SHAPE_PRESERVING_OPERATORS = frozenset({
+    ".*", "./", ".^", "+", "-", "^", "%", ".==", ".!=", ".>=", ".<=", ".<", ".>", "*", "/",
+    ".and", ".or", ".not", ".xor", ".eqv", ".eq", ".ne", ".lt", ".le", ".gt", ".ge",
+})
+
+
+def _expression_shape_key(keys: list[object], used: list[str]) -> object:
+    """v0.93.0: the shape key of one expression span (see
+    `_ExpressionReader.read`): `"scalar"`, `("vec", id)`, or None."""
+    if any(key is None for key in keys) or any(op not in _SHAPE_PRESERVING_OPERATORS for op in used):
+        return None
+    vectors = [key for key in keys if key != "scalar"]
+    if not vectors:
+        return "scalar"
+    if len(set(vectors)) != 1:
+        return None
+    if len(vectors) > 1 and ("*" in used or "/" in used):
+        return None
+    return vectors[0]
 
 
 def infer_expression_category(
@@ -1858,14 +2086,17 @@ def infer_expression_category(
         memo=_memo,
     )
     try:
-        categories, single_call = reader.read(0, len(reader.masked))
+        categories, exact = reader.read(0, len(reader.masked))
     except _ExpressionRefused as refused:
         return ExpressionCategory(None, ArgumentOrigin.UNRESOLVED.value, str(refused))
     except RecursionError:
         # Parenthesis nesting is bounded by MAX_EXPRESSION_TOKENS long before
         # Python's own limit; this is a backstop, never a pass.
         return ExpressionCategory(None, ArgumentOrigin.UNRESOLVED.value, "it is nested too deeply")
-    origin = ArgumentOrigin.DOCUMENTED_RETURN.value if single_call else ArgumentOrigin.EXPRESSION_CATEGORY.value
+    origin = {
+        "call": ArgumentOrigin.DOCUMENTED_RETURN.value,
+        "member": ArgumentOrigin.DOCUMENTED_MEMBER.value,  # v0.93.0
+    }.get(exact, ArgumentOrigin.EXPRESSION_CATEGORY.value)
     return ExpressionCategory(categories, origin)
 
 
@@ -1897,6 +2128,245 @@ def _governing_statement_start(
     if found is None or found_rhs != rhs:
         return None
     return found.line, found.column
+
+
+def _argument_is_one(
+    argument: str, *, code: str | None, line_number: int | None, column: int | None,
+) -> bool:
+    """v0.93.0: True when a call argument is the literal 1, directly or
+    through its governing literal assignment (`k = 1; rndn(n, k)`). Any
+    other argument is "not known to be 1", never "known not to be 1"."""
+    text = argument.strip()
+    if _LITERAL_ONE_RE.fullmatch(text):
+        return True
+    if code is None or not _SIMPLE_IDENTIFIER_RE.fullmatch(text) or text.endswith("'"):
+        return False
+    rhs = _governing_assignment(text, code=code, line_number=line_number, column=column)
+    return isinstance(rhs, str) and bool(_LITERAL_ONE_RE.fullmatch(rhs.strip()))
+
+
+def _dimension_ones(
+    dimensions: tuple[str, str], *, signature: "DocumentedSignature | None", arguments: list[str] | None,
+    code: str | None, line_number: int | None, column: int | None,
+) -> tuple[bool, bool]:
+    """v0.93.0 (planning v0.93 §3.1): which of two documented dimension
+    tokens is 1 at this call. A token `1` always is. A token naming one of
+    the function's parameters (case-insensitively: `rndn.rst`'s `RxC` for
+    `r`, `c`) is 1 when the argument in that parameter's position is
+    (`_argument_is_one`), in EVERY documented form that fits the argument
+    count with only required parameters up to that position; a form with an
+    optional group before it, or forms that disagree, decide nothing."""
+    def is_one(token: str) -> bool:
+        if _LITERAL_ONE_RE.fullmatch(token):
+            return True
+        if signature is None or arguments is None:
+            return False
+        # A token that is also a dimension of an input's documented type
+        # names that input's shape, not a count: `powerm.rst` returns `NxN`
+        # for `A: NxN square matrix` and a power `n` (`powerm(eye(3), 1)` is
+        # 3x3 in GAUSS 26.1.4), and `polygamma.rst`'s `NxK` is `z`'s shape,
+        # not its order `n`. Matching names case-insensitively (needed for
+        # `rndn.rst`'s `RxC` and `r`, `c`) would otherwise read those as 1.
+        for parameter in signature.parameters:
+            shape = documented_dimensions(parameter.source)
+            if shape is not None and token.lower() in (shape[0].lower(), shape[1].lower()):
+                return False
+        answers: set[bool] = set()
+        for form in signature.forms:
+            if not form.min_args <= len(arguments) <= form.max_args:
+                continue
+            position = 0
+            found: int | None = None
+            for kind, names in form.slots:
+                if kind != SLOT_REQUIRED:
+                    break
+                if names[0].lower() == token.lower():
+                    found = position
+                    break
+                position += 1
+            if found is None or found >= len(arguments):
+                return False
+            answers.add(_argument_is_one(arguments[found], code=code, line_number=line_number, column=column))
+        return answers == {True}
+
+    return is_one(dimensions[0]), is_one(dimensions[1])
+
+
+def _single_call(rhs: str) -> tuple[str, list[str]] | None:
+    """`(symbol, arguments)` when `rhs` is exactly one call `f(...)`."""
+    match = _SINGLE_CALL_RHS_RE.match(rhs)
+    if not match or _find_matching_paren(rhs, match.end() - 1) != len(rhs) - 1:
+        return None
+    return match.group(1), _split_top_level_args(rhs[match.end():-1]) if rhs[match.end():-1].strip() else []
+
+
+def refined_call_categories(
+    symbol: str, arguments: list[str], categories: tuple[str, ...], *,
+    signatures: "dict[str, DocumentedSignature] | None", code: str | None,
+    line_number: int | None, column: int | None,
+) -> tuple[str, ...]:
+    """v0.93.0 (§3.1): a documented call's first-return categories, refined
+    by its documented dimensions at this call: `rndn(500, 1)` (`RxC
+    matrix`) is a `vector`, `zeros(1, 1)` a `scalar`, `rndn(n, k)` stays
+    `matrix`. Real `tgauss.exe -b` (GAUSS 26.1.4, 2026-11-09, planning v0.93
+    §2.2) confirms the shapes the docs give."""
+    signature = (signatures or {}).get(symbol.lower())
+    if signature is None or signature.return_dimensions is None:
+        return categories
+    ones = _dimension_ones(
+        signature.return_dimensions, signature=signature, arguments=arguments,
+        code=code, line_number=line_number, column=column,
+    )
+    return refine_by_dimensions(categories, ones)
+
+
+#: v0.93.0: a member-table description of a STRUCTURE-valued member
+#: ("an instance of ... PV", ":class:`PV`", "structure").
+_STRUCTURE_MEMBER_RE = re.compile(r"\bstruct(?:ure)?\b|\binstance\b|:class:", re.IGNORECASE)
+
+
+def documented_member_categories(
+    name: str, member: str, *, code: str | None, line_number: int | None, column: int | None,
+    signatures: "dict[str, DocumentedSignature] | None",
+) -> tuple[tuple[str, ...] | None, str]:
+    """v0.93.0 (planning v0.93 §3.2): the documented category of
+    `name.member`, or `(None, reason)`. `name` must be governed by exactly
+    one plain `name = f(...);` (`_governing_assignment(...)`, which already
+    refuses on any member write `name.x = ...`), and `f`'s page must list
+    `member` in the member table of its first output (`kmeansFit.rst`:
+    `"mdl.assignments","Nx1 matrix, ..."`). The member's type text is
+    classified as any documented type, and a dimension `1` makes a `matrix`
+    a `vector` (`Nx1 matrix`). Real GAUSS (§2.3, km1) gives exactly the
+    documented shapes. A member's EXISTENCE is never checked here: a wrong
+    name still fails only in GAUSS (`G0504`, as for `gmmfit.rst`)."""
+    if code is None:
+        return None, f"member `{name}.{member}` cannot be traced without the surrounding code"
+    rhs = _governing_assignment(name, code=code, line_number=line_number, column=column)
+    call = _single_call(rhs) if isinstance(rhs, str) else None
+    if call is None:
+        return None, f"`{name}` is not assigned from exactly one documented call, so `.{member}` is not modelled"
+    signature = (signatures or {}).get(call[0].lower())
+    text = signature.result_members.get(member.lower()) if signature is not None else None
+    if text is None:
+        return None, f"`.{member}` is not a documented member of `{call[0]}`'s result"
+    type_text = member_type_text(text)
+    if _STRUCTURE_MEMBER_RE.search(type_text):
+        # `sqpSolveMT.rst`'s `out.par`: "an instance of structure of type
+        # :class:`PV` ... placed in the member matrix out.par." The word
+        # "matrix" in that prose must not make a structure a matrix.
+        return None, f"`{call[0]}`'s member `.{member}` is documented as a structure"
+    categories, _shape = classify_documented_type(type_text)
+    if TypeClass.UNKNOWN.value in categories:
+        return None, f"`{call[0]}`'s member `.{member}` is documented without a checkable type"
+    dimensions = documented_dimensions(type_text)
+    if dimensions is not None:
+        categories = refine_by_dimensions(categories, _dimension_ones(
+            dimensions, signature=None, arguments=None, code=None, line_number=None, column=None,
+        ))
+    return categories, ""
+
+
+def _dimensions_refined_from(
+    argument: str, inferred: tuple[str, ...], *, code: str | None, line_number: int | None,
+    column: int | None, signatures: "dict[str, DocumentedSignature] | None",
+) -> tuple[str, str] | None:
+    """v0.93.0: for the role check's wording only -- the documented
+    dimensions a `DOCUMENTED_RETURN` category was narrowed from (`rndn(20,
+    1)`: `("R", "C")`), or None when the category is the documented one."""
+    if inferred not in ((TypeClass.VECTOR.value,), (TypeClass.SCALAR.value,)):
+        return None
+    text = argument.strip()
+    if _SIMPLE_IDENTIFIER_RE.fullmatch(text) and code is not None:
+        governing = _governing_assignment(text.rstrip("'"), code=code, line_number=line_number, column=column)
+        if governing is None:
+            governing = _governing_assignment(
+                text.rstrip("'"), code=code, line_number=line_number, column=column, allow_indexed_writes=True,
+            )
+        text = governing if isinstance(governing, str) else ""
+    call = _single_call(text)
+    signature = (signatures or {}).get(call[0].lower()) if call is not None else None
+    if signature is None or signature.return_dimensions is None or signature.return_categories == inferred:
+        return None
+    return signature.return_dimensions
+
+
+def _role_trace_name(
+    name: str, base: tuple[tuple[str, ...], str, str | None, str | None], *, code: str,
+    line_number: int | None, column: int | None, signatures: "dict[str, DocumentedSignature] | None",
+) -> tuple[tuple[str, ...], str, str | None, str | None]:
+    """v0.93.0: the role check's extra tracing of a simple name, on top of
+    `resolve_argument_category_with_cause(...)`'s answer `base`:
+
+    - a name traced to a documented call whose return is a plain `matrix`
+      gets that call's dimensions (`x = rndn(20, 1);` -> `vector`);
+    - an untraced name whose governing write is `{ ..., name, ... } =
+      f(...);` gets the documented type of `f`'s output at that position,
+      in every documented form with that many outputs (`rndn.rst`: `{ y,
+      newstate }`). An output the page names without a type
+      (`trainTestSplit.rst`) is `return_type_undocumented` -- decision 1(a):
+      the split functions are left to Aptech, not to a registry.
+
+    Like the base resolver, a name traced past indexed writes must be
+    numeric."""
+    categories, origin, cause, rhs = base
+    if origin == ArgumentOrigin.DOCUMENTED_RETURN.value and categories == (TypeClass.MATRIX.value,):
+        governing = _governing_assignment(name, code=code, line_number=line_number, column=column)
+        if governing is None:
+            governing = _governing_assignment(
+                name, code=code, line_number=line_number, column=column, allow_indexed_writes=True,
+            )
+        call = _single_call(governing) if isinstance(governing, str) else None
+        if call is not None:
+            start = _governing_statement_start(name, governing, code=code, line_number=line_number, column=column)
+            at_line, at_column = start if start is not None else (line_number, column)
+            refined = refined_call_categories(
+                call[0], call[1], categories, signatures=signatures, code=code,
+                line_number=at_line, column=at_column,
+            )
+            return refined, origin, cause, rhs
+        return base
+    if cause != RoleUnknownCause.ARGUMENT_UNTRACED.value:
+        return base
+    numeric_only = False
+    governing = _governing_assignment(name, code=code, line_number=line_number, column=column, multi_targets=True)
+    if governing is None:
+        governing = _governing_assignment(
+            name, code=code, line_number=line_number, column=column, multi_targets=True,
+            allow_indexed_writes=True,
+        )
+        numeric_only = True
+    if not isinstance(governing, MultiTarget):
+        return base
+    call = _single_call(governing.rhs)
+    signature = (signatures or {}).get(call[0].lower()) if call is not None else None
+    if signature is None:
+        return base
+    outputs = {form[governing.index] for form in signature.output_forms if len(form) == governing.count}
+    if not outputs:
+        return base
+    texts = {signature.output_types.get(output, "") for output in outputs}
+    found: set[tuple[str, ...]] = set()
+    for text in texts:
+        output_categories, _shape = classify_documented_type(text)
+        dimensions = documented_dimensions(text)
+        if dimensions is not None:
+            # `code=None`: only a LITERAL 1 argument counts here. Tracing a
+            # name at the consumer's position could read a reassignment made
+            # after the `{ ... } = f(...)` statement.
+            output_categories = refine_by_dimensions(output_categories, _dimension_ones(
+                dimensions, signature=signature, arguments=call[1], code=None,
+                line_number=None, column=None,
+            ))
+        found.add(output_categories)
+    if len(found) != 1 or TypeClass.UNKNOWN.value in next(iter(found)):
+        return (
+            (TypeClass.UNKNOWN.value,), ArgumentOrigin.UNRESOLVED.value,
+            RoleUnknownCause.RETURN_TYPE_UNDOCUMENTED.value, governing.rhs,
+        )
+    resolved = next(iter(found))
+    if numeric_only and not all(c in _NUMERIC_CATEGORIES for c in resolved):
+        return base
+    return resolved, ArgumentOrigin.DOCUMENTED_RETURN.value, None, None
 
 
 def resolve_role_argument_category(
@@ -1932,6 +2402,14 @@ def resolve_role_argument_category(
     categories, origin, cause, rhs = resolve_argument_category_with_cause(
         argument, code=code, line_number=line_number, column=column, signatures=signatures,
     )
+    stripped = argument.strip()
+    if code is not None and _SIMPLE_IDENTIFIER_RE.fullmatch(stripped):
+        # v0.93.0 (planning v0.93 §3.1, §3.3): documented dimensions and
+        # multiple-return targets, for the role check only.
+        categories, origin, cause, rhs = _role_trace_name(
+            stripped.rstrip("'"), (categories, origin, cause, rhs), code=code,
+            line_number=line_number, column=column, signatures=signatures,
+        )
     if cause == RoleUnknownCause.ARGUMENT_EXPRESSION.value:
         inferred = infer_expression_category(
             argument, code=code, line_number=line_number, column=column, signatures=signatures, _depth=_depth,
@@ -1958,7 +2436,11 @@ def resolve_role_argument_category(
         # numeric `matrix`; requiring it keeps v0.82.0's rule that a variable
         # traced past indexed writes must be numeric.
         if inferred.categories is not None and all(c in _NUMERIC_CATEGORIES for c in inferred.categories):
-            return inferred.categories, ArgumentOrigin.EXPRESSION_CATEGORY.value, None, None, None
+            # v0.93.0: `a = mdl.assignments;` keeps its member origin.
+            kept = inferred.origin if inferred.origin == ArgumentOrigin.DOCUMENTED_MEMBER.value else (
+                ArgumentOrigin.EXPRESSION_CATEGORY.value
+            )
+            return inferred.categories, kept, None, None, None
         return categories, origin, cause, rhs, inferred.reason
     return categories, origin, cause, rhs, None
 
@@ -2025,16 +2507,37 @@ def _positional_role_checks(
         inferred_label = "/".join(inferred)
         documented = param.category
         is_name = bool(_SIMPLE_IDENTIFIER_RE.fullmatch(argument.strip()))
+        returned = f"a call whose documented return type is {inferred_label}"
+        if origin == ArgumentOrigin.DOCUMENTED_RETURN.value:
+            refined_from = _dimensions_refined_from(
+                argument, inferred, code=code, line_number=call.line_number, column=call.column,
+                signatures=signatures,
+            )
+            if refined_from is not None:
+                # v0.93.0: say what the docs say, and why it is narrower.
+                returned = (
+                    f"a call documented to return a `{refined_from[0]}x{refined_from[1]}` matrix, "
+                    f"with a dimension of 1 here, so a {inferred_label}"
+                )
         traced = {
             ArgumentOrigin.TRACED_LITERAL.value: f" (traced to its literal assignment `{argument.strip()} = ...`)",
             ArgumentOrigin.DOCUMENTED_RETURN.value: (
-                f" (traced to `{argument.strip()} = ...`, a call whose documented return type is {inferred_label})"
-                if is_name else f" (a call whose documented return type is {inferred_label})"
+                f" (traced to `{argument.strip()} = ...`, {returned})" if is_name else f" ({returned})"
             ),
             ArgumentOrigin.EXPRESSION_CATEGORY.value: (
-                f" (traced to `{argument.strip()} = ...`, an expression whose every operand is numeric; "
-                "its shape is not computed)"
-                if is_name else " (an expression whose every operand is numeric; its shape is not computed)"
+                (
+                    f" (traced to `{argument.strip()} = ...`, an element-wise expression of one vector)"
+                    if is_name else " (an element-wise expression of one vector)"
+                ) if inferred == (TypeClass.VECTOR.value,) else (
+                    f" (traced to `{argument.strip()} = ...`, an expression whose every operand is numeric; "
+                    "its shape is not computed)"
+                    if is_name else " (an expression whose every operand is numeric; its shape is not computed)"
+                )
+            ),
+            # v0.93.0 (planning v0.93 §3.2).
+            ArgumentOrigin.DOCUMENTED_MEMBER.value: (
+                f" (traced to `{argument.strip()} = ...`, a result member whose documented type is {inferred_label})"
+                if is_name else f" (a result member whose documented type is {inferred_label})"
             ),
         }.get(origin, "")
         unknown_cause: str | None = None
@@ -2058,7 +2561,9 @@ def _positional_role_checks(
         elif all(_category_accepted(c, documented) for c in inferred):
             status = ParameterRoleStatus.MATCH.value
             explanation = f"the argument's category ({inferred_label}){traced} matches the documented parameter type"
-        elif origin == ArgumentOrigin.DOCUMENTED_RETURN.value:
+        elif origin in (ArgumentOrigin.DOCUMENTED_RETURN.value, ArgumentOrigin.DOCUMENTED_MEMBER.value):
+            # v0.93.0: a documented member, like a documented return, is
+            # never precise enough for a MISMATCH.
             status = ParameterRoleStatus.UNKNOWN.value
             unknown_cause = RoleUnknownCause.RETURN_TYPE_IMPRECISE.value
             explanation = (
@@ -2452,10 +2957,27 @@ _BLOCK_OPEN_KEYWORDS = ("if", "for", "do", "proc", "keyword", "threadfor", "thre
 _BLOCK_CLOSE_KEYWORDS = ("endif", "endfor", "endo", "endp", "threadendfor", "threadend")
 
 
+@dataclass(frozen=True)
+class MultiTarget:
+    """v0.93.0 (planning v0.93 §3.3): `_governing_assignment(...,
+    multi_targets=True)`'s answer when the governing write is `{ a, b, ... }
+    = <rhs>;`: `name` is target `index` (0-based) of `count`, and `rhs` is
+    the right-hand side's text. GAUSS gives each target the procedure's
+    return at the same position (`rndn.rst`: `{ y, newstate } = rndn(r, c,
+    state)`)."""
+
+    index: int
+    count: int
+    rhs: str
+
+
+_MULTI_TARGET_STATEMENT_RE = re.compile(r"^\s*\{([^{}]*)\}\s*=(?!=)")
+
+
 def _governing_assignment(
     name: str, *, code: str, line_number: int | None = None, column: int | None = None,
-    allow_indexed_writes: bool = False,
-) -> str | None:
+    allow_indexed_writes: bool = False, multi_targets: bool = False,
+) -> "str | MultiTarget | None":
     """v0.81.0: the ONE shared answer to "which assignment gives `name` its
     value at this call?", used by both the role check and the precondition
     tracer. Returns the right-hand-side text of the most recent plain
@@ -2502,7 +3024,15 @@ def _governing_assignment(
     block (a loop's back edge can run a later header first), still refuse.
     The "before" case is left refusing on purpose: it is not the measured
     case. Every other unmodelled write keeps its position-blind refusal
-    (decision 9a, not 9b)."""
+    (decision 9a, not 9b).
+
+    v0.93.0 (planning v0.93 §3.3): `multi_targets=True` reads a top-level
+    `{ a, b, ... } = <rhs>;` naming `name` exactly once as a write like any
+    plain one, answering a `MultiTarget` when it governs. Only the role
+    check asks for it (`_role_trace_name(...)`); with the default every such
+    statement still refuses, so the precondition tracer and the dataset
+    registry are unchanged. Inside a block, or with `name` listed twice, it
+    still refuses."""
     target = (
         line_number if line_number is not None else float("inf"),
         column if column is not None else float("inf"),
@@ -2520,7 +3050,7 @@ def _governing_assignment(
     # The block depth of the statement holding the call, once it is reached
     # (None until then, and always None for an end-of-code target).
     call_depth: int | None = None
-    governing: str | None = None
+    governing: "str | MultiTarget | None" = None
     for statement in source_statements(code):
         masked = statement.masked
         word = _leading_word(masked)
@@ -2533,6 +3063,17 @@ def _governing_assignment(
             header_after_call = (statement.line, statement.column) > target
             if not (header_after_call and call_depth == 0):
                 return None
+        if multi_targets:
+            multi = _MULTI_TARGET_STATEMENT_RE.match(masked)
+            if multi is not None:
+                targets = [t.strip().lower() for t in multi.group(1).split(",")]
+                hits = [i for i, t in enumerate(targets) if t == name.lower()]
+                if hits:
+                    if depth > 0 or len(hits) > 1:
+                        return None
+                    if (statement.end_line, statement.end_column) < target:
+                        governing = MultiTarget(hits[0], len(targets), statement.text[multi.end():].strip())
+                    continue
         if any(r.search(masked) for r in other_write_res):
             return None
         if indexed_write_re.search(masked):

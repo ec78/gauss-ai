@@ -3740,6 +3740,58 @@ def test_176_v0921_package_structure_types() -> None:
               not any(f.name.lower() == "nowheretype" for f in unknown.pre_execution.system_statements))
 
 
+#: v0.93.0: a page with a documented result-member table (`kmeansFit.rst`'s
+#: csv-table layout) and one with a documented `vector` parameter
+#: (`selif.rst`'s `e`). Synthetic; never a real docs checkout.
+_V093_RST = {
+    "kfit.rst": (
+        "kfit\n====\n\n.. function:: mdl = kfit(X, clusters)\n\n"
+        "    :param X: features\n    :type X: NxP matrix\n\n"
+        "    :param clusters: count\n    :type clusters: scalar\n\n"
+        "    :return mdl: An instance of a kfitModel structure.\n\n"
+        "        .. csv-table::\n            :widths: auto\n\n"
+        "                \"mdl.assignments\",\"Nx1 matrix, the assignments.\"\n"
+        "                \"mdl.clusterSS\",\"Scalar, the sum of squares.\"\n\n"
+        "    :rtype mdl: struct\n"
+    ),
+    "selif.rst": (
+        "selif\n=====\n\n.. function:: y = selif(x, e)\n\n"
+        "    :param x: data\n    :type x: NxK matrix\n\n"
+        "    :param e: selection\n    :type e: Nx1 vector\n\n"
+        "    :return y: the selected rows\n    :rtype y: MxK matrix\n"
+    ),
+    "sumc.rst": (
+        "sumc\n====\n\n.. function:: y = sumc(x)\n\n"
+        "    :param x: data\n    :type x: NxK matrix\n\n"
+        "    :return y: column sums\n    :rtype y: Kx1 matrix\n"
+    ),
+}
+
+
+def test_177_v093_vectors_and_members_end_to_end() -> None:
+    """Planning v0.93 §3.1-§3.2, end to end through `validate_code`: the
+    83.5-shaped k-means count and a `selif` filter on simulated data reach
+    `handoff_candidate` (both were review_required at v0.92.1); a member
+    write or a two-vector broadcast keeps the code review_required."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "docs"
+        root.mkdir()
+        for name, text in dict(_TYPED_V091_RST, **_V093_RST).items():
+            (root / name).write_text(text, encoding="utf-8")
+
+        def state(code):
+            return engine_mod.validate_code(code, docs_root=str(root)).handoff_readiness.state
+
+        selected = "x = rndn(20, 1);\ny = selif(x, (x .>= 0) .and (x .< 1));\nprint y;"
+        check("177: a selif filter of one simulated vector: handoff_candidate", state(selected) == "handoff_candidate")
+        broadcast = "x = rndn(20, 1);\ny = selif(x, x .> x');\nprint y;"
+        check("177: a broadcast comparison stays review_required", state(broadcast) == "review_required")
+        counted = "X = rndn(50, 2);\nmdl = kfit(X, 3);\nn = sumc(mdl.assignments .== 1);\nprint n;"
+        check("177: a k-means count from a documented member: handoff_candidate", state(counted) == "handoff_candidate")
+        written = "X = rndn(50, 2);\nmdl = kfit(X, 3);\nmdl.assignments = 0;\nn = sumc(mdl.assignments .== 1);\nprint n;"
+        check("177: after a member write: review_required", state(written) == "review_required")
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)
