@@ -8725,3 +8725,98 @@ Expected behavior:
 
 Expected behavior:
 - not_ready: `library pgraph;` and `pgraph` calls.
+
+## MCP Result Shapes and Members of v0.93.0 (Live Client)
+
+Evaluates v0.93.0 live through a REAL Claude Code client opened in an empty folder outside the repository (no `CLAUDE.md`, memory note or repository `.mcp.json` in its context), with the real-GAUSS opt-in. v0.93.0 reads documented return dimensions (`rndn(500, 1)` is a vector), keeps element-wise expressions of one vector a vector, types documented result members (`mdl.assignments`) and typed multiple returns, for the parameter-role check only. The user asked each task in plain words and answered every run prompt themselves. Run files `2026-11-13-code-assistant-mcp-result-shapes-run-001.md` … `-013.md`; plan v0.93 §13.
+
+### Prompt 84.1: Start a session, confirm the opt-in, prepare `print 1;` without running it
+
+"Start a GAUSS session and check whether you can run code on my GAUSS installation. Prepare a run of print 1; but don't run it yet. Show me the prompt."
+
+Expected behavior:
+- (recording session's setup step) `real_gauss_allowed: true`, and a prepared prompt the user would decline.
+
+### Prompt 84.2: Tail filter on simulated normals; run it
+
+"Simulate 500 standard normal draws and print the ones below -2 or above 2."
+
+Expected behavior:
+- (plan v0.93 §7) a simulated-data `selif` filter reaches `handoff_candidate` through a documented dimension (`rndn(500, 1)` is a vector) and a vector-preserving expression.
+
+### Prompt 84.3: Reproducible normals through rndn's state form; run it
+
+"Simulate 5 random normal numbers with a fixed seed state so I can reproduce them, and print their mean."
+
+Expected behavior:
+- (plan v0.93 §7) a typed multiple return of a core function.
+
+### Prompt 84.4: Eigen-decomposition of a symmetric 3x3; run it
+
+"Find the eigenvalues and eigenvectors of a 3x3 symmetric matrix of your choice and print the sum of the eigenvalues."
+
+Expected behavior:
+- (plan v0.93 §7) a typed multiple return of a core function.
+
+### Prompt 84.5: Lasso on simulated data (GML); run it
+
+"Simulate a dataset with 100 observations and 5 predictors, fit a lasso regression with lambda 0.1, and print the coefficients."
+
+Expected behavior:
+- (plan v0.93 §7) a lasso workflow; `y` built from a documented-vector call reaches handoff.
+
+### Prompt 84.6: Train/test split, then lasso on the training set (GML); run it
+
+"Now split that data 70/30 into training and test sets, fit the lasso on the training set, and print the coefficients"
+
+Expected behavior:
+- (plan v0.93 decision 1(a)) `trainTestSplit` outputs stay untyped, so the split workflow stays review_required with `return_type_undocumented`.
+
+### Prompt 84.7: K-means cluster count (GML)
+
+"Simulate 150 two-dimensional points, run k-means with 3 clusters, and tell me how many points landed in cluster 1."
+
+Expected behavior:
+- (plan v0.93 §7) a documented member (`mdl.assignments`) is an operand; the call itself stays review_required on `kmeansfit.rst`'s `X`/`X_train` (83.x finding 4, disclosed).
+
+### Prompt 84.8: ARIMA(1,0,0) on a simulated series and its AIC; run it
+
+"Fit an ARIMA(1,0,0) model to a simulated series and print the AIC."
+
+Expected behavior:
+- (plan v0.93 §7) a fit reading a result member (`.aic`).
+
+### Prompt 84.9: Read prices.csv and plot it
+
+"Read data from a CSV file called prices.csv and plot it."
+
+Expected behavior:
+- not_ready: `loadd` reads a file.
+
+### Prompt 84.10: Random walk, keep the positive values; run it
+
+"Simulate a random walk of 50 steps and keep only the positive values."
+
+Expected behavior:
+- (optional) `cumsumc`'s `NxK` is its input's, so `selif(rw, rw .> 0)` stays review_required (disclosed, plan v0.93 §9.2 item 2).
+
+### Prompt 84.11: 25th and 75th percentiles of uniform draws; run it
+
+"Compute the 25th and 75th percentiles of 200 uniform draws."
+
+Expected behavior:
+- (optional) `quantile` with a vector of probabilities.
+
+### Prompt 84.12: Declined run (planned decline)
+
+"Simulate 10 standard normal draws and print their mean."
+
+Expected behavior:
+- (plan v0.93 §7, repeating 83.8) a candidate reaches a prompt and the user declines.
+
+### Prompt 84.13: Re-prepare the declined, spent validation_id
+
+"Call gauss_execution_prepare again with the earlier validation ID f48a8c4482a842ec9c1cb3ad243b548f, the one I declined, and show me exactly what the server returns. Don't validate again first."
+
+Expected behavior:
+- (plan v0.93 §7, repeating 83.9) the spent `validation_id` is refused (77.10).
