@@ -1034,6 +1034,12 @@ class DocumentedSignature:
     #: v0.93.0 (§3.2): the member table of the FIRST output (the value
     #: `mdl = f(...)` receives): `{member: type text}`.
     result_members: "dict[str, str]" = field(default_factory=dict, compare=False, hash=False)
+    #: v0.93.1 (planning v0.93 §14, live finding 84.8): True only for a
+    #: signature built by `documented_constant_signature(...)` -- a page
+    #: whose every form is `y = name`, no parentheses and no argument
+    #: (`pi.rst`). Only the role check's tracing of a never-written name
+    #: reads it (`documented_constant_categories(...)`).
+    constant_form: bool = False
 
 
 #: v0.82.0: a documented `...` (`fred_load(formula[, ...])`, `gmmFit(&fct, y,
@@ -1157,6 +1163,115 @@ def _output_evidence_fields(symbol: str, best_match: dict) -> dict:
         "output_types": output_types,
         "result_members": dict(members),
     }
+
+
+#: v0.93.1: one `.. function::` line of a documented zero-argument function
+#: written without parentheses (`pi.rst`: `.. function:: y = pi`).
+_CONSTANT_FORM_RE = re.compile(r"\.\.\s+function::\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([A-Za-z_][A-Za-z0-9_]*)\s*")
+
+
+def documented_constant_signature(symbol: str, best_match: dict) -> "DocumentedSignature | None":
+    """v0.93.1 (planning v0.93 §14, live finding 84.8): the signature of a
+    function the page documents ONLY as `y = name` -- no parentheses, no
+    argument -- with a classifiable `:rtype`, or None.
+
+    `ln(2 * pi)` left `ln`'s role unknown ("operand `pi` has no single
+    traceable assignment"), although `pi.rst` documents `y = pi` returning a
+    scalar and GAUSS 26.1.4 evaluates it (2026-11-13, spot check pi84:
+    `ln(2 * pi)` = 1.8378771). `extract_documented_signature(...)` reads
+    call forms by their parentheses and calls this page's form unknown;
+    that extractor is left unchanged (every page's extraction stays as it
+    was), and this reads the one other shape. Over the 1,826 published
+    pages exactly six document such a form (`pi`, `hsec`, `timeutc`,
+    `keyw`, `csrcol`, `fstrerror`).
+
+    The signature keeps `extraction_status` UNKNOWN and no `arg_ranges`, so
+    a call `pi()` is checked exactly as before; only `constant_form` and
+    `return_categories` are set, and only the role check reads them."""
+    # Documentation text, not GAUSS source: each `.. function::` line.
+    lines = [
+        match.group(0).strip() for block in (best_match.get("syntax_blocks") or ())
+        for match in re.finditer(r"\.\.\s+function::[^\n]*", str(block))
+    ]
+    if not lines:
+        return None
+    for line in lines:
+        match = _CONSTANT_FORM_RE.fullmatch(line)
+        if match is None or match.group(2).lower() != symbol.lower():
+            return None
+    categories = _extract_documented_return_categories(best_match.get("outputs_section"))
+    if not categories or TypeClass.UNKNOWN.value in categories:
+        return None
+    return DocumentedSignature(
+        symbol=symbol, arg_ranges=(), parameter_names=(), source=best_match.get("file_path"),
+        extraction_status=SIGNATURE_UNKNOWN, return_categories=tuple(categories), constant_form=True,
+    )
+
+
+#: v0.93.1: statement-leading words after which a name in the statement is
+#: declared or bound, not read (`local pi;`, `proc (1) = f(pi);`, `for pi
+#: (1, 3, 1);`, `struct T pi;`, `clear pi;`).
+_BINDING_LEADERS = frozenset({
+    "for", "threadfor", "local", "proc", "keyword", "fn", "clear", "clearg", "declare", "external",
+    "let", "string", "matrix", "struct", "array", "sparse", "dataframe",
+})
+
+
+def name_is_written(name: str, code: str) -> bool:
+    """v0.93.1: True when `name` is written ANYWHERE in `code`, in any way:
+    named before a statement's top-level `=` (`pi = 3;`, `{ a, pi } =
+    f();`, `pi[1] = 2;`, `pi.x = 1;`), or anywhere in a statement led by a
+    binding word (`_BINDING_LEADERS`). Position-blind and conservative: a
+    write after the read counts too. Reads only masked statements, so a
+    string or comment never counts (the lexical-discipline rule)."""
+    word_re = re.compile(rf"(?<![A-Za-z0-9_.]){re.escape(name)}(?![A-Za-z0-9_])", re.IGNORECASE)
+    for statement in source_statements(code):
+        masked = statement.masked
+        leader = _leading_word(masked)
+        if leader in _BINDING_LEADERS:
+            if word_re.search(masked):
+                return True
+            continue
+        if leader in _NON_ASSIGNMENT_LEADERS:
+            continue
+        index = _top_level_assignment_index(masked)
+        if index is not None and word_re.search(masked[:index]):
+            return True
+    return False
+
+
+#: v0.93.1: at most this many bare names are looked up per validation.
+MAX_CONSTANT_LOOKUPS = 8
+
+
+def bare_name_candidates(code: str) -> tuple[str, ...]:
+    """v0.93.1: lower-cased names the role check could READ as an operand
+    without parentheses and that the code never writes -- the only names
+    `documented_constant_signature(...)` can matter for. Read from each
+    masked statement's right-hand side (after its top-level `=`) or, with no
+    assignment, from its first `(` on; never a member (`.x`), a call
+    (`f(`), a word operator, or a language keyword. In first-seen order,
+    capped at `MAX_CONSTANT_LOOKUPS`."""
+    found: list[str] = []
+    name_re = re.compile(r"(?<![A-Za-z0-9_.$])([A-Za-z_][A-Za-z0-9_]*)")
+    for statement in source_statements(code):
+        masked = statement.masked
+        if _leading_word(masked) in _BINDING_LEADERS:
+            continue
+        index = _top_level_assignment_index(masked)
+        if index is not None:
+            region = masked[index + 1:]
+        else:
+            paren = masked.find("(")
+            region = masked[paren:] if paren >= 0 else ""
+        for match in name_re.finditer(region):
+            rest = region[match.end():].lstrip()
+            lowered = match.group(1).lower()
+            if rest.startswith("(") or lowered in _WORD_OPERATORS or lowered in _LANGUAGE_CONSTRUCT_KEYWORDS:
+                continue
+            if lowered not in found:
+                found.append(lowered)
+    return tuple(name for name in found if not name_is_written(name, code))[:MAX_CONSTANT_LOOKUPS]
 
 
 def _count_compatible(count: int, ranges: tuple[tuple[int, int], ...]) -> bool:
@@ -2290,6 +2405,24 @@ def _dimensions_refined_from(
     return signature.return_dimensions
 
 
+def documented_constant_categories(
+    name: str, *, code: str, signatures: "dict[str, DocumentedSignature] | None",
+) -> tuple[str, ...] | None:
+    """v0.93.1 (planning v0.93 §14): a name the code never writes
+    (`name_is_written(...)`) that names a documented zero-argument function
+    written without parentheses (`documented_constant_signature(...)`) is a
+    call to it: `pi` is a `scalar`. None otherwise. GAUSS resolves an
+    assigned name to the variable, so any write anywhere keeps the old
+    answer (an untraced name). Role check only: the precondition tracer and
+    both I/O registries never call this."""
+    signature = (signatures or {}).get(name.lower())
+    if signature is None or not signature.constant_form or not signature.return_categories:
+        return None
+    if name_is_written(name, code):
+        return None
+    return signature.return_categories
+
+
 def _role_trace_name(
     name: str, base: tuple[tuple[str, ...], str, str | None, str | None], *, code: str,
     line_number: int | None, column: int | None, signatures: "dict[str, DocumentedSignature] | None",
@@ -2327,6 +2460,9 @@ def _role_trace_name(
         return base
     if cause != RoleUnknownCause.ARGUMENT_UNTRACED.value:
         return base
+    constant = documented_constant_categories(name, code=code, signatures=signatures)
+    if constant is not None:
+        return constant, ArgumentOrigin.DOCUMENTED_RETURN.value, None, None
     numeric_only = False
     governing = _governing_assignment(name, code=code, line_number=line_number, column=column, multi_targets=True)
     if governing is None:
@@ -5755,9 +5891,10 @@ class SystemStatementFinding:
     category: str
     line_number: int
     doc_page: str
-    #: v0.89.3: set only for an argument-dependent finding
-    #: (`check_dataset_arguments(...)`), saying which argument reaches
-    #: outside memory; `""` for a statement matched by name.
+    #: v0.89.3: for an argument-dependent finding
+    #: (`check_dataset_arguments(...)`), which argument reaches outside
+    #: memory. v0.93.1: "is a system-touching statement" for a statement
+    #: matched by name (it was `""`).
     detail: str = ""
 
 
@@ -5788,8 +5925,13 @@ def check_system_statements(code: str) -> tuple[SystemStatementFinding, ...]:
                 continue
             seen.add((name, line_no))
             rule = _SYSTEM_RULES_BY_NAME[name]
+            # v0.93.1 (live finding 84.9): `detail` was `""` for a name
+            # match, so a client saw an empty explanation beside every other
+            # finding's. It now carries the clause the reason already used,
+            # so no reason text changes.
             findings.append(SystemStatementFinding(
                 name=name, category=rule.category, line_number=line_no, doc_page=rule.doc_page,
+                detail="is a system-touching statement",
             ))
     return tuple(findings)
 
@@ -5941,10 +6083,23 @@ def check_dataset_arguments(
         argument = call.raw_arguments[rule.position]
         if _computes_in_memory(argument, code=code, call=call, signatures=signatures):
             continue
+        # v0.93.1 (live finding 84.8): only a lone string literal is a file
+        # name the code states. Anything else failed to show it is in memory
+        # (fail closed, unchanged); the detail used to say "reads the dataset
+        # file named by ..." for a numeric `y` from an untyped call too.
+        text = argument.strip()
+        masked = lex_gauss_source(text).masked_view
+        if text and masked.startswith("#") and set(masked) == {"#"}:
+            detail = f"reads the dataset file named by its `{rule.parameter}` argument (`{text}`)"
+        else:
+            detail = (
+                f"may read a dataset file: its `{rule.parameter}` argument (`{text}`) is not shown to hold data "
+                "in memory (only `\"\"`, `0`, a matrix literal, a numeric expression or a value traced to a "
+                "documented non-string return counts), so it is treated as a file name"
+            )
         findings.append(SystemStatementFinding(
             name=rule.name, category=SystemStatementCategory.FILE_READ.value, line_number=call.line_number,
-            doc_page=rule.doc_page,
-            detail=f"reads the dataset file named by its `{rule.parameter}` argument (`{argument.strip()}`)",
+            doc_page=rule.doc_page, detail=detail,
         ))
     return tuple(findings)
 

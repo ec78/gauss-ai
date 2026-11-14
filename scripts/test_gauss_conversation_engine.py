@@ -3792,6 +3792,46 @@ def test_177_v093_vectors_and_members_end_to_end() -> None:
         check("177: after a member write: review_required", state(written) == "review_required")
 
 
+#: v0.93.1: `pi.rst`'s only form is `y = pi` (no parentheses) and `ln.rst`
+#: takes a matrix. Synthetic; never a real docs checkout.
+_V0931_RST = {
+    "pi.rst": (
+        "pi\n==\n\nPurpose\n-------\nReturns pi.\n\nFormat\n------\n.. function:: y = pi\n\n"
+        "    :return y: the value of pi.\n    :rtype y: scalar\n"
+    ),
+    "ln.rst": (
+        "ln\n==\n\n.. function:: y = ln(x)\n\n"
+        "    :param x: data\n    :type x: NxK matrix\n\n"
+        "    :return y: natural logs\n    :rtype y: NxK matrix\n"
+    ),
+}
+
+
+def test_178_v0931_pi_without_parentheses_end_to_end() -> None:
+    """Planning v0.93 §14 (live finding 84.8): `ln(2 * pi)` was
+    review_required ("operand `pi` has no single traceable assignment");
+    with `pi.rst` documenting `y = pi` it is handoff_candidate. Without that
+    page, or with `pi` written by the code as a string, it is not."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "docs"
+        root.mkdir()
+        for name, text in _V0931_RST.items():
+            (root / name).write_text(text, encoding="utf-8")
+
+        def result(code):
+            return engine_mod.validate_code(code, docs_root=str(root))
+
+        bare = result("x = ln(2 * pi);\nprint x;")
+        check("178: ln(2 * pi): handoff_candidate", bare.handoff_readiness.state == "handoff_candidate")
+        check("178: pi is not reported as a call or an unknown symbol",
+              "pi" not in [s.lower() for s in bare.called_symbols] and not bare.pre_execution.unknown_symbols)
+        shadowed = result('pi = "s";\nx = ln(2 * pi);\nprint x;')
+        check("178: a written pi is the variable (not confirmed)", shadowed.handoff_readiness.state != "handoff_candidate")
+        (root / "pi.rst").unlink()
+        check("178: without the page it stays review_required",
+              result("x = ln(2 * pi);\nprint x;").handoff_readiness.state == "review_required")
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

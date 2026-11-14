@@ -2915,10 +2915,20 @@ def test_185_v0893_dataset_arguments_that_read_a_file() -> None:
         "dstatmt": 'call dstatmt("C:/data/f.dat");',
         "header's second argument": 'call header("t", "C:/data/f.dat", 1);',
     }
+    # v0.93.1 (live finding 84.8): every case is still one `file_read`
+    # finding (the fail-closed rule is unchanged). Only a lone string
+    # literal keeps "reads the dataset file named by its ..."; a string
+    # variable, a string operator, an undocumented call or an untraced name
+    # now says it "may read a dataset file" because it "is not shown to hold
+    # data in memory". The old wording stated a file read as fact for a
+    # numeric `y` from an untyped call.
+    literal_labels = {"a quoted file name", "dstatmt", "header's second argument"}
     for label, code in reads.items():
         findings = validation_mod.check_dataset_arguments(code, signatures=sigs)
+        wording = ("reads the dataset file named by its" if label in literal_labels
+                   else "is not shown to hold data in memory")
         check(f"file read: {label}", len(findings) == 1 and findings[0].category == "file_read"
-              and "reads the dataset file named by its" in findings[0].detail)
+              and wording in findings[0].detail)
     in_memory = {
         "the null string": 'out = olsmt("", y, x);',
         "zero": "call dstat(0, x);",
@@ -3707,6 +3717,117 @@ def test_208_v093_lexical_discipline_for_members_and_targets() -> None:
     commented = "X = rndn(50, 2);\n/* mdl = kfit(X, 3); */\nmdl = rndn(5, 1);\n"
     result = validation_mod.infer_expression_category("mdl.assignments", code=commented, signatures=sig)
     check("208: a producer inside a comment is never read", result.categories is None)
+
+
+#: Modelled on the published `pi.rst`: its only form is `y = pi`, with no
+#: parentheses, returning a scalar.
+_V0931_PI_PAGE = """pi
+==============================================
+
+Purpose
+----------------
+Returns the mathematical constant pi.
+
+Format
+----------------
+.. function:: y = pi
+
+    :return y: the value of pi.
+    :rtype y: scalar
+"""
+
+
+def _v0931_signatures() -> dict:
+    sig = _v093_signatures()
+    _call_form, match = _v093_page_signature("pi", _V0931_PI_PAGE)
+    sig["pi"] = validation_mod.documented_constant_signature("pi", match)
+    sig["ln"] = _signature("ln", ".. function:: y = ln(x)", ":type x: NxK matrix", ":rtype y: NxK matrix")
+    return sig
+
+
+def test_209_v0931_a_documented_constant_form_is_read() -> None:
+    """Planning v0.93 §14 (live finding 84.8): `pi.rst`'s only form is `y =
+    pi`. The call extractor still calls it unknown (unchanged); the constant
+    reader gives a scalar signature that no call check uses."""
+    call_form, match = _v093_page_signature("pi", _V0931_PI_PAGE)
+    check("209: the call extractor is unchanged (unknown)", call_form.extraction_status == "unknown")
+    constant = validation_mod.documented_constant_signature("pi", match)
+    check("209: the constant form is read as a scalar", constant is not None and constant.constant_form
+          and constant.return_categories == ("scalar",))
+    check("209: it keeps no argument ranges (a call `pi()` is checked as before)",
+          constant.arg_ranges == () and constant.extraction_status == "unknown")
+    _sig, rndn_match = _v093_page_signature("rndn", _V093_RNDN_PAGE)
+    check("209: a page with a call form is no constant",
+          validation_mod.documented_constant_signature("rndn", rndn_match) is None)
+    other = _V0931_PI_PAGE.replace(".. function:: y = pi", ".. function:: y = pi\n.. function:: y = pi(n)")
+    _sig, mixed = _v093_page_signature("pi", other)
+    check("209: a page that also documents a call form is no constant",
+          validation_mod.documented_constant_signature("pi", mixed) is None)
+    untyped = _V0931_PI_PAGE.replace("    :rtype y: scalar\n", "")
+    _sig, untyped_match = _v093_page_signature("pi", untyped)
+    check("209: no classifiable :rtype, no constant",
+          validation_mod.documented_constant_signature("pi", untyped_match) is None)
+
+
+def test_210_v0931_a_never_written_constant_is_a_scalar_operand() -> None:
+    """Planning v0.93 §14: `ln(2 * pi)` and `ln(pi)` confirm `ln`'s
+    `matrix` role (GAUSS 26.1.4, spot check pi84: `ln(2 * pi)` =
+    1.8378771). Any write of the name, anywhere, keeps the old answer, as
+    GAUSS then resolves the name to the variable."""
+    sig = _v0931_signatures()
+    code = "x = ln(2 * pi);\ny = ln(pi);\n"
+    alone = validation_mod.resolve_role_argument_category("pi", code=code, line_number=2, column=8, signatures=sig)
+    check("210: a bare constant is its documented scalar", alone[0] == ("scalar",) and alone[1] == "documented_return"
+          and alone[2] is None)
+    expr = validation_mod.resolve_role_argument_category("2 * pi", code=code, line_number=1, column=8, signatures=sig)
+    check("210: an expression with it is numeric", expr[0] == ("matrix",) and expr[2] is None)
+    check("210: the reader keeps a scalar key",
+          validation_mod.infer_expression_category("2 * pi", code=code, signatures=sig).categories == ("matrix",))
+    writes = {
+        "a plain write": "pi = 3;\nx = ln(pi);\n",
+        "a later write": "x = ln(pi);\npi = 3;\n",
+        "a multiple target": "{ pi, s } = rndn(5, 1, 13);\nx = ln(pi);\n",
+        "an indexed write": "pi = zeros(2, 1);\npi[1] = 2;\nx = ln(pi);\n",
+        "a local": "proc (1) = f(a);\n    local pi;\n    retp(ln(pi));\nendp;\n",
+        "a proc parameter": "proc (1) = f(pi);\n    retp(ln(pi));\nendp;\n",
+        "a for counter": "for pi (1, 3, 1);\n    x = ln(pi);\nendfor;\n",
+    }
+    for label, text in writes.items():
+        check(f"210: {label} makes it a variable", validation_mod.name_is_written("pi", text))
+    check("210: a written name keeps the old answer", validation_mod.resolve_role_argument_category(
+        "pi", code="pi = \"s\";\nx = ln(pi);\n", line_number=2, column=8, signatures=sig)[0] != ("scalar",))
+    check("210: a read, a comparison or a string is not a write",
+          not validation_mod.name_is_written("pi", 'x = ln(pi);\nif pi == 3;\nendif;\nprint "pi = 3";\n// pi = 3;\n'))
+    check("210: candidates are read names never written",
+          validation_mod.bare_name_candidates("n = 5;\nx = ln(2 * pi) + n;\ny = sumc(x);\nprint mdl.pi;\n")
+          == ("pi",))
+    check("210: a string never yields a candidate",
+          validation_mod.bare_name_candidates('x = "pi";\nprint strlen("tau");\n') == ())
+    check("210: a never-written name with no constant signature is untraced as before",
+          validation_mod.resolve_role_argument_category("tau", code="x = ln(tau);\n", signatures=sig)[2]
+          == "argument_untraced")
+
+
+def test_211_v0931_system_finding_details() -> None:
+    """Planning v0.93 §14 (live findings 84.8, 84.9): a name-matched system
+    statement carries its clause as `detail`, and a dataset argument that is
+    not a lone string literal says it MAY read a file. Verdicts and reason
+    texts of name matches are unchanged."""
+    (loadd,) = validation_mod.check_system_statements('x = loadd("prices.csv");\n')
+    check("211: a name match has a detail", loadd.detail == "is a system-touching statement")
+    reasons = validation_mod.compute_handoff_readiness(
+        eligibility="eligible_for_validation", unresolved_issues=(), syntax=None, call_validations=(),
+        preconditions=(), evidence_profile="broad", system_statements=(loadd,),
+    )
+    check("211: its reason text is unchanged", reasons.state == "not_ready" and reasons.reasons[0]
+          == "line 1: `loadd` is a system-touching statement (file_read) -- controlled execution only runs "
+             "self-contained snippets that compute in memory")
+    (literal,) = validation_mod.check_dataset_arguments('out = olsmt("C:/a.dat", "y ~ x");', signatures={})
+    check("211: a lone literal states the read", literal.detail
+          == 'reads the dataset file named by its `data` argument (`"C:/a.dat"`)')
+    (traced,) = validation_mod.check_dataset_arguments('out = olsmt(y, "y ~ x");', signatures={})
+    check("211: anything else may read", traced.detail.startswith(
+        "may read a dataset file: its `data` argument (`y`) is not shown to hold data in memory"))
 
 
 def run_tests() -> int:

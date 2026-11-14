@@ -2106,6 +2106,26 @@ def validate_generated_code(
                     call.symbol, result["best_match"],
                 )
 
+    # v0.93.1 (planning v0.93 §14, live finding 84.8): a name read without
+    # parentheses that the code never writes (`ln(2 * pi)`) gets a signature
+    # only when its page documents nothing but the form `y = name`
+    # (`documented_constant_signature(...)`, six pages). Bounded by
+    # `MAX_CONSTANT_LOOKUPS`; a name with a call signature is never replaced.
+    if docs_root is not None:
+        for block in generated_code:
+            for name in validation_mod.bare_name_candidates(_strip_comments_for_analysis(block)):
+                if name in documented_signatures:
+                    continue
+                result = _lookup_defining_page(name, docs_root)
+                if (
+                    result["status"] == "found" and result["best_match"]
+                    and result["confidence"] >= MIN_DOC_CONFIDENCE
+                    and _page_defines(name, result["best_match"]) and not _is_navigation_page(result["best_match"])
+                ):
+                    constant = validation_mod.documented_constant_signature(name, result["best_match"])
+                    if constant is not None:
+                        documented_signatures[name] = constant
+
     call_validations = tuple(
         validation_mod.validate_call(
             call, documented_signatures=documented_signatures, documented_symbols=frozenset(documented_symbols),
