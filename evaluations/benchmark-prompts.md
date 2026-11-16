@@ -8820,3 +8820,70 @@ Expected behavior:
 
 Expected behavior:
 - (plan v0.93 §7, repeating 83.9) the spent `validation_id` is refused (77.10).
+
+## MCP Data Import and Export of v0.94.0 (Live Client)
+
+Evaluates v0.94.0 live through a REAL Claude Code client opened in an empty folder outside the repository (no `CLAUDE.md`, memory note or repository `.mcp.json` in its context), with the real-GAUSS opt-in and an analysis folder (`gauss-ai config set analysis-folder`) whose `input/` holds `fred_macro.csv` and `wage_returns.csv`. v0.94.0 lets MCP-run code read bare-named files from `input/` and GAUSS's example data, and keeps named writes in a new folder under `output/`, by copy-in/copy-out with digest-bound inputs; figures return as images. The user asked each task in plain words and answered every run prompt themselves. Run files `2026-11-16-code-assistant-mcp-data-import-export-run-001.md` … `-009.md`; plan v0.94 §13.
+
+### Prompt 85.1: Start a session; list the data files and the opt-in
+
+"Start a gauss-ai session. Which data files can you use, and are real GAUSS runs enabled?"
+
+Expected behavior:
+- (plan v0.94 §7, decision 7) the analysis folder and its input files by name and size; the opt-in, proven by the first prepare.
+
+### Prompt 85.2: Summary statistics of an input CSV; run it
+
+"Load wage_returns.csv and give me summary statistics for each column."
+
+Expected behavior:
+- (plan v0.94 §7) load and summarize; with the folder, a candidate whose prompt lists the input and its digest.
+
+### Prompt 85.3: OLS on an input CSV; save the coefficient table; run it
+
+"Regress LogWage on Education, Experience, Female and Union, and save the coefficient table to a CSV file."
+
+Expected behavior:
+- (plan v0.94 §7) a regression whose coefficient table is written and kept under `output/`.
+
+### Prompt 85.4: Plot a series from an input CSV and return the figure; run it
+
+"Plot the unemployment rate over time from fred_macro.csv and show me the chart."
+
+Expected behavior:
+- (plan v0.94 §7, decision 5) a `plotSave` figure kept under `output/` and returned as an image.
+
+### Prompt 85.5: Show the returned figure in the user's chat view
+
+"Can you show it here in my chat view?"
+
+Expected behavior:
+- (plan v0.94 decision 5) the returned figure reaches the client.
+
+### Prompt 85.6: Filter rows of an input CSV and write an Excel file; run it
+
+"Save the rows for women from wage_returns.csv to an Excel file."
+
+Expected behavior:
+- (plan v0.94 §3.2) a filtered table written with `saved` to `.xlsx` and kept.
+
+### Prompt 85.7: Read GAUSS example data in place; planned decline
+
+"Load the beef prices example dataset that ships with GAUSS and tell me its average price"
+
+Expected behavior:
+- (plan v0.94 decision 2, deviation 5) GAUSS example data read in place; the one-argument `getGAUSSHome` stays a signature issue (aptech/docs#7). (§7) the user declines; nothing is copied or kept.
+
+### Prompt 85.8: A file outside the analysis folder
+
+"Use the data in C:\Users\Owner\Desktop\sales.csv"
+
+Expected behavior:
+- (plan v0.94 §7) a file outside the folder is `not_ready`, with a reason the client can explain.
+
+### Prompt 85.9: Data from a URL
+
+"Download the latest unemployment rate from FRED."
+
+Expected behavior:
+- (plan v0.94 §7) a URL is `not_ready`; gauss-ai makes no network call.
