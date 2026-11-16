@@ -2,7 +2,7 @@
 conversational-chat settings added in v0.70.0; local Ollama endpoint added
 in v0.71.0).
 
-Stores exactly eight settings and one display preference -- no secrets, no
+Stores exactly nine settings and one display preference -- no secrets, no
 license credentials, no passwords, no API keys, and no arbitrary key/value
 execution mechanism of any kind:
 
@@ -16,6 +16,9 @@ execution mechanism of any kind:
                                  conversational grounding only (v0.70.0)
     ollama_endpoint          -- local Ollama service URL, e.g. http://localhost:11434
                                  (v0.71.0) -- never a credential; Ollama has none
+    analysis_folder          -- (v0.94.0) the user's analysis folder: GAUSS code run
+                                 through the MCP handoff may read files from its
+                                 `input/` and keep files in its `output/`
     verbose                  -- whether to show raw digests/IDs by default
 
 An API key/credential is never a field on this model and is never written to
@@ -133,6 +136,9 @@ class GaussAiConfig:
     chat_model: str | None = None
     docs_root: str | None = None
     ollama_endpoint: str | None = None
+    #: v0.94.0 (planning v0.94 §3.1, decision 1): set by the user only
+    #: (`gauss-ai config set analysis-folder <path>`), never by an MCP client.
+    analysis_folder: str | None = None
     verbose: bool = False
 
 
@@ -171,6 +177,7 @@ def load_config(path: str | Path | None = None) -> GaussAiConfig:
         chat_model=data.get("chat_model") or None,
         docs_root=data.get("docs_root") or None,
         ollama_endpoint=data.get("ollama_endpoint") or None,
+        analysis_folder=data.get("analysis_folder") or None,
         verbose=bool(data.get("verbose", False)),
     )
 
@@ -272,6 +279,42 @@ def resolve_workspace_parent(
     if config.workspace_parent:
         return ResolvedValue(config.workspace_parent, "config_file")
     return ResolvedValue(None, "default")
+
+
+#: v0.94.0 (planning v0.94 §3.1): the two fixed subfolders of an analysis
+#: folder. gauss-ai only ever reads from `input/` (it never writes there) and
+#: only ever creates new run folders inside `output/`.
+ANALYSIS_INPUT_DIRNAME = "input"
+ANALYSIS_OUTPUT_DIRNAME = "output"
+
+
+def resolve_analysis_folder(*, config: GaussAiConfig | None = None) -> ResolvedValue:
+    """v0.94.0 (planning v0.94 §3.1): the config file only. Unlike the
+    other settings there is deliberately no CLI-argument or environment
+    override reachable from an MCP tool: the folder decides which of the
+    user's files a run may read, so only the user's own `gauss-ai config
+    set analysis-folder` chooses it."""
+    config = config if config is not None else load_config()
+    if config.analysis_folder:
+        return ResolvedValue(config.analysis_folder, "config_file")
+    return ResolvedValue(None, "default")
+
+
+def analysis_subfolders(folder: str | Path) -> tuple[Path, Path]:
+    """`(input, output)` of an analysis folder, as absolute paths. Pure:
+    creates nothing (see `ensure_analysis_subfolders`)."""
+    base = Path(folder).expanduser().resolve()
+    return base / ANALYSIS_INPUT_DIRNAME, base / ANALYSIS_OUTPUT_DIRNAME
+
+
+def ensure_analysis_subfolders(folder: str | Path) -> tuple[Path, Path]:
+    """Creates `input/` and `output/` if missing (only ever from an
+    explicit user command or a session start with the folder configured).
+    Raises `OSError` when the folder cannot be created."""
+    input_dir, output_dir = analysis_subfolders(folder)
+    input_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return input_dir, output_dir
 
 
 def resolve_default_timeout_seconds(

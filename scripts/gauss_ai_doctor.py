@@ -217,6 +217,25 @@ def _check_docs_root(*, config: "config_mod.GaussAiConfig", env: dict[str, str])
     return DoctorCheckResult("docs_root", PASS, f"{root} (source: {resolved.source})")
 
 
+def _check_analysis_folder(*, config: "config_mod.GaussAiConfig") -> DoctorCheckResult:
+    """v0.94.0 (planning v0.94 §3.1): optional. Reads the folder's two
+    subfolders' existence and lists nothing inside them."""
+    resolved = config_mod.resolve_analysis_folder(config=config)
+    if not resolved.value:
+        return DoctorCheckResult(
+            "analysis_folder", PASS,
+            "not set (optional) -- code run through the MCP server cannot read or write files",
+        )
+    input_dir, output_dir = config_mod.analysis_subfolders(resolved.value)
+    missing = [str(p) for p in (input_dir, output_dir) if not p.is_dir()]
+    if missing:
+        return DoctorCheckResult(
+            "analysis_folder", WARN, f"{resolved.value}: missing {', '.join(missing)}",
+            next_step=f"Run 'gauss-ai config set analysis-folder {resolved.value}' to create them.",
+        )
+    return DoctorCheckResult("analysis_folder", PASS, f"reads from {input_dir}; keeps files under {output_dir}")
+
+
 def _check_installed_libraries(
     *, cli_value: str | None, config: "config_mod.GaussAiConfig", env: dict[str, str]
 ) -> DoctorCheckResult:
@@ -337,6 +356,7 @@ def run_doctor(
         _check_gauss_executable_valid(cli_value=cli_gauss_executable, config=resolved_config, env=env),
         _check_chat_provider(config=resolved_config, env=env),
         _check_docs_root(config=resolved_config, env=env),
+        _check_analysis_folder(config=resolved_config),
         _check_installed_libraries(cli_value=cli_gauss_executable, config=resolved_config, env=env),
         _check_config_file_validity(config_path),
         _check_package_version(),

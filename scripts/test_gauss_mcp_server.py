@@ -1067,6 +1067,183 @@ def test_44_v092_installed_libraries_reported_bound_and_rechecked() -> None:
               "installed_libraries" in none_start and none_start["installed_libraries"] is None)
 
 
+# ---------------------------------------------------------------------------
+# v0.94.0: data import and export (planning v0.94 §3)
+# ---------------------------------------------------------------------------
+
+#: Modelled on the published pages' `.. function::` lines and `:type` text
+#: (loadd.rst, csvwritem.rst, plotsave.rst), trimmed to what the checks read.
+_V094_PAGES = {
+    "loadd.rst": """loadd
+=====
+
+Purpose
+-------
+Loads data from a file.
+
+Format
+------
+.. function:: y = loadd(dataset)
+
+    :param dataset: name of the dataset file.
+    :type dataset: string
+
+    :return y: the data.
+    :rtype y: NxK matrix
+""",
+    "csvwritem.rst": """csvWriteM
+=========
+
+Purpose
+-------
+Writes a matrix to a CSV file.
+
+Format
+------
+.. function:: ret = csvWriteM(data, filename)
+
+    :param data: data to write.
+    :type data: NxK matrix
+
+    :param filename: name of CSV file to write.
+    :type filename: string
+
+    :return ret: 0 if successful.
+    :rtype ret: scalar
+""",
+    "plotsave.rst": """plotSave
+========
+
+Purpose
+-------
+Saves the current graph to a file.
+
+Format
+------
+.. function:: plotSave(filename, size)
+
+    :param filename: name of the file to create.
+    :type filename: string
+
+    :param size: dimensions of the saved graph.
+    :type size: 2x1 vector
+""",
+}
+
+_V094_CODE = 'data = loadd("prices.csv");\ncall csvWriteM(data, "out.csv");\nplotSave("fig.png", 640|480);\n'
+
+_PNG_1X1 = bytes.fromhex(
+    "89504e470d0a1a0a0000000d4948445200000001000000010806000000"
+    "1f15c4890000000d49444154789c63f8cf0000000301010018dd8db00000000049454e44ae426082"
+)
+
+
+def test_45_v094_analysis_folder_end_to_end() -> None:
+    """Planning v0.94 §3: the session reports the folder and its input
+    files; validation allows the accesses only with the folder; the prompt
+    names every file; a run sees copies only, keeps the named outputs with
+    the figure as an image, and never changes the input; a changed input
+    blocks; a decline creates nothing."""
+    import dataclasses as dc
+    import hashlib
+
+    def stand_in(**kwargs):
+        run_dir = kwargs["working_directory"]
+        seen.append(sorted(os.listdir(run_dir)))
+        Path(run_dir, "out.csv").write_text("1\n", encoding="utf-8")
+        Path(run_dir, "fig.png").write_bytes(_PNG_1X1)
+        return {"executed": True, "execution_status": "completed", "exit_code": 0, "stdout": "", "stderr": "",
+                "output_files": [], "warnings": [], "errors": []}
+
+    seen: list = []
+    saved_config, saved_select = server_mod._config, handoff_mod.select_helper
+    with tempfile.TemporaryDirectory() as tmp:
+        docs = Path(tmp) / "docs"
+        docs.mkdir()
+        for name, text in _V094_PAGES.items():
+            (docs / name).write_text(text, encoding="utf-8")
+        analysis = Path(tmp) / "analysis"
+        config_mod.ensure_analysis_subfolders(analysis)
+        source = analysis / "input" / "prices.csv"
+        source.write_bytes(b"y,x\n1,2\n")
+        digest_before = hashlib.sha256(source.read_bytes()).hexdigest()
+        try:
+            # Without an analysis folder (the pinned empty config): unchanged.
+            plain = server_mod.gauss_session_start(runner="fake", docs_root=str(docs), workspace_parent=tmp)
+            check("45: no folder -> analysis_folder is null with a hint",
+                  plain["analysis_folder"] is None and "analysis-folder" in plain["analysis_folder_hint"])
+            blocked = server_mod.gauss_validate_code(plain["session_id"], _V094_CODE)
+            check("45: no folder -> not_ready", blocked["handoff_readiness"]["state"] == "not_ready"
+                  and blocked["file_accesses"] == [])
+
+            server_mod._config = dc.replace(config_mod.GaussAiConfig(), analysis_folder=str(analysis))
+            handoff_mod.select_helper = lambda runner: stand_in
+            start = server_mod.gauss_session_start(runner="fake", docs_root=str(docs), workspace_parent=tmp)
+            sid = start["session_id"]
+            report = start["analysis_folder"]
+            check("45: the session lists input names and sizes only",
+                  report["input_files"] == [{"name": "prices.csv", "bytes": 8}] and "analysis_folder_hint" not in start)
+            check("45: the session names both folders",
+                  report["input"] == str((analysis / "input").resolve()) and report["output"].endswith("output"))
+
+            validated = server_mod.gauss_validate_code(sid, _V094_CODE)
+            check("45: with the folder -> handoff_candidate",
+                  validated["handoff_readiness"]["state"] == "handoff_candidate")
+            check("45: three accesses reported", [(a["function"], a["name"]) for a in validated["file_accesses"]]
+                  == [("loadd", "prices.csv"), ("csvwritem", "out.csv"), ("plotsave", "fig.png")])
+
+            prepared = server_mod.gauss_execution_prepare(sid, validated["validation_id"])
+            prompt = prepared["rendered_prompt"]
+            check("45: the prompt names the read with its size",
+                  "Reads (copied from" in prompt and "prices.csv (8 bytes, sha256" in prompt)
+            check("45: the prompt names what is kept", "out.csv, fig.png" in prompt)
+
+            decided = server_mod.gauss_execution_decide(sid, "yes", request_id=prepared["request_id"])
+            check("45: the run succeeds", decided["outcome"] == "success")
+            check("45: the run saw only the copied input", seen == [["prices.csv"]])
+            check("45: both outputs kept", [f["name"] for f in decided["files_kept"]] == ["out.csv", "fig.png"])
+            check("45: kept under the output folder",
+                  all(Path(f["path"]).parent.parent == (analysis / "output").resolve() for f in decided["files_kept"]))
+            check("45: the figure is attached", decided["images"] and decided["images"][0]["attached"] is True)
+            tool_result = server_mod._decide_tool_result(decided)
+            check("45: the MCP result carries an image block",
+                  isinstance(tool_result, server_mod.CallToolResult)
+                  and [c.type for c in tool_result.content] == ["text", "image"]
+                  and tool_result.structured_content == decided)
+            check("45: the input is unchanged",
+                  hashlib.sha256(source.read_bytes()).hexdigest() == digest_before)
+            check("45: nothing was written into input/", sorted(p.name for p in (analysis / "input").iterdir())
+                  == ["prices.csv"])
+
+            # A decline copies and keeps nothing.
+            folders_before = sorted((analysis / "output").iterdir())
+            again = server_mod.gauss_validate_code(sid, _V094_CODE)
+            prepared = server_mod.gauss_execution_prepare(sid, again["validation_id"])
+            declined = server_mod.gauss_execution_decide(sid, "no", request_id=prepared["request_id"])
+            check("45: decline", declined["outcome"] == "declined" and "files_kept" not in declined)
+            check("45: ...creates no output folder", sorted((analysis / "output").iterdir()) == folders_before)
+
+            # The input changes between prompt and answer: blocked, nothing run.
+            again = server_mod.gauss_validate_code(sid, _V094_CODE)
+            prepared = server_mod.gauss_execution_prepare(sid, again["validation_id"])
+            source.write_bytes(b"y,x\n1,2\n3,4\n")
+            changed = server_mod.gauss_execution_decide(sid, "yes", request_id=prepared["request_id"])
+            check("45: a changed input blocks the run", changed["outcome"] == "execution_blocked"
+                  and changed["launched"] is False and len(seen) == 1)
+
+            # The input disappears between validation and prepare: stale.
+            again = server_mod.gauss_validate_code(sid, _V094_CODE)
+            source.unlink()
+            stale = server_mod.gauss_execution_prepare(sid, again["validation_id"])
+            check("45: a vanished input is validation_stale", stale.get("error") == "validation_stale")
+
+            # Without the plain tool result: no image -> the plain dict.
+            check("45: a result with no figure is the plain dict",
+                  server_mod._decide_tool_result({"outcome": "success"}) == {"outcome": "success"})
+        finally:
+            server_mod._config, handoff_mod.select_helper = saved_config, saved_select
+
+
 def _run_all() -> int:
     test_fns = [obj for name, obj in sorted(globals().items()) if name.startswith("test_") and callable(obj)]
     for fn in test_fns:

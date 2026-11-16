@@ -125,6 +125,21 @@ Live evaluations 82.x and 83.x found three things that kept everyday code, and m
 - **Typed multiple returns.** `{ y, newstate } = rndn(5, 1, 13)` gives `y` the documented type of the output at its position in a documented form of that length. An output the page names without a type is reported as `return_type_undocumented`: `trainTestSplit`, `splitData` and `cvSplit` document none, so their outputs stay unknown (decision 1(a): left to the documentation, not to a curated list).
 - **Never a mismatch.** Each new category can confirm a role but never refute one: against a narrower parameter it is `return_type_imprecise` or `expression_category_imprecise`. The precondition tracer, both I/O registries and the generation gate never read them.
 
+## What's new in `v0.94.0`: data import and export
+
+When the caller passes an analysis folder (MCP sessions only, from the user's own `analysis-folder` setting), a file read or write can stop being a system-touching statement (planning v0.94 §3.2).
+
+It qualifies when all of these hold:
+- **The function is listed.** The call is in `_FILE_ACCESS_REGISTRY` (`loadd`, `csvReadM`, `xlsReadM`, `csvWriteM`, `xlsWrite`, `saved`, `plotSave`, ...), or is a dataset-argument estimator.
+- **The file name is literal.** It is one quoted bare name, or a name assigned once from one.
+- **The location is allowed.** A read must be in the folder's `input/`, or be GAUSS's own example data (`getGAUSSHome() $+ "examples/x.csv"`).
+
+The result lists each one as `file_accesses`. A registry call that does not qualify keeps its `file_read`/`file_write` finding, and the finding says why. Without a folder nothing changes.
+
+Two shape rules came with it, for the role check only:
+- **Stacked scalars are a column vector.** `640|480` is a vector: `plotSave`'s `size` idiom.
+- **A `$+` join of strings is a string.** The pieces must be string literals or documented string returns, as in `getGAUSSHome() $+ "examples/x.csv"`.
+
 ## Known limitations
 
 - **Signature/parameter-role checking remains conservative and partial.** Only a documented `:type` line in the `.. function::` directive style is parsed; a symbol documented in the older plain Format-heading style still gets argument-count-only checking. Parameter roles are confirmed from literals, from variables traced to a literal or a documented call (`v0.81.0`), from expression categories (`v0.91.0`), and from documented dimensions, members and typed multiple returns (`v0.93.0`); anything else is `UNKNOWN`, by design.

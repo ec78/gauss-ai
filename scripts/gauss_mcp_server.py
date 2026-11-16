@@ -63,8 +63,10 @@ base CLI stays stdlib-only.
 from __future__ import annotations
 
 import atexit
+import base64
 import dataclasses
 import hashlib
+import json
 import os
 import time
 import uuid
@@ -75,7 +77,7 @@ from typing import Any
 
 try:
     from mcp.server.mcpserver import MCPServer
-    from mcp.types import ToolAnnotations
+    from mcp.types import CallToolResult, ImageContent, TextContent, ToolAnnotations
 except ImportError as exc:  # pragma: no cover - exercised only without the optional extra installed
     raise ImportError(
         "The 'mcp' package is required to run the gauss-ai MCP server. Install it with: "
@@ -91,7 +93,7 @@ import gauss_doc_reader as doc_reader_mod
 import gauss_execution_handoff as handoff_mod
 import gauss_installed_libraries as libraries_mod
 
-__version__ = "0.93.1"
+__version__ = "0.94.0"
 
 #: Set by the server OPERATOR in the process's own environment before
 #: launch -- never read from a tool-call argument. See module docstring.
@@ -113,6 +115,21 @@ SESSION_IDLE_SECONDS = 8 * 3600
 MAX_SESSIONS = 64
 
 DOCS_FETCH_HINT = "Run 'gauss-ai docs fetch' once to download the official GAUSS documentation."
+
+#: v0.94.0 (planning v0.94 decision 5): figures a run keeps are also
+#: returned as image content, at most this many, each at most this size.
+MAX_RETURNED_IMAGES = 4
+MAX_RETURNED_IMAGE_BYTES = 2 * 1024 * 1024
+_IMAGE_MIME_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".svg": "image/svg+xml"}
+
+#: v0.94.0 (planning v0.94 decision 7): the input listing in
+#: `gauss_session_start` names at most this many files.
+MAX_LISTED_INPUT_FILES = 200
+
+ANALYSIS_FOLDER_HINT = (
+    "No analysis folder is configured, so code run here cannot read or write files. The user can set one with "
+    "'gauss-ai config set analysis-folder <path>' and put data files in its input folder."
+)
 
 #: v0.89.0 (live finding 79.x-1; planning v0.89 §3.6): shown on every
 #: documentation source, since the excerpt is cut and extraction drops some
@@ -179,6 +196,9 @@ class ValidatedCode:
     #: each `(name, index path, index SHA-256)`. Prepare re-resolves them and
     #: refuses (`validation_stale`) if any index changed.
     libraries: tuple[tuple[str, str, str], ...] = ()
+    #: v0.94.0 (planning v0.94 §3.3): the allowed file accesses at
+    #: validation; prepare re-validates and refuses if they differ.
+    file_accesses: tuple[Any, ...] = ()
 
 
 @dataclass
@@ -192,6 +212,12 @@ class Session:
     #: v0.92.0: the configured GAUSS installation's library search, read from
     #: the executable's `gauss.cfg` at session start; `None` without one.
     installation: "libraries_mod.Installation | None" = None
+    #: v0.94.0 (planning v0.94 §3.1): the user's analysis folder and its two
+    #: subfolders, from the config file only (never a tool argument); `None`
+    #: when unset or when its subfolders do not exist.
+    analysis_folder: str | None = None
+    input_dir: str | None = None
+    output_dir: str | None = None
     #: Built lazily by the first `gauss_chat_ask` (strict mode only).
     engine: "engine_mod.ConversationEngine | None" = None
     #: The last chat answer's single code block and readiness state, if it
@@ -350,6 +376,53 @@ _ASKS_MODEL = ToolAnnotations(read_only_hint=True, open_world_hint=True)
 # ---------------------------------------------------------------------------
 
 
+def _file_context(session: "Session") -> Any:
+    """v0.94.0: what `validate_code` may treat as an allowed file access in
+    this session; `None` (nothing allowed, every verdict as before) without
+    an analysis folder."""
+    if session.input_dir is None:
+        return None
+    return engine_mod.file_access_context(
+        input_dir=session.input_dir,
+        gauss_dir=session.installation.gauss_dir if session.installation is not None else None,
+    )
+
+
+def _access_key(accesses: tuple[Any, ...]) -> tuple[tuple[Any, ...], ...]:
+    return tuple((a.function, a.direction, a.name, a.location, a.path) for a in accesses)
+
+
+def _analysis_folder_report(session: "Session", folder: str | None) -> dict[str, Any] | None:
+    """v0.94.0 (planning v0.94 decision 7): the folders and the input files'
+    names and sizes -- never their contents. Read-only: a missing subfolder
+    is reported, not created."""
+    if not folder:
+        return None
+    input_dir, output_dir = config_mod.analysis_subfolders(folder)
+    report: dict[str, Any] = {"path": str(input_dir.parent), "input": str(input_dir), "output": str(output_dir)}
+    if not input_dir.is_dir():
+        report["error"] = (
+            f"{input_dir} does not exist; run 'gauss-ai config set analysis-folder {folder}' to create it. "
+            "Until then no file can be read or written."
+        )
+        return report
+    session.analysis_folder, session.input_dir, session.output_dir = (
+        str(input_dir.parent), str(input_dir), str(output_dir),
+    )
+    files = sorted(
+        (entry for entry in input_dir.iterdir() if entry.is_file()), key=lambda entry: entry.name.lower(),
+    )
+    report["input_files"] = [{"name": f.name, "bytes": f.stat().st_size} for f in files[:MAX_LISTED_INPUT_FILES]]
+    if len(files) > MAX_LISTED_INPUT_FILES:
+        report["input_files_truncated"] = True
+    report["note"] = (
+        "Code may read these files by their bare name (for example loadd(\"prices.csv\")) and write files by a "
+        "bare name (csvWriteM, saved, xlsWrite, plotSave); a run copies the inputs in and keeps the named outputs "
+        "in a new folder under the output folder."
+    )
+    return report
+
+
 def _readiness_dict(readiness: Any) -> dict[str, Any] | None:
     if readiness is None:
         return None
@@ -411,6 +484,8 @@ def _validation_to_dict(result: "engine_mod.CodeValidationResult") -> dict[str, 
         # partial" and guessed the cause (live findings 72.3, 72.15).
         "coverage": dataclasses.asdict(pre.coverage) if pre and pre.coverage else None,
         "coverage_gaps": [dataclasses.asdict(gap) for gap in (pre.coverage_gaps if pre else ())],
+        # v0.94.0 (planning v0.94 §3.2): each allowed read or write.
+        "file_accesses": [dataclasses.asdict(a) for a in (pre.file_accesses if pre else ())],
     }
 
 
@@ -429,7 +504,10 @@ server = MCPServer(
         "preconditions, syntax, unknown functions, and system-touching statements). Only code that reaches "
         "handoff_candidate gets a validation_id; to run it, call gauss_execution_prepare(validation_id), show the "
         "user the exact prompt it returns, and pass the user's own yes/no to gauss_execution_decide together with "
-        "that prompt's request_id. Never answer yes on the user's behalf. " + REPLY_GUIDANCE + " gauss_repair_* tools drive the guided "
+        "that prompt's request_id. Never answer yes on the user's behalf. " + REPLY_GUIDANCE + " If gauss_session_start "
+        "reports an analysis_folder, code may read the files listed in its input folder by their bare quoted name "
+        "and write files by a bare name; a run keeps them in a new folder under its output folder and returns "
+        "figures as images. Paths, URLs and names built at run time are never allowed. gauss_repair_* tools drive the guided "
         "repair pipeline for real files, one REPL command per call. gauss_chat_ask exists only when the server is configured with its own model."
     ),
 )
@@ -454,7 +532,10 @@ def gauss_session_start(
     returns `server_version`: if it is not the version you installed, or a
     tool asks for an argument its description does not mention, restart
     the MCP client and start a new conversation. Sessions idle for 8 hours
-    are closed."""
+    are closed. `analysis_folder` (v0.94.0) is the user's configured data
+    folder, with the names and sizes of the files in its `input` folder
+    that code may read by bare name; `null` when none is configured, in
+    which case no code that reads or writes a file can run."""
     _sweep_sessions()
     config = _get_config()
     env = os.environ
@@ -496,6 +577,12 @@ def gauss_session_start(
     response["installed_libraries"] = (
         None if report is None else {"allowed": list(report.allowed), "not_allowed": list(report.not_allowed)}
     )
+    # v0.94.0 (planning v0.94 §3.1, decision 7): the analysis folder, if the
+    # user configured one, with its input files' names and sizes.
+    folder = config_mod.resolve_analysis_folder(config=config).value
+    response["analysis_folder"] = _analysis_folder_report(_sessions[sid], folder)
+    if folder is None:
+        response["analysis_folder_hint"] = ANALYSIS_FOLDER_HINT
     if _sessions[sid].runner == "gauss" and not response["real_gauss_allowed"]:
         response["execution_hint"] = _REAL_GAUSS_NOT_ALLOWED_DETAIL
     if resolved_docs_root is None:
@@ -608,7 +695,9 @@ def gauss_validate_code(session_id: str, code: str) -> dict[str, Any]:
     session, error = _use_session(session_id)
     if session is None:
         return error
-    result = engine_mod.validate_code(code, docs_root=session.docs_root, installation=session.installation)
+    result = engine_mod.validate_code(
+        code, docs_root=session.docs_root, installation=session.installation, file_context=_file_context(session),
+    )
     if result.rejected_reason is not None:
         response: dict[str, Any] = {
             "error": result.rejected_reason,
@@ -625,6 +714,7 @@ def gauss_validate_code(session_id: str, code: str) -> dict[str, Any]:
         session.validated[validation_id] = ValidatedCode(
             code=code, readiness_state=result.handoff_readiness.state, docs_root=session.docs_root,
             libraries=result.pre_execution.libraries if result.pre_execution else (),
+            file_accesses=result.pre_execution.file_accesses if result.pre_execution else (),
         )
         while len(session.validated) > MAX_VALIDATIONS_PER_SESSION:
             session.validated.popitem(last=False)
@@ -672,7 +762,9 @@ def gauss_execution_prepare(session_id: str, validation_id: str | None = None) -
         # v0.92.0 (planning v0.92 §3.5): and the installation, read afresh --
         # a package updated in between must not run under the old verdict.
         installation = libraries_mod.load_installation(session.executable_path)
-        recheck = engine_mod.validate_code(entry.code, docs_root=entry.docs_root, installation=installation)
+        recheck = engine_mod.validate_code(
+            entry.code, docs_root=entry.docs_root, installation=installation, file_context=_file_context(session),
+        )
         if not chat_mod._execution_offer_eligible(recheck):
             return {"error": "validation_stale", "handoff_readiness": _readiness_dict(recheck.handoff_readiness)}
         rechecked_libraries = recheck.pre_execution.libraries if recheck.pre_execution else ()
@@ -681,13 +773,25 @@ def gauss_execution_prepare(session_id: str, validation_id: str | None = None) -
                 "error": "validation_stale",
                 "detail": "a library index this code loads changed since it was validated; validate it again",
             }
+        # v0.94.0 (planning v0.94 §3.3): an input that appeared, vanished or
+        # moved since validation changes what would run.
+        rechecked_files = recheck.pre_execution.file_accesses if recheck.pre_execution else ()
+        if _access_key(rechecked_files) != _access_key(entry.file_accesses):
+            return {
+                "error": "validation_stale",
+                "detail": "the files this code reads or writes changed since it was validated; validate it again",
+            }
         code, readiness_state, source = entry.code, recheck.handoff_readiness.state, "validated"
         libraries = rechecked_libraries
+        file_accesses = rechecked_files
     else:
         if session.pending_code is None or session.pending_readiness_state is None:
             return {"error": "no_pending_handoff_candidate"}
         code, readiness_state, source = session.pending_code, session.pending_readiness_state, "chat"
         libraries = ()
+        # v0.94.0 (decision 6): the chat path never validates with an
+        # analysis folder, so its code touches no file.
+        file_accesses = ()
 
     try:
         # v0.87.0 (live finding 77.x f3): no `workspace_parent`. The handoff
@@ -696,10 +800,18 @@ def gauss_execution_prepare(session_id: str, validation_id: str | None = None) -
         # was shown in the prompt and bound into the digest without ever
         # being used. Leaving it out keeps the digest to what the prompt
         # shows and the run uses. Guided repair resolves its own.
+        file_plan = None
+        if file_accesses:
+            if session.analysis_folder is None or session.input_dir is None or session.output_dir is None:
+                return {"error": "request_rejected", "detail": ANALYSIS_FOLDER_HINT}
+            file_plan = handoff_mod.build_file_plan(
+                file_accesses, analysis_folder=session.analysis_folder, input_dir=session.input_dir,
+                output_dir=session.output_dir,
+            )
         request = handoff_mod.create_execution_handoff_request(
             code=code, readiness_state=readiness_state, request_id=str(uuid.uuid4()), created_at=_clock(),
             runner=session.runner, executable_path=session.executable_path,
-            timeout_seconds=session.timeout_seconds, libraries=libraries,
+            timeout_seconds=session.timeout_seconds, libraries=libraries, file_plan=file_plan,
         )
     except (handoff_mod.HandoffNotEligibleError, handoff_mod.HandoffRequestValidationError) as exc:
         return {"error": "request_rejected", "detail": str(exc)}
@@ -730,7 +842,6 @@ def gauss_execution_prepare(session_id: str, validation_id: str | None = None) -
     return response
 
 
-@server.tool(annotations=_RUNS_CODE)
 def gauss_execution_decide(session_id: str, response_text: str, request_id: str | None = None) -> dict[str, Any]:
     """Step 2 of 2. `response_text` must be the human's own raw answer to
     the prompt `gauss_execution_prepare` returned, and `request_id` must be
@@ -807,7 +918,7 @@ def gauss_execution_decide(session_id: str, response_text: str, request_id: str 
 
     helper = handoff_mod.select_helper(request.runner)
     result = handoff_mod.execute_execution_handoff(request, approval, store=session.approval_store, helper=helper)
-    return {
+    response = {
         "outcome": result.outcome,
         "launched": result.launched,
         "blocked_reason": result.blocked_reason,
@@ -816,6 +927,62 @@ def gauss_execution_decide(session_id: str, response_text: str, request_id: str 
         "evidence": dataclasses.asdict(result.evidence) if result.evidence is not None else None,
         **echo,
     }
+    if request.file_plan is not None:
+        # v0.94.0 (planning v0.94 §3.4): where the kept files are, and which
+        # figures are attached as images (decision 5).
+        response["output_folder"] = result.output_folder
+        response["files_kept"] = [{"name": n, "path": path, "bytes": size} for n, path, size in result.files_kept]
+        response["files_not_kept"] = list(result.files_not_kept)
+        response["files_not_created"] = list(result.files_not_created)
+        response["images"] = _image_entries(result.files_kept)
+    return response
+
+
+def _image_entries(files_kept: tuple[tuple[str, str, int], ...]) -> list[dict[str, Any]]:
+    """Which kept figures `gauss_execution_decide` attaches as image
+    content: `.png`, `.jpg` and `.svg`, at most `MAX_RETURNED_IMAGES`, each
+    at most `MAX_RETURNED_IMAGE_BYTES`. A figure left out says why."""
+    entries: list[dict[str, Any]] = []
+    attached = 0
+    for name, path, size in files_kept:
+        mime = _IMAGE_MIME_TYPES.get(os.path.splitext(name)[1].lower())
+        if mime is None:
+            continue
+        entry: dict[str, Any] = {"name": name, "path": path, "mime_type": mime, "attached": False}
+        if size > MAX_RETURNED_IMAGE_BYTES:
+            entry["reason"] = f"larger than {MAX_RETURNED_IMAGE_BYTES:,} bytes; open it from its path"
+        elif attached >= MAX_RETURNED_IMAGES:
+            entry["reason"] = f"only the first {MAX_RETURNED_IMAGES} figures are attached; open it from its path"
+        else:
+            entry["attached"] = True
+            attached += 1
+        entries.append(entry)
+    return entries
+
+
+def _decide_tool_result(response: dict[str, Any]) -> "dict[str, Any] | CallToolResult":
+    """The MCP result for `gauss_execution_decide`: the same structured
+    response, plus one image block per attached figure. Without figures it
+    is the plain response, exactly as before v0.94.0."""
+    attached = [entry for entry in response.get("images") or () if entry.get("attached")]
+    if not attached:
+        return response
+    content: list[Any] = [TextContent(type="text", text=json.dumps(response, indent=2, default=str))]
+    for entry in attached:
+        try:
+            with open(entry["path"], "rb") as handle:
+                data = base64.b64encode(handle.read()).decode("ascii")
+        except OSError:
+            continue
+        content.append(ImageContent(type="image", data=data, mime_type=entry["mime_type"]))
+    return CallToolResult(content=content, structured_content=response)
+
+
+@server.tool(name="gauss_execution_decide", annotations=_RUNS_CODE, description=gauss_execution_decide.__doc__)
+def _gauss_execution_decide_tool(
+    session_id: str, response_text: str, request_id: str | None = None,
+) -> dict[str, Any]:
+    return _decide_tool_result(gauss_execution_decide(session_id, response_text, request_id=request_id))
 
 
 @server.tool(annotations=_MANAGES_WORKSPACE)

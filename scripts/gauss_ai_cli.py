@@ -46,7 +46,7 @@ import gauss_code_assistant_cli as cli_mod  # noqa: E402
 import gauss_docs_fetch as docs_fetch_mod  # noqa: E402
 import gauss_environment_check as environment_check_mod  # noqa: E402
 
-__version__ = "0.93.1"
+__version__ = "0.94.0"
 
 
 def _cmd_version(args: list[str]) -> int:
@@ -108,6 +108,8 @@ def _print_config_help() -> None:
     print("  chat-model                Model name/identifier, meaning depends on chat-provider (see below)")
     print("  docs-root                 Local root of an official GAUSS documentation checkout, for grounding")
     print("  ollama-endpoint           Local Ollama service URL (default: http://localhost:11434)")
+    print("  analysis-folder           Folder for data analysis through the MCP server: code may read files")
+    print("                            from its input/ folder and keep files in new folders under output/")
     print("  verbose                   'true' or 'false' -- show raw digests/IDs by default")
     print("")
     print("Chat providers, at a glance:")
@@ -145,6 +147,7 @@ def _cmd_config(args: list[str]) -> int:
         print(f"  chat-model: {config.chat_model or '(provider default)'}")
         print(f"  docs-root: {config.docs_root or '(not set -- conversational answers will not be documentation-grounded)'}")
         print(f"  ollama-endpoint: {config.ollama_endpoint or f'{provider_mod.DEFAULT_OLLAMA_ENDPOINT} (default, only used when chat-provider is ollama)'}")
+        print(f"  analysis-folder: {config.analysis_folder or '(not set -- code run through the MCP server cannot read or write files)'}")
         print(f"  verbose: {config.verbose}")
         return 0
     if sub == "set":
@@ -193,6 +196,16 @@ def _cmd_config(args: list[str]) -> int:
             new_config = dataclasses.replace(config, docs_root=value)
         elif key == "ollama-endpoint":
             new_config = dataclasses.replace(config, ollama_endpoint=value)
+        elif key == "analysis-folder":
+            # v0.94.0 (planning v0.94 §3.1): creates input/ and output/ now,
+            # so the user can put data in input/ right away.
+            try:
+                input_dir, output_dir = config_mod.ensure_analysis_subfolders(value)
+            except OSError as exc:
+                print(f"ERROR: could not create the analysis folder {value!r}: {exc}")
+                return 1
+            new_config = dataclasses.replace(config, analysis_folder=str(input_dir.parent))
+            print(f"Put data files in {input_dir}; runs keep their files in new folders under {output_dir}.")
         elif key == "verbose":
             if value.lower() not in {"true", "false"}:
                 print("ERROR: verbose must be 'true' or 'false'")
@@ -202,7 +215,7 @@ def _cmd_config(args: list[str]) -> int:
             print(
                 f"ERROR: unknown config key {key!r}. Supported: gauss-executable, workspace-parent, "
                 "default-runner, default-timeout-seconds, chat-provider, chat-model, docs-root, "
-                "ollama-endpoint, verbose"
+                "ollama-endpoint, analysis-folder, verbose"
             )
             return 2
         saved_path = config_mod.save_config(new_config)
@@ -398,7 +411,7 @@ def _print_top_help() -> None:
     print("No API key? Try a local model: gauss-ai config set chat-provider ollama  (see 'gauss-ai config --help')")
     print(
         "Config keys: gauss-executable, workspace-parent, default-runner, default-timeout-seconds, "
-        "chat-provider, chat-model, docs-root, ollama-endpoint, verbose"
+        "chat-provider, chat-model, docs-root, ollama-endpoint, analysis-folder, verbose"
     )
     print("Run 'python scripts/gauss_code_assistant_cli.py' directly for the exact same REPL without installing.")
 

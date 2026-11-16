@@ -3127,7 +3127,9 @@ def test_192_v091_expression_category_operator_families() -> None:
     one is a numeric `matrix` of the new origin, never evaluated."""
     expressions = (
         "n - 1", "x * 2", "x / 2", "x ^ 2", "x % 2", "1 ./ x", "x .* y", "x .^ 2", "x.^2", "2.*x",  # arithmetic
-        "ones(n, 1) ~ x ~ y", "0.25 | 0.75", "0|0", "{1 2} | {3 4}",                             # concatenation
+        # v0.94.0 (planning v0.94 §9, deviation 2): "0.25 | 0.75" and "0|0" moved
+        # to the vector check below -- a `|` of scalars is a column vector now.
+        "ones(n, 1) ~ x ~ y", "{1 2} | {3 4}",                                                   # concatenation
         "(x .< 2) .or (x .> 8)", "x .== 1", "x != y", "x >= 1", "not x", "x .and y", "x xor y",   # comparisons, logic
         "x'x", "x'y", "x' * y", "x.'", "x'.*y",                                                   # transpose, product
         "x[., 2]", "y[2:rows(y)]", "x[1].*2",                                                     # indexing
@@ -3137,6 +3139,10 @@ def test_192_v091_expression_category_operator_families() -> None:
     for text in expressions:
         result = _v091_infer(text)
         check(f"{text!r}: matrix", result.categories == ("matrix",))
+        check(f"{text!r}: expression_category origin", result.origin == "expression_category")
+    for text in ("0.25 | 0.75", "0|0"):
+        result = _v091_infer(text)
+        check(f"{text!r}: vector (v0.94.0: stacked scalars)", result.categories == ("vector",))
         check(f"{text!r}: expression_category origin", result.origin == "expression_category")
 
 
@@ -3713,7 +3719,12 @@ def test_208_v093_lexical_discipline_for_members_and_targets() -> None:
     sig = _v093_signatures()
     code = "X = rndn(50, 2);\nmdl = kfit(X, 3);\n"
     result = validation_mod.infer_expression_category('"mdl.assignments" $+ "x"', code=code, signatures=sig)
-    check("208: a member inside a string is never an operand", result.categories is None)
+    # v0.94.0 (planning v0.94 §9, deviation 3): a `$+` join of two string
+    # literals is now a `string` (it was refused, so `None`). The point of the
+    # check is unchanged: the member text inside the string is never read as
+    # an operand, so the result is never a member category or origin.
+    check("208: a member inside a string is never an operand",
+          result.categories == ("string",) and result.origin == "expression_category")
     commented = "X = rndn(50, 2);\n/* mdl = kfit(X, 3); */\nmdl = rndn(5, 1);\n"
     result = validation_mod.infer_expression_category("mdl.assignments", code=commented, signatures=sig)
     check("208: a producer inside a comment is never read", result.categories is None)
@@ -3829,6 +3840,253 @@ def test_211_v0931_system_finding_details() -> None:
     check("211: anything else may read", traced.detail.startswith(
         "may read a dataset file: its `data` argument (`y`) is not shown to hold data in memory"))
 
+
+
+# ---------------------------------------------------------------------------
+# v0.94.0: data import and export (planning/v0.94-data-import-and-export.md)
+# ---------------------------------------------------------------------------
+
+
+def _v094_folder(tmp: str, *names: str) -> "validation_mod.FileAccessContext":
+    """A synthetic analysis folder (never a real one) whose `input/` holds
+    `names`, and a synthetic GAUSS directory with one example file in
+    `examples/` and one in `pkgs/gml/examples/data/`."""
+    import os
+    input_dir = os.path.join(tmp, "analysis", "input")
+    os.makedirs(input_dir, exist_ok=True)
+    for name in names:
+        with open(os.path.join(input_dir, name), "w", encoding="utf-8") as handle:
+            handle.write("y,x\n1,2\n")
+    gauss_dir = os.path.join(tmp, "gauss")
+    os.makedirs(os.path.join(gauss_dir, "examples"), exist_ok=True)
+    os.makedirs(os.path.join(gauss_dir, "pkgs", "gml", "examples", "data"), exist_ok=True)
+    for relative in ("examples/beef.csv", "pkgs/gml/examples/data/iris.csv", "gauss.cfg"):
+        with open(os.path.join(gauss_dir, *relative.split("/")), "w", encoding="utf-8") as handle:
+            handle.write("a\n1\n")
+    return validation_mod.FileAccessContext(input_dir=input_dir, gauss_dir=gauss_dir)
+
+
+def _v094_findings(code: str, context) -> tuple:
+    analysis = validation_mod.analyze_file_accesses(code, context=context)
+    findings = validation_mod.check_system_statements(code) + validation_mod.check_dataset_arguments(code)
+    return analysis, validation_mod.apply_file_access_analysis(findings, analysis)
+
+
+def test_212_v094_allowed_reads_and_writes() -> None:
+    """Planning v0.94 §3.2: a registry call whose file argument is one bare,
+    quoted name is an allowed access -- a read only when the file is in
+    `input/` -- and its file finding is dropped. Nothing else changes."""
+    with tempfile.TemporaryDirectory() as tmp:
+        context = _v094_folder(tmp, "prices.csv", "book.xlsx")
+        code = (
+            'data = loadd("prices.csv");\n'
+            'x = csvReadM("prices.csv");\n'
+            'w = xlsReadM("book.xlsx");\n'
+            'call csvWriteM(data, "coef.csv");\n'
+            'ret = saved(data, "out.gdat", "y");\n'
+            'ret = xlsWrite(data, "copy.xlsx", "A1", 1, "");\n'
+            'plotSave("fit.png", 640|480);\n'
+            'call olsmt("prices.csv", "y ~ x");\n'
+        )
+        analysis, findings = _v094_findings(code, context)
+        got = [(a.function, a.direction, a.name, a.location) for a in analysis.accesses]
+        check("212: every access is read in order", got == [
+            ("loadd", "read", "prices.csv", "input"), ("csvreadm", "read", "prices.csv", "input"),
+            ("xlsreadm", "read", "book.xlsx", "input"), ("csvwritem", "write", "coef.csv", "output"),
+            ("saved", "write", "out.gdat", "output"), ("xlswrite", "write", "copy.xlsx", "output"),
+            ("plotsave", "write", "fit.png", "output"), ("olsmt", "read", "prices.csv", "input"),
+        ])
+        check("212: a read carries its resolved path", all(
+            a.path and a.path.endswith("prices.csv") for a in analysis.accesses if a.name == "prices.csv"))
+        check("212: a write has no path", all(a.path is None for a in analysis.accesses if a.direction == "write"))
+        check("212: no file finding is left", findings == ())
+
+        # The same code without an analysis folder: the analysis is empty and
+        # every finding stays exactly as `v0.93.1` reported it.
+        bare, unchanged = _v094_findings(code, None)
+        check("212: no folder -> empty analysis", bare == validation_mod.FileAccessAnalysis())
+        check("212: no folder -> findings unchanged", unchanged == (
+            validation_mod.check_system_statements(code) + validation_mod.check_dataset_arguments(code)))
+
+
+def test_213_v094_refused_forms_say_why() -> None:
+    """Every other form stays a file finding, with the reason added."""
+    with tempfile.TemporaryDirectory() as tmp:
+        context = _v094_folder(tmp, "prices.csv")
+        cases = {
+            'd = loadd("C:/data/prices.csv");': "is not a bare file name",
+            'd = loadd("data/prices.csv");': "is not a bare file name",
+            'd = loadd("..prices.csv");': "is not a bare file name",
+            'd = loadd("https://example.com/a.csv");': "is not a bare file name",
+            'd = loadd("missing.csv");': "is not in the analysis folder's input folder",
+            'd = loadd("prices.exe");': "does not end in an allowed extension",
+            'd = csvReadM("book.xlsx");': "does not end in an allowed extension",
+            'call csvWriteM(1, "out.xlsx");': "does not end in an allowed extension",
+            'plotSave("fig.tiff", 640|480);': "does not end in an allowed extension",
+            'd = loadd(__FILE_DIR $+ "prices.csv");': "is not a single quoted name",
+            'd = loadd("pri" $+ "ces.csv");': "is not a single quoted name",
+            'd = loadd(f);': "is not a single quoted name",
+            "d = loadd();": "argument is missing",
+            'call csvWriteM(getGAUSSHome() $+ "examples/beef.csv");': "argument is missing",
+        }
+        for code, reason in cases.items():
+            analysis, findings = _v094_findings(code + "\n", context)
+            check(f"213: {code!r} is no access", analysis.accesses == ())
+            check(f"213: {code!r} keeps a file finding saying {reason!r}",
+                  len(findings) >= 1 and any(reason in f.detail for f in findings))
+        analysis, findings = _v094_findings(
+            'call csvWriteM(1, getGAUSSHome() $+ "examples/out.csv");\n', context)
+        check("213: a write never goes into the GAUSS installation",
+              any("never writes into the GAUSS installation" in f.detail for f in findings))
+
+
+def test_214_v094_gauss_example_files_and_traced_names() -> None:
+    """Decision 2 and deviation 1: GAUSS's own example files by the docs'
+    literal idioms, read in place, and a name assigned once from a literal
+    form. A second write, a path out of `examples`, or `..` refuses."""
+    import os
+    with tempfile.TemporaryDirectory() as tmp:
+        context = _v094_folder(tmp, "prices.csv")
+        allowed = {
+            'd = loadd(getGAUSSHome("examples/beef.csv"));': "examples/beef.csv",
+            'd = loadd(getGAUSSHome() $+ "examples/beef.csv");': "examples/beef.csv",
+            'd = loadd(getGAUSSHome("pkgs/gml/examples/data/iris.csv"));': "pkgs/gml/examples/data/iris.csv",
+            'f = getGAUSSHome() $+ "examples/beef.csv";\nd = loadd(f);': "examples/beef.csv",
+            'f = "prices.csv";\nd = loadd(f);': "prices.csv",
+        }
+        for code, name in allowed.items():
+            analysis, findings = _v094_findings(code + "\n", context)
+            check(f"214: {code!r} reads {name}", [a.name for a in analysis.accesses] == [name])
+            check(f"214: {code!r} leaves no finding", findings == ())
+        example = validation_mod.analyze_file_accesses('d = loadd(getGAUSSHome("examples/beef.csv"));\n',
+                                                       context=context).accesses[0]
+        check("214: an example file is read in place",
+              example.location == "gauss_examples"
+              and os.path.normcase(example.path) == os.path.normcase(
+                  os.path.realpath(os.path.join(context.gauss_dir, "examples", "beef.csv"))))
+        refused = {
+            'd = loadd(getGAUSSHome("gauss.cfg"));': "is not inside GAUSS's `examples` folder",
+            'd = loadd(getGAUSSHome("examples/../gauss.cfg"));': "may not contain",
+            'd = loadd(getGAUSSHome("examples/nope.csv"));': "is not a file in this GAUSS installation",
+            'd = loadd(getGAUSSHome("examples\\\\beef.csv"));': "must use forward slashes",
+            'f = "prices.csv";\nf = "C:/x.csv";\nd = loadd(f);': "is not a bare file name",
+            'f = "prices.csv";\nf[1] = "y";\nd = loadd(f);': "is not a single quoted name",
+            'g = "prices.csv";\nf = g;\nd = loadd(f);': "is not a single quoted name",
+        }
+        for code, reason in refused.items():
+            analysis, findings = _v094_findings(code + "\n", context)
+            check(f"214: {code!r} refused", analysis.accesses == ())
+            check(f"214: {code!r} says {reason!r}", any(reason in f.detail for f in findings))
+        no_install = validation_mod.FileAccessContext(input_dir=context.input_dir, gauss_dir=None)
+        _analysis, findings = _v094_findings('d = loadd(getGAUSSHome("examples/beef.csv"));\n', no_install)
+        check("214: without an installation an example file is refused",
+              any("no GAUSS installation is configured" in f.detail for f in findings))
+
+
+def test_215_v094_fails_closed_per_line_and_keeps_other_findings() -> None:
+    """A finding is per `(name, line)`, so one refused use of a name on a
+    line keeps the whole line's finding; and every other system statement
+    still blocks."""
+    with tempfile.TemporaryDirectory() as tmp:
+        context = _v094_folder(tmp, "a.csv")
+        analysis, findings = _v094_findings('x = loadd("a.csv"); y = loadd("C:/b.csv");\n', context)
+        check("215: a line with one refused use is not allowed", analysis.accesses == ())
+        check("215: ...and keeps its finding", [f.name for f in findings] == ["loadd"])
+        analysis, findings = _v094_findings('x = loadd("a.csv"); z = loadd("a.csv");\n', context)
+        check("215: two allowed uses on one line are allowed", len(analysis.accesses) == 2 and findings == ())
+        code = 'x = loadd("a.csv");\ndos dir;\nret = deleteFile("a.csv");\n#include x.src\n'
+        analysis, findings = _v094_findings(code, context)
+        check("215: other statements still block",
+              sorted(f.name for f in findings) == ["#include", "deletefile", "dos"])
+        check("215: ...and keep their own detail", all(
+            "allowed file access" not in f.detail for f in findings if f.name != "deletefile"))
+
+
+def test_216_v094_lexical_discipline() -> None:
+    """A file call inside a comment or a string is never read, and a file
+    name is only ever read from the code's own string literal."""
+    with tempfile.TemporaryDirectory() as tmp:
+        context = _v094_folder(tmp, "a.csv")
+        for code in ('print "loadd(\\"a.csv\\")";\n', '/* x = loadd("a.csv"); */\nprint 1;\n',
+                     '// x = loadd("a.csv");\nprint 1;\n'):
+            analysis = validation_mod.analyze_file_accesses(code, context=context)
+            check(f"216: {code!r} has no access", analysis.accesses == () and analysis.refusals == ())
+        analysis = validation_mod.analyze_file_accesses('x = loadd("a.csv" /* c */);\n', context=context)
+        check("216: a comment beside the literal is no part of it",
+              [a.name for a in analysis.accesses] in (["a.csv"], []))
+
+
+def test_217_v094_shape_and_string_join_deviations() -> None:
+    """Deviations 2 and 3 (planning v0.94 §9): a `|` of scalars is a column
+    vector; a `$+` join of string literals and documented string returns is
+    a string. Anything else is as before."""
+    sig = dict(_v091_signatures())
+    sig["getgausshome"] = _signature("getGAUSSHome", ".. function:: g = getGAUSSHome()", "", ":rtype g: string")
+    for text in ("640|480", "640 | 480", "11 | 8.5", "1|2|3", "(640|480)"):
+        result = validation_mod.infer_expression_category(text, code=_V091_CODE, signatures=sig)
+        check(f"217: {text!r} is a vector", result.categories == ("vector",))
+    for text in ("x|1", "{1 2}|{3 4}", "640~480"):
+        result = validation_mod.infer_expression_category(text, code=_V091_CODE, signatures=sig)
+        check(f"217: {text!r} is still not a vector", result.categories != ("vector",))
+    for text in ('"a" $+ "b"', 'getGAUSSHome() $+ "examples/x.csv"', '"a" $+ getGAUSSHome() $+ "b"'):
+        result = validation_mod.infer_expression_category(text, code=_V091_CODE, signatures=sig)
+        check(f"217: {text!r} is a string", result.categories == ("string",))
+    for text in ('x $+ "b"', '"a" $+ rows(x)', '"a" $| "b"', '"a" $+ nodoc()', '"a" $+ "b" + 1'):
+        result = validation_mod.infer_expression_category(text, code=_V091_CODE, signatures=sig)
+        check(f"217: {text!r} is not a string", result.categories != ("string",))
+    code = 'f = getGAUSSHome() $+ "examples/x.csv";\nd = rows(f);\n'
+    categories, _origin, _cause, _rhs, _reason = validation_mod.resolve_role_argument_category(
+        "f", code=code, line_number=2, column=4, signatures=sig)
+    check("217: a name assigned from a join is a string", categories == ("string",))
+    indexed = 'f = getGAUSSHome() $+ "examples/x.csv";\nf[1] = "y";\nd = rows(f);\n'
+    categories, _origin, _cause, _rhs, _reason = validation_mod.resolve_role_argument_category(
+        "f", code=indexed, line_number=3, column=4, signatures=sig)
+    check("217: ...but not after an indexed write", categories != ("string",))
+
+
+
+def test_218_v094_one_name_from_a_multiple_return_function() -> None:
+    """Planning v0.94 §9, deviation 6 (sp94f, sp94g): `stat = kss(y, 1);`
+    stops GAUSS 26.1.4 with G0136 when every documented form returns several
+    values (`eigv`, `hess`, `base10`, `balance`, tspdlib's `kss` alike); a
+    function with any one-value or call-only form is never flagged."""
+    check("218: counts per form", validation_mod._documented_result_counts("kss", (
+        ".. function:: { kss_t, p, cv } = kss(y, model [, pmax, ic])",)) == (3,))
+    check("218: one-value and multi-value forms", validation_mod._documented_result_counts("rndn", (
+        ".. function:: y = rndn(r, c)", "{ y, newstate } = rndn(r, c, state)")) == (1, 2))
+    check("218: a call-only form", validation_mod._documented_result_counts("plotsave", (
+        ".. function:: plotSave(filename[, size])",)) == (0,))
+    check("218: an optional output counts as one", validation_mod._documented_result_counts("f", (
+        ".. function:: { a [, b] } = f(x)",)) == (1,))
+    check("218: another function's form is not read", validation_mod._documented_result_counts("inv", (
+        "xi = invpd(x)",)) == ())
+
+    def sig(symbol, counts):
+        return dataclasses.replace(
+            _signature(symbol, f".. function:: y = {symbol}(x)", ":type x: NxK matrix"), result_counts=counts)
+
+    signatures = {"kss": sig("kss", (3,)), "rndn": sig("rndn", (1, 2)), "meanc": sig("meanc", (1,))}
+    flagged = validation_mod.check_result_counts(
+        "stat = kss(y, 1);\n{ s, p, cv } = kss(y, 1);\ncall kss(y, 1);\nr = rndn(2, 1);\nm = meanc(x);\n",
+        documented_signatures=signatures,
+    )
+    check("218: only the one-name assignment is flagged",
+          [(r.symbol, r.argument_count_status) for r in flagged] == [("kss", "incompatible")])
+    check("218: ...naming G0136 and the fix", "G0136" in flagged[0].issues[0] and "{ ... } = kss" in flagged[0].issues[0])
+    check("218: an expression around the call is not read", validation_mod.check_result_counts(
+        "stat = kss(y, 1) + 1;\n", documented_signatures=signatures) == ())
+    check("218: a call inside a string or comment is not read", validation_mod.check_result_counts(
+        'print "stat = kss(y, 1);";\n/* stat = kss(y, 1); */\n', documented_signatures=signatures) == ())
+    check("218: a procedure the code defines is not the documented one", validation_mod.check_result_counts(
+        "proc (1) = kss(y, m);\n  retp(y);\nendp;\nstat = kss(y, 1);\n", documented_signatures=signatures) == ())
+    readiness = validation_mod.compute_handoff_readiness(
+        eligibility=validation_mod.compute_eligibility(
+            generation_policy="generate", unknown_symbols=(), ambiguous_topics=(), call_validations=flagged,
+            preconditions=(), code_extraction_ok=True,
+        )[0],
+        unresolved_issues=(), syntax=None, call_validations=flagged, preconditions=(), evidence_profile="broad",
+    )
+    check("218: the verdict is not_ready", readiness.state == "not_ready")
 
 def run_tests() -> int:
     tests = [

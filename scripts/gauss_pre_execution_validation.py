@@ -180,6 +180,7 @@ import dataclasses
 import enum
 import functools
 import itertools
+import os
 import re
 from dataclasses import dataclass, field
 from typing import Callable
@@ -875,6 +876,33 @@ def _documented_output_forms(symbol: str, syntax_blocks) -> tuple[tuple[str, ...
 _SIMPLE_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
+def _documented_result_counts(symbol: str, syntax_blocks) -> tuple[int, ...]:
+    """v0.94.0 (planning v0.94 §9, deviation 6): the number of values each
+    documented form of `symbol` returns. A syntax block is one form
+    (`.. function:: { kss_t, p, cv } = kss(y, model [, pmax, ic])`, or a
+    following form line such as `xi = invpd(x)`); a block that is not a form
+    of `symbol` is skipped, never guessed."""
+    form_re = re.compile(
+        r"\s*(?:\.\.\s+function::)?\s*(?:(\{[^{}]*\}|[A-Za-z_][A-Za-z0-9_]*)\s*=\s*)?"
+        + re.escape(symbol) + r"\s*\(",
+        re.IGNORECASE,
+    )
+    counts: list[int] = []
+    for block in syntax_blocks or ():
+        match = form_re.match(str(block))
+        if match is None:
+            continue
+        target = match.group(1)
+        if target is None:
+            counts.append(0)
+        elif target.startswith("{"):
+            inner = target[1:-1]
+            counts.append(1 if "[" in inner else len([n for n in inner.split(",") if n.strip()]))
+        else:
+            counts.append(1)
+    return tuple(counts)
+
+
 #: v0.90.0 (planning v0.90 §3.1): one documented call form's slot kinds.
 SLOT_REQUIRED = "required"
 SLOT_OPTIONAL = "optional"
@@ -1028,6 +1056,11 @@ class DocumentedSignature:
     return_dimensions: tuple[str, str] | None = None
     #: v0.93.0 (§3.3): every documented `{ ... } = f(...)` form's outputs.
     output_forms: tuple[tuple[str, ...], ...] = ()
+    #: v0.94.0 (planning v0.94 §9, deviation 6): how many values each
+    #: documented form returns (`y = f(x)` 1, `f(x)` 0, `{ a, b } = f(x)` 2,
+    #: an optional output `{ a [, b] }` 1), in form order; empty when no
+    #: form of the symbol was read. Read by `check_result_counts(...)` only.
+    result_counts: tuple[int, ...] = ()
     #: v0.93.0 (§3.3): `{output name: :rtype text}` from the raw page; an
     #: empty text means the page names the output but gives no type.
     output_types: "dict[str, str]" = field(default_factory=dict, compare=False, hash=False)
@@ -1160,6 +1193,7 @@ def _output_evidence_fields(symbol: str, best_match: dict) -> dict:
     return {
         "return_dimensions": documented_dimensions(match.group(2).strip()) if match else None,
         "output_forms": _documented_output_forms(symbol, best_match.get("syntax_blocks")),
+        "result_counts": _documented_result_counts(symbol, best_match.get("syntax_blocks")),
         "output_types": output_types,
         "result_members": dict(members),
     }
@@ -1414,6 +1448,51 @@ def validate_call(
         issues=(f"documented form(s) accept {' or '.join(allowed)} argument(s); this call passed {call.argument_count}",),
         source=signature.source,
     )
+
+
+#: v0.94.0: a plain top-level `name = f(...)` statement, on its masked text.
+_SINGLE_TARGET_CALL_RE = re.compile(r"\s*[A-Za-z_][A-Za-z0-9_]*\s*=(?!=)\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(")
+
+
+def check_result_counts(
+    code: str, *, documented_signatures: "dict[str, DocumentedSignature]",
+) -> tuple[CallValidationResult, ...]:
+    """v0.94.0 (planning v0.94 §9, deviation 6): `stat = kss(y, model);`,
+    where every documented form of `kss` returns several values, stops
+    GAUSS 26.1.4 with `G0136` ("Too many arguments or misplaced assignment
+    operator"; sp94f), while `{ s, p, cv } = kss(y, 1);` runs. Each such
+    statement is an INCOMPATIBLE call validation, so the code is NOT_READY
+    like any argument-count mismatch. Only a plain statement whose whole
+    right-hand side is that one call is read (`source_statements`, masked);
+    a function with any one-value or call-only form, or no form read, is
+    never flagged."""
+    results: list[CallValidationResult] = []
+    user_defined = {name.lower() for name in collect_user_defined_symbols(code)}
+    for statement in source_statements(code):
+        match = _SINGLE_TARGET_CALL_RE.match(statement.masked)
+        if match is None:
+            continue
+        close = _find_matching_paren(statement.masked, match.end() - 1)
+        if close is None or statement.masked[close + 1:].strip().rstrip(";").strip():
+            continue
+        symbol = match.group(1)
+        if symbol.lower() in user_defined:
+            continue
+        signature = documented_signatures.get(symbol.lower())
+        counts = signature.result_counts if signature is not None else ()
+        if not counts or min(counts) < 2:
+            continue
+        returned = " or ".join(str(n) for n in sorted(set(counts)))
+        results.append(CallValidationResult(
+            symbol=symbol, documented=True, signature_known=True,
+            argument_count_status=SignatureCompatibility.INCOMPATIBLE.value,
+            issues=(
+                f"every documented form of `{symbol}` returns {returned} values, but this assigns it to one name -- "
+                f"GAUSS would stop with G0136; use `{{ ... }} = {symbol}(...)` with one name per value",
+            ),
+            source=signature.source,
+        ))
+    return tuple(results)
 
 
 # ---------------------------------------------------------------------------
@@ -2150,6 +2229,14 @@ _SHAPE_PRESERVING_OPERATORS = frozenset({
 def _expression_shape_key(keys: list[object], used: list[str]) -> object:
     """v0.93.0: the shape key of one expression span (see
     `_ExpressionReader.read`): `"scalar"`, `("vec", id)`, or None."""
+    # v0.94.0 (planning v0.94 §9, deviation 2): a vertical concatenation of
+    # scalars (`640|480`: `plotSave`'s `size` idiom in all 9 sized calls in
+    # the docs) is a column vector -- GAUSS stacks each scalar as one
+    # row. Only when every operator is `|` and every operand a scalar; one
+    # vector or matrix operand (`x|1`) still has no shape key. The key names
+    # the row count, so two such stacks of one length are the same shape.
+    if used and keys and all(op == "|" for op in used) and all(key == "scalar" for key in keys):
+        return ("vec", ("vertical concatenation", len(keys)))
     if any(key is None for key in keys) or any(op not in _SHAPE_PRESERVING_OPERATORS for op in used):
         return None
     vectors = [key for key in keys if key != "scalar"]
@@ -2160,6 +2247,53 @@ def _expression_shape_key(keys: list[object], used: list[str]) -> object:
     if len(vectors) > 1 and ("*" in used or "/" in used):
         return None
     return vectors[0]
+
+
+#: v0.94.0: a top-level `$+` in a masked expression.
+_STRING_JOIN_RE = re.compile(r"\$\+")
+_STRING_JOIN_CALL_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*\(")
+
+
+def _string_concatenation_category(
+    text: str, *, signatures: "dict[str, DocumentedSignature] | None",
+) -> "ExpressionCategory | None":
+    """v0.94.0 (planning v0.94 §9, deviation 3): `a $+ b [$+ ...]` whose
+    every operand is a string literal or a call documented to return only a
+    `string` (`getGAUSSHome() $+ "examples/x.csv"`, the docs' pre-GAUSS-23
+    idiom for example data, 160 corpus uses) is a `string`. `$+` on two
+    strings joins them; nothing else is read. A name, an index, any other
+    operator or an undocumented call returns None, leaving the v0.91 reader's
+    refusal ("it uses a string operator") unchanged. Only a MATCH can follow:
+    a string parameter is confirmed, any other stays as it was."""
+    masked = lex_gauss_source(text).masked_view
+    if not _STRING_JOIN_RE.search(masked):
+        return None
+    pieces: list[tuple[int, int]] = []
+    depth, start, i = 0, 0, 0
+    while i < len(masked):
+        ch = masked[i]
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        elif depth == 0 and masked.startswith("$+", i):
+            pieces.append((start, i))
+            start = i + 2
+            i += 2
+            continue
+        i += 1
+    pieces.append((start, len(masked)))
+    for begin, end in pieces:
+        piece = masked[begin:end].strip()
+        if piece and set(piece) == {"#"}:
+            continue
+        call = _STRING_JOIN_CALL_RE.match(piece)
+        if call is None or _find_matching_paren(piece, call.end() - 1) != len(piece) - 1:
+            return None
+        signature = (signatures or {}).get(call.group(1).lower())
+        if signature is None or tuple(signature.return_categories) != (TypeClass.STRING.value,):
+            return None
+    return ExpressionCategory((TypeClass.STRING.value,), ArgumentOrigin.EXPRESSION_CATEGORY.value)
 
 
 def infer_expression_category(
@@ -2191,6 +2325,9 @@ def infer_expression_category(
     the reason. Deterministic; reads only `text`, `code` and `signatures`."""
     if _memo is None:
         _memo = {}  # v0.91.1: shared by every operand traced below (see `resolve_role_argument_category`)
+    joined = _string_concatenation_category(text, signatures=signatures)
+    if joined is not None:
+        return joined
     if _depth > MAX_EXPRESSION_TRACE_DEPTH:
         return ExpressionCategory(
             None, ArgumentOrigin.UNRESOLVED.value,
@@ -2577,6 +2714,16 @@ def resolve_role_argument_category(
                 ArgumentOrigin.EXPRESSION_CATEGORY.value
             )
             return inferred.categories, kept, None, None, None
+        # v0.94.0 (planning v0.94 §9, deviation 3): a `$+` join of strings
+        # (`fname = getGAUSSHome() $+ "examples/x.csv";`) is a `string` --
+        # but only when the strict trace, which refuses on any indexed write,
+        # finds this same assignment, since the numeric-only rule above is
+        # what made skipping indexed writes safe.
+        if (
+            inferred.categories == (TypeClass.STRING.value,)
+            and _governing_assignment(name, code=code, line_number=line_number, column=column) == rhs
+        ):
+            return inferred.categories, ArgumentOrigin.EXPRESSION_CATEGORY.value, None, None, None
         return categories, origin, cause, rhs, inferred.reason
     return categories, origin, cause, rhs, None
 
@@ -5230,6 +5377,10 @@ class PreExecutionValidationResult:
     #: v0.83.0: every evidence gap (see `compute_coverage_gaps(...)`), so a
     #: client can see why a verdict is not a handoff candidate.
     coverage_gaps: "tuple[CoverageGap, ...]" = ()
+    #: v0.94.0 (planning v0.94 §3.2): each allowed file access (a read from
+    #: the analysis folder's `input/` or GAUSS's example files, or a write
+    #: the handoff keeps). Empty without an analysis folder.
+    file_accesses: "tuple[FileAccess, ...]" = ()
 
 
 def compute_eligibility(
@@ -6104,6 +6255,329 @@ def check_dataset_arguments(
     return tuple(findings)
 
 
+
+
+# ---------------------------------------------------------------------------
+# v0.94.0: data import and export (planning/v0.94-data-import-and-export.md)
+# ---------------------------------------------------------------------------
+#
+# Until v0.94.0 every file read or write was NOT_READY (the project-wide "code
+# that reaches outside GAUSS's own memory" rule). On 2026-11-14 the user signed
+# off on one exception (planning v0.94 §3, decisions 1-7): with an analysis
+# folder configured, a call from the curated registry below whose file argument
+# is a single quoted bare file name may read a file the user put in the
+# folder's `input/`, or write a file the handoff then keeps in a new folder
+# under `output/`; and a read may name one of GAUSS's own shipped example files
+# by the documentation's literal `getGAUSSHome(...)` idiom (decision 2). The
+# run itself copies inputs in and outputs out (`gauss_execution_handoff`), so
+# GAUSS never touches the user's folders -- which works because GAUSS resolves
+# a bare name only against its working directory, with no fallback search
+# (planning v0.94 §2.1, sp94a-sp94c). Everything else that touches a file is
+# exactly as NOT_READY as before, and with no analysis folder nothing here
+# runs at all (`analyze_file_accesses(..., context=None)`), so every verdict is
+# unchanged for everyone who does not opt in.
+
+
+class FileDirection(str, enum.Enum):
+    READ = "read"
+    WRITE = "write"
+
+
+class FileLocation(str, enum.Enum):
+    #: A file the user put in the analysis folder's `input/`.
+    INPUT = "input"
+    #: One of the configured GAUSS installation's own example files, read in
+    #: place (planning v0.94 decision 2).
+    GAUSS_EXAMPLES = "gauss_examples"
+    #: A file the run writes; the handoff keeps it under `output/`.
+    OUTPUT = "output"
+
+
+#: Planning v0.94 decision 3: the file types a run may read and write.
+FILE_READ_EXTENSIONS = frozenset({".csv", ".txt", ".xls", ".xlsx", ".dat", ".gdat", ".dta", ".sas7bdat"})
+FILE_WRITE_EXTENSIONS = frozenset({".csv", ".xls", ".xlsx", ".dat", ".gdat", ".png", ".jpg", ".svg", ".pdf"})
+_SPREADSHEET_EXTENSIONS = frozenset({".xls", ".xlsx"})
+
+
+@dataclass(frozen=True)
+class FileAccessRule:
+    """One function that reads or writes exactly one named file. `position`
+    is that argument's 0-based position in every documented form;
+    `parameter` is its name on `doc_page` (planning v0.94 §2.3, read from
+    each page's `.. function::` line and `:param` text on 2026-11-14)."""
+
+    name: str
+    position: int
+    direction: str
+    parameter: str
+    extensions: frozenset[str]
+    doc_page: str
+
+
+_FILE_ACCESS_REGISTRY: tuple[FileAccessRule, ...] = tuple(FileAccessRule(*row) for row in (
+    # loadd.rst: "filepath to the dataset on disk, URL, or existing
+    # dataframe" -- a URL is refused by the bare-name rule (no `:` or `/`).
+    ("loadd", 0, FileDirection.READ.value, "dataset", FILE_READ_EXTENSIONS, "loadd.rst"),
+    ("csvreadm", 0, FileDirection.READ.value, "file", frozenset({".csv", ".txt"}), "csvreadm.rst"),
+    ("csvreadsa", 0, FileDirection.READ.value, "file", frozenset({".csv", ".txt"}), "csvreadsa.rst"),
+    ("xlsreadm", 0, FileDirection.READ.value, "file", _SPREADSHEET_EXTENSIONS, "xlsreadm.rst"),
+    ("xlsreadsa", 0, FileDirection.READ.value, "file", _SPREADSHEET_EXTENSIONS, "xlsreadsa.rst"),
+    ("spreadsheetreadm", 0, FileDirection.READ.value, "file", _SPREADSHEET_EXTENSIONS, "spreadsheetreadm.rst"),
+    ("spreadsheetreadsa", 0, FileDirection.READ.value, "file", _SPREADSHEET_EXTENSIONS, "spreadsheetreadsa.rst"),
+    ("getheaders", 0, FileDirection.READ.value, "fname", FILE_READ_EXTENSIONS, "getheaders.rst"),
+    ("csvwritem", 1, FileDirection.WRITE.value, "filename", frozenset({".csv"}), "csvwritem.rst"),
+    # xlswrite.rst: GAUSS also leaves an `xls.log` beside the workbook
+    # (sp94a); the handoff lists it as created, not kept.
+    ("xlswrite", 1, FileDirection.WRITE.value, "file", _SPREADSHEET_EXTENSIONS, "xlswrite.rst"),
+    ("xlswritem", 1, FileDirection.WRITE.value, "file", _SPREADSHEET_EXTENSIONS, "xlswritem.rst"),
+    ("xlswritesa", 1, FileDirection.WRITE.value, "file", _SPREADSHEET_EXTENSIONS, "xlswritesa.rst"),
+    ("spreadsheetwrite", 1, FileDirection.WRITE.value, "file", _SPREADSHEET_EXTENSIONS, "spreadsheetwrite.rst"),
+    # saved.rst: "The type of file to create is inferred from the file
+    # extension. Valid file extensions include CSV, GDAT, DAT, XLS, XLSX."
+    ("saved", 1, FileDirection.WRITE.value, "dataset",
+     frozenset({".csv", ".dat", ".gdat", ".xls", ".xlsx"}), "saved.rst"),
+    # plotsave.rst lists `.jpg .plot .png .pdf .svg .tiff`; decision 3 keeps
+    # the four a client can show or a user can open anywhere.
+    ("plotsave", 0, FileDirection.WRITE.value, "filename", frozenset({".png", ".jpg", ".svg", ".pdf"}), "plotsave.rst"),
+))
+_FILE_RULES_BY_NAME: dict[str, FileAccessRule] = {rule.name: rule for rule in _FILE_ACCESS_REGISTRY}
+
+
+@dataclass(frozen=True)
+class FileAccessContext:
+    """Where a run's files may come from. `input_dir` is the analysis
+    folder's `input/` (absolute); `gauss_dir` the configured installation's
+    directory, for its example files, or `None`."""
+
+    input_dir: str
+    gauss_dir: str | None = None
+
+
+@dataclass(frozen=True)
+class FileAccess:
+    """One allowed file access. `name` is the file name exactly as the code
+    writes it (for an example file, its path below the GAUSS directory);
+    `path` is the resolved absolute path of a read, `None` for a write."""
+
+    function: str
+    direction: str
+    name: str
+    location: str
+    line_number: int
+    path: str | None = None
+
+
+@dataclass(frozen=True)
+class FileAccessAnalysis:
+    """`allowed` holds `(function, line)` pairs whose every use on that line
+    is an allowed access, so their generic `file_read`/`file_write` finding
+    is dropped; `refusals` says, for a registry call that is not allowed,
+    why not (it then keeps its finding, with the reason added)."""
+
+    accesses: tuple[FileAccess, ...] = ()
+    allowed: frozenset[tuple[str, int]] = frozenset()
+    refusals: tuple[tuple[str, int, str], ...] = ()
+
+    def refusal_for(self, name: str, line_number: int) -> str | None:
+        for refused_name, refused_line, why in self.refusals:
+            if refused_name == name and refused_line == line_number:
+                return why
+        return None
+
+
+#: A bare file name: no directory part, no drive, no URL scheme (`/`, `\`,
+#: `:` are all outside the class), and no leading dot.
+_BARE_FILE_NAME_RE = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_ .\-]*")
+#: On the masked argument (string tokens are `#`): the documentation's two
+#: idioms for GAUSS's example data (planning v0.94 §2.4, §9).
+_GAUSS_HOME_ARGUMENT_RE = re.compile(r"getgausshome\s*\(\s*(#+)\s*\)", re.IGNORECASE)
+_GAUSS_HOME_CONCAT_RE = re.compile(r"getgausshome\s*\(\s*\)\s*\$\+\s*(#+)", re.IGNORECASE)
+_NOT_A_LITERAL = "the file name is not a single quoted name (a variable, an expression or a path built with `$+` is never read)"
+
+
+def _lone_string_literal(text: str, masked: str) -> str | None:
+    """The content of `text` when it is exactly one string literal."""
+    if len(text) >= 2 and text[0] == '"' and text[-1] == '"' and masked and set(masked) == {"#"}:
+        return text[1:-1]
+    return None
+
+
+def _same_folder(a: str, b: str) -> bool:
+    return os.path.normcase(os.path.realpath(a)) == os.path.normcase(os.path.realpath(b))
+
+
+def _bare_name_problem(name: str, extensions: frozenset[str]) -> str | None:
+    if not _BARE_FILE_NAME_RE.fullmatch(name) or ".." in name or name.endswith((".", " ")):
+        return f"`{name}` is not a bare file name (no folder, drive, `..` or URL may appear)"
+    extension = os.path.splitext(name)[1].lower()
+    if extension not in extensions:
+        return f"`{name}` does not end in an allowed extension here ({', '.join(sorted(extensions))})"
+    return None
+
+
+def _example_file(relative: str, gauss_dir: str | None, extensions: frozenset[str]) -> "str | tuple[str]":
+    """The absolute path of an example file named by `relative` (a path
+    below the GAUSS directory), or a one-tuple holding why it is refused."""
+    if gauss_dir is None:
+        return ("no GAUSS installation is configured, so its example files cannot be located",)
+    if "\\" in relative or ":" in relative:
+        return (f"`{relative}` must use forward slashes and stay inside GAUSS's example folders",)
+    parts = [part for part in relative.split("/") if part]
+    if any(part in {".", ".."} for part in parts):
+        return (f"`{relative}` may not contain `.` or `..`",)
+    lower = [part.lower() for part in parts]
+    if len(parts) >= 2 and lower[0] == "examples":
+        base_parts = parts[:1]
+    elif len(parts) >= 4 and lower[0] == "pkgs" and lower[2] == "examples":
+        base_parts = parts[:3]
+    else:
+        return (f"`{relative}` is not inside GAUSS's `examples` folder or a package's `examples` folder",)
+    extension = os.path.splitext(parts[-1])[1].lower()
+    if extension not in extensions:
+        return (f"`{relative}` does not end in an allowed extension here ({', '.join(sorted(extensions))})",)
+    base = os.path.realpath(os.path.join(gauss_dir, *base_parts))
+    full = os.path.realpath(os.path.join(gauss_dir, *parts))
+    try:
+        inside = os.path.commonpath([os.path.normcase(base), os.path.normcase(full)]) == os.path.normcase(base)
+    except ValueError:
+        inside = False
+    if not inside or not os.path.isfile(full):
+        return (f"`{relative}` is not a file in this GAUSS installation's example folders",)
+    return full
+
+
+def _classify_file_argument(
+    argument: str, rule: FileAccessRule, context: FileAccessContext, *, code: str, call: "GeneratedCall",
+) -> "tuple[str, str, str | None] | str":
+    """`(name, location, path)` for an allowed access, or why not.
+
+    Planning v0.94 §9, deviation 1: a bare variable governed by exactly one
+    plain assignment from one of the literal forms (`fname =
+    getGAUSSHome() $+ "examples/x.csv"; data = loadd(fname);`, the
+    documentation's own layout in 300 corpus uses, and never once passed
+    directly) is read as that literal. `_governing_assignment(...)` refuses
+    on any other write of the name (a loop, an indexed or member write, a
+    second assignment it cannot order), so the file name is still written
+    literally in the code, once."""
+    text = argument.strip()
+    if _SIMPLE_IDENTIFIER_RE.fullmatch(text) and not text.endswith("'"):
+        governing = _governing_assignment(text, code=code, line_number=call.line_number, column=call.column)
+        if not isinstance(governing, str):
+            return _NOT_A_LITERAL
+        text = governing.strip()
+        if _SIMPLE_IDENTIFIER_RE.fullmatch(text):
+            return _NOT_A_LITERAL
+    masked = lex_gauss_source(text).masked_view
+    literal = _lone_string_literal(text, masked)
+    if literal is not None:
+        problem = _bare_name_problem(literal, rule.extensions)
+        if problem is not None:
+            return problem
+        if rule.direction == FileDirection.WRITE.value:
+            return literal, FileLocation.OUTPUT.value, None
+        candidate = os.path.join(context.input_dir, literal)
+        if not os.path.isfile(candidate) or not _same_folder(os.path.dirname(os.path.realpath(candidate)), context.input_dir):
+            return f"`{literal}` is not in the analysis folder's input folder ({context.input_dir})"
+        return literal, FileLocation.INPUT.value, os.path.realpath(candidate)
+    for pattern in (_GAUSS_HOME_ARGUMENT_RE, _GAUSS_HOME_CONCAT_RE):
+        match = pattern.fullmatch(masked)
+        if match is None:
+            continue
+        inner = text[match.start(1):match.end(1)]
+        relative = _lone_string_literal(inner, match.group(1))
+        if relative is None:
+            return _NOT_A_LITERAL
+        if rule.direction == FileDirection.WRITE.value:
+            return "a run never writes into the GAUSS installation"
+        resolved = _example_file(relative, context.gauss_dir, rule.extensions)
+        if isinstance(resolved, tuple):
+            return resolved[0]
+        return relative, FileLocation.GAUSS_EXAMPLES.value, resolved
+    return _NOT_A_LITERAL
+
+
+def analyze_file_accesses(
+    code: str, *, context: "FileAccessContext | None",
+    signatures: "dict[str, DocumentedSignature] | None" = None,
+) -> FileAccessAnalysis:
+    """Deterministic; reads `code`'s calls through `extract_generated_calls`
+    (the shared lexer's masked view, so a call inside a string or comment
+    never counts) and checks the named input files exist. Never reads a
+    file's contents. `context=None` (no analysis folder) returns an empty
+    analysis, which changes nothing.
+
+    A call counts when it is in `_FILE_ACCESS_REGISTRY`, or is a v0.89.3
+    dataset-argument estimator whose data argument does not compute in
+    memory (then it is a read). Fails closed per line: a `(function, line)`
+    is allowed only when every use of that name on the line is an allowed
+    access, because the system-statement finding it replaces is per line."""
+    if context is None:
+        return FileAccessAnalysis()
+    accesses: list[FileAccess] = []
+    refusals: list[tuple[str, int, str]] = []
+    allowed_counts: dict[tuple[str, int], int] = {}
+    for call in extract_generated_calls(code):
+        name = call.symbol.lower()
+        rule = _FILE_RULES_BY_NAME.get(name)
+        if rule is None:
+            dataset_rule = _DATASET_RULES_BY_NAME.get(name)
+            if dataset_rule is None or dataset_rule.position >= len(call.raw_arguments):
+                continue
+            if _computes_in_memory(call.raw_arguments[dataset_rule.position], code=code, call=call, signatures=signatures):
+                continue
+            rule = FileAccessRule(
+                dataset_rule.name, dataset_rule.position, FileDirection.READ.value, dataset_rule.parameter,
+                FILE_READ_EXTENSIONS, dataset_rule.doc_page,
+            )
+        if rule.position >= len(call.raw_arguments):
+            refusals.append((name, call.line_number, f"its `{rule.parameter}` argument is missing"))
+            continue
+        outcome = _classify_file_argument(call.raw_arguments[rule.position], rule, context, code=code, call=call)
+        if isinstance(outcome, str):
+            refusals.append((name, call.line_number, outcome))
+            continue
+        file_name, location, path = outcome
+        accesses.append(FileAccess(
+            function=name, direction=rule.direction, name=file_name, location=location,
+            line_number=call.line_number, path=path,
+        ))
+        allowed_counts[(name, call.line_number)] = allowed_counts.get((name, call.line_number), 0) + 1
+    lines = lex_gauss_source(code).masked_view.split("\n")
+    allowed: set[tuple[str, int]] = set()
+    for (name, line_number), count in allowed_counts.items():
+        line = lines[line_number - 1] if 0 < line_number <= len(lines) else ""
+        uses = len(re.findall(r"(?<![A-Za-z0-9_])" + re.escape(name) + r"(?![A-Za-z0-9_])", line, re.IGNORECASE))
+        if uses == count:
+            allowed.add((name, line_number))
+        else:
+            refusals.append((name, line_number, "another use of this function on the same line is not an allowed file access"))
+    return FileAccessAnalysis(
+        accesses=tuple(a for a in accesses if (a.function, a.line_number) in allowed),
+        allowed=frozenset(allowed), refusals=tuple(refusals),
+    )
+
+
+def apply_file_access_analysis(
+    findings: "tuple[SystemStatementFinding, ...]", analysis: FileAccessAnalysis,
+) -> "tuple[SystemStatementFinding, ...]":
+    """Drops each `file_read`/`file_write` finding an allowed access
+    explains, and adds the refusal reason to one a registry call left. Every
+    other finding (an OS command, a delete, `#include`, ...) is untouched, so
+    it still makes the code NOT_READY."""
+    file_categories = {SystemStatementCategory.FILE_READ.value, SystemStatementCategory.FILE_WRITE.value}
+    kept: list[SystemStatementFinding] = []
+    for finding in findings:
+        key = (finding.name, finding.line_number)
+        if finding.category in file_categories and key in analysis.allowed:
+            continue
+        why = analysis.refusal_for(*key) if finding.category in file_categories else None
+        if why is not None:
+            finding = dataclasses.replace(
+                finding, detail=(finding.detail or "is a system-touching statement")
+                + f"; it is not an allowed file access: {why}",
+            )
+        kept.append(finding)
+    return tuple(kept)
 
 
 # ---------------------------------------------------------------------------

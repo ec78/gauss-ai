@@ -65,6 +65,15 @@ Durable, project-wide guidance for Claude Code sessions in this repository. For 
 
 - Generated code — whether written by gauss-ai's own provider or, on the MCP hybrid path, by the calling client's model — never executes except through the controlled execution handoff (deterministic `HANDOFF_CANDIDATE` verdict + explicit, digest-bound, single-use human approval), never writes a file, never applies a repair, and never bypasses any existing approval layer. Code may come from a caller; a readiness verdict never does.
 - Code that reaches outside GAUSS's own memory (OS commands, processes, `#include`/`run`, directory changes, file reads/writes/deletes, web APIs such as FRED/DBnomics, databases — see `_SYSTEM_STATEMENT_REGISTRY`) is always `NOT_READY` for the handoff. When a change makes previously-blocked code reach `HANDOFF_CANDIDATE`, check that it isn't I/O that the registry simply doesn't list yet.
+  - **One exception (v0.94.0, user sign-off 2026-11-14):** an allowed file access, as defined in `planning/v0.94-data-import-and-export.md` §3.2:
+    - the call is in `_FILE_ACCESS_REGISTRY` or is a dataset-argument estimator;
+    - its file name is a single quoted bare name, or a name assigned once from one;
+    - a read comes from the user-configured analysis folder's `input/` or from the GAUSS installation's own `examples` folders;
+    - a write is kept in a new folder under `output/`.
+
+    It runs only by copy-in/copy-out (GAUSS never touches the user's folders), and every file is named, with its digest, in the run prompt.
+  - With no analysis folder configured, the exception does not apply. Every other file form, and every other system-touching statement, stays `NOT_READY`.
+  - The analysis folder is set only by the user's own config, never by an MCP tool argument.
 - The model can never override a deterministic safety decision (an execution/repair boundary, a generation gate, a validation/eligibility verdict) — these are computed and enforced entirely outside any provider call.
 - No telemetry. Network calls are allowed only to (a) a model provider the user explicitly enabled, and (b) the explicit, user-invoked `gauss-ai docs fetch` download from docs.aptech.com — never automatic, never per-query.
 

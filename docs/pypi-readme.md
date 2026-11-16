@@ -75,14 +75,37 @@ Set it for yourself only. Never put it in a project's shared `.mcp.json`, where 
 
 To check: in a new conversation, a new session must report `real_gauss_allowed: true`. That confirms the opt-in, not that GAUSS starts; the first approved run shows that. For a first run, ask the assistant to validate and run `x = { 1, 1 }; print sumc(x);`, and answer the prompt yourself. Code must call at least one documented function to be eligible, so `print 1+1;` is refused, by design.
 
-**5. Upgrading**
+**5. Your data files (optional)**
+
+To let approved runs read your data and keep their results, give gauss-ai an analysis folder:
+
+```
+gauss-ai config set analysis-folder "C:\Users\you\Documents\gauss-analysis"
+```
+
+This creates two subfolders:
+
+- Put the data files you want analysed in `input`. The assistant sees their names and sizes, never their contents, until you approve a run.
+- Each run's tables, datasets and figures go into a new folder under `output`.
+
+How a run handles files:
+
+- Code names files by a bare quoted name, such as `loadd("prices.csv")`, `csvWriteM(b, "coef.csv")` or `plotSave("fit.png", 640|480)`.
+- The run prompt lists every file it reads, with its size and digest, and every file it will keep.
+- Your input files are copied in and never changed, and nothing is ever overwritten.
+- Figures come back to the assistant as images.
+- Paths, URLs and file names built at run time are never allowed.
+
+GAUSS's own example datasets, such as `getGAUSSHome("examples/...")`, can be read too.
+
+**6. Upgrading**
 
 Close your MCP client (on Windows a running server locks its files), run `pip install -U "gauss-ai[mcp]"`, then reopen the client and start a new conversation. If a session reports a `server_version` other than the one you installed, or a tool asks for an argument its description does not mention, restart the client again: some clients keep old tool descriptions.
 
 ## What it will and won't do
 
 - Code from the assistant is **never run** unless gauss-ai's own checks rate it `handoff_candidate` and you approve that exact code. One approval runs it once, in a temporary directory that is deleted afterwards.
-- Code that reaches outside GAUSS is **always blocked** from running: OS commands, other programs, `run`/`#include` (and `library`, except an installed Aptech-documented package such as `library gml;`), directory changes, any file read, write or delete (including an estimator or statistics function told to load a dataset file, such as `olsmt("mydata.dat", ...)`), web data APIs and databases.
+- Code that reaches outside GAUSS is **always blocked** from running: OS commands, other programs, `run`/`#include` (and `library`, except an installed Aptech-documented package such as `library gml;`), directory changes, web data APIs and databases. The same goes for any file read, write or delete, including an estimator or statistics function told to load a dataset file, such as `olsmt("mydata.dat", ...)`. The one exception is a quoted bare file name in your analysis folder (step 5), copied in and out as described there.
 - A verdict is **evidence, not a guarantee** of correct results. Much real code is `review_required` (for example, most loops, an untraced variable, or a value whose documented requirement such as positive definiteness depends on run-time data, since values are never evaluated), and gauss-ai says exactly what it could not check.
 - No telemetry. The only network access is `gauss-ai docs fetch`, run by you, and a model provider you explicitly enable for the optional built-in chat.
 

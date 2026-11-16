@@ -16,7 +16,13 @@ The page documents `adf_1break(y, model [, pmax, ic, trimm])`. The installed `AD
 
 Suggested fix: add `outlier` as the first optional argument, with its default and meaning.
 
-### A3. `logical-or.rst`: points to a function that does not exist
+### A3. `tspdlib` `kss`, `qr_kss`, `wkss`: examples assign one name from a multi-value function
+
+Each page documents only a multi-value form (`{ kss_t, p, cv } = kss(y, model [, pmax, ic])`, `{ qr_kss_t, cv } = qr_kss(...)`, `{ wkss_t, p } = wkss(...)`), but its example writes `stat = kss(y, model);` (`qr_kss`, `wkss` likewise). GAUSS 26.1.4 stops that line with `G0136` ("Too many arguments or misplaced assignment operator"); `{ s, p, cv } = kss(y, 1);` runs.
+
+Suggested fix: use the documented brace form in each example.
+
+### A4. `logical-or.rst`: points to a function that does not exist
 
 The page says element-wise logic uses "``.*`` with comparison operators or the ``dotor`` function". There is no `dotor` page or function. The operator that works, `.or`, is not mentioned there, although `operators.rst` documents it. (Jason confirmed this one on 2026-10-21 and asked for an issue on aptech/docs.)
 
@@ -45,6 +51,14 @@ Suggested fix: use one name in both places.
 The parameters are typed in a reStructuredText grid table (`+-------+---...`) instead of the `:param` / `:type` lines used elsewhere, so none of its eight arguments has a machine-readable type.
 
 Suggested fix: convert it to the standard parameter list.
+
+### B4. `getgausshome.rst`: the syntax line leaves out the optional argument
+
+The `.. function::` line reads `g_home = getGAUSSHome()`. The page then documents `:param relative_path:` and shows `getGAUSSHome("examples/fueleconomy.dat")` ("GAUSS 23 and newer"), and the docs use that one-argument form 493 times on 241 pages. GAUSS 26.1.4 accepts it (`getGAUSSHome("examples/beef_prices.csv")` loads 285 rows). A tool that reads the syntax line treats every such call as a wrong argument count.
+
+Suggested fix: `g_home = getGAUSSHome([relative_path])`.
+
+**Filed 2026-11-14:** https://github.com/aptech/docs/issues/7
 
 ## C. Output and packaging
 

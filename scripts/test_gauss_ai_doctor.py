@@ -369,6 +369,24 @@ def test_28_docs_root_missing_or_empty_fails_and_present_passes() -> None:
         check("folder with nested .rst PASSes", _docs_check({"GAUSS_AI_DOCS_ROOT": str(empty)}).status == doctor_mod.PASS)
 
 
+def test_29_v094_analysis_folder_check() -> None:
+    """Planning v0.94 §3.1: optional (PASS when unset), WARN when a
+    subfolder is missing, PASS naming both when present. Never creates."""
+    import dataclasses
+    import gauss_ai_config as config_mod
+    result = doctor_mod._check_analysis_folder(config=config_mod.GaussAiConfig())
+    check("unset PASSes as optional", result.status == doctor_mod.PASS and "not set" in result.message)
+    with tempfile.TemporaryDirectory() as tmp:
+        folder = Path(tmp) / "analysis"
+        configured = dataclasses.replace(config_mod.GaussAiConfig(), analysis_folder=str(folder))
+        missing = doctor_mod._check_analysis_folder(config=configured)
+        check("missing subfolders WARN", missing.status == doctor_mod.WARN and "analysis-folder" in (missing.next_step or ""))
+        check("...and are not created", not folder.exists())
+        config_mod.ensure_analysis_subfolders(folder)
+        present = doctor_mod._check_analysis_folder(config=configured)
+        check("present PASSes", present.status == doctor_mod.PASS and "input" in present.message)
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

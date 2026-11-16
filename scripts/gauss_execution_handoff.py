@@ -44,9 +44,12 @@ handoff.py's safety tests):
 
 from __future__ import annotations
 
+import datetime
 import enum
 import hashlib
 import json
+import os
+import shutil
 import tempfile
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -116,6 +119,108 @@ SUPPORTED_RUNNERS = frozenset({"fake", "gauss"})
 _FAKE_RUNNER_EXECUTABLE_PLACEHOLDER = "tgauss.exe"
 
 
+# ---------------------------------------------------------------------------
+# v0.94.0: the files a run reads and keeps (planning v0.94 §3.3)
+# ---------------------------------------------------------------------------
+
+#: Planning v0.94 decision 3: per input file and per run.
+MAX_INPUT_FILE_BYTES = 200 * 1024 * 1024
+MAX_RUN_INPUT_BYTES = 500 * 1024 * 1024
+#: The adapter's own folder for the inline script, inside the run directory
+#: (`gauss_code_execution._GENERATED_SCRIPT_DIRNAME`, not imported: this
+#: module never imports `gauss_code_execution`); never reported as a file
+#: the run created.
+_GENERATED_SCRIPT_DIRNAME = ".gauss_code_execution_generated"
+
+
+@dataclass(frozen=True)
+class HandoffFileRead:
+    """One file a run reads, measured at prepare. `location` is `"input"`
+    (copied into the run directory) or `"gauss_examples"` (read in place
+    from the GAUSS installation)."""
+
+    name: str
+    location: str
+    path: str
+    size: int
+    sha256: str
+
+
+@dataclass(frozen=True)
+class HandoffFilePlan:
+    """Bound into the request digest and shown in the prompt. `writes` are
+    the file names the code writes; only those are kept, in a new folder
+    under `output_parent`."""
+
+    analysis_folder: str
+    input_dir: str
+    output_parent: str
+    reads: tuple[HandoffFileRead, ...] = ()
+    writes: tuple[str, ...] = ()
+
+
+def _sha256_file(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def build_file_plan(
+    file_accesses: "tuple[validation_mod.FileAccess, ...]", *, analysis_folder: str, input_dir: str, output_dir: str,
+) -> HandoffFilePlan | None:
+    """The plan for one prepare, or `None` for code that touches no file.
+    Measures every read now (size and SHA-256), so the prompt can name the
+    exact content and `execute_execution_handoff` can refuse a changed file.
+    Raises `HandoffRequestValidationError` for a missing file or one over
+    the size caps; nothing is copied or created here."""
+    if not file_accesses:
+        return None
+    reads: list[HandoffFileRead] = []
+    writes: list[str] = []
+    seen_reads: set[tuple[str, str]] = set()
+    total = 0
+    for access in file_accesses:
+        if access.direction == validation_mod.FileDirection.WRITE.value:
+            if access.name not in writes:
+                writes.append(access.name)
+            continue
+        key = (access.location, access.name)
+        if key in seen_reads:
+            continue
+        seen_reads.add(key)
+        if not access.path or not os.path.isfile(access.path):
+            raise HandoffRequestValidationError(f"the input file {access.name!r} no longer exists; validate again.")
+        size = os.path.getsize(access.path)
+        if size > MAX_INPUT_FILE_BYTES:
+            raise HandoffRequestValidationError(
+                f"{access.name!r} is {size:,} bytes; a run reads at most {MAX_INPUT_FILE_BYTES:,} bytes per file."
+            )
+        total += size
+        if total > MAX_RUN_INPUT_BYTES:
+            raise HandoffRequestValidationError(
+                f"the input files total more than {MAX_RUN_INPUT_BYTES:,} bytes, the most one run reads."
+            )
+        reads.append(HandoffFileRead(
+            name=access.name, location=access.location, path=access.path, size=size, sha256=_sha256_file(access.path),
+        ))
+    return HandoffFilePlan(
+        analysis_folder=analysis_folder, input_dir=input_dir, output_parent=output_dir,
+        reads=tuple(reads), writes=tuple(writes),
+    )
+
+
+def _file_plan_payload(plan: HandoffFilePlan) -> dict[str, Any]:
+    return {
+        "analysis_folder": plan.analysis_folder,
+        "input_dir": plan.input_dir,
+        "output_parent": plan.output_parent,
+        "reads": [[r.name, r.location, r.path, r.size, r.sha256] for r in plan.reads],
+        "writes": list(plan.writes),
+    }
+
+
 def _canonical_digest_payload(
     *,
     code: str,
@@ -126,6 +231,7 @@ def _canonical_digest_payload(
     workspace_parent: str | None,
     readiness_state: str,
     libraries: tuple[tuple[str, str, str], ...] = (),
+    file_plan: HandoffFilePlan | None = None,
 ) -> dict[str, Any]:
     """Exact textual code binding -- deliberately NO newline/whitespace
     normalization of `code` (unlike gauss_runtime_orchestration._normalize_
@@ -149,6 +255,11 @@ def _canonical_digest_payload(
     # and digest (every existing digest test is unchanged).
     if libraries:
         payload["libraries"] = [list(entry) for entry in libraries]
+    # v0.94.0 (planning v0.94 §3.3): the folders, every read's size and
+    # SHA-256, and every kept name -- again only when present, so every
+    # request that touches no file keeps its pre-v0.94 digest.
+    if file_plan is not None:
+        payload["files"] = _file_plan_payload(file_plan)
     return payload
 
 
@@ -162,6 +273,7 @@ def compute_execution_handoff_digest(
     workspace_parent: str | None,
     readiness_state: str,
     libraries: tuple[tuple[str, str, str], ...] = (),
+    file_plan: HandoffFilePlan | None = None,
 ) -> str:
     """Deterministic SHA-256 fingerprint over exactly the seven
     execution-affecting fields, in fixed field order. Same inputs always
@@ -171,7 +283,7 @@ def compute_execution_handoff_digest(
     canonical = _canonical_digest_payload(
         code=code, runner=runner, executable_path=executable_path, gauss_version=gauss_version,
         timeout_seconds=timeout_seconds, workspace_parent=workspace_parent, readiness_state=readiness_state,
-        libraries=libraries,
+        libraries=libraries, file_plan=file_plan,
     )
     serialized = json.dumps(canonical, sort_keys=False, ensure_ascii=True, separators=(",", ":"))
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
@@ -197,6 +309,9 @@ class ExecutionHandoffRequest:
     #: v0.92.0: the libraries the validated code loads (see
     #: `_canonical_digest_payload`); empty for code without `library`.
     libraries: tuple[tuple[str, str, str], ...] = ()
+    #: v0.94.0: the files the run reads and keeps; `None` for code that
+    #: touches no file (planning v0.94 §3.3).
+    file_plan: HandoffFilePlan | None = None
 
     def recompute_digest(self) -> str:
         """Recomputes the digest fresh from this request's own current field
@@ -209,7 +324,7 @@ class ExecutionHandoffRequest:
             code=self.code, runner=self.runner, executable_path=self.executable_path,
             gauss_version=self.gauss_version, timeout_seconds=self.timeout_seconds,
             workspace_parent=self.workspace_parent, readiness_state=self.readiness_state,
-            libraries=self.libraries,
+            libraries=self.libraries, file_plan=self.file_plan,
         )
 
 
@@ -225,6 +340,7 @@ def create_execution_handoff_request(
     timeout_seconds: float = 30.0,
     workspace_parent: str | None = None,
     libraries: tuple[tuple[str, str, str], ...] = (),
+    file_plan: HandoffFilePlan | None = None,
 ) -> ExecutionHandoffRequest:
     """The ONE pure builder for `ExecutionHandoffRequest`. No execution, no
     file write, no model call. Requires `readiness_state ==
@@ -251,12 +367,13 @@ def create_execution_handoff_request(
     digest = compute_execution_handoff_digest(
         code=code, runner=runner, executable_path=executable_path, gauss_version=gauss_version,
         timeout_seconds=timeout_seconds, workspace_parent=workspace_parent, readiness_state=readiness_state,
-        libraries=tuple(libraries),
+        libraries=tuple(libraries), file_plan=file_plan,
     )
     return ExecutionHandoffRequest(
         request_id=request_id, code=code, readiness_state=readiness_state, runner=runner,
         executable_path=executable_path, gauss_version=gauss_version, timeout_seconds=timeout_seconds,
         workspace_parent=workspace_parent, created_at=created_at, digest=digest, libraries=tuple(libraries),
+        file_plan=file_plan,
     )
 
 
@@ -443,11 +560,19 @@ class ConversationalExecutionResult:
     evidence: "interpreter_mod.ExecutionEvidence | None"
     blocked_reason: str | None
     result_digest: str
+    #: v0.94.0 (planning v0.94 §3.3-§3.4): each kept file `(name, path,
+    #: bytes)`, the folder they were kept in, new files the code did not name
+    #: (not kept), and named writes GAUSS did not create.
+    files_kept: tuple[tuple[str, str, int], ...] = ()
+    output_folder: str | None = None
+    files_not_kept: tuple[str, ...] = ()
+    files_not_created: tuple[str, ...] = ()
 
 
 def _compute_result_digest(
     *, request_digest: str, approval_id: str, launched: bool, outcome: str,
     evidence: "interpreter_mod.ExecutionEvidence | None",
+    files_kept: tuple[tuple[str, str, int], ...] = (),
 ) -> str:
     evidence_summary = None
     if evidence is not None:
@@ -464,6 +589,10 @@ def _compute_result_digest(
         "outcome": outcome,
         "evidence_summary": evidence_summary,
     }
+    if files_kept:
+        # v0.94.0: only when files were kept, so every earlier result digest
+        # is unchanged.
+        payload["files_kept"] = [[name, path, size] for name, path, size in files_kept]
     serialized = json.dumps(payload, sort_keys=False, ensure_ascii=True, separators=(",", ":"))
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
@@ -600,6 +729,17 @@ def execute_execution_handoff(
 
     adapter = adapter_mod.GaussExecutionAdapter(helper=helper, environment_probe=environment_probe)
     with tempfile.TemporaryDirectory(prefix="gauss_ai_handoff_") as tmp_dir:
+        # v0.94.0 (planning v0.94 §3.3): copy each input in and prove the
+        # copy is the content the prompt named; check an example file in
+        # place. A changed or missing file blocks the run before anything is
+        # launched, so the approval stays unconsumed.
+        if request.file_plan is not None:
+            refused = _stage_inputs(request.file_plan, tmp_dir)
+            if refused is not None:
+                return _blocked_result(
+                    request_digest=request.digest, approval_id=approval.approval_id,
+                    outcome=HandoffOutcome.EXECUTION_BLOCKED, reason=refused,
+                )
         adapter_request = adapter_mod.AdapterRequest(
             request_identity=approval.approval_id,
             code=request.code,
@@ -643,6 +783,13 @@ def execute_execution_handoff(
             stderr_text=raw.get("stderr"),
         )
 
+        kept: tuple[tuple[str, str, int], ...] = ()
+        kept_folder: str | None = None
+        not_kept: tuple[str, ...] = ()
+        not_created: tuple[str, ...] = ()
+        if request.file_plan is not None:
+            kept, kept_folder, not_kept, not_created = _collect_outputs(request, tmp_dir)
+
         if adapter_outcome.failure_category is not None:
             outcome = HandoffOutcome.INFRASTRUCTURE_FAILURE
             blocked_reason = adapter_outcome.rejection_reason
@@ -661,9 +808,85 @@ def execute_execution_handoff(
             outcome=outcome.value, evidence=evidence, blocked_reason=blocked_reason,
             result_digest=_compute_result_digest(
                 request_digest=request.digest, approval_id=approval.approval_id, launched=True,
-                outcome=outcome.value, evidence=evidence,
+                outcome=outcome.value, evidence=evidence, files_kept=kept,
             ),
+            files_kept=kept, output_folder=kept_folder, files_not_kept=not_kept, files_not_created=not_created,
         )
+
+
+def _stage_inputs(plan: HandoffFilePlan, run_dir: str) -> str | None:
+    """Copies each `input` read into `run_dir` and checks every read's
+    SHA-256 against the prompt's; returns why the run is refused, or None.
+    The user's files are only ever opened for reading."""
+    for read in plan.reads:
+        if read.location == validation_mod.FileLocation.INPUT.value:
+            target = os.path.join(run_dir, read.name)
+            try:
+                shutil.copyfile(read.path, target)
+            except OSError as exc:
+                return f"the input file {read.name!r} could not be copied ({exc}); nothing was run."
+            checked = target
+        else:
+            checked = read.path
+        try:
+            actual = _sha256_file(checked)
+        except OSError:
+            actual = None
+        if actual != read.sha256:
+            return (
+                f"the file {read.name!r} changed after the prompt was shown, so this approval does not cover it; "
+                "nothing was run. Validate and prepare again."
+            )
+    return None
+
+
+def _new_output_folder(parent: str, request_id: str) -> str:
+    """A folder that did not exist before, so nothing is ever overwritten."""
+    stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    base = os.path.join(parent, f"{stamp}-{request_id[:8]}")
+    candidate, n = base, 1
+    while True:
+        try:
+            os.makedirs(candidate, exist_ok=False)
+            return candidate
+        except FileExistsError:
+            n += 1
+            candidate = f"{base}-{n}"
+
+
+def _collect_outputs(
+    request: ExecutionHandoffRequest, run_dir: str,
+) -> tuple[tuple[tuple[str, str, int], ...], str | None, tuple[str, ...], tuple[str, ...]]:
+    """After a launched run: copies each named write GAUSS created into a
+    new folder under `output/`, and lists the other new files. Reads only
+    `run_dir`, which is deleted afterwards."""
+    plan = request.file_plan
+    assert plan is not None
+    staged = {r.name.lower() for r in plan.reads if r.location == validation_mod.FileLocation.INPUT.value}
+    written = {name.lower() for name in plan.writes}
+    kept: list[tuple[str, str, int]] = []
+    not_created: list[str] = []
+    folder: str | None = None
+    for name in plan.writes:
+        source = os.path.join(run_dir, name)
+        if not os.path.isfile(source):
+            not_created.append(name)
+            continue
+        if folder is None:
+            os.makedirs(plan.output_parent, exist_ok=True)
+            folder = _new_output_folder(plan.output_parent, request.request_id)
+        target = os.path.join(folder, name)
+        shutil.copyfile(source, target)
+        kept.append((name, target, os.path.getsize(target)))
+    others: list[str] = []
+    for root, dirs, files in os.walk(run_dir):
+        dirs[:] = [d for d in dirs if d != _GENERATED_SCRIPT_DIRNAME]
+        for file_name in files:
+            relative = os.path.relpath(os.path.join(root, file_name), run_dir).replace(os.sep, "/")
+            if relative.lower() in written or relative.lower() in staged:
+                continue
+            others.append(relative)
+    return tuple(kept), folder, tuple(sorted(others)), tuple(not_created)
 
 
 # ---------------------------------------------------------------------------
@@ -709,6 +932,11 @@ def render_execution_handoff_prompt(request: ExecutionHandoffRequest) -> str:
     # every pre-v0.92 prompt is unchanged.
     for name, path, _sha in request.libraries:
         lines.append(f"Library: {name} ({path})")
+    # v0.94.0 (planning v0.94 §3.3): every file the run reads, with the
+    # content the approval covers, and every file it keeps. Absent for code
+    # that touches no file, so every earlier prompt is unchanged.
+    if request.file_plan is not None:
+        lines.extend(render_file_plan_lines(request.file_plan))
     lines.append(f"Request digest: {request.digest}")
     lines.extend([
         "",
@@ -719,6 +947,22 @@ def render_execution_handoff_prompt(request: ExecutionHandoffRequest) -> str:
         "timeout? [yes/no]",
     ])
     return "\n".join(lines)
+
+
+def render_file_plan_lines(plan: HandoffFilePlan) -> list[str]:
+    lines: list[str] = []
+    copied = [r for r in plan.reads if r.location == validation_mod.FileLocation.INPUT.value]
+    in_place = [r for r in plan.reads if r.location != validation_mod.FileLocation.INPUT.value]
+    if copied:
+        lines.append(f"Reads (copied from {plan.input_dir}; the originals are not changed):")
+        lines.extend(f"  {r.name} ({r.size:,} bytes, sha256 {r.sha256[:16]}...)" for r in copied)
+    if in_place:
+        lines.append("Reads in place (GAUSS example data, not changed):")
+        lines.extend(f"  {r.path} ({r.size:,} bytes, sha256 {r.sha256[:16]}...)" for r in in_place)
+    if plan.writes:
+        lines.append(f"Keeps (copied to a new folder under {plan.output_parent}; nothing is overwritten):")
+        lines.append("  " + ", ".join(plan.writes))
+    return lines
 
 
 def render_conversational_execution_result(result: ConversationalExecutionResult) -> str:
@@ -745,6 +989,14 @@ def render_conversational_execution_result(result: ConversationalExecutionResult
         lines.append(evidence.stderr_text or "(none)")
         lines.append("")
         lines.append(f"GAUSS exit status: {evidence.exit_code if evidence.exit_code is not None else '(unknown)'}")
+    if result.files_kept:
+        lines.append("")
+        lines.append(f"Files kept in {result.output_folder}:")
+        lines.extend(f"  {name} ({size:,} bytes)" for name, _path, size in result.files_kept)
+    if result.files_not_created:
+        lines.append("Named in the code but not created: " + ", ".join(result.files_not_created))
+    if result.files_not_kept:
+        lines.append("Also created by the run, not kept: " + ", ".join(result.files_not_kept))
     lines.append("")
     if result.outcome == HandoffOutcome.SUCCESS.value:
         lines.append(

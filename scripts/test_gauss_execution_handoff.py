@@ -641,6 +641,157 @@ def test_47_v092_libraries_are_bound_and_shown_only_when_present() -> None:
           "Library: gml (C:/gauss/pkgs/gml/lib/gml.lcg)" in handoff.render_execution_handoff_prompt(with_library))
 
 
+# ---------------------------------------------------------------------------
+# v0.94.0: the files a run reads and keeps (planning v0.94 §3.3)
+# ---------------------------------------------------------------------------
+
+
+def _v094_plan(tmp: str, content: str = "y,x\n1,2\n") -> "tuple[handoff.HandoffFilePlan, str]":
+    import os
+    input_dir = os.path.join(tmp, "analysis", "input")
+    output_dir = os.path.join(tmp, "analysis", "output")
+    os.makedirs(input_dir)
+    source = os.path.join(input_dir, "prices.csv")
+    with open(source, "wb") as handle:
+        handle.write(content.encode("utf-8"))
+    accesses = (
+        validation_mod.FileAccess("loadd", "read", "prices.csv", "input", 1, source),
+        validation_mod.FileAccess("loadd", "read", "prices.csv", "input", 2, source),
+        validation_mod.FileAccess("csvwritem", "write", "coef.csv", "output", 3),
+        validation_mod.FileAccess("plotsave", "write", "fit.png", "output", 4),
+    )
+    plan = handoff.build_file_plan(
+        accesses, analysis_folder=os.path.join(tmp, "analysis"), input_dir=input_dir, output_dir=output_dir,
+    )
+    return plan, source
+
+
+def test_48_v094_file_plan_is_measured_bound_and_shown() -> None:
+    import hashlib
+    import tempfile
+    check("48: no file access -> no plan", handoff.build_file_plan(
+        (), analysis_folder="a", input_dir="a/input", output_dir="a/output") is None)
+    with tempfile.TemporaryDirectory() as tmp:
+        plan, source = _v094_plan(tmp)
+        check("48: a read is measured once", len(plan.reads) == 1 and plan.reads[0].size == len("y,x\n1,2\n"))
+        check("48: ...with its SHA-256", plan.reads[0].sha256 == hashlib.sha256(b"y,x\n1,2\n").hexdigest())
+        check("48: writes keep their order", plan.writes == ("coef.csv", "fit.png"))
+        plain = _make_request()
+        with_files = _make_request(file_plan=plan)
+        check("48: a plan changes the digest", with_files.digest != plain.digest)
+        check("48: ...and recomputes to itself", with_files.recompute_digest() == with_files.digest)
+        other = dataclasses_replace(plan, writes=("coef.csv",))
+        check("48: a different kept name changes the digest", _make_request(file_plan=other).digest != with_files.digest)
+        moved = dataclasses_replace(plan, output_parent=plan.output_parent + "2")
+        check("48: a different output folder changes the digest",
+              _make_request(file_plan=moved).digest != with_files.digest)
+        prompt = handoff.render_execution_handoff_prompt(with_files)
+        check("48: the prompt names the input folder and the file",
+              f"Reads (copied from {plan.input_dir}" in prompt and "prices.csv (8 bytes, sha256 " in prompt)
+        check("48: the prompt names what is kept and where",
+              f"Keeps (copied to a new folder under {plan.output_parent}" in prompt and "coef.csv, fit.png" in prompt)
+        check("48: a request without files has no file lines",
+              "Reads" not in handoff.render_execution_handoff_prompt(plain))
+
+        import os
+        os.remove(source)
+        try:
+            _v094_plan_again = handoff.build_file_plan(
+                (validation_mod.FileAccess("loadd", "read", "prices.csv", "input", 1, source),),
+                analysis_folder="a", input_dir="a/input", output_dir="a/output",
+            )
+            check("48: a vanished input is refused", False)
+        except handoff.HandoffRequestValidationError:
+            check("48: a vanished input is refused", True)
+
+
+def dataclasses_replace(obj, **changes):
+    import dataclasses
+    return dataclasses.replace(obj, **changes)
+
+
+def test_49_v094_size_caps() -> None:
+    import tempfile
+    saved = handoff.MAX_INPUT_FILE_BYTES, handoff.MAX_RUN_INPUT_BYTES
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            handoff.MAX_INPUT_FILE_BYTES = 4
+            try:
+                _v094_plan(tmp)
+                check("49: a file over the per-file cap is refused", False)
+            except handoff.HandoffRequestValidationError as exc:
+                check("49: a file over the per-file cap is refused", "at most 4 bytes per file" in str(exc))
+    finally:
+        handoff.MAX_INPUT_FILE_BYTES, handoff.MAX_RUN_INPUT_BYTES = saved
+
+
+def test_50_v094_copy_in_copy_out() -> None:
+    """The helper sees only copies; only named writes are kept, in a new
+    folder; other new files are listed; the user's input is never changed;
+    a changed input blocks before launch."""
+    import os
+    import tempfile
+    seen: dict = {}
+
+    def writing_helper(**kwargs):
+        run_dir = kwargs["working_directory"]
+        seen["files"] = sorted(os.listdir(run_dir))
+        seen["run_dir"] = run_dir
+        with open(os.path.join(run_dir, "prices.csv"), "a", encoding="utf-8") as handle:
+            handle.write("appended by the run\n")
+        with open(os.path.join(run_dir, "coef.csv"), "w", encoding="utf-8") as handle:
+            handle.write("0.5\n")
+        with open(os.path.join(run_dir, "xls.log"), "w", encoding="utf-8") as handle:
+            handle.write("side\n")
+        return _success_helper()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        plan, source = _v094_plan(tmp)
+        original = open(source, encoding="utf-8").read()
+        request = _make_request(file_plan=plan)
+        store = handoff.ExecutionHandoffApprovalStore()
+        approval = handoff.create_execution_handoff_approval(
+            request, decision="approved", approval_id="a-1", decided_at="2026-11-14T00:00:00Z")
+        store.record(approval)
+        result = handoff.execute_execution_handoff(request, approval, store=store, helper=writing_helper)
+        check("50: success", result.outcome == "success" and result.launched)
+        check("50: the helper saw only the copied input", seen["files"] == ["prices.csv"])
+        check("50: the user's input is unchanged", open(source, encoding="utf-8").read() == original)
+        check("50: one file kept", [name for name, _p, _s in result.files_kept] == ["coef.csv"])
+        kept_path = result.files_kept[0][1]
+        check("50: kept in a new folder under output", os.path.dirname(kept_path) == result.output_folder
+              and os.path.dirname(result.output_folder) == plan.output_parent)
+        check("50: kept content is the run's", open(kept_path, encoding="utf-8").read() == "0.5\n")
+        check("50: a named write not created is listed", result.files_not_created == ("fit.png",))
+        check("50: a side file is listed, not kept", result.files_not_kept == ("xls.log",))
+        check("50: the run directory is gone", not os.path.exists(seen["run_dir"]))
+        check("50: the result names the folder", f"Files kept in {result.output_folder}"
+              in handoff.render_conversational_execution_result(result))
+
+        # A second identical run never overwrites the first.
+        request2 = _make_request(file_plan=plan, request_id="req-1")
+        approval2 = handoff.create_execution_handoff_approval(
+            request2, decision="approved", approval_id="a-2", decided_at="2026-11-14T00:00:01Z")
+        store.record(approval2)
+        second = handoff.execute_execution_handoff(request2, approval2, store=store, helper=writing_helper)
+        check("50: a second run keeps into another folder", second.output_folder != result.output_folder
+              and open(kept_path, encoding="utf-8").read() == "0.5\n")
+
+        # The input changes after the prompt: blocked before launch.
+        with open(source, "a", encoding="utf-8") as handle:
+            handle.write("3,4\n")
+        calls: list = []
+        approval3 = handoff.create_execution_handoff_approval(
+            request, decision="approved", approval_id="a-3", decided_at="2026-11-14T00:00:02Z")
+        store.record(approval3)
+        blocked = handoff.execute_execution_handoff(
+            request, approval3, store=store, helper=lambda **kw: calls.append(kw) or _success_helper())
+        check("50: a changed input blocks the run", blocked.outcome == "execution_blocked" and not blocked.launched)
+        check("50: ...before the helper is called", calls == [])
+        check("50: ...saying the file changed", "changed after the prompt was shown" in (blocked.blocked_reason or ""))
+        check("50: ...and the approval is not consumed", not store.is_consumed("a-3"))
+
+
 def _run_all() -> int:
     test_fns = [obj for name, obj in sorted(globals().items()) if name.startswith("test_") and callable(obj)]
     for fn in test_fns:

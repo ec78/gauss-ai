@@ -235,6 +235,32 @@ def test_11_module_reads_only() -> None:
         check(f"11: no {banned}", banned not in source)
 
 
+def test_13_v094_a_page_attributes_the_functions_on_its_syntax_lines() -> None:
+    """Planning v0.94 §9, deviation 7: `tspdlib/docs/adf_1br.rst` defines
+    `adf_1break`, so a page attributes the functions its `.. function::`
+    lines define as well as its own name. A core page still wins, and a
+    name only in prose or an example is never attributed."""
+    with tempfile.TemporaryDirectory() as tmp:
+        docs = build_fake_docs(Path(tmp))
+        (docs / "beta" / "brk.rst").write_text(
+            "brk\n===\n\nFormat\n------\n.. function:: { stat, tb } = adf_brk(y, model [, p])\n\n"
+            "Examples\n--------\n\n::\n\n    library beta;\n    { s, t } = adf_brk(y, 1);\n    q = proseonly(y);\n",
+            encoding="utf-8",
+        )
+        (docs / "corefn.rst").write_text(
+            "corefn\n======\n\nFormat\n------\n.. function:: y = adf_core(x)\n", encoding="utf-8",
+        )
+        (docs / "beta" / "shadow.rst").write_text(
+            "shadow\n======\n\nFormat\n------\n.. function:: y = adf_core(x)\n\n::\n\n    library beta;\n",
+            encoding="utf-8",
+        )
+        attribution = libraries_mod.docs_attribution(str(docs))
+        check("13: the function on the syntax line is the package's", attribution.libraries_for("adf_brk") == {"beta"})
+        check("13: the page's own name still is", attribution.libraries_for("brk") == {"beta"})
+        check("13: a name only in an example is not", attribution.libraries_for("proseonly") == frozenset())
+        check("13: a core page's function stays core", attribution.libraries_for("adf_core") == frozenset())
+
+
 def run_tests() -> int:
     tests = [(name, fn) for name, fn in sorted(globals().items()) if name.startswith("test_") and callable(fn)]
     for name, fn in tests:

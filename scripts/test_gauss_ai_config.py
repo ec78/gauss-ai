@@ -303,11 +303,13 @@ def test_24_config_never_stores_secrets_or_arbitrary_keys() -> None:
     a credential, exactly like `gauss_executable` is a location."""
     field_names = {f.name for f in __import__("dataclasses").fields(config_mod.GaussAiConfig)}
     check(
-        "exactly the nine documented fields exist",
+        # v0.94.0: `analysis_folder` added (planning v0.94 §3.1) -- a folder
+        # location set by the user, not a credential.
+        "exactly the ten documented fields exist",
         field_names
         == {
             "gauss_executable", "default_runner", "workspace_parent", "default_timeout_seconds",
-            "chat_provider", "chat_model", "docs_root", "ollama_endpoint", "verbose",
+            "chat_provider", "chat_model", "docs_root", "ollama_endpoint", "analysis_folder", "verbose",
         },
     )
     for forbidden in ("password", "secret", "token", "license", "credential", "api_key"):
@@ -464,6 +466,27 @@ def test_34_looks_like_cli_invocation_does_not_reject_real_paths() -> None:
         not config_mod.looks_like_cli_invocation("my gauss-ai project folder"),
     )
     check("an unrecognized second token is not flagged", not config_mod.looks_like_cli_invocation("gauss-ai somewhere"))
+
+
+def test_35_v094_analysis_folder_is_config_only_and_never_created_by_reading() -> None:
+    """Planning v0.94 §3.1: the analysis folder resolves from the config
+    file only (no CLI or environment override), and its subfolders are
+    created only by `ensure_analysis_subfolders`."""
+    import dataclasses
+    check("unset -> default None", config_mod.resolve_analysis_folder(config=config_mod.GaussAiConfig()).value is None)
+    with tempfile.TemporaryDirectory() as tmp:
+        folder = str(Path(tmp) / "analysis")
+        configured = dataclasses.replace(config_mod.GaussAiConfig(), analysis_folder=folder)
+        resolved = config_mod.resolve_analysis_folder(config=configured)
+        check("set -> config_file", resolved.value == folder and resolved.source == "config_file")
+        input_dir, output_dir = config_mod.analysis_subfolders(folder)
+        check("subfolders are input/ and output/", input_dir.name == "input" and output_dir.name == "output")
+        check("computing them creates nothing", not Path(folder).exists())
+        config_mod.ensure_analysis_subfolders(folder)
+        check("ensure creates both", input_dir.is_dir() and output_dir.is_dir())
+        path = Path(tmp) / "config.json"
+        config_mod.save_config(configured, path)
+        check("the key round-trips", config_mod.load_config(path).analysis_folder == folder)
 
 
 def run_tests() -> int:

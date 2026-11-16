@@ -2000,6 +2000,7 @@ def validate_generated_code(
     generated_code: tuple[str, ...], *, bundle: "GroundingBundle", gate: "GenerationGateResult",
     docs_root_str: str | None, recent_topics: tuple[str, ...], answer_text: str,
     no_evidence_issue: str | None = None, installation: "libraries_mod.Installation | None" = None,
+    file_context: "validation_mod.FileAccessContext | None" = None,
 ) -> "validation_mod.PreExecutionValidationResult":
     """The ONE implementation of the post-generation validation chain
     (v0.80.0: formerly `ConversationEngine._validate_pre_execution`, plus
@@ -2131,6 +2132,14 @@ def validate_generated_code(
             call, documented_signatures=documented_signatures, documented_symbols=frozenset(documented_symbols),
         )
         for call in all_calls
+    ) + tuple(
+        # v0.94.0 (planning v0.94 §9, deviation 6): one name assigned from a
+        # function every documented form of which returns several values.
+        result
+        for block in generated_code
+        for result in validation_mod.check_result_counts(
+            _strip_comments_for_analysis(block), documented_signatures=documented_signatures,
+        )
     )
 
     precondition_checks: list[validation_mod.PreconditionCheck] = []
@@ -2208,6 +2217,23 @@ def validate_generated_code(
         finding for block in cleaned_generated_code
         for finding in validation_mod.check_dataset_arguments(block, signatures=documented_signatures)
     )
+    # v0.94.0 (planning v0.94 §3.2): with an analysis folder (MCP sessions
+    # only, decision 6), an allowed file access no longer counts as a
+    # system-touching statement, and a refused one says why. Per block, like
+    # every check above; `file_context=None` changes nothing.
+    file_analyses = tuple(
+        validation_mod.analyze_file_accesses(block, context=file_context, signatures=documented_signatures)
+        for block in cleaned_generated_code
+    )
+    if file_context is not None:
+        # Findings carry block-relative line numbers; `validate_code` (the
+        # only caller that passes a context) has exactly one block.
+        merged = validation_mod.FileAccessAnalysis(
+            accesses=tuple(a for analysis in file_analyses for a in analysis.accesses),
+            allowed=frozenset(k for analysis in file_analyses for k in analysis.allowed),
+            refusals=tuple(r for analysis in file_analyses for r in analysis.refusals),
+        )
+        system_statements = validation_mod.apply_file_access_analysis(system_statements, merged)
 
     companion_hints: list[tuple[str, str]] = []
     for symbol in unknown_symbols:
@@ -2263,6 +2289,7 @@ def validate_generated_code(
             call_validations=call_validations, parameter_role_checks=tuple(parameter_role_checks),
             preconditions=tuple(precondition_checks), syntax=syntax,
         ),
+        file_accesses=tuple(a for analysis in file_analyses for a in analysis.accesses),
     )
 
 
@@ -2332,8 +2359,16 @@ def _rejected(code: str, reason: str, message: str) -> CodeValidationResult:
     )
 
 
+def file_access_context(*, input_dir: str, gauss_dir: str | None) -> "validation_mod.FileAccessContext":
+    """v0.94.0 (planning v0.94 §3.2): the context `validate_code(...)` needs
+    to allow file accesses -- built here so the MCP server, which never
+    imports the validator, can pass one."""
+    return validation_mod.FileAccessContext(input_dir=input_dir, gauss_dir=gauss_dir)
+
+
 def validate_code(
     code: str, *, docs_root: str | None, installation: "libraries_mod.Installation | None" = None,
+    file_context: "validation_mod.FileAccessContext | None" = None,
 ) -> CodeValidationResult:
     """Deterministic validation of client-authored GAUSS code: no model
     call, no provider argument, no execution. Never raises for bad input --
@@ -2400,7 +2435,7 @@ def validate_code(
     gate = compute_generation_gate(bundle)
     pre_execution = validate_generated_code(
         (code,), bundle=bundle, gate=gate, docs_root_str=docs_root, recent_topics=(), answer_text="",
-        no_evidence_issue=NO_DOCUMENTED_CALLS_ISSUE, installation=installation,
+        no_evidence_issue=NO_DOCUMENTED_CALLS_ISSUE, installation=installation, file_context=file_context,
     )
     return CodeValidationResult(
         code=code, generated_code=(code,), called_symbols=tuple(called),

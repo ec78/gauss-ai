@@ -280,9 +280,15 @@ def docs_attribution(docs_root: str | None) -> DocsAttribution:
     return _docs_attribution_cached(os.path.abspath(docs_root), stamp)
 
 
+#: v0.94.0 (planning v0.94 §9, deviation 7): the function a `.. function::`
+#: line defines -- the first name called on the line (`{ ADF_min, tb1, lags,
+#: cv } = adf_1break(y, model ...)` -> `adf_1break`).
+_DOC_FUNCTION_NAME_RE = re.compile(r"^\.\.\s+function::[^\n(]*?([A-Za-z_][A-Za-z0-9_]*)\s*\(", re.MULTILINE)
+
+
 @functools.lru_cache(maxsize=4)
 def _docs_attribution_cached(docs_root: str, _stamp: int) -> DocsAttribution:
-    pages: list[tuple[str | None, str, frozenset[str]]] = []
+    pages: list[tuple[str | None, frozenset[str], frozenset[str]]] = []
     folder_counts: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
     root = Path(docs_root)
     for path in sorted(root.rglob("*.rst")):
@@ -293,7 +299,14 @@ def _docs_attribution_cached(docs_root: str, _stamp: int) -> DocsAttribution:
         relative = path.relative_to(root).parts
         folder = relative[0].lower() if len(relative) > 1 else None
         libraries = _page_libraries(text)
-        pages.append((folder, path.stem.lower(), libraries))
+        # v0.94.0 (deviation 7): a page names the functions on its
+        # `.. function::` lines too, not only its own file name. Before, a
+        # page named differently from its function (`tspdlib/docs/adf_1br.rst`
+        # for `adf_1break`) attributed nothing, so a call without `library
+        # tspdlib;` passed and GAUSS stopped with G0025 (sp94 run94: 6 docs
+        # examples became candidates once their file read was allowed).
+        names = {path.stem.lower()} | {m.group(1).lower() for m in _DOC_FUNCTION_NAME_RE.finditer(text)}
+        pages.append((folder, frozenset(names), libraries))
         if folder is not None:
             folder_counts[folder].update(libraries)
     folder_library: dict[str, str] = {}
@@ -304,14 +317,15 @@ def _docs_attribution_cached(docs_root: str, _stamp: int) -> DocsAttribution:
             folder_library[folder] = ranked[0][0]
     attributed: dict[str, set[str]] = {}
     core: set[str] = set()
-    for folder, stem, libraries in pages:
+    for folder, names, libraries in pages:
         page_libraries = set(libraries)
         if not page_libraries and folder in folder_library:
             page_libraries = {folder_library[folder]}
-        if page_libraries:
-            attributed.setdefault(stem, set()).update(page_libraries)
-        else:
-            core.add(stem)
+        for name in names:
+            if page_libraries:
+                attributed.setdefault(name, set()).update(page_libraries)
+            else:
+                core.add(name)
     return DocsAttribution(by_symbol={
         stem: frozenset(libraries) for stem, libraries in attributed.items() if stem not in core
     })
