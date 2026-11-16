@@ -11,7 +11,7 @@
 
 ## Status
 
-**Alpha.** Current milestone: `v0.94.0` - Data Import and Export. gauss-ai is an unofficial, independent project, not affiliated with or endorsed by Aptech Systems, Inc. GAUSS is a trademark of Aptech Systems, Inc. The milestone history is in [docs/development-history.md](docs/development-history.md).
+**Alpha.** Current milestone: `v0.94.1` - Data Import and Export. gauss-ai is an unofficial, independent project, not affiliated with or endorsed by Aptech Systems, Inc. GAUSS is a trademark of Aptech Systems, Inc. The milestone history is in [docs/development-history.md](docs/development-history.md).
 
 ## Quickstart
 
@@ -97,9 +97,9 @@ How a run handles files:
 - The run prompt lists every file it reads, with its size and digest, and every file it will keep.
 - Your input files are copied in and never changed, and nothing is ever overwritten.
 - Figures come back to the assistant as images.
-- Paths, URLs and file names built at run time are never allowed.
+- Paths, URLs and other file names built at run time are refused.
 
-GAUSS's own example datasets, such as `getGAUSSHome("examples/...")`, can be read too.
+GAUSS's own example datasets can be read too, as `getGAUSSHome() $+ "examples/..."`.
 
 **6. Upgrading**
 

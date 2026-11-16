@@ -632,6 +632,15 @@ class TypeClass(str, enum.Enum):
     UNKNOWN = "unknown"
 
 
+def _category_label(categories) -> str:
+    """v0.94.1 (live finding 85.x-4; planning v0.94 §14): categories as reason
+    text. `TypeClass.DATASET` is what a documented `dataframe` classifies as
+    (`_TYPE_KEYWORDS`), so it is shown as `dataframe`: 85.2's client read
+    "(string/dataset)" for `dstatmt.rst`'s `string or dataframe` and was
+    unsure a dataframe was allowed. The values themselves are unchanged."""
+    return "/".join("dataframe" if c == TypeClass.DATASET.value else c for c in categories)
+
+
 class ShapeConstraint(str, enum.Enum):
     """v0.75.0: a small, bounded set of shape constraints this module can
     actually recognize from a documented `NxN`/`Nx1`/`1xN`-style dimension
@@ -731,6 +740,13 @@ class DocumentedParameter:
     category: tuple[str, ...]
     shape: str
     source: str | None
+    #: v0.94.1 (live finding 85.x-2; planning v0.94 §14): for a `&`-prefixed
+    #: parameter only, the structure its `:param` line names (`:param
+    #: &myPlot: A :class:`plotControl` structure pointer.`) when its `:type`
+    #: line says a struct (`:type &myPlot: struct pointer`); else None. It
+    #: never sets `category`/`source`, which stay as before (see
+    #: `_struct_pointer_role_check`).
+    pointer_struct: str | None = None
 
 
 #: v0.75.0: matches a real `:type <name>: <text>` line from the same
@@ -757,6 +773,32 @@ _VARIADIC_NAME_RE = re.compile(r"(?:\\?\.){3,4}")
 
 def _normalize_parameter_name(name: str) -> str:
     return "..." if _VARIADIC_NAME_RE.fullmatch(name.strip()) else name
+
+
+#: v0.94.1: a `&`-prefixed `:param` line and the `:class:` it names.
+_POINTER_PARAM_LINE_RE = re.compile(r":param\s+&([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.+)")
+_PARAM_CLASS_RE = re.compile(r":class:`~?(?:[A-Za-z_][A-Za-z0-9_]*\.)*([A-Za-z_][A-Za-z0-9_]*)`")
+
+
+def _documented_pointer_structs(inputs_section: str | None, type_by_name: dict[str, str]) -> dict[str, str]:
+    """v0.94.1 (planning v0.94 §14): `{name: structure}` for each `&name`
+    parameter whose `:type` line classifies as a struct and nothing else
+    (`struct pointer`, `struct`) and whose `:param` line names exactly one
+    `:class:`. Every function pointer (`:type &fct: scalar`, `pointer`,
+    `function pointer`) is left out, so a literal number can never pass as
+    one."""
+    if not inputs_section:
+        return {}
+    found: dict[str, str] = {}
+    for match in _POINTER_PARAM_LINE_RE.finditer(inputs_section):
+        name = match.group(1)
+        if name in found:
+            continue
+        categories, _shape = classify_documented_type(type_by_name.get(name))
+        classes = set(_PARAM_CLASS_RE.findall(match.group(2)))
+        if categories == (TypeClass.CONTROL.value,) and len(classes) == 1:
+            found[name] = next(iter(classes))
+    return found
 
 
 def _extract_documented_parameter_types(inputs_section: str | None) -> dict[str, str]:
@@ -1158,6 +1200,7 @@ def extract_documented_signature(symbol: str, best_match: dict) -> DocumentedSig
     # `_extract_documented_parameter_types(...)`'s own docstring for why this
     # is a real per-line match, never a guess.
     type_by_name = _extract_documented_parameter_types(best_match.get("inputs_section"))
+    pointer_structs = _documented_pointer_structs(best_match.get("inputs_section"), type_by_name)
     required_count = min(lo for lo, _hi in ranges)
     parameters = tuple(
         DocumentedParameter(
@@ -1165,6 +1208,7 @@ def extract_documented_signature(symbol: str, best_match: dict) -> DocumentedSig
             category=classify_documented_type(type_by_name.get(name))[0],
             shape=classify_documented_type(type_by_name.get(name))[1],
             source=type_by_name.get(name),
+            pointer_struct=pointer_structs.get(name[1:]) if name.startswith("&") else None,
         )
         for position, name in enumerate(names)
     )
@@ -1621,6 +1665,12 @@ class RoleUnknownCause(str, enum.Enum):
     #: `control`). "Numeric" is not "scalar", so this is a gap, never a
     #: mismatch (`ones(n - 1, 1)`: `n - 1` may well be a scalar).
     EXPRESSION_CATEGORY_IMPRECISE = "expression_category_imprecise"
+    #: v0.94.1 (planning v0.94 §14): a name declared `string name = ...;` is
+    #: a string or string array, and the docs call a string array a "vector"
+    #: (`setColNames.rst`: `:type varnames: Mx1 vector`, which real GAUSS
+    #: fills with `string names = { ... }`). So it confirms a `string`
+    #: parameter but never refutes another.
+    STRING_DECLARATION_IMPRECISE = "string_declaration_imprecise"
 
 
 _ROLE_UNKNOWN_CAUSE_TEXT: dict[str, str] = {
@@ -1700,6 +1750,12 @@ class ArgumentOrigin(str, enum.Enum):
     #: `DOCUMENTED_RETURN`: a documentation table is not proof of a run-time
     #: shape.
     DOCUMENTED_MEMBER = "documented_member"
+    #: v0.94.1: a name whose governing write is `string name = ...;`, a
+    #: string whatever the right-hand side (`StringDeclaration`).
+    STRING_DECLARATION = "string_declaration"
+    #: v0.94.1: `&name` for a documented structure pointer, `name` declared
+    #: as that structure (`_struct_pointer_role_check`).
+    STRUCT_POINTER = "struct_pointer"
     UNRESOLVED = "unresolved"
 
 
@@ -1862,6 +1918,8 @@ _EXPRESSION_POSTFIX_OPERATORS: tuple[str, ...] = (".'", "'")
 #: A numeric constant at the start of the remaining text (`2`, `1.5`, `.5`,
 #: `1e5`). Its category is `scalar`; the value is never used.
 _EXPRESSION_NUMBER_RE = re.compile(r"(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
+#: v0.94.1: a positive integer column index (`x[., 2]`).
+_COLUMN_INDEX_LITERAL_RE = re.compile(r"[1-9][0-9]*")
 _EXPRESSION_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 #: A dotted word operator (`.and`, `.not`, `.lt`): `.` and a whole word.
 _EXPRESSION_DOTTED_WORD_RE = re.compile(r"\.([A-Za-z]+)(?![A-Za-z0-9_])")
@@ -1987,7 +2045,10 @@ class _ExpressionReader:
             categories, i, was_call, postfixed = self._operand(i, end)
             operands.append(categories)
             key = self.shape_key
-            if postfixed == "index" or (postfixed == "transpose" and key != "scalar"):
+            # v0.94.1: an indexed operand's key is already None unless it is
+            # one whole column (`_column_slice_key`); a transposed one keeps
+            # none.
+            if postfixed == "transpose" and key != "scalar":
                 key = None
             keys.append(key)
             first_alone = operators == 0 and len(operands) == 1 and not postfixed
@@ -2022,7 +2083,7 @@ class _ExpressionReader:
         for categories in operands:
             if not categories or not all(c in _NUMERIC_CATEGORIES for c in categories):
                 raise _ExpressionRefused(
-                    f"an operand's category ({'/'.join(categories) or 'none'}) is not numeric"
+                    f"an operand's category ({_category_label(categories) or 'none'}) is not numeric"
                 )
         self.shape_key = _expression_shape_key(keys, used)
         if isinstance(self.shape_key, tuple):
@@ -2084,7 +2145,7 @@ class _ExpressionReader:
             categories, _exact = self.read(i + 1, close)
             if not all(c in _NUMERIC_CATEGORIES for c in categories):
                 raise _ExpressionRefused(
-                    f"a parenthesized operand's category ({'/'.join(categories)}) is not numeric"
+                    f"a parenthesized operand's category ({_category_label(categories)}) is not numeric"
                 )
             # `self.shape_key` is the group's own, left by `read`.
             self.member_operand = False
@@ -2153,12 +2214,39 @@ class _ExpressionReader:
                         raise _ExpressionRefused(f"operand `{name}` is not numeric, so its index is not modelled")
                     # A second index (`x[1][2]`) or a member after one
                     # (`x[1].b`) is no operator, so the operator position
-                    # refuses it. An indexed operand has no shape key.
-                    self.shape_key = None
+                    # refuses it. An indexed operand has no shape key, except
+                    # (v0.94.1) one whole column, below.
+                    self.shape_key = self._column_slice_key(identity, i + 1, close)
                     return self._postfix(categories, close + 1, end, "index")
         else:
             raise _ExpressionRefused(self._unmodelled(i, end))
         return self._postfix(categories, i, end, None, was_call=was_call)
+
+    def _column_slice_key(self, identity: str, start: int, close: int) -> object:
+        """v0.94.1 (live finding 85.x-1; planning v0.94 §14): the shape key
+        of `x[., k]`, one whole column of a numeric operand, where `k` is an
+        integer literal or a name traced to a scalar. Every column of one
+        operand has its row count, so they share the key `("vec", ("column
+        of", x))`: `x[., 1] .* x[., 2]` keeps that shape. Real `tgauss.exe -b`
+        (GAUSS 26.1.4, 2026-11-16, sp941a): with a 6x3 `x`, `x[., 2]`, `x[.,
+        k]` (`k = 3`) and `x[., 2] .== 1` are 6x1, while `x[2, .]` is 1x3 and
+        `x[., 2 3]` is 6x2. A row slice, a range, a list, or anything but
+        those two forms keeps no key (None), as before; the operand's
+        category is unchanged (its index is still never read for that)."""
+        parts = _split_top_level_args(self.view[start:close])
+        if len(parts) != 2 or parts[0].strip() != ".":
+            return None
+        column = parts[1].strip()
+        if _COLUMN_INDEX_LITERAL_RE.fullmatch(column):
+            return ("vec", ("column of", identity))
+        if _SIMPLE_NAME_RE.fullmatch(column):
+            try:
+                traced = self._traced(column)
+            except _ExpressionRefused:
+                return None
+            if traced == (TypeClass.SCALAR.value,):
+                return ("vec", ("column of", identity))
+        return None
 
     def _postfix(self, categories: tuple[str, ...], i: int, end: int, postfix: str | None,
                  *, was_call: bool = False) -> tuple[tuple[str, ...], int, bool, str | None]:
@@ -2249,8 +2337,9 @@ def _expression_shape_key(keys: list[object], used: list[str]) -> object:
     return vectors[0]
 
 
-#: v0.94.0: a top-level `$+` in a masked expression.
-_STRING_JOIN_RE = re.compile(r"\$\+")
+#: v0.94.0: a top-level `$+` in a masked expression. v0.94.1: also `$|` and
+#: `$~` (see `_string_concatenation_category`).
+_STRING_JOIN_RE = re.compile(r"\$[+|~]")
 _STRING_JOIN_CALL_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*\(")
 
 
@@ -2264,7 +2353,16 @@ def _string_concatenation_category(
     strings joins them; nothing else is read. A name, an index, any other
     operator or an undocumented call returns None, leaving the v0.91 reader's
     refusal ("it uses a string operator") unchanged. Only a MATCH can follow:
-    a string parameter is confirmed, any other stays as it was."""
+    a string parameter is confirmed, any other stays as it was.
+
+    v0.94.1 (live finding 85.x-1; planning v0.94 §14): `$|` and `$~`, which
+    stack strings into a string array (`vnames = "Estimate" $| "StdErr"`,
+    `saved.rst`'s own example), join the same way. A string array is a
+    `string` here, as a `{ "a", "b" }` literal already is. Real `tgauss.exe
+    -b` (GAUSS 26.1.4, 2026-11-16, sp941a): `"Estimate" $| "StdErr" $|
+    "tStat"` is 3x1 and `"a" $~ "b"` is 1x2, both `type` 15 (string
+    array). Any mix of the three operators reads the same; `$==` and the
+    other string comparisons are not joins and still refuse."""
     masked = lex_gauss_source(text).masked_view
     if not _STRING_JOIN_RE.search(masked):
         return None
@@ -2276,7 +2374,7 @@ def _string_concatenation_category(
             depth += 1
         elif ch in ")]}":
             depth -= 1
-        elif depth == 0 and masked.startswith("$+", i):
+        elif depth == 0 and masked[i] == "$" and masked[i + 1:i + 2] in ("+", "|", "~"):
             pieces.append((start, i))
             start = i + 2
             i += 2
@@ -2601,13 +2699,19 @@ def _role_trace_name(
     if constant is not None:
         return constant, ArgumentOrigin.DOCUMENTED_RETURN.value, None, None
     numeric_only = False
-    governing = _governing_assignment(name, code=code, line_number=line_number, column=column, multi_targets=True)
+    governing = _governing_assignment(
+        name, code=code, line_number=line_number, column=column, multi_targets=True, string_declarations=True,
+    )
     if governing is None:
         governing = _governing_assignment(
             name, code=code, line_number=line_number, column=column, multi_targets=True,
             allow_indexed_writes=True,
         )
         numeric_only = True
+    if isinstance(governing, StringDeclaration):
+        # v0.94.1: `string name = ...;` makes `name` a string (see
+        # `StringDeclaration`).
+        return (TypeClass.STRING.value,), ArgumentOrigin.STRING_DECLARATION.value, None, None
     if not isinstance(governing, MultiTarget):
         return base
     call = _single_call(governing.rhs)
@@ -2728,6 +2832,76 @@ def resolve_role_argument_category(
     return categories, origin, cause, rhs, None
 
 
+_STRUCT_DECLARATION_NAMES_RE = re.compile(r"^\s*struct\s+([A-Za-z_][A-Za-z0-9_]*)\s+([^{=;]*)", re.IGNORECASE)
+_POINTER_ARGUMENT_RE = re.compile(r"&\s*([A-Za-z_][A-Za-z0-9_]*)")
+
+
+def _declared_struct_type(name: str, *, code: str, line_number: int | None, column: int | None) -> str | None:
+    """v0.94.1: the structure type of the top-level `struct T a[, b];`
+    declaration naming `name` that ends before the call, or None. Refuses
+    (None) when a declaration naming `name` sits inside a block, or when two
+    top-level declarations before the call disagree on the type."""
+    target = (
+        line_number if line_number is not None else float("inf"),
+        column if column is not None else float("inf"),
+    )
+    depth = 0
+    found: str | None = None
+    for statement in source_statements(code):
+        masked = statement.masked
+        word = _leading_word(masked)
+        if word in _BLOCK_CLOSE_KEYWORDS:
+            depth = max(0, depth - 1)
+            continue
+        match = _STRUCT_DECLARATION_NAMES_RE.match(masked)
+        if match is not None and not _NAMED_STRUCT_DEFINITION_RE.match(masked):
+            names = [part.strip().split("[")[0].strip().lower() for part in match.group(2).split(",")]
+            if name.lower() in names:
+                if depth > 0:
+                    return None
+                if (statement.end_line, statement.end_column) < target:
+                    if found is not None and found.lower() != match.group(1).lower():
+                        return None
+                    found = match.group(1)
+        if word in _BLOCK_OPEN_KEYWORDS:
+            depth += 1
+    return found
+
+
+def _struct_pointer_role_check(
+    call: GeneratedCall, position: int, param: DocumentedParameter, argument: str, *, code: str | None,
+) -> ParameterRoleCheck | None:
+    """v0.94.1 (live finding 85.x-2; planning v0.94 §14, user decision
+    2026-11-16): a MATCH for `&name` passed to a `&`-prefixed parameter the
+    docs type as a pointer to one named structure (`pointer_struct`), when
+    the code declares `struct <that structure> name;` at top level before
+    the call. Everything else returns None, and the unchanged path reports
+    the parameter as before (`documented_type_missing`): a function pointer
+    (`&fct`, typed `scalar` or `pointer`), a literal, an undeclared name, or
+    a structure of another type. Real `tgauss.exe -b` (GAUSS 26.1.4,
+    2026-11-16, sp941b/c): `plotSetTitle(&myPlot, "Title")` with `struct
+    plotControl myPlot` runs, and with `struct plotAnnotation ann` stops
+    with `G0165` ("expected STRUCT"), so the structure's type must match."""
+    if not param.name.startswith("&") or param.source is not None or not param.pointer_struct or code is None:
+        return None
+    match = _POINTER_ARGUMENT_RE.fullmatch(argument.strip())
+    if match is None:
+        return None
+    declared = _declared_struct_type(match.group(1), code=code, line_number=call.line_number, column=call.column)
+    if declared is None or declared.lower() != param.pointer_struct.lower():
+        return None
+    return ParameterRoleCheck(
+        symbol=call.symbol, position=position, parameter_name=param.name,
+        documented_category=(TypeClass.CONTROL.value,), inferred_category=TypeClass.CONTROL.value,
+        status=ParameterRoleStatus.MATCH.value,
+        explanation=(
+            f"`{argument.strip()}` points to `struct {declared} {match.group(1)}`, the documented "
+            f"`{param.pointer_struct}` structure"
+        ),
+        origin=ArgumentOrigin.STRUCT_POINTER.value,
+    )
+
+
 def _positional_role_checks(
     call: GeneratedCall, parameters: tuple[DocumentedParameter, ...], *, code: str | None = None,
     signatures: "dict[str, DocumentedSignature] | None" = None,
@@ -2782,12 +2956,16 @@ def _positional_role_checks(
             break
         else:
             param = parameters[position]
+        pointer = _struct_pointer_role_check(call, position, param, argument, code=code)
+        if pointer is not None:
+            checks.append(pointer)
+            continue
         # v0.91.0: `resolve_role_argument_category(...)` adds expression
         # categories to the unchanged resolver (planning v0.91 §3.1).
         inferred, origin, argument_cause, rhs, reason = resolve_role_argument_category(
             argument, code=code, line_number=call.line_number, column=call.column, signatures=signatures,
         )
-        inferred_label = "/".join(inferred)
+        inferred_label = _category_label(inferred)
         documented = param.category
         is_name = bool(_SIMPLE_IDENTIFIER_RE.fullmatch(argument.strip()))
         returned = f"a call whose documented return type is {inferred_label}"
@@ -2817,6 +2995,8 @@ def _positional_role_checks(
                     if is_name else " (an expression whose every operand is numeric; its shape is not computed)"
                 )
             ),
+            # v0.94.1 (planning v0.94 §14).
+            ArgumentOrigin.STRING_DECLARATION.value: f" (declared `string {argument.strip()} = ...`)",
             # v0.93.0 (planning v0.93 §3.2).
             ArgumentOrigin.DOCUMENTED_MEMBER.value: (
                 f" (traced to `{argument.strip()} = ...`, a result member whose documented type is {inferred_label})"
@@ -2851,7 +3031,19 @@ def _positional_role_checks(
             unknown_cause = RoleUnknownCause.RETURN_TYPE_IMPRECISE.value
             explanation = (
                 f"the argument{traced} may not fit the documented type for parameter {param.name!r} "
-                f"({'/'.join(documented)}); a documented return type is not precise enough to call this a mismatch"
+                f"({_category_label(documented)}); a documented return type is not precise enough to call this a mismatch"
+            )
+        elif origin == ArgumentOrigin.STRING_DECLARATION.value:
+            # v0.94.1 (planning v0.94 §14): never a MISMATCH. The corpus
+            # verdict diff's one downward move was `setColNames(y ~ x,
+            # names)` with `string names = {...}` against `:type varnames:
+            # Mx1 vector`; real `tgauss.exe -b` runs it.
+            status = ParameterRoleStatus.UNKNOWN.value
+            unknown_cause = RoleUnknownCause.STRING_DECLARATION_IMPRECISE.value
+            explanation = (
+                f"the argument{traced} is a string or string array, and the documented type for parameter "
+                f"{param.name!r} ({_category_label(documented)}) may include a string array; a declared string "
+                "is not precise enough to call this a mismatch"
             )
         elif origin == ArgumentOrigin.EXPRESSION_CATEGORY.value:
             # v0.91.0 (decision 1a): the same never-MISMATCH guard as a
@@ -2861,14 +3053,14 @@ def _positional_role_checks(
             unknown_cause = RoleUnknownCause.EXPRESSION_CATEGORY_IMPRECISE.value
             explanation = (
                 f"the argument{traced} is numeric, but the documented type for parameter {param.name!r} "
-                f"({'/'.join(documented)}) does not accept every numeric matrix; an expression's category is "
+                f"({_category_label(documented)}) does not accept every numeric matrix; an expression's category is "
                 "not precise enough to confirm or refute it"
             )
         else:
             status = ParameterRoleStatus.MISMATCH.value
             explanation = (
                 f"the argument's literal category ({inferred_label}){traced} does not match the documented type "
-                f"for parameter {param.name!r} ({'/'.join(documented)})"
+                f"for parameter {param.name!r} ({_category_label(documented)})"
             )
         checks.append(ParameterRoleCheck(
             symbol=call.symbol, position=position, parameter_name=param.name,
@@ -3257,10 +3449,23 @@ class MultiTarget:
 _MULTI_TARGET_STATEMENT_RE = re.compile(r"^\s*\{([^{}]*)\}\s*=(?!=)")
 
 
+@dataclass(frozen=True)
+class StringDeclaration:
+    """v0.94.1 (live finding 85.x-1; planning v0.94 §14):
+    `_governing_assignment(..., string_declarations=True)`'s answer when the
+    governing write is `string name = <rhs>;`. GAUSS makes `name` a string
+    whatever `rhs` is: real `tgauss.exe -b` (GAUSS 26.1.4, 2026-11-16,
+    sp941a/d) gives `type` 15 (string array) for `string names = { "a", "b",
+    "c" };` and `type` 13 (string) for both `string q = "a";` and `string z =
+    5;`. So the category is `string`, never the right-hand side's."""
+
+    rhs: str
+
+
 def _governing_assignment(
     name: str, *, code: str, line_number: int | None = None, column: int | None = None,
-    allow_indexed_writes: bool = False, multi_targets: bool = False,
-) -> "str | MultiTarget | None":
+    allow_indexed_writes: bool = False, multi_targets: bool = False, string_declarations: bool = False,
+) -> "str | MultiTarget | StringDeclaration | None":
     """v0.81.0: the ONE shared answer to "which assignment gives `name` its
     value at this call?", used by both the role check and the precondition
     tracer. Returns the right-hand-side text of the most recent plain
@@ -3315,13 +3520,22 @@ def _governing_assignment(
     check asks for it (`_role_trace_name(...)`); with the default every such
     statement still refuses, so the precondition tracer and the dataset
     registry are unchanged. Inside a block, or with `name` listed twice, it
-    still refuses."""
+    still refuses.
+
+    v0.94.1 (planning v0.94 §14): a `string name = <rhs>;` declaration is a
+    write. Before, no pattern here matched it, so it was skipped and an
+    EARLIER assignment could govern (`x = {1 2}; string x = "a";` traced `x`
+    to the numeric literal). Now it refuses (None), unless
+    `string_declarations=True` (only the role check's `_role_trace_name(...)`
+    asks), which answers a `StringDeclaration` when it governs. Inside a
+    block it refuses either way."""
     target = (
         line_number if line_number is not None else float("inf"),
         column if column is not None else float("inf"),
     )
     escaped = re.escape(name)
     plain_re = re.compile(rf"^\s*(?:let\s+)?{escaped}\s*=(?!=)", re.IGNORECASE)
+    string_declaration_re = re.compile(rf"^\s*string\s+{escaped}\s*=(?!=)", re.IGNORECASE)
     for_header_re = re.compile(rf"^\s*(?:thread)?for\s+{escaped}\b", re.IGNORECASE)
     other_write_res = (
         re.compile(rf"^\s*{escaped}\s*\.[A-Za-z_]", re.IGNORECASE),
@@ -3333,7 +3547,7 @@ def _governing_assignment(
     # The block depth of the statement holding the call, once it is reached
     # (None until then, and always None for an end-of-code target).
     call_depth: int | None = None
-    governing: "str | MultiTarget | None" = None
+    governing: "str | MultiTarget | StringDeclaration | None" = None
     for statement in source_statements(code):
         masked = statement.masked
         word = _leading_word(masked)
@@ -3359,6 +3573,15 @@ def _governing_assignment(
                     continue
         if any(r.search(masked) for r in other_write_res):
             return None
+        declared = string_declaration_re.search(masked)
+        if declared is not None:
+            if not string_declarations or depth > 0:
+                return None
+            if (statement.end_line, statement.end_column) < target:
+                governing = StringDeclaration(statement.text[declared.end():].strip())
+            if word in _BLOCK_OPEN_KEYWORDS:
+                depth += 1
+            continue
         if indexed_write_re.search(masked):
             if allow_indexed_writes:
                 continue

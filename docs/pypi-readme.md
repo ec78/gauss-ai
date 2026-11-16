@@ -94,9 +94,9 @@ How a run handles files:
 - The run prompt lists every file it reads, with its size and digest, and every file it will keep.
 - Your input files are copied in and never changed, and nothing is ever overwritten.
 - Figures come back to the assistant as images.
-- Paths, URLs and file names built at run time are never allowed.
+- Paths, URLs and other file names built at run time are refused.
 
-GAUSS's own example datasets, such as `getGAUSSHome("examples/...")`, can be read too.
+GAUSS's own example datasets can be read too, as `getGAUSSHome() $+ "examples/..."`.
 
 **6. Upgrading**
 

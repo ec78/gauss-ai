@@ -3132,7 +3132,9 @@ def test_192_v091_expression_category_operator_families() -> None:
         "ones(n, 1) ~ x ~ y", "{1 2} | {3 4}",                                                   # concatenation
         "(x .< 2) .or (x .> 8)", "x .== 1", "x != y", "x >= 1", "not x", "x .and y", "x xor y",   # comparisons, logic
         "x'x", "x'y", "x' * y", "x.'", "x'.*y",                                                   # transpose, product
-        "x[., 2]", "y[2:rows(y)]", "x[1].*2",                                                     # indexing
+        # v0.94.1 (planning v0.94 §14): "x[., 2]", one whole column, moved to
+        # the vector check below (live finding 85.x-1).
+        "y[2:rows(y)]", "x[1].*2",                                                                # indexing
         "-x", "-(x + 1)", "(x)", "((x ~ y))",                                                     # unary, nesting
         "(x - meanc(x)') ./ stdc(x)'",                                                            # 82.x z-scores
     )
@@ -3140,9 +3142,9 @@ def test_192_v091_expression_category_operator_families() -> None:
         result = _v091_infer(text)
         check(f"{text!r}: matrix", result.categories == ("matrix",))
         check(f"{text!r}: expression_category origin", result.origin == "expression_category")
-    for text in ("0.25 | 0.75", "0|0"):
+    for text in ("0.25 | 0.75", "0|0", "x[., 2]"):
         result = _v091_infer(text)
-        check(f"{text!r}: vector (v0.94.0: stacked scalars)", result.categories == ("vector",))
+        check(f"{text!r}: vector (v0.94.0: stacked scalars; v0.94.1: one column)", result.categories == ("vector",))
         check(f"{text!r}: expression_category origin", result.origin == "expression_category")
 
 
@@ -3638,7 +3640,10 @@ def test_206_v093_documented_members_are_operands() -> None:
     check("206: a scalar member", infer("mdl.clusterSS").categories == ("scalar",))
     check("206: a member in an element-wise expression keeps the vector",
           infer("mdl.assignments .== 2").categories == ("vector",))
-    check("206: an indexed member is a numeric operand", infer("mdl.centroids[., 1] * 2").categories == ("matrix",))
+    # v0.94.1 (planning v0.94 §14): `mdl.centroids[., 1]` is one whole column,
+    # so `* 2` keeps a vector (it was `matrix` before); a row stays `matrix`.
+    check("206: an indexed member is a numeric operand", infer("mdl.centroids[., 1] * 2").categories == ("vector",))
+    check("206: a row of a member is a matrix", infer("mdl.centroids[1, .] * 2").categories == ("matrix",))
     for text, reason in (
         ("mdl.nothere", "not a documented member of `kfit`'s result"),
         ("mdl.notes", "documented without a checkable type"),
@@ -4028,10 +4033,14 @@ def test_217_v094_shape_and_string_join_deviations() -> None:
     for text in ("x|1", "{1 2}|{3 4}", "640~480"):
         result = validation_mod.infer_expression_category(text, code=_V091_CODE, signatures=sig)
         check(f"217: {text!r} is still not a vector", result.categories != ("vector",))
-    for text in ('"a" $+ "b"', 'getGAUSSHome() $+ "examples/x.csv"', '"a" $+ getGAUSSHome() $+ "b"'):
+    # v0.94.1 (planning v0.94 §14): `"a" $| "b"` moved from the "not a string"
+    # list below -- `$|` and `$~` of strings are string arrays now (live
+    # finding 85.x-1). `$==` is a comparison, not a join, and stays out.
+    for text in ('"a" $+ "b"', 'getGAUSSHome() $+ "examples/x.csv"', '"a" $+ getGAUSSHome() $+ "b"',
+                 '"a" $| "b"', '"a" $~ "b"', '"Estimate" $| "StdErr" $| "tStat"'):
         result = validation_mod.infer_expression_category(text, code=_V091_CODE, signatures=sig)
         check(f"217: {text!r} is a string", result.categories == ("string",))
-    for text in ('x $+ "b"', '"a" $+ rows(x)', '"a" $| "b"', '"a" $+ nodoc()', '"a" $+ "b" + 1'):
+    for text in ('x $+ "b"', '"a" $+ rows(x)', '"a" $== "b"', '"a" $+ nodoc()', '"a" $+ "b" + 1', '"a" $| 1'):
         result = validation_mod.infer_expression_category(text, code=_V091_CODE, signatures=sig)
         check(f"217: {text!r} is not a string", result.categories != ("string",))
     code = 'f = getGAUSSHome() $+ "examples/x.csv";\nd = rows(f);\n'
@@ -4087,6 +4096,132 @@ def test_218_v094_one_name_from_a_multiple_return_function() -> None:
         unresolved_issues=(), syntax=None, call_validations=flagged, preconditions=(), evidence_profile="broad",
     )
     check("218: the verdict is not_ready", readiness.state == "not_ready")
+
+def test_219_v0941_one_whole_column_is_a_vector() -> None:
+    """Planning v0.94 §14 (live finding 85.x-1; sp941a): `x[., k]`, one whole
+    column, is a vector, for an integer literal `k` or a name traced to a
+    scalar, and keeps that shape through element-wise operators (`x[., 4]
+    .== 1`, 85.6's mask). A row, a range, a list of columns, a transposed
+    column and a non-scalar index are as before."""
+    code = _V091_CODE + "k = 2;\nv = {1, 2};\n"
+    for text in ("x[., 2]", "x[., k]", "x[., 2] .== 1", "x[., 1] .* x[., 2]", "-x[., 1]", "x[.,2]"):
+        check(f"219: {text!r} is a vector", _v091_infer(text, code).categories == ("vector",))
+    for text in ("x[2, .]", "x[., 1:2]", "x[., 1 2]", "x[., 2]'", "x[., v]", "x[., 2] .* y",
+                 "x[1, 2]", "x[., 0]", "x[., k + 1]"):
+        check(f"219: {text!r} is not a vector", _v091_infer(text, code).categories != ("vector",))
+    signatures = dict(_v091_signatures())
+    signatures["indexcat"] = _signature(
+        "indexcat", ".. function:: y = indexcat(x, v)", ":type x: Nx1 vector\n:type v: scalar or 2x1 vector",
+        ":rtype y: Lx1 vector")
+    snippet = "wages = rndn(10, 4);\nidx = indexcat(wages[., 4], 1);\n"
+    call = next(c for c in validation_mod.extract_generated_calls(snippet) if c.symbol == "indexcat")
+    checks = validation_mod.check_parameter_roles(
+        call, signature=signatures["indexcat"], code=snippet, signatures=signatures)
+    check("219: 85.6's `indexcat(wages[., 4], 1)` matches", [c.status for c in checks] == ["match", "match"])
+
+
+def test_220_v0941_string_declarations_trace_as_strings() -> None:
+    """Planning v0.94 §14 (live finding 85.x-1; sp941a, sp941d): GAUSS makes
+    `name` a string after `string name = <rhs>;` whatever `rhs` is
+    (`string z = 5;` is type 13). Only the role check reads it; every other
+    caller of `_governing_assignment` now refuses on it instead of skipping
+    it (before, `x = {1 2}; string x = "a";` traced to the literal)."""
+    governing = validation_mod._governing_assignment
+    code = 'x = {1 2};\nstring x = "a";\ny = meanc(x);\n'
+    check("220: default refuses on a string declaration", governing("x", code=code) is None)
+    marker = governing("x", code=code, string_declarations=True)
+    check("220: the role check gets the declaration",
+          isinstance(marker, validation_mod.StringDeclaration) and '"a"' in marker.rhs)
+    check("220: inside a block it refuses", governing(
+        "x", code='if 1;\n  string x = "a";\nendif;\ny = meanc(x);\n', string_declarations=True) is None)
+    later = governing("x", code='string x = "a";\nx = {1 2};\n', string_declarations=True)
+    check("220: a later plain assignment governs", isinstance(later, str) and "{1 2}" in later)
+    signatures = dict(_v091_signatures())
+    signatures["asdf"] = _signature(
+        "asdf", ".. function:: x_meta = asdf(x)", ":type x: NxK matrix or string array", ":rtype x_meta: NxK dataframe")
+    signatures["setcolnames"] = _signature(
+        "setcolnames", ".. function:: x_meta = setColNames(X, varnames)",
+        ":type X: NxK matrix\n:type varnames: Mx1 vector", ":rtype x_meta: NxK dataframe")
+    for snippet, expected in (
+        ('string names = { "CONSTANT", "Education" };\nd = asdf(names);\n', "match"),
+        ('string z = 5;\nd = asdf(z);\n', "match"),
+        # Never a mismatch: the docs call a string array a "vector"
+        # (`setColNames.rst`), and GAUSS runs the corpus's x17 (§14).
+        ('string z = 5;\nm = meanc(z);\n', "unknown"),
+        ('string names = { "y", "X1" };\nd = setcolnames(rndn(2, 2), names);\n', "unknown"),
+    ):
+        symbol = "asdf" if "asdf" in snippet else ("setcolnames" if "setcolnames" in snippet else "meanc")
+        call = next(c for c in validation_mod.extract_generated_calls(snippet) if c.symbol == symbol)
+        checks = validation_mod.check_parameter_roles(
+            call, signature=signatures[symbol], code=snippet, signatures=signatures)
+        check(f"220: {snippet.splitlines()[0]!r} -> {expected}", checks[-1].status == expected)
+        check(f"220: {snippet.splitlines()[0]!r} origin", checks[-1].origin == "string_declaration")
+        if expected == "unknown":
+            check(f"220: {snippet!r} cause", checks[-1].unknown_cause == "string_declaration_imprecise")
+
+
+_PLOT_SET_TITLE_INPUTS = (
+    ":param &myPlot: A :class:`plotControl` structure pointer.\n:type &myPlot: struct pointer\n"
+    ":param title: the new title.\n:type title: string"
+)
+
+
+def test_221_v0941_a_declared_plot_structure_pointer_matches() -> None:
+    """Planning v0.94 §14, user decision 2026-11-16 (live finding 85.x-2;
+    sp941b/c): `&myPlot` matches a `&` parameter documented as a pointer to
+    one named structure only when the code declares `struct <that structure>
+    myPlot;` before the call. A structure of another type (G0165 in GAUSS),
+    an undeclared name, a literal, a declaration inside a block, and every
+    function pointer stay `documented_type_missing`, as before."""
+    title = _signature("plotSetTitle", ".. function:: plotSetTitle(&myPlot, title)", _PLOT_SET_TITLE_INPUTS)
+    check("221: the pointer's structure is read", title.parameters[0].pointer_struct == "plotControl")
+    check("221: its category and source are unchanged",
+          title.parameters[0].category == ("unknown",) and title.parameters[0].source is None)
+    fct = _signature("sqpsolvemt", ".. function:: out = sqpSolveMT(&fct, start)",
+                     ":param &fct: pointer to a procedure.\n:type &fct: scalar\n:param start: start\n:type start: vector")
+    check("221: a function pointer has no structure", fct.parameters[0].pointer_struct is None)
+    annotation_class = _signature(
+        "f", ".. function:: f(&a)", ":param &a: A :class:`plotAnnotation` or :class:`plotControl`.\n:type &a: struct")
+    check("221: two classes name no structure", annotation_class.parameters[0].pointer_struct is None)
+    signatures = {"plotsettitle": title}
+
+    def first(snippet):
+        call = next(c for c in validation_mod.extract_generated_calls(snippet) if c.symbol.lower() == "plotsettitle")
+        return validation_mod.check_parameter_roles(call, signature=title, code=snippet, signatures=signatures)[0]
+
+    ok = first('struct plotControl myPlot;\nmyPlot = plotGetDefaults("xy");\nplotSetTitle(&myPlot, "T");\n')
+    check("221: a declared plotControl matches", ok.status == "match" and ok.origin == "struct_pointer")
+    check("221: ...and says so", "struct plotControl myPlot" in ok.explanation)
+    check("221: a declaration with an initializer", first(
+        'struct plotControl myPlot = plotGetDefaults("xy");\nplotSetTitle(&myPlot, "T");\n').status == "match")
+    check("221: one of several declared names", first(
+        'struct plotControl a, myPlot;\nplotSetTitle(&myPlot, "T");\n').status == "match")
+    for snippet in (
+        'struct plotAnnotation myPlot;\nplotSetTitle(&myPlot, "T");\n',
+        'plotSetTitle(&myPlot, "T");\n',
+        'plotSetTitle(&myPlot, "T");\nstruct plotControl myPlot;\n',
+        'plotSetTitle(5, "T");\n',
+        'proc (0) = f();\n  struct plotControl myPlot;\nendp;\nplotSetTitle(&myPlot, "T");\n',
+        'struct plotControl myPlot;\nstruct plotAnnotation myPlot;\nplotSetTitle(&myPlot, "T");\n',
+    ):
+        result = first(snippet)
+        check(f"221: {snippet!r} stays unknown",
+              result.status == "unknown" and result.unknown_cause == "documented_type_missing")
+
+
+def test_222_v0941_dataframe_in_reason_text() -> None:
+    """Planning v0.94 §14 (live finding 85.x-4): a documented `dataframe`
+    (category `dataset`) reads as `dataframe` in reason text."""
+    check("222: label", validation_mod._category_label(("string", "dataset")) == "string/dataframe")
+    check("222: other categories unchanged", validation_mod._category_label(("matrix",)) == "matrix")
+    dstat = _signature("dstatmt", ".. function:: d = dstatmt(data)", ":type data: string or dataframe")
+    signatures = dict(_v091_signatures())
+    signatures["dstatmt"] = dstat
+    snippet = "df = rndn(5, 2);\ncall dstatmt(df);\n"
+    call = next(c for c in validation_mod.extract_generated_calls(snippet) if c.symbol == "dstatmt")
+    checks = validation_mod.check_parameter_roles(call, signature=dstat, code=snippet, signatures=signatures)
+    check("222: the role reason says dataframe", "(string/dataframe)" in checks[0].explanation)
+
 
 def run_tests() -> int:
     tests = [

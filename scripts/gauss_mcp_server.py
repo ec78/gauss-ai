@@ -93,7 +93,7 @@ import gauss_doc_reader as doc_reader_mod
 import gauss_execution_handoff as handoff_mod
 import gauss_installed_libraries as libraries_mod
 
-__version__ = "0.94.0"
+__version__ = "0.94.1"
 
 #: Set by the server OPERATOR in the process's own environment before
 #: launch -- never read from a tool-call argument. See module docstring.
@@ -507,7 +507,8 @@ server = MCPServer(
         "that prompt's request_id. Never answer yes on the user's behalf. " + REPLY_GUIDANCE + " If gauss_session_start "
         "reports an analysis_folder, code may read the files listed in its input folder by their bare quoted name "
         "and write files by a bare name; a run keeps them in a new folder under its output folder and returns "
-        "figures as images. Paths, URLs and names built at run time are never allowed. gauss_repair_* tools drive the guided "
+        "figures as images. GAUSS's own example data may be read in place as getGAUSSHome() $+ \"examples/<name>\". "
+        "Any other path, URL or name built at run time is refused. gauss_repair_* tools drive the guided "
         "repair pipeline for real files, one REPL command per call. gauss_chat_ask exists only when the server is configured with its own model."
     ),
 )

@@ -87,15 +87,21 @@ The handoff is for self-contained snippets that compute in memory, plus, since `
 With an analysis folder configured (`gauss-ai config set analysis-folder <path>`, which creates its `input` and `output` subfolders), code may:
 
 - **read** a file you put in `input/`, with `loadd`, `csvReadM`, `csvReadSA`, `xlsReadM`, `xlsReadSA`, `spreadSheetReadM`, `spreadSheetReadSA`, `getHeaders`, or a dataset-argument estimator (`olsmt("prices.csv", "y ~ x")`). Allowed types: `.csv`, `.txt`, `.xls`, `.xlsx`, `.dat`, `.gdat`, `.dta`, `.sas7bdat`.
-- **read** one of the GAUSS installation's own example files, by the documentation's idioms: `getGAUSSHome("examples/<file>")`, `getGAUSSHome("pkgs/<package>/examples/.../<file>")`, or `getGAUSSHome() $+ "<same path>"`. These are read in place and never written.
+- **read** one of the GAUSS installation's own example files as `getGAUSSHome() $+ "examples/<file>"` (or `"pkgs/<package>/examples/.../<file>"`). These are read in place and never written. The one-argument form `getGAUSSHome("examples/<file>")` runs in GAUSS 23 and newer, but its documentation's syntax line shows no argument, so the signature check still refuses it (reported as aptech/docs#7).
 - **write** a file with `csvWriteM` (`.csv`), `xlsWrite`, `xlsWriteM`, `xlsWriteSA`, `spreadSheetWrite` (`.xls`, `.xlsx`), `saved` (`.csv`, `.dat`, `.gdat`, `.xls`, `.xlsx`) or `plotSave` (`.png`, `.jpg`, `.svg`, `.pdf`).
 
-The file name must be one quoted bare name (`"prices.csv"`), or a name assigned once from one (`f = "prices.csv"; data = loadd(f);`). A path, a drive, `..`, a URL, `__FILE_DIR`, or a name built at run time stays `not_ready`, and the reason says which.
+The file name must be one quoted bare name (`"prices.csv"`), or a name assigned once from one (`f = "prices.csv"; data = loadd(f);`). A path, a drive, `..`, a URL, `__FILE_DIR`, or any other name built at run time stays `not_ready`, and the reason says which.
 
 A run never touches your folders directly:
 1. The prompt names each input with its size and SHA-256, and each file that will be kept.
 2. On `yes`, the inputs are copied into the temporary run directory, and checked against those digests: a file changed since the prompt refuses the run, and nothing executes.
 3. After the run, only the files the code names as writes are copied to a new folder under `output/`, which never overwrites anything. Other files GAUSS creates (`xlsWrite` also leaves `xls.log`) are listed as not kept.
+
+Figures written by `plotSave` come back in `gauss_execution_decide`'s result as images (at most 4, each at most 2 MB). They reach the assistant; whether you also see them in your chat depends on the client (the VS Code extension shows the assistant the image but not you, live evaluation 85.5). The result always names each kept file's full path, which is your copy.
+
+`gauss_session_start` lists the input files as they were when the session started. A file added to `input/` later can still be read: the check reads the folder itself.
+
+The analysis folder keeps GAUSS out of your folders; it does not limit the assistant. A client with its own file or web tools (Claude Code's shell, for example) can read your files or write into `input/` itself, outside gauss-ai and its approval (85.9).
 
 Without an analysis folder every file access is `not_ready`, exactly as before. The `gauss-ai` CLI chat never reads or writes files, and other work with real files belongs in the guided repair pipeline.
 

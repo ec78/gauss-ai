@@ -2255,7 +2255,15 @@ def test_136_v083_sprintf_variadic_arguments_are_typed() -> None:
         for code in candidates:
             result = engine_mod.validate_code(code, docs_root=str(root))
             check(f"candidate: {code!r}", result.handoff_readiness.state == "handoff_candidate")
-        expression = engine_mod.validate_code('s = sprintf("%s=%d", "a" $| "b", {1, 2});', docs_root=str(root))
+        # v0.94.1 (planning v0.94 §14): this test's expression used to be
+        # `"a" $| "b"`, which is now read as a string array (live finding
+        # 85.x-1); real `tgauss.exe -b` (sp941e) runs `sprintf("%s=%d", "a" $|
+        # "b", {1, 2})` and prints a=1, b=2, so it is a candidate below. A
+        # string comparison is no join, so `$==` keeps the original intent: an
+        # unread expression argument names its cause.
+        joined = engine_mod.validate_code('s = sprintf("%s=%d", "a" $| "b", {1, 2});', docs_root=str(root))
+        check("v0.94.1: a `$|` of strings is a candidate", joined.handoff_readiness.state == "handoff_candidate")
+        expression = engine_mod.validate_code('s = sprintf("%d", "a" $== "b");', docs_root=str(root))
         check("an expression argument stays review_required", expression.handoff_readiness.state == "review_required")
         check("...and says why", any(g.cause == "argument_expression" and g.parameter == "..."
                                      for g in expression.pre_execution.coverage_gaps))
