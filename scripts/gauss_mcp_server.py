@@ -93,7 +93,7 @@ import gauss_doc_reader as doc_reader_mod
 import gauss_execution_handoff as handoff_mod
 import gauss_installed_libraries as libraries_mod
 
-__version__ = "0.94.1"
+__version__ = "0.94.2"
 
 #: Set by the server OPERATOR in the process's own environment before
 #: launch -- never read from a tool-call argument. See module docstring.

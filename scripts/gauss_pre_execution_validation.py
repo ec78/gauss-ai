@@ -2990,6 +2990,15 @@ def _positional_role_checks(
                     f" (traced to `{argument.strip()} = ...`, an element-wise expression of one vector)"
                     if is_name else " (an element-wise expression of one vector)"
                 ) if inferred == (TypeClass.VECTOR.value,) else (
+                    # v0.94.2 (live finding 86.x-1; planning v0.94 §17): a
+                    # `$+`/`$|`/`$~` join of strings is the one expression
+                    # category that is not numeric. v0.94.0-v0.94.1 worded it
+                    # with the numeric text below ("every operand is
+                    # numeric"), and the 86.4 client concluded the validator
+                    # reads `$|` as numbers.
+                    f" (traced to `{argument.strip()} = ...`, a join of strings: a string or string array)"
+                    if is_name else " (a join of strings: a string or string array)"
+                ) if inferred == (TypeClass.STRING.value,) else (
                     f" (traced to `{argument.strip()} = ...`, an expression whose every operand is numeric; "
                     "its shape is not computed)"
                     if is_name else " (an expression whose every operand is numeric; its shape is not computed)"
@@ -3044,6 +3053,19 @@ def _positional_role_checks(
                 f"the argument{traced} is a string or string array, and the documented type for parameter "
                 f"{param.name!r} ({_category_label(documented)}) may include a string array; a declared string "
                 "is not precise enough to call this a mismatch"
+            )
+        elif origin == ArgumentOrigin.EXPRESSION_CATEGORY.value and inferred == (TypeClass.STRING.value,):
+            # v0.94.2 (live finding 86.x-1; planning v0.94 §17): the same
+            # status and cause as before, worded for what a string join is.
+            # `setColNames.rst` types `varnames` as `Mx1 vector` while its own
+            # example passes `"Planes"$|"Trains"$|...` (§14.3), so a string
+            # array against a non-string type is never a MISMATCH.
+            status = ParameterRoleStatus.UNKNOWN.value
+            unknown_cause = RoleUnknownCause.EXPRESSION_CATEGORY_IMPRECISE.value
+            explanation = (
+                f"the argument{traced} is not a type the documented parameter {param.name!r} "
+                f"({_category_label(documented)}) names, but the docs also call a string array a vector; an "
+                "expression's category is not precise enough to confirm or refute it"
             )
         elif origin == ArgumentOrigin.EXPRESSION_CATEGORY.value:
             # v0.91.0 (decision 1a): the same never-MISMATCH guard as a

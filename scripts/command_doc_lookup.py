@@ -328,7 +328,16 @@ _RAW_RETURN_RE = re.compile(r"^(\s*):return\s+&?([A-Za-z_][A-Za-z0-9_]*)\s*:")
 _CSV_MEMBER_ROW_RE = re.compile(r'^\s*"([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)"\s*,\s*"([^"]*)"')
 #: A `list-table` member row's first cell: `* - gout.aic` (its type is the
 #: next non-blank line, `- scalar, ...`).
-_LIST_MEMBER_CELL_RE = re.compile(r"^\s*\*\s+-\s+([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*$")
+#:
+#: v0.94.2 (live finding 86.x-2; planning v0.94 §17): the cell may be
+#: emphasized, `* - *dout.mean*` or `* - **dout.mean**`, the same markup on
+#: both sides. `dstatmt.rst`, `glm.rst`, `gdadstat.rst`, `gdadstatmat.rst`,
+#: `eqsolvemt.rst` and `impute.rst` write their member tables so, and v0.93.0-
+#: v0.94.1 read none of them ("`.mean` is not a documented member of
+#: `dstatmt`'s result", 86.6). Group 1 is the markup (possibly empty).
+_LIST_MEMBER_CELL_RE = re.compile(
+    r"^\s*\*\s+-\s+(\*{0,2})([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\1\s*$"
+)
 _LIST_SECOND_CELL_RE = re.compile(r"^\s*-\s+(.+)$")
 _INCLUDE_RE = re.compile(r"^\s*\.\.\s+include::\s+(\S+)\s*$")
 
@@ -347,11 +356,11 @@ def _member_rows(lines: list[str], structure: str) -> dict[str, str]:
             rows.setdefault(csv.group(2).lower(), csv.group(3).strip())
             continue
         cell = _LIST_MEMBER_CELL_RE.match(line)
-        if cell and cell.group(1).lower() == wanted:
+        if cell and cell.group(2).lower() == wanted:
             following = next((later for later in lines[idx + 1:] if later.strip()), "")
             second = _LIST_SECOND_CELL_RE.match(following)
             if second:
-                rows.setdefault(cell.group(2).lower(), second.group(1).strip())
+                rows.setdefault(cell.group(3).lower(), second.group(1).strip())
     return rows
 
 

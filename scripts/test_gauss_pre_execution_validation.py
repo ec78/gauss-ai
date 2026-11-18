@@ -4223,6 +4223,73 @@ def test_222_v0941_dataframe_in_reason_text() -> None:
     check("222: the role reason says dataframe", "(string/dataframe)" in checks[0].explanation)
 
 
+def test_223_v0942_a_string_join_is_not_worded_as_numeric() -> None:
+    """Planning v0.94 §17 (live finding 86.x-1): a `$|` join of strings
+    against a parameter the docs call a `vector` keeps its status and cause
+    (unknown, `expression_category_imprecise`; §14.3) but is worded as a
+    string or string array, never "every operand is numeric". A join that
+    matches a string parameter says so too; a numeric expression's wording
+    is unchanged."""
+    signatures = dict(_v091_signatures())
+    signatures["setcolnames"] = _signature(
+        "setcolnames", ".. function:: x_meta = setColNames(X, varnames)",
+        ":type X: NxK matrix\n:type varnames: Mx1 vector", ":rtype x_meta: NxK dataframe")
+    signatures["saved"] = _signature(
+        "saved", ".. function:: ret = saved(x, dataset, vnames)",
+        ":type x: NxK matrix\n:type dataset: string\n:type vnames: string or Kx1 string array", ":rtype ret: scalar")
+    for snippet, symbol, position, status in (
+        ('d = setcolnames(rndn(2, 2), "a" $| "b");\n', "setcolnames", 1, "unknown"),
+        ('names = "a" $| "b";\nd = setcolnames(rndn(2, 2), names);\n', "setcolnames", 1, "unknown"),
+        ('hdr = "a" $| "b";\nret = saved(rndn(2, 2), "o.csv", hdr);\n', "saved", 2, "match"),
+    ):
+        call = next(c for c in validation_mod.extract_generated_calls(snippet) if c.symbol == symbol)
+        got = validation_mod.check_parameter_roles(
+            call, signature=signatures[symbol], code=snippet, signatures=signatures)[position]
+        check(f"223: {snippet.splitlines()[-1]!r} -> {status}", got.status == status)
+        check(f"223: {snippet.splitlines()[-1]!r} says string", "a join of strings: a string or string array"
+              in got.explanation)
+        check(f"223: {snippet.splitlines()[-1]!r} never says numeric", "numeric" not in got.explanation)
+        if status == "unknown":
+            check(f"223: {snippet.splitlines()[-1]!r} cause", got.unknown_cause == "expression_category_imprecise")
+    snippet = "x = rndn(3, 2);\nm = seqa(1, 1, x ~ x);\n"
+    call = next(c for c in validation_mod.extract_generated_calls(snippet) if c.symbol == "seqa")
+    seqa = _signature("seqa", ".. function:: y = seqa(start, inc, n)",
+                      ":type start: scalar\n:type inc: scalar\n:type n: scalar", ":rtype y: Nx1 vector")
+    got = validation_mod.check_parameter_roles(call, signature=seqa, code=snippet, signatures=signatures)[2]
+    check("223: a numeric expression's wording is unchanged", "every operand is numeric" in got.explanation)
+
+
+_V0942_DSTAT_PAGE = (
+    "dstat\n=====\n\nFormat\n------\n.. function:: dout = dstat(data, ctl)\n\n"
+    "    :param data: data.\n    :type data: NxK matrix\n\n"
+    "    :param ctl: control.\n\n"
+    "        .. list-table::\n\n            * - *ctl.maxlag*\n              - scalar, an input.\n\n"
+    "    :type ctl: struct\n\n"
+    "    :return dout: structure containing the following members:\n\n"
+    "        .. list-table::\n\n"
+    "            * - *dout.mean*\n              - Kx1 vector, means.\n"
+    "            * - **dout.std**\n              - Kx1 vector, standard deviation.\n"
+    "            * - dout.min\n              - Kx1 vector, minima.\n"
+    "            * - *dout.max**\n              - Kx1 vector, mismatched markup.\n\n"
+    "    :rtype dout: struct\n"
+)
+
+
+def test_224_v0942_emphasized_member_cells_are_read() -> None:
+    """Planning v0.94 §17 (live finding 86.x-2): a `list-table` member cell
+    written `* - *dout.mean*` or `* - **dout.std**` is read like the plain
+    `* - dout.min` (`dstatmt.rst`, `glm.rst`, `gdadstat.rst`,
+    `gdadstatmat.rst`, `eqsolvemt.rst`). Mismatched markup and an input
+    structure's emphasized rows (`impute.rst`'s `*iCtl.k*`) are never read."""
+    _sig, match = _v093_page_signature("dstat", _V0942_DSTAT_PAGE)
+    members = match["output_evidence"]["result_members"].get("dout", {})
+    check("224: single emphasis", members.get("mean") == "Kx1 vector, means.")
+    check("224: strong emphasis", members.get("std") == "Kx1 vector, standard deviation.")
+    check("224: a plain cell, as before", members.get("min") == "Kx1 vector, minima.")
+    check("224: mismatched markup is not read", "max" not in members)
+    check("224: an input structure's rows are not read", "maxlag" not in members)
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)
