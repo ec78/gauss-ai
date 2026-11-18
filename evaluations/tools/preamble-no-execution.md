@@ -1,0 +1,1 @@
+﻿(This is a test environment. GAUSS execution is turned off, and you cannot run shell commands or write files. Do the task as far as you can with the gauss-ai tools: write the complete GAUSS program and check it with them. Then show me the final program and what the check said.)

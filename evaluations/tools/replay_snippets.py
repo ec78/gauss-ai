@@ -44,7 +44,9 @@ the MCP server does when an analysis folder is configured (v0.94.0+). It is
 ignored for a baseline older than v0.94.0, which has no file context.
 
 `--run` (manual only, touches real GAUSS) writes every snippet that is
-`handoff_candidate` on HEAD into a fresh scratch directory, copies in every
+`handoff_candidate` on HEAD (with `--run-all`, also every `review_required`
+snippet: one that runs cleanly was held back by a false gap; `not_ready`
+never runs, since system-touching statements live there) into a fresh scratch directory, copies in every
 file of `--input-dir` (a superset of what the real handoff copies in, which is
 only the named files), runs `tgauss.exe -b`, and records the exit code, the
 first `G####` error line and the files the run created.
@@ -328,6 +330,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--gauss-executable")
     ap.add_argument("--input-dir")
     ap.add_argument("--run", action="store_true")
+    ap.add_argument("--run-all", action="store_true",
+                    help="with --run, also run review_required snippets (never not_ready), to tell false gaps from real ones")
     ap.add_argument("--out", default="replay")
     ap.add_argument("--self-check", action="store_true")
     ap.add_argument("--worker", nargs=3, metavar=("SCRIPTS", "SNIPPETS", "OUT"))
@@ -357,7 +361,10 @@ def main(argv: list[str]) -> int:
         for n, (s, h, b) in enumerate(zip(snippets, head, base), 1):
             row = {"n": n, "source": s["source"], "task": s["task"], "task_text": s["task_text"], "code": s["code"],
                    "baseline": b, "head": h}
-            if args.run and h["state"] == "handoff_candidate":
+            # `not_ready` never runs, even with --run-all: that is where the
+            # system-touching statements are (86.5's `fred_load` would make
+            # a network call from this machine).
+            if args.run and (h["state"] == "handoff_candidate" or (args.run_all and h["state"] == "review_required")):
                 row["gauss"] = run_in_gauss(s["code"], args.gauss_executable, args.input_dir, work, n)
             rows.append(row)
     Path(args.out + ".json").write_text(json.dumps(rows, indent=1), encoding="utf-8")
