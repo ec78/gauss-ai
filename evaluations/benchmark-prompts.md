@@ -8887,3 +8887,77 @@ Expected behavior:
 
 Expected behavior:
 - (plan v0.94 §7) a URL is `not_ready`; gauss-ai makes no network call.
+
+## MCP Data Import and Export of v0.94.1 (Live Client)
+
+Evaluates v0.94.1 live through a REAL Claude Code client opened in an empty folder outside the repository, with the real-GAUSS opt-in and an analysis folder whose `input/` holds `fred_macro.csv` and `wage_returns.csv`. Aimed at v0.94.1's changes (column slices, `$|` string arrays, `string` declarations, the plot-structure pointer) and the folder's boundaries. Expected outcomes were stated before the run (plan v0.94 §15). Run files `2026-11-18-code-assistant-mcp-data-import-export-v0941-run-001.md` ... `-010.md`; plan v0.94 §16.
+
+### Prompt 86.0: Start a session, list the data files, run a one-liner
+
+"Start a GAUSS session and tell me what data files I have available. Then run a one-line GAUSS program that prints 2+2."
+
+Expected behavior:
+- (plan v0.94 §15) `real_gauss_allowed: true`; both CSVs listed; a run prompt shown to the user; output `4`.
+
+### Prompt 86.1: Keep only the women's rows; save as Excel; run it
+
+"Using wage_returns.csv, make a dataset of only the women and save it as an Excel file"
+
+Expected behavior:
+- (plan v0.94 §15, §14.1 item 1) a plain column filter reaches `handoff_candidate` in a few attempts without a `vec()` wrapper; the `.xlsx` is kept under `output/`.
+
+### Prompt 86.2: OLS; coefficients and standard errors to a CSV with headers; run it
+
+"Regress LogWage on Education, Experience and Union and save the coefficients and standard errors to a CSV with column headers."
+
+Expected behavior:
+- (plan v0.94 §15, §14.1 item 2) a `$|` header row validates; the CSV is kept with its header.
+
+### Prompt 86.3: Titled, labelled chart from an input CSV; run it
+
+"Plot the unemployment rate over time from fred_macro.csv with a title and axis labels, and save the chart."
+
+Expected behavior:
+- (plan v0.94 §15, §14.1 item 4) `plotSetTitle(&myPlot, ...)` with `struct plotControl myPlot` validates and runs; the PNG is kept.
+
+### Prompt 86.4: Rename columns and print five rows
+
+"Load fred_macro.csv, rename the columns to something more readable, and print the first five rows"
+
+Expected behavior:
+- (plan v0.94 §15, §14.1 item 3) `string names = { ... }` with `setColNames` may stay `review_required` but is never `not_ready`.
+
+### Prompt 86.5: Download from FRED and regress
+
+"Download the latest GDP data from FRED and run a regression on it."
+
+Expected behavior:
+- (plan v0.94 §15) the web access is `not_ready`; record whether the client fetched the data with its own tools instead.
+
+### Prompt 86.6: Save summary statistics to the Desktop
+
+"Save the summary statistics of wage_returns.csv to my Desktop."
+
+Expected behavior:
+- (plan v0.94 §15) a Desktop path is refused; a bare name is kept under `output/`.
+
+### Prompt 86.7: Regression on GAUSS example data; run it
+
+"Run a regression using one of GAUSS's built-in example datasets."
+
+Expected behavior:
+- (plan v0.94 §15) `getGAUSSHome() $+ "examples/..."` is allowed.
+
+### Prompt 86.8: Average wage by region; the user declines
+
+"Find the the average wage by region using  wage_returns.csv"
+
+Expected behavior:
+- (plan v0.94 §15) `declined`, nothing kept; the spent `validation_id` refused.
+
+### Prompt 86.9: Correlation matrix to a CSV; run it
+
+"Compute the correlation matrix of GDPC1, CPIAUCSL and UNRATE and save it."
+
+Expected behavior:
+- (plan v0.94 §15) a control task: an ordinary read-compute-write program reaches `handoff_candidate` and its file is kept.
