@@ -96,7 +96,7 @@ import gauss_doc_reader as doc_reader_mod
 import gauss_execution_handoff as handoff_mod
 import gauss_installed_libraries as libraries_mod
 
-__version__ = "0.94.2"
+__version__ = "0.95.0"
 
 #: Set by the server OPERATOR in the process's own environment before
 #: launch -- never read from a tool-call argument. See module docstring.
@@ -148,6 +148,15 @@ _input_baselines: dict[str, tuple[str, dict[str, tuple[int, str | None]]]] = {}
 #: v0.95.0: a character GAUSS replaces with `_` in a CSV column name (see
 #: `_csv_header`). Per code point: an accented letter is one `_`.
 _GAUSS_NAME_CHAR_RE = re.compile(r"[^A-Za-z0-9_ ]")
+
+#: v0.95.0 (planning v0.95 §3.3, decisions 1-3): per output folder, the files
+#: approved runs in this server process kept, oldest first, each `(name,
+#: path, sha256, request_id, kept_at)` measured right after the run. A later
+#: run may read one by its bare name; the latest of a name wins and the prompt
+#: names its run. Recorded only here, from a launched run's own kept list, so
+#: a file anything else puts under `output/` is never readable. In memory
+#: only: a new server process starts with none (disclosed).
+_kept_files: dict[str, list[tuple[str, str, str, str, str]]] = {}
 
 ANALYSIS_FOLDER_HINT = (
     "No analysis folder is configured, so code run here cannot read or write files. The user can set one with "
@@ -402,13 +411,56 @@ _ASKS_MODEL = ToolAnnotations(read_only_hint=True, open_world_hint=True)
 def _file_context(session: "Session") -> Any:
     """v0.94.0: what `validate_code` may treat as an allowed file access in
     this session; `None` (nothing allowed, every verdict as before) without
-    an analysis folder."""
+    an analysis folder. v0.95.0: with the files earlier runs kept."""
     if session.input_dir is None:
         return None
     return engine_mod.file_access_context(
         input_dir=session.input_dir,
         gauss_dir=session.installation.gauss_dir if session.installation is not None else None,
+        kept_files=tuple(_kept_files.get(session.output_dir or "", ())),
     )
+
+
+def _record_kept_files(output_dir: str, request_id: str, files_kept: tuple[tuple[str, str, int], ...]) -> None:
+    """v0.95.0 (planning v0.95 §3.3): after a launched run, what it kept,
+    with each copy's SHA-256 measured now -- so a later edit of the copy (by
+    a client's own tools, say) is caught at prepare."""
+    when = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M")
+    record = _kept_files.setdefault(output_dir, [])
+    for name, path, _size in files_kept:
+        try:
+            record.append((name, path, handoff_mod._sha256_file(path), request_id, when))
+        except OSError:
+            continue
+
+
+def _with_kept_provenance(
+    plan: "handoff_mod.HandoffFilePlan",
+) -> "handoff_mod.HandoffFilePlan | str":
+    """v0.95.0 (planning v0.95 §3.3): names the run behind each `kept` read,
+    or says why the read is refused: the copy no longer has the content its
+    run kept."""
+    record = _kept_files.get(plan.output_parent, [])
+    reads = []
+    for read in plan.reads:
+        if read.location != "kept":
+            reads.append(read)
+            continue
+        match = next(
+            (row for row in reversed(record)
+             if row[0].lower() == read.name.lower() and os.path.normcase(os.path.realpath(row[1]))
+             == os.path.normcase(os.path.realpath(read.path))),
+            None,
+        )
+        if match is None:
+            return f"{read.name!r} is not a file an earlier run in this conversation kept; validate again."
+        if match[2] != read.sha256:
+            return (
+                f"{read.name!r} changed after run {match[3][:8]} kept it, so it is not that run's result; "
+                "nothing was prepared."
+            )
+        reads.append(dataclasses.replace(read, provenance=f"kept by run {match[3][:8]} at {match[4]}"))
+    return dataclasses.replace(plan, reads=tuple(reads))
 
 
 def _access_key(accesses: tuple[Any, ...]) -> tuple[tuple[Any, ...], ...]:
@@ -445,11 +497,22 @@ def _analysis_folder_report(session: "Session", folder: str | None) -> dict[str,
     report["input_files"] = listed
     if len(files) > MAX_LISTED_INPUT_FILES:
         report["input_files_truncated"] = True
+    # v0.95.0 (planning v0.95 §3.3): what earlier runs in this server
+    # process kept and a run may read by name (the latest of each name).
+    latest: dict[str, tuple[str, str, str, str, str]] = {}
+    for row in _kept_files.get(str(output_dir), ()):
+        if os.path.isfile(row[1]):
+            latest[row[0].lower()] = row
+    if latest:
+        report["kept_files"] = [
+            {"name": row[0], "run": row[3][:8], "kept_at": row[4]} for row in sorted(latest.values(), key=lambda r: r[4])
+        ]
     report["note"] = (
         "Code may read these files by their bare name (for example loadd(\"prices.csv\")) and write files by a "
         "bare name (csvWriteM, saved, xlsWrite, plotSave); a run copies the inputs in and keeps the named outputs "
         "in a new folder under the output folder. For a CSV file, `columns` are the column names GAUSS gives it "
-        "(columns_as_written when GAUSS changes any); only the first line is read, never a data row."
+        "(columns_as_written when GAUSS changes any); only the first line is read, never a data row. A file an "
+        "earlier run in this conversation kept (kept_files) can be read by its bare name too."
     )
     return report
 
@@ -654,7 +717,7 @@ server = MCPServer(
         "that prompt's request_id. Never answer yes on the user's behalf. " + REPLY_GUIDANCE + " If gauss_session_start "
         "reports an analysis_folder, code may read the files listed in its input folder by their bare quoted name "
         "and write files by a bare name; a run keeps them in a new folder under its output folder and returns "
-        "figures as images. GAUSS's own example data may be read in place as getGAUSSHome() $+ \"examples/<name>\". "
+        "figures as images, and a later run in the same conversation may read a kept file by its bare name. GAUSS's own example data may be read in place as getGAUSSHome() $+ \"examples/<name>\". "
         "Any other path, URL or name built at run time is refused. gauss_repair_* tools drive the guided "
         "repair pipeline for real files, one REPL command per call. gauss_chat_ask exists only when the server is configured with its own model."
     ),
@@ -958,6 +1021,10 @@ def gauss_execution_prepare(session_id: str, validation_id: str | None = None) -
             )
             if file_plan is not None:
                 file_plan = _with_input_provenance(file_plan)
+                kept_checked = _with_kept_provenance(file_plan)
+                if isinstance(kept_checked, str):
+                    return {"error": "request_rejected", "detail": kept_checked}
+                file_plan = kept_checked
         request = handoff_mod.create_execution_handoff_request(
             code=code, readiness_state=readiness_state, request_id=str(uuid.uuid4()), created_at=_clock(),
             runner=session.runner, executable_path=session.executable_path,
@@ -1085,6 +1152,12 @@ def gauss_execution_decide(session_id: str, response_text: str, request_id: str 
         response["files_not_kept"] = list(result.files_not_kept)
         response["files_not_created"] = list(result.files_not_created)
         response["images"] = _image_entries(result.files_kept)
+        if result.launched and result.files_kept:
+            _record_kept_files(request.file_plan.output_parent, request.request_id, result.files_kept)
+            response["files_kept_note"] = (
+                "A later run in this conversation can read these files by their bare name; the prompt will name "
+                "this run."
+            )
     return response
 
 

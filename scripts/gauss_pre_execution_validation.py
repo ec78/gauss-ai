@@ -6536,6 +6536,10 @@ class FileLocation(str, enum.Enum):
     GAUSS_EXAMPLES = "gauss_examples"
     #: A file the run writes; the handoff keeps it under `output/`.
     OUTPUT = "output"
+    #: v0.95.0 (planning v0.95 §3.3, decision 1): a file an earlier approved
+    #: run in the same gauss-ai server process kept under `output/`, read by
+    #: its bare name and copied in like an input.
+    KEPT = "kept"
 
 
 #: Planning v0.94 decision 3: the file types a run may read and write.
@@ -6589,13 +6593,37 @@ _FILE_RULES_BY_NAME: dict[str, FileAccessRule] = {rule.name: rule for rule in _F
 
 
 @dataclass(frozen=True)
+class KeptFile:
+    """v0.95.0 (planning v0.95 §3.3): a file an approved run kept, as the
+    MCP server recorded it right after the run -- the only way a file under
+    `output/` becomes readable. A file anything else put there (a client's
+    own tools, the user) is never in this list, so it is never read."""
+
+    name: str
+    path: str
+    sha256: str
+    run: str
+    kept_at: str
+
+
+@dataclass(frozen=True)
 class FileAccessContext:
     """Where a run's files may come from. `input_dir` is the analysis
     folder's `input/` (absolute); `gauss_dir` the configured installation's
-    directory, for its example files, or `None`."""
+    directory, for its example files, or `None`. v0.95.0: `kept_files` are
+    the files earlier approved runs in this server process kept, at most one
+    per name (case-blind), the latest (decision 3)."""
 
     input_dir: str
     gauss_dir: str | None = None
+    kept_files: tuple[KeptFile, ...] = ()
+
+    def kept(self, name: str) -> KeptFile | None:
+        lowered = name.lower()
+        for kept_file in reversed(self.kept_files):
+            if kept_file.name.lower() == lowered:
+                return kept_file
+        return None
 
 
 @dataclass(frozen=True)
@@ -6721,7 +6749,23 @@ def _classify_file_argument(
         if rule.direction == FileDirection.WRITE.value:
             return literal, FileLocation.OUTPUT.value, None
         candidate = os.path.join(context.input_dir, literal)
-        if not os.path.isfile(candidate) or not _same_folder(os.path.dirname(os.path.realpath(candidate)), context.input_dir):
+        in_input = os.path.isfile(candidate) and _same_folder(
+            os.path.dirname(os.path.realpath(candidate)), context.input_dir,
+        )
+        # v0.95.0 (planning v0.95 §3.3): a name not in `input/` may be a
+        # file an earlier approved run kept. A name in both is refused
+        # (decision 2): which copy a run reads must never be a guess.
+        kept = context.kept(literal)
+        if kept is not None and not os.path.isfile(kept.path):
+            kept = None
+        if in_input and kept is not None:
+            return (
+                f"`{literal}` is both in the input folder and kept by an earlier run ({kept.run[:8]}); "
+                "rename one of them so a run never has to choose"
+            )
+        if kept is not None:
+            return literal, FileLocation.KEPT.value, os.path.realpath(kept.path)
+        if not in_input:
             return f"`{literal}` is not in the analysis folder's input folder ({context.input_dir})"
         return literal, FileLocation.INPUT.value, os.path.realpath(candidate)
     for pattern in (_GAUSS_HOME_ARGUMENT_RE, _GAUSS_HOME_CONCAT_RE):

@@ -68,7 +68,7 @@ Durable, project-wide guidance for Claude Code sessions in this repository. For 
   - **One exception (v0.94.0, user sign-off 2026-11-14):** an allowed file access, as defined in `planning/v0.94-data-import-and-export.md` §3.2:
     - the call is in `_FILE_ACCESS_REGISTRY` or is a dataset-argument estimator;
     - its file name is a single quoted bare name, or a name assigned once from one;
-    - a read comes from the user-configured analysis folder's `input/` or from the GAUSS installation's own `examples` folders;
+    - a read comes from the user-configured analysis folder's `input/` or from the GAUSS installation's own `examples` folders, or (v0.95.0, user sign-off 2026-11-18) is a file an earlier approved run in the same gauss-ai server process kept under `output/`, unchanged since and recorded by the server itself (`planning/v0.95-state-across-steps.md` §3.3); a name in both `input/` and that record is refused;
     - a write is kept in a new folder under `output/`.
 
     It runs only by copy-in/copy-out (GAUSS never touches the user's folders), and every file is named, with its digest, in the run prompt.

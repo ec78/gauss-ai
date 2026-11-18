@@ -11,7 +11,7 @@
 
 ## Status
 
-**Alpha.** Current milestone: `v0.94.2` - Data Import and Export. gauss-ai is an unofficial, independent project, not affiliated with or endorsed by Aptech Systems, Inc. GAUSS is a trademark of Aptech Systems, Inc. The milestone history is in [docs/development-history.md](docs/development-history.md).
+**Alpha.** Current milestone: `v0.95.0` - State Across Steps. gauss-ai is an unofficial, independent project, not affiliated with or endorsed by Aptech Systems, Inc. GAUSS is a trademark of Aptech Systems, Inc. The milestone history is in [docs/development-history.md](docs/development-history.md).
 
 ## Quickstart
 

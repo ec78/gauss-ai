@@ -1368,6 +1368,105 @@ def test_47_v095_inputs_added_or_changed_are_marked() -> None:
             server_mod._config, handoff_mod.select_helper = saved_config, saved_select
 
 
+def test_48_v095_a_later_run_reads_what_an_earlier_run_kept() -> None:
+    """Planning v0.95 §3.3, decisions 1-3: a file an approved run kept is
+    readable by its bare name in a later validation, is listed at session
+    start, is copied into the next run and named in its prompt with the run
+    that kept it; the latest run of a name wins; a name also in `input/` is
+    refused; a kept copy edited afterwards is refused at prepare; a file put
+    under `output/` by anything else is never readable; a new server process
+    has none."""
+    def stand_in(**kwargs):
+        run_dir = kwargs["working_directory"]
+        seen.append(sorted(os.listdir(run_dir)))
+        Path(run_dir, "step.csv").write_text(f"run {len(seen)}\n", encoding="utf-8")
+        return {"executed": True, "execution_status": "completed", "exit_code": 0, "stdout": "", "stderr": "",
+                "output_files": [], "warnings": [], "errors": []}
+
+    seen: list = []
+    write_code = 'data = loadd("prices.csv");\ncall csvWriteM(data, "step.csv");\n'
+    read_code = 'data = loadd("step.csv");\ncall csvWriteM(data, "step.csv");\n'
+    saved_config, saved_select = server_mod._config, handoff_mod.select_helper
+    saved_kept = dict(server_mod._kept_files)
+    with tempfile.TemporaryDirectory() as tmp:
+        docs = Path(tmp) / "docs"
+        docs.mkdir()
+        for name, text in _V094_PAGES.items():
+            (docs / name).write_text(text, encoding="utf-8")
+        analysis = Path(tmp) / "analysis"
+        config_mod.ensure_analysis_subfolders(analysis)
+        (analysis / "input" / "prices.csv").write_bytes(b"y,x\n1,2\n")
+        try:
+            server_mod._config = dataclasses.replace(config_mod.GaussAiConfig(), analysis_folder=str(analysis))
+            handoff_mod.select_helper = lambda runner: stand_in
+            sid = server_mod.gauss_session_start(runner="fake", docs_root=str(docs), workspace_parent=tmp)["session_id"]
+
+            def run(code: str) -> tuple[dict, dict, dict]:
+                v = server_mod.gauss_validate_code(sid, code)
+                p = server_mod.gauss_execution_prepare(sid, v["validation_id"]) if v.get("validation_id") else {}
+                d = server_mod.gauss_execution_decide(sid, "yes", request_id=p["request_id"]) if "request_id" in p else {}
+                return v, p, d
+
+            before = server_mod.gauss_validate_code(sid, read_code)
+            check("48: before any run, step.csv is not readable", before["handoff_readiness"]["state"] == "not_ready")
+
+            _, first_prompt, first = run(write_code)
+            check("48: run 1 keeps step.csv and says a later run can read it",
+                  [f["name"] for f in first["files_kept"]] == ["step.csv"] and "files_kept_note" in first)
+            run1 = first_prompt["request_id"][:8]
+
+            listed = server_mod.gauss_session_start(runner="fake", docs_root=str(docs), workspace_parent=tmp)
+            check("48: a session lists what earlier runs kept",
+                  [(k["name"], k["run"]) for k in listed["analysis_folder"]["kept_files"]] == [("step.csv", run1)])
+
+            v2, p2, d2 = run(read_code)
+            check("48: run 2's read of step.csv is allowed, located 'kept'",
+                  v2["handoff_readiness"]["state"] == "handoff_candidate"
+                  and [(a["name"], a["location"]) for a in v2["file_accesses"] if a["direction"] == "read"]
+                  == [("step.csv", "kept")])
+            check("48: the prompt names the kept read and the run that kept it",
+                  "Reads (kept by an earlier run in this conversation; copied in, not changed):" in p2["rendered_prompt"]
+                  and f"-- kept by run {run1} at " in p2["rendered_prompt"])
+            check("48: run 2 saw the kept copy", seen[-1] == ["step.csv"] and d2["outcome"] == "success")
+            run2 = p2["request_id"][:8]
+
+            v3 = server_mod.gauss_validate_code(sid, read_code)
+            p3 = server_mod.gauss_execution_prepare(sid, v3["validation_id"])
+            check("48: the latest run of a name wins (decision 3)", f"-- kept by run {run2} at " in p3["rendered_prompt"])
+            server_mod.gauss_execution_decide(sid, "no", request_id=p3["request_id"])
+
+            # Decision 2: a name both in input/ and kept is refused.
+            (analysis / "input" / "step.csv").write_bytes(b"y\n1\n")
+            both = server_mod.gauss_validate_code(sid, read_code)
+            check("48: a name in input/ and kept is not_ready, naming both",
+                  both["handoff_readiness"]["state"] == "not_ready"
+                  and "both in the input folder and kept by an earlier run" in json.dumps(both))
+            (analysis / "input" / "step.csv").unlink()
+
+            # A kept copy edited after its run: validates, but prepare refuses.
+            latest_path = Path(d2["files_kept"][0]["path"])
+            v4 = server_mod.gauss_validate_code(sid, read_code)
+            latest_path.write_text("edited\n", encoding="utf-8")
+            p4 = server_mod.gauss_execution_prepare(sid, v4["validation_id"])
+            check("48: an edited kept copy is refused at prepare, naming its run",
+                  p4.get("error") == "request_rejected" and f"changed after run {run2} kept it" in p4["detail"])
+
+            # A file put under output/ by anything else is never readable.
+            (analysis / "output" / "rogue.csv").write_bytes(b"y\n1\n")
+            rogue = server_mod.gauss_validate_code(sid, 'data = loadd("rogue.csv");\nprint data;\n')
+            check("48: a file dropped into output/ is not readable",
+                  rogue["handoff_readiness"]["state"] == "not_ready")
+
+            # A new server process starts with no kept files.
+            server_mod._kept_files.clear()
+            fresh = server_mod.gauss_validate_code(sid, read_code)
+            check("48: with no record, step.csv is not readable", fresh["handoff_readiness"]["state"] == "not_ready")
+        finally:
+            server_mod._config, handoff_mod.select_helper = saved_config, saved_select
+            server_mod._kept_files.clear()
+            server_mod._kept_files.update(saved_kept)
+
+
 def _run_all() -> int:
     test_fns = [obj for name, obj in sorted(globals().items()) if name.startswith("test_") and callable(obj)]
     for fn in test_fns:

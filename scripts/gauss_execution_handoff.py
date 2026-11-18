@@ -136,8 +136,9 @@ _GENERATED_SCRIPT_DIRNAME = ".gauss_code_execution_generated"
 @dataclass(frozen=True)
 class HandoffFileRead:
     """One file a run reads, measured at prepare. `location` is `"input"`
-    (copied into the run directory) or `"gauss_examples"` (read in place
-    from the GAUSS installation)."""
+    (copied into the run directory), `"kept"` (v0.95.0: a file an earlier
+    approved run kept, copied in the same way) or `"gauss_examples"` (read in
+    place from the GAUSS installation)."""
 
     name: str
     location: str
@@ -828,12 +829,17 @@ def execute_execution_handoff(
         )
 
 
+#: v0.95.0: the read locations copied into the run directory (an example
+#: file is read in place).
+_COPIED_LOCATIONS = frozenset({validation_mod.FileLocation.INPUT.value, validation_mod.FileLocation.KEPT.value})
+
+
 def _stage_inputs(plan: HandoffFilePlan, run_dir: str) -> str | None:
     """Copies each `input` read into `run_dir` and checks every read's
     SHA-256 against the prompt's; returns why the run is refused, or None.
     The user's files are only ever opened for reading."""
     for read in plan.reads:
-        if read.location == validation_mod.FileLocation.INPUT.value:
+        if read.location in _COPIED_LOCATIONS:
             target = os.path.join(run_dir, read.name)
             try:
                 shutil.copyfile(read.path, target)
@@ -876,7 +882,7 @@ def _collect_outputs(
     `run_dir`, which is deleted afterwards."""
     plan = request.file_plan
     assert plan is not None
-    staged = {r.name.lower() for r in plan.reads if r.location == validation_mod.FileLocation.INPUT.value}
+    staged = {r.name.lower() for r in plan.reads if r.location in _COPIED_LOCATIONS}
     written = {name.lower() for name in plan.writes}
     kept: list[tuple[str, str, int]] = []
     not_created: list[str] = []
@@ -966,12 +972,21 @@ def render_execution_handoff_prompt(request: ExecutionHandoffRequest) -> str:
 def render_file_plan_lines(plan: HandoffFilePlan) -> list[str]:
     lines: list[str] = []
     copied = [r for r in plan.reads if r.location == validation_mod.FileLocation.INPUT.value]
-    in_place = [r for r in plan.reads if r.location != validation_mod.FileLocation.INPUT.value]
+    kept = [r for r in plan.reads if r.location == validation_mod.FileLocation.KEPT.value]
+    in_place = [r for r in plan.reads if r.location not in _COPIED_LOCATIONS]
     if copied:
         lines.append(f"Reads (copied from {plan.input_dir}; the originals are not changed):")
         lines.extend(
             f"  {r.name} ({r.size:,} bytes, sha256 {r.sha256[:16]}...)" + (f" -- {r.provenance}" if r.provenance else "")
             for r in copied
+        )
+    # v0.95.0 (planning v0.95 §3.3): a file an earlier approved run kept;
+    # its provenance names that run.
+    if kept:
+        lines.append("Reads (kept by an earlier run in this conversation; copied in, not changed):")
+        lines.extend(
+            f"  {r.name} ({r.size:,} bytes, sha256 {r.sha256[:16]}...)" + (f" -- {r.provenance}" if r.provenance else "")
+            for r in kept
         )
     if in_place:
         lines.append("Reads in place (GAUSS example data, not changed):")

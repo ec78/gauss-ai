@@ -4290,6 +4290,53 @@ def test_224_v0942_emphasized_member_cells_are_read() -> None:
     check("224: an input structure's rows are not read", "maxlag" not in members)
 
 
+def test_225_v095_kept_files_resolve_reads() -> None:
+    """Planning v0.95 §3.3: with no kept files a read resolves exactly as in
+    v0.94; a name only kept resolves to `kept` at the latest copy (decision
+    3); a name also in `input/` is refused (decision 2); a kept copy that no
+    longer exists is not readable; a write is never affected."""
+    import os
+    import tempfile as _tempfile
+    from pathlib import Path as _Path
+    with _tempfile.TemporaryDirectory() as tmp:
+        inp = _Path(tmp) / "input"
+        out = _Path(tmp) / "output"
+        inp.mkdir()
+        (out / "r1").mkdir(parents=True)
+        (out / "r2").mkdir()
+        (inp / "raw.csv").write_text("y\n1\n", encoding="utf-8")
+        (out / "r1" / "clean.csv").write_text("a\n", encoding="utf-8")
+        (out / "r2" / "clean.csv").write_text("b\n", encoding="utf-8")
+        (out / "r1" / "raw.csv").write_text("c\n", encoding="utf-8")
+        kept = (
+            validation_mod.KeptFile("clean.csv", str(out / "r1" / "clean.csv"), "0" * 64, "run-one-id", "t1"),
+            validation_mod.KeptFile("Clean.csv", str(out / "r2" / "clean.csv"), "1" * 64, "run-two-id", "t2"),
+            validation_mod.KeptFile("raw.csv", str(out / "r1" / "raw.csv"), "2" * 64, "run-one-id", "t1"),
+            validation_mod.KeptFile("gone.csv", str(out / "r1" / "gone.csv"), "3" * 64, "run-one-id", "t1"),
+        )
+        plain = validation_mod.FileAccessContext(input_dir=str(inp))
+        ctx = validation_mod.FileAccessContext(input_dir=str(inp), kept_files=kept)
+
+        def reads(code, context):
+            a = validation_mod.analyze_file_accesses(code, context=context)
+            return [(x.name, x.location, x.path) for x in a.accesses], [r[2] for r in a.refusals]
+
+        got, why = reads('x = loadd("clean.csv");', plain)
+        check("225: no kept files -> a name not in input/ is refused as in v0.94",
+              got == [] and "is not in the analysis folder's input folder" in why[0])
+        got, why = reads('x = loadd("clean.csv");', ctx)
+        check("225: a kept name resolves to the latest copy, case-blind",
+              got == [("clean.csv", "kept", os.path.realpath(str(out / "r2" / "clean.csv")))] and why == [])
+        got, why = reads('x = loadd("raw.csv");', ctx)
+        check("225: a name in input/ and kept is refused, naming the run",
+              got == [] and "both in the input folder and kept by an earlier run (run-one-)" in why[0])
+        got, why = reads('x = loadd("gone.csv");', ctx)
+        check("225: a kept copy that no longer exists is not readable",
+              got == [] and "is not in the analysis folder's input folder" in why[0])
+        got, why = reads('call csvWriteM(1, "clean.csv");', ctx)
+        check("225: a write of a kept name is an ordinary write", got == [("clean.csv", "output", None)])
+
+
 def run_tests() -> int:
     tests = [
         (name, fn)

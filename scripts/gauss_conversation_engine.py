@@ -2359,11 +2359,18 @@ def _rejected(code: str, reason: str, message: str) -> CodeValidationResult:
     )
 
 
-def file_access_context(*, input_dir: str, gauss_dir: str | None) -> "validation_mod.FileAccessContext":
+def file_access_context(
+    *, input_dir: str, gauss_dir: str | None, kept_files: "tuple[tuple[str, str, str, str, str], ...]" = (),
+) -> "validation_mod.FileAccessContext":
     """v0.94.0 (planning v0.94 §3.2): the context `validate_code(...)` needs
     to allow file accesses -- built here so the MCP server, which never
-    imports the validator, can pass one."""
-    return validation_mod.FileAccessContext(input_dir=input_dir, gauss_dir=gauss_dir)
+    imports the validator, can pass one. v0.95.0 (planning v0.95 §3.3):
+    `kept_files` are `(name, path, sha256, run, kept_at)` for files earlier
+    approved runs kept, oldest first."""
+    return validation_mod.FileAccessContext(
+        input_dir=input_dir, gauss_dir=gauss_dir,
+        kept_files=tuple(validation_mod.KeptFile(*row) for row in kept_files),
+    )
 
 
 def validate_code(
