@@ -64,15 +64,18 @@ from __future__ import annotations
 
 import atexit
 import base64
+import csv
 import dataclasses
 import hashlib
 import json
 import os
+import re
 import time
 import uuid
 from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 try:
@@ -125,6 +128,26 @@ _IMAGE_MIME_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".svg": "image/s
 #: v0.94.0 (planning v0.94 decision 7): the input listing in
 #: `gauss_session_start` names at most this many files.
 MAX_LISTED_INPUT_FILES = 200
+
+#: v0.95.0 (planning v0.95 §3.1): a listed `.csv` file's header row is
+#: reported as `columns`, read from at most this many bytes of its first line,
+#: with at most this many names of at most this many characters each. Only
+#: the first line is ever read: never a data row.
+MAX_HEADER_BYTES = 64 * 1024
+MAX_HEADER_COLUMNS = 500
+MAX_HEADER_NAME_CHARS = 200
+
+#: v0.95.0 (planning v0.95 §3.2, decision 6): per input folder, what this
+#: server process saw the first time it listed that folder -- `(when, {name:
+#: (size, sha256 or None)})`. Kept for the life of the process, not of a
+#: session, so starting a new session cannot reset it. A run prompt marks an
+#: input read that is not in it ("added") or whose SHA-256 differs
+#: ("changed"). In memory only, like every other piece of session state.
+_input_baselines: dict[str, tuple[str, dict[str, tuple[int, str | None]]]] = {}
+
+#: v0.95.0: a character GAUSS replaces with `_` in a CSV column name (see
+#: `_csv_header`). Per code point: an accented letter is one `_`.
+_GAUSS_NAME_CHAR_RE = re.compile(r"[^A-Za-z0-9_ ]")
 
 ANALYSIS_FOLDER_HINT = (
     "No analysis folder is configured, so code run here cannot read or write files. The user can set one with "
@@ -412,15 +435,139 @@ def _analysis_folder_report(session: "Session", folder: str | None) -> dict[str,
     files = sorted(
         (entry for entry in input_dir.iterdir() if entry.is_file()), key=lambda entry: entry.name.lower(),
     )
-    report["input_files"] = [{"name": f.name, "bytes": f.stat().st_size} for f in files[:MAX_LISTED_INPUT_FILES]]
+    _record_input_baseline(str(input_dir), files)
+    listed = []
+    for f in files[:MAX_LISTED_INPUT_FILES]:
+        entry: dict[str, Any] = {"name": f.name, "bytes": f.stat().st_size}
+        if f.suffix.lower() == ".csv":
+            entry.update(_csv_header(f))
+        listed.append(entry)
+    report["input_files"] = listed
     if len(files) > MAX_LISTED_INPUT_FILES:
         report["input_files_truncated"] = True
     report["note"] = (
         "Code may read these files by their bare name (for example loadd(\"prices.csv\")) and write files by a "
         "bare name (csvWriteM, saved, xlsWrite, plotSave); a run copies the inputs in and keeps the named outputs "
-        "in a new folder under the output folder."
+        "in a new folder under the output folder. For a CSV file, `columns` are the column names GAUSS gives it "
+        "(columns_as_written when GAUSS changes any); only the first line is read, never a data row."
     )
     return report
+
+
+def _csv_header(path: Path) -> dict[str, Any]:
+    """v0.95.0 (planning v0.95 §3.1; accepted 2026-11-18): the column names
+    GAUSS will give a CSV file, from its first line, so a client without its
+    own file access need not guess them. The Codex pilot's client guessed
+    `female` for `Female`, and GAUSS stopped with G0472 "column 'female' not
+    found" (evaluation automation §8). This narrows v0.94 decision 7 ("never
+    contents") to "the header row, never a data row": at most
+    `MAX_HEADER_BYTES` of the first line are read. Never raises.
+
+    GAUSS does not keep every name as written. `loadd` spot checks (GAUSS
+    26.1.4, `tgauss.exe -b`, 2026-11-18, planning v0.95 §6.2):
+
+    - every character other than an ASCII letter, digit, `_` or space
+      becomes `_` (`a-b` -> `a_b`, `a.b` -> `a_b`, `x,y` -> `x_y`, `q"t` ->
+      `q_t`, `$s` -> `_s`, `semi;c` -> `semi_c`, `cafe` with an accented e ->
+      `caf_`, a tab -> `_`);
+    - inner spaces stay (`My Var`) and outer spaces are trimmed (` Wage ` ->
+      `Wage`, `" pad "` -> `pad`);
+    - an empty name becomes `X<position>` (the tenth -> `X10`);
+    - a repeated name gets `_2`, `_3`, ... in order (`d,d,d` -> `d`, `d_2`,
+      `d_3`; `a-b,a.b` -> `a_b`, `a_b_2`); a leading digit stays (`1st`).
+
+    So `columns` holds those names, and `columns_as_written` the original
+    ones whenever any differs. Where the checks showed GAUSS doing something
+    these rules do not predict, `columns_uncertain` says so instead of
+    guessing: a generated name that collides with a written one (`d,d,d_2`
+    gave fewer columns than fields), a trailing empty name (dropped), or a
+    quote inside an unquoted field (`Wage, "Region, US"` gave
+    `CSV_ERR_DIFF_NUMBER_FIELDS` and other names)."""
+    try:
+        with open(path, "rb") as handle:
+            head = handle.read(MAX_HEADER_BYTES + 1)
+    except OSError as exc:
+        return {"columns_error": f"could not be read ({exc.strerror or exc})"}
+    if not head:
+        return {"columns_error": "the file is empty"}
+    newline = head.find(b"\n")
+    truncated = newline < 0 and len(head) > MAX_HEADER_BYTES
+    line = head[:newline] if newline >= 0 else head[:MAX_HEADER_BYTES]
+    text = line.decode("utf-8-sig", errors="replace").rstrip("\r")
+    try:
+        written = next(csv.reader([text]), [])
+    except csv.Error as exc:
+        return {"columns_error": f"the first line is not valid CSV ({exc})"}
+    uncertain: list[str] = []
+    if any('"' in name for name in written):
+        uncertain.append("a quote inside an unquoted name")
+    if len(written) > 1 and not written[-1].strip(" "):
+        uncertain.append("an empty last name")
+    names: list[str] = []
+    repeats: dict[str, int] = {}
+    for position, raw in enumerate(written, 1):
+        name = _GAUSS_NAME_CHAR_RE.sub("_", raw.strip(" ")) or f"X{position}"
+        count = repeats.get(name, 0) + 1
+        repeats[name] = count
+        names.append(name if count == 1 else f"{name}_{count}")
+    if len(set(names)) != len(names):
+        uncertain.append("a renamed repeat that matches another name")
+    as_written = [name.strip(" ") for name in written]
+    if len(names) > MAX_HEADER_COLUMNS:
+        names, as_written, truncated = names[:MAX_HEADER_COLUMNS], as_written[:MAX_HEADER_COLUMNS], True
+    if any(len(n) > MAX_HEADER_NAME_CHARS for n in names + as_written):
+        names = [n[:MAX_HEADER_NAME_CHARS] for n in names]
+        as_written = [n[:MAX_HEADER_NAME_CHARS] for n in as_written]
+        truncated = True
+    result: dict[str, Any] = {"columns": names}
+    if as_written != names:
+        result["columns_as_written"] = as_written
+    if truncated:
+        result["columns_truncated"] = True
+    if uncertain:
+        result["columns_uncertain"] = (
+            f"GAUSS may name these columns differently ({'; '.join(uncertain)}); check with getcolnames"
+        )
+    return result
+
+
+def _record_input_baseline(input_dir: str, files: list[Path]) -> None:
+    """v0.95.0 (planning v0.95 §3.2): the first listing of an input folder in
+    this server process, measured once. A file over the run limit is
+    recorded by size only: no run can read it."""
+    if input_dir in _input_baselines:
+        return
+    seen: dict[str, tuple[int, str | None]] = {}
+    for f in files:
+        try:
+            size = f.stat().st_size
+            seen[f.name.lower()] = (
+                size, handoff_mod._sha256_file(str(f)) if size <= handoff_mod.MAX_INPUT_FILE_BYTES else None,
+            )
+        except OSError:
+            continue
+    _input_baselines[input_dir] = (datetime.now().astimezone().strftime("%Y-%m-%d %H:%M"), seen)
+
+
+def _with_input_provenance(plan: "handoff_mod.HandoffFilePlan") -> "handoff_mod.HandoffFilePlan":
+    """v0.95.0 (planning v0.95 §3.2): marks each `input` read that this
+    server process did not see, or saw with other content, when it first
+    listed the folder. What gauss-ai observed, never who wrote it."""
+    baseline = _input_baselines.get(plan.input_dir)
+    if baseline is None:
+        return plan
+    when, seen = baseline
+    reads = []
+    for read in plan.reads:
+        provenance = ""
+        if read.location == "input":
+            first = seen.get(read.name.lower())
+            if first is None:
+                provenance = f"added after {when}, when gauss-ai first listed this input folder"
+            elif first[1] != read.sha256:
+                provenance = f"changed after {when}, when gauss-ai first listed this input folder"
+        reads.append(dataclasses.replace(read, provenance=provenance) if provenance else read)
+    return dataclasses.replace(plan, reads=tuple(reads))
 
 
 def _readiness_dict(readiness: Any) -> dict[str, Any] | None:
@@ -809,6 +956,8 @@ def gauss_execution_prepare(session_id: str, validation_id: str | None = None) -
                 file_accesses, analysis_folder=session.analysis_folder, input_dir=session.input_dir,
                 output_dir=session.output_dir,
             )
+            if file_plan is not None:
+                file_plan = _with_input_provenance(file_plan)
         request = handoff_mod.create_execution_handoff_request(
             code=code, readiness_state=readiness_state, request_id=str(uuid.uuid4()), created_at=_clock(),
             runner=session.runner, executable_path=session.executable_path,

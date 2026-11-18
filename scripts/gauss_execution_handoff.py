@@ -144,6 +144,15 @@ class HandoffFileRead:
     path: str
     size: int
     sha256: str
+    #: v0.95.0 (planning v0.95 §3.2): what gauss-ai observed about where an
+    #: `input` file came from, shown after its prompt line -- e.g. "added
+    #: after 2026-11-18 06:01, when gauss-ai first listed this input folder".
+    #: Empty when there is nothing to say (the file is as it was first
+    #: listed). 86.5's client downloaded FRED data into `input/` with its own
+    #: `curl` and the prompt named it exactly like the user's own data. It is
+    #: never a claim about who wrote the file, and never a block: a user may
+    #: add a file mid-session.
+    provenance: str = ""
 
 
 @dataclass(frozen=True)
@@ -216,7 +225,12 @@ def _file_plan_payload(plan: HandoffFilePlan) -> dict[str, Any]:
         "analysis_folder": plan.analysis_folder,
         "input_dir": plan.input_dir,
         "output_parent": plan.output_parent,
-        "reads": [[r.name, r.location, r.path, r.size, r.sha256] for r in plan.reads],
+        # v0.95.0: a read's provenance is bound only when present, so every
+        # unmarked plan's digest is what it was in v0.94.
+        "reads": [
+            [r.name, r.location, r.path, r.size, r.sha256] + ([r.provenance] if r.provenance else [])
+            for r in plan.reads
+        ],
         "writes": list(plan.writes),
     }
 
@@ -955,7 +969,10 @@ def render_file_plan_lines(plan: HandoffFilePlan) -> list[str]:
     in_place = [r for r in plan.reads if r.location != validation_mod.FileLocation.INPUT.value]
     if copied:
         lines.append(f"Reads (copied from {plan.input_dir}; the originals are not changed):")
-        lines.extend(f"  {r.name} ({r.size:,} bytes, sha256 {r.sha256[:16]}...)" for r in copied)
+        lines.extend(
+            f"  {r.name} ({r.size:,} bytes, sha256 {r.sha256[:16]}...)" + (f" -- {r.provenance}" if r.provenance else "")
+            for r in copied
+        )
     if in_place:
         lines.append("Reads in place (GAUSS example data, not changed):")
         lines.extend(f"  {r.path} ({r.size:,} bytes, sha256 {r.sha256[:16]}...)" for r in in_place)

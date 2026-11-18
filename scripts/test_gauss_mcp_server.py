@@ -16,6 +16,8 @@ extra (`pip install -e ".[mcp]"`); skips cleanly if it is not installed.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
+import json
 import os
 import sys
 import tempfile
@@ -1181,8 +1183,12 @@ def test_45_v094_analysis_folder_end_to_end() -> None:
             start = server_mod.gauss_session_start(runner="fake", docs_root=str(docs), workspace_parent=tmp)
             sid = start["session_id"]
             report = start["analysis_folder"]
-            check("45: the session lists input names and sizes only",
-                  report["input_files"] == [{"name": "prices.csv", "bytes": 8}] and "analysis_folder_hint" not in start)
+            # v0.95.0 (planning v0.95 §3.1, accepted 2026-11-18): a CSV's
+            # header row is now listed too ("names and sizes only" was v0.94
+            # decision 7); the data row `1,2` is still never read.
+            check("45: the session lists input names, sizes and a CSV's header row",
+                  report["input_files"] == [{"name": "prices.csv", "bytes": 8, "columns": ["y", "x"]}]
+                  and "analysis_folder_hint" not in start)
             check("45: the session names both folders",
                   report["input"] == str((analysis / "input").resolve()) and report["output"].endswith("output"))
 
@@ -1240,6 +1246,124 @@ def test_45_v094_analysis_folder_end_to_end() -> None:
             # Without the plain tool result: no image -> the plain dict.
             check("45: a result with no figure is the plain dict",
                   server_mod._decide_tool_result({"outcome": "success"}) == {"outcome": "success"})
+        finally:
+            server_mod._config, handoff_mod.select_helper = saved_config, saved_select
+
+
+def test_46_v095_csv_header_rows() -> None:
+    """Planning v0.95 §3.1: a listed CSV reports the column names GAUSS gives
+    its first line (the rules of `_csv_header`, from the 2026-11-18 `loadd`
+    spot checks), with the names as written when any differ; the cases those
+    checks could not predict are flagged, not guessed; caps mark
+    `columns_truncated`; an empty file reports why; a non-CSV gets no
+    `columns`; no data row ever appears in the response."""
+    saved_config = server_mod._config
+    with tempfile.TemporaryDirectory() as tmp:
+        analysis = Path(tmp) / "analysis"
+        config_mod.ensure_analysis_subfolders(analysis)
+        inp = analysis / "input"
+        (inp / "a.csv").write_bytes(
+            b'\xef\xbb\xbfWage,"Region, US", Educ ,a-b,a.b,,dup,dup,1st\r\nSENTINEL_ROW,2,3,4,5,6,7,8,9\r\n')
+        (inp / "plain.csv").write_bytes(b"Wage,Female\n1,0\n")
+        (inp / "b.csv").write_bytes(b"")
+        (inp / "c.csv").write_bytes(b"x," * 600 + b"y")
+        (inp / "d.csv").write_bytes(b"A" * (server_mod.MAX_HEADER_BYTES + 10))
+        (inp / "e.CSV").write_bytes(b"\xffbad,ok\nSENTINEL_ROW\n")
+        (inp / "f.xlsx").write_bytes(b"PK")
+        (inp / "g.csv").write_bytes(b'Wage, "Region, US" ,LogWage\n1,2,3\n')
+        (inp / "h.csv").write_bytes(b"d,d,d_2\n1,2,3\n")
+        (inp / "i.csv").write_bytes(b"x,y,\n1,2,3\n")
+        try:
+            server_mod._config = dataclasses.replace(config_mod.GaussAiConfig(), analysis_folder=str(analysis))
+            start = server_mod.gauss_session_start(runner="fake", docs_root=tmp, workspace_parent=tmp)
+            files = {f["name"]: f for f in start["analysis_folder"]["input_files"]}
+            check("46: GAUSS's names: BOM, quoted comma, trim, punctuation, empty, repeats, leading digit",
+                  files["a.csv"]["columns"]
+                  == ["Wage", "Region_ US", "Educ", "a_b", "a_b_2", "X6", "dup", "dup_2", "1st"])
+            check("46: ...with the names as written beside them",
+                  files["a.csv"]["columns_as_written"]
+                  == ["Wage", "Region, US", "Educ", "a-b", "a.b", "", "dup", "dup", "1st"]
+                  and "columns_uncertain" not in files["a.csv"])
+            check("46: names GAUSS keeps need no second list",
+                  files["plain.csv"] == {"name": "plain.csv", "bytes": 16, "columns": ["Wage", "Female"]})
+            check("46: an empty file says so", files["b.csv"] == {"name": "b.csv", "bytes": 0,
+                                                                  "columns_error": "the file is empty"})
+            check("46: more than 500 names are cut and marked",
+                  len(files["c.csv"]["columns"]) == server_mod.MAX_HEADER_COLUMNS
+                  and files["c.csv"]["columns"][:3] == ["x", "x_2", "x_3"]
+                  and files["c.csv"]["columns_truncated"] is True)
+            check("46: a first line past 64 KiB is cut and marked",
+                  files["d.csv"]["columns_truncated"] is True
+                  and len(files["d.csv"]["columns"][0]) == server_mod.MAX_HEADER_NAME_CHARS)
+            check("46: the extension is matched case-blind; an undecodable byte becomes _",
+                  files["e.CSV"]["columns"] == ["_bad", "ok"])
+            check("46: a non-CSV file has no columns", files["f.xlsx"] == {"name": "f.xlsx", "bytes": 2})
+            check("46: a stray quote is flagged, not guessed", "a quote" in files["g.csv"]["columns_uncertain"])
+            check("46: a renamed repeat that collides is flagged",
+                  "renamed repeat" in files["h.csv"]["columns_uncertain"])
+            check("46: an empty last name is flagged", "empty last name" in files["i.csv"]["columns_uncertain"])
+            check("46: no data row is ever read", "SENTINEL_ROW" not in json.dumps(start))
+            check("46: the note says only the first line is read",
+                  "never a data row" in start["analysis_folder"]["note"])
+        finally:
+            server_mod._config = saved_config
+
+
+def test_47_v095_inputs_added_or_changed_are_marked() -> None:
+    """Planning v0.95 §3.2: the first listing of an input folder in this
+    process is the baseline; a later session does not reset it; a file
+    added after it, or rewritten, is marked in the prompt and the mark is in
+    the digest; an unchanged file's prompt line and digest are as in
+    v0.94."""
+    saved_config, saved_select = server_mod._config, handoff_mod.select_helper
+    code = 'x = loadd("{name}");\ncall csvWriteM(x, "out.csv");\n'
+    with tempfile.TemporaryDirectory() as tmp:
+        docs = Path(tmp) / "docs"
+        docs.mkdir()
+        for name, text in _V094_PAGES.items():
+            (docs / name).write_text(text, encoding="utf-8")
+        analysis = Path(tmp) / "analysis"
+        config_mod.ensure_analysis_subfolders(analysis)
+        inp = analysis / "input"
+        (inp / "orig.csv").write_bytes(b"y,x\n1,2\n")
+        (inp / "edit.csv").write_bytes(b"y,x\n1,2\n")
+        try:
+            server_mod._config = dataclasses.replace(config_mod.GaussAiConfig(), analysis_folder=str(analysis))
+            first = server_mod.gauss_session_start(runner="fake", docs_root=str(docs), workspace_parent=tmp)
+            (inp / "new.csv").write_bytes(b"y,x\n5,6\n")
+            (inp / "edit.csv").write_bytes(b"y,x\n9,9\n")
+            # A new session must not reset the baseline (decision 6).
+            sid = server_mod.gauss_session_start(runner="fake", docs_root=str(docs), workspace_parent=tmp)["session_id"]
+
+            def prompt_for(name: str) -> dict:
+                v = server_mod.gauss_validate_code(sid, code.format(name=name))
+                return server_mod.gauss_execution_prepare(sid, v["validation_id"])
+
+            orig, new, edit = prompt_for("orig.csv"), prompt_for("new.csv"), prompt_for("edit.csv")
+            check("47: an unchanged file is not marked",
+                  "orig.csv (8 bytes, sha256" in orig["rendered_prompt"] and " -- " not in orig["rendered_prompt"])
+            check("47: a file added after the first listing is marked 'added'",
+                  "new.csv (8 bytes, sha256" in new["rendered_prompt"]
+                  and "-- added after " in new["rendered_prompt"]
+                  and "when gauss-ai first listed this input folder" in new["rendered_prompt"])
+            check("47: a rewritten file is marked 'changed'", "-- changed after " in edit["rendered_prompt"])
+            check("47: the mark is never a claim about who wrote the file",
+                  all(w not in new["rendered_prompt"].lower() for w in ("assistant", "client", "model")))
+            first_sid = first["session_id"]
+            check("47: the first session sees the same marks",
+                  "-- added after " in server_mod.gauss_execution_prepare(
+                      first_sid, server_mod.gauss_validate_code(first_sid, code.format(name="new.csv"))["validation_id"]
+                  )["rendered_prompt"])
+
+            plan = handoff_mod.HandoffFilePlan(
+                analysis_folder="a", input_dir="a/input", output_parent="a/output",
+                reads=(handoff_mod.HandoffFileRead(name="n.csv", location="input", path="p", size=1, sha256="0" * 64),),
+            )
+            marked = dataclasses.replace(plan, reads=(dataclasses.replace(plan.reads[0], provenance="added after x"),))
+            check("47: an unmarked read's digest payload is v0.94's five fields",
+                  handoff_mod._file_plan_payload(plan)["reads"] == [["n.csv", "input", "p", 1, "0" * 64]])
+            check("47: a mark is bound into the digest",
+                  handoff_mod._file_plan_payload(marked)["reads"][0][-1] == "added after x")
         finally:
             server_mod._config, handoff_mod.select_helper = saved_config, saved_select
 
