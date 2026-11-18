@@ -162,6 +162,6 @@ A second vendor's model also tests something the Claude-only runs cannot: whethe
 - The Claude client iterated to a candidate in eight tasks, averaging 2.4 validations per task. Codex stopped after one or two validations and reported the verdict.
 - Codex wrote its programs without seeing the data: no shell, and no gauss-ai tool shows an input file's columns. It guessed `female`, `region` and `wage`, and asked for the file in batch 1's 86.4.
 
-**Candidate finding for gauss-ai (the user's decision, not started):** a client without its own file access cannot learn an input file's column names before execution. One option is for `gauss_session_start`'s analysis-folder report to give each listed CSV's header row. That is read-only and deterministic, and from files the server already digests.
+**Finding for gauss-ai (accepted by the user for v0.95 on 2026-11-18; not started):** a client without its own file access cannot learn an input file's column names before execution. One option is for `gauss_session_start`'s analysis-folder report to give each listed CSV's header row. That is read-only and deterministic, and from files the server already digests.
 
 **Not recorded as an evaluation category.** This was a pilot: batch 2 used a preamble, and the 86.x tasks' expected outcomes were written for an execution-enabled client. A scored Codex category should state its own expected outcomes for a no-execution client first, per the live-evaluation rules.
